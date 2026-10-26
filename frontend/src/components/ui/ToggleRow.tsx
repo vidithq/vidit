@@ -4,8 +4,9 @@ import { cn } from "@/lib/cn";
 import { TAP_STEP } from "./Button";
 import { Switch } from "./Switch";
 
-/** A settings preference's text: the label at reading size over a line saying what it does. */
-function PreferenceText({
+/** A described row's text: the label at reading size over a muted line. `<ToggleRow>`,
+ *  `<ChoiceRow>` and `<ActionRow>` share it. */
+export function PreferenceText({
   label,
   description,
   descriptionId,

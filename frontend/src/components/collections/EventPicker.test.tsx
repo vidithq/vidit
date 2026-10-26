@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { FormEvent } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -146,7 +146,7 @@ describe("EventPicker, the events the collection holds", () => {
     expect(onRemove).toHaveBeenCalledWith("e9");
   });
 
-  it("points an empty collection at the block below", () => {
+  it("points an empty collection at the block above", () => {
     render(
       <EventPicker
         username="ana"
@@ -160,8 +160,82 @@ describe("EventPicker, the events the collection holds", () => {
       screen.getByText("Nothing on this collection yet."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Add your own geolocations from the search below."),
+      screen.getByText("Add your own geolocations from the search above."),
     ).toBeInTheDocument();
+  });
+});
+
+describe("EventPicker, the held list", () => {
+  it("puts the add block first, then lists the held events as compact rows that open the event", () => {
+    render(
+      <EventPicker
+        username="ana"
+        events={[row({ id: "e9", title: "Later strike", occurred_date: "2026-03-16" })]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    const add = screen.getByRole("heading", { name: "Add events" });
+    const held = screen.getByRole("heading", { name: "Events in this collection" });
+    expect(add.compareDocumentPosition(held)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const list = screen.getByRole("list", { name: "Events in this collection" });
+    const [item] = within(list).getAllByRole("listitem");
+    expect(within(item).getByRole("link", { name: "Later strike" })).toHaveAttribute(
+      "href",
+      "/events/e9",
+    );
+    expect(within(item).getByText("16 Mar 2026")).toBeInTheDocument();
+    expect(
+      within(item).getByRole("button", { name: "Remove Later strike from this collection" }),
+    ).toBeInTheDocument();
+    // No sideways scroller any more.
+    expect(screen.queryByRole("region", { name: "Events in this collection" })).toBeNull();
+  });
+
+  it("scrolls a picked row into view where the date order puts it", () => {
+    const picked = row({ id: "e1", title: "Picked strike" });
+    mockBrowse([picked]);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const onAdd = vi.fn();
+    const { rerender } = render(
+      <EventPicker username="ana" events={[]} onAdd={onAdd} onRemove={vi.fn()} />,
+    );
+    fireEvent.focus(field());
+    fireEvent.click(addRow("Picked strike"));
+    expect(onAdd).toHaveBeenCalledWith(picked);
+
+    rerender(<EventPicker username="ana" events={[picked]} onAdd={onAdd} onRemove={vi.fn()} />);
+
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("lists a match's loaded rows with the picks, and pages it with Show more", () => {
+    const loadMore = vi.fn();
+    const onMatchRemove = vi.fn();
+    render(
+      <EventPicker
+        username="ana"
+        events={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        matched={{
+          rows: [row({ id: "m1", title: "Dam breach" })],
+          total: 30,
+          walk: { hasMore: true, loadingMore: false, loadMore, error: null, loading: false },
+          onRemove: onMatchRemove,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("30 events, ordered by event date, earliest first.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(loadMore).toHaveBeenCalledOnce();
+    fireEvent.click(removeRow("Dam breach"));
+    expect(onMatchRemove).toHaveBeenCalledWith("m1");
   });
 });
 

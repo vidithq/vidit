@@ -1,10 +1,9 @@
-import Link from "next/link";
 
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { Card } from "@/components/ui/Card";
+import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
-import { buttonClasses } from "@/components/ui/Button";
 import { requestHref } from "@/lib/routes";
 import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
@@ -41,14 +40,10 @@ export function OpenRequests({
         {/* `status=requested` so the expansion states its narrowing rather than inheriting it: it lands as
             a removable chip and the link stays honest whatever the search group serves. Same builder as
             the Insights tiles. */}
-        <Link
+        <ShowMoreLink
           href={profileSearchHref(profile.username, { status: "requested" })}
-          className={buttonClasses("secondary", {
-            className: "shrink-0 whitespace-nowrap",
-          })}
-        >
-          Show more
-        </Link>
+          className="shrink-0"
+        />
       </div>
 
       <div className="space-y-2">

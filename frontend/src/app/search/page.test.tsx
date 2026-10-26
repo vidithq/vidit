@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let searchParams = new URLSearchParams();
 const replace = vi.fn();
@@ -19,6 +19,15 @@ vi.mock("@/lib/search", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/search")>()),
   search: (opts: unknown) => search(opts),
   suggestAuthors: () => Promise.resolve([]),
+}));
+
+let currentUser: { id: string; username: string } | null = null;
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: currentUser }) }));
+
+const countCollectableMatches = vi.fn();
+vi.mock("@/lib/collections", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/collections")>()),
+  countCollectableMatches: (match: unknown) => countCollectableMatches(match),
 }));
 
 import type { Collection } from "@/lib/collections";
@@ -173,7 +182,7 @@ describe("the search page's Collections group", () => {
 });
 
 describe("the search page's Geolocations group", () => {
-  const loadMore = () => screen.queryByRole("button", { name: "Load more" });
+  const loadMore = () => screen.queryByRole("button", { name: "Show more" });
 
   it("appends the next page from the cursor, with the request that minted it", async () => {
     searchParams = new URLSearchParams("conflict=Yemen&author=ana");
@@ -216,7 +225,7 @@ describe("the search page's Geolocations group", () => {
     expect(loadMore()).not.toBeInTheDocument();
   });
 
-  it("offers no Load more when the first page holds every match", async () => {
+  it("offers no Show more when the first page holds every match", async () => {
     search.mockResolvedValue(
       response({ geolocations: [eventHit()], total: { ...NO_TOTALS, geolocations: 1 } }),
     );
@@ -236,7 +245,7 @@ describe("the search page's Geolocations group", () => {
 
     render(<SearchPage />);
 
-    fireEvent.click((await screen.findByRole("button", { name: "Load more" })));
+    fireEvent.click((await screen.findByRole("button", { name: "Show more" })));
 
     expect(await screen.findByText("API error 500")).toBeInTheDocument();
     expect(screen.getByText("Kakhovka spillway")).toBeInTheDocument();
@@ -420,5 +429,200 @@ describe("the approval filters on the search page", () => {
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith("/search?q=kakhovka&type=event&approved=true"),
     );
+  });
+});
+
+describe("the Geolocations selection", () => {
+  const theirs = (): SearchEventHit => ({
+    ...eventHit(),
+    id: "e2",
+    title: "Their strike",
+    title_highlight: "Their strike",
+    owner: { id: "u9", username: "bo", avatar_url: null },
+  });
+  const actions = () => screen.queryByRole("complementary", { name: "Actions" });
+  const own = () => screen.getByRole("checkbox", { name: "Select Kakhovka spillway" });
+
+  beforeEach(() => {
+    currentUser = { id: OWNER.id, username: OWNER.username };
+    countCollectableMatches.mockResolvedValue(7);
+    search.mockResolvedValue(
+      response({
+        geolocations: [eventHit(), theirs()],
+        total: { ...NO_TOTALS, geolocations: 2 },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    currentUser = null;
+  });
+
+  it("offers no checkbox and no actions to a signed-out reader", async () => {
+    currentUser = null;
+    render(<SearchPage />);
+
+    expect(await screen.findByText("Their strike")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(actions()).not.toBeInTheDocument();
+  });
+
+  it("puts a checkbox on the reader's own rows only, and holds the actions' room idle", async () => {
+    render(<SearchPage />);
+
+    expect(
+      await screen.findByRole("checkbox", { name: "Select Kakhovka spillway" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Select Their strike" })).not.toBeInTheDocument();
+    // Mounted but inert: the header keeps its height for when a row is picked.
+    expect(actions()).toHaveAttribute("inert");
+    const head = await screen.findByRole("checkbox", { name: "Select all" });
+    await waitFor(() => expect(head).toBeEnabled());
+  });
+
+  it("wakes Add to collection on a pick, and the head checkbox clears a partial selection", async () => {
+    render(<SearchPage />);
+    await screen.findByRole("checkbox", { name: "Select all" });
+    fireEvent.click(own());
+
+    expect(actions()).not.toHaveAttribute("inert");
+    expect(
+      within(actions() as HTMLElement).getByRole("button", { name: "Add to collection" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    const head = screen.getByRole("checkbox", { name: "Clear selection" }) as HTMLInputElement;
+    expect(head.indeterminate).toBe(true);
+
+    fireEvent.click(head);
+    expect(own()).not.toBeChecked();
+    expect(actions()).toHaveAttribute("inert");
+    expect(screen.getByRole("checkbox", { name: "Select all" })).not.toBeChecked();
+  });
+
+  it("selects every match from the head checkbox, then clears it from there", async () => {
+    render(<SearchPage />);
+    const head = await screen.findByRole("checkbox", { name: "Select all" });
+    // The box stays disabled until the match count lands.
+    await waitFor(() => expect(head).toBeEnabled());
+    fireEvent.click(head);
+
+    expect(countCollectableMatches).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "kakhovka" }),
+    );
+    expect(screen.getByText("7 selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Clear selection" })).toBeChecked();
+    expect(own()).toBeChecked();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Clear selection" }));
+    expect(screen.getByText("Select all")).toBeInTheDocument();
+    expect(own()).not.toBeChecked();
+  });
+
+  it("refuses Select all past the bulk add's cap and says why, while rows stay pickable", async () => {
+    countCollectableMatches.mockResolvedValue(501);
+    render(<SearchPage />);
+
+    expect(await screen.findByText("Narrow to 500 or fewer to select all")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select all" })).toBeDisabled();
+
+    fireEvent.click(own());
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("makes a row from Show more selectable, and Select all covers it", async () => {
+    search.mockReset();
+    search
+      .mockResolvedValueOnce(
+        response({
+          geolocations: [eventHit()],
+          geolocations_cursor: "c1",
+          total: { ...NO_TOTALS, geolocations: 2 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          type: "geolocation",
+          geolocations: [eventHit({ id: "e3", title: "Mukalla port", title_highlight: "Mukalla port" })],
+          total: { ...NO_TOTALS, geolocations: 2 },
+        }),
+      );
+    countCollectableMatches.mockResolvedValue(2);
+    render(<SearchPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Mukalla port" }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Clear selection" }));
+    const head = screen.getByRole("checkbox", { name: "Select all" });
+    await waitFor(() => expect(head).toBeEnabled());
+    fireEvent.click(head);
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Mukalla port" })).toBeChecked();
+    expect(own()).toBeChecked();
+  });
+
+  it("starts over when the query changes", async () => {
+    render(<SearchPage />);
+    await screen.findByRole("checkbox", { name: "Select all" });
+    fireEvent.click(own());
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "kakhovka dam" } });
+
+    await waitFor(() => expect(screen.queryByText("1 selected")).not.toBeInTheDocument(), {
+      timeout: 2000,
+    });
+    expect(own()).not.toBeChecked();
+  });
+});
+
+describe("the search page's group headers", () => {
+  afterEach(() => {
+    currentUser = null;
+  });
+
+  it("drops the header of a lone group, which the head row's total already counts", async () => {
+    search.mockResolvedValue(
+      response({ geolocations: [eventHit()], total: { ...NO_TOTALS, geolocations: 1 } }),
+    );
+    render(<SearchPage />);
+
+    expect(await screen.findByRole("region", { name: "Geolocations" })).toBeInTheDocument();
+    expect(screen.queryByText(/^Geolocations ·/)).not.toBeInTheDocument();
+    expect(screen.getByText("1 result")).toBeInTheDocument();
+  });
+
+  it("titles each group once several show, and Select all moves under its own", async () => {
+    currentUser = { id: OWNER.id, username: OWNER.username };
+    countCollectableMatches.mockResolvedValue(1);
+    search.mockResolvedValue(
+      response({
+        geolocations: [eventHit()],
+        users: [userHit()],
+        total: { ...NO_TOTALS, geolocations: 1, users: 1 },
+      }),
+    );
+    render(<SearchPage />);
+
+    const header = await screen.findByText(/^Geolocations ·/);
+    expect(screen.getByText(/^Analysts ·/)).toBeInTheDocument();
+    expect(header.closest("section")).toContainElement(
+      screen.getByRole("checkbox", { name: "Select all" }),
+    );
+  });
+});
+
+describe("the active filters on the search page", () => {
+  it("head the rail, minus the author its Author section names, and the narrow row keeps both", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&type=event&tag=drone&author=ana");
+    search.mockResolvedValue(response({ type: "event", geolocations: [eventHit()] }));
+    render(<SearchPage />);
+
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    expect(await within(rail).findByTitle("Remove filter: drone")).toBeInTheDocument();
+    expect(within(rail).queryByTitle("Remove filter: By ana")).not.toBeInTheDocument();
+    expect(screen.getAllByTitle("Remove filter: By ana")).toHaveLength(1);
+    expect(screen.getAllByTitle("Remove filter: drone")).toHaveLength(2);
   });
 });

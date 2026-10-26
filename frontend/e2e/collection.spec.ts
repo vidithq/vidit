@@ -130,8 +130,8 @@ test.describe("collection player", () => {
  * The create page, which is the same form before there is a collection.
  *
  * It is the longest form on this surface: two text fields, then the picker's
- * two blocks: the held events as a carousel of large cards, and the add field,
- * whose list rows carry a title, a date and a status badge. A row is where a
+ * two blocks: the add field, whose list rows carry a title, a date and a status
+ * badge, then the held events as a vertical list of compact rows. A row is where a
  * phone column gets pushed open, so what this measures is the whole page
  * against the column, with the add block's own field under the same 16px rule
  * the two above it take.
@@ -150,7 +150,7 @@ test.describe("collection create page", () => {
     ).toBeVisible();
 
     // The collection holds nothing yet, and the block that says so points at
-    // the one below it.
+    // the one above it.
     await expect(
       page.getByRole("heading", { name: "Events in this collection" }),
     ).toBeVisible();
@@ -209,6 +209,15 @@ test.describe("collection edit page", () => {
     await expectControlInsideViewport(
       page,
       page.getByRole("button", { name: "Cancel" }),
+    );
+
+    // What the collection holds is a vertical list under the add block, each row's remove
+    // control at its right edge, inside the column.
+    const held = page.getByRole("list", { name: "Events in this collection" });
+    await expect(held.getByRole("listitem").first()).toBeVisible();
+    await expectControlInsideViewport(
+      page,
+      held.getByRole("button", { name: /^Remove / }).first(),
     );
   });
 });

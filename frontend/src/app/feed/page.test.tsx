@@ -93,7 +93,7 @@ beforeEach(() => {
 });
 
 /** Observers by the node they watch: card media observes too, so a test fires the one watching
- *  the Load more row. */
+ *  the Show more row. */
 function stubObservers(): Map<Element, IntersectionObserverCallback> {
   const watchers = new Map<Element, IntersectionObserverCallback>();
   vi.stubGlobal(
@@ -114,15 +114,22 @@ function stubObservers(): Map<Element, IntersectionObserverCallback> {
 }
 
 function scrollToFoot(watchers: Map<Element, IntersectionObserverCallback>) {
-  const row = screen.getByRole("button", { name: "Load more" }).parentElement!;
+  const row = screen.getByRole("button", { name: "Show more" }).parentElement!;
   const report = watchers.get(row);
-  expect(report, "nothing observes the Load more row").toBeDefined();
+  expect(report, "nothing observes the Show more row").toBeDefined();
   report!([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
+
+
+/** A filter chip in the rail, not the active-filter pill of the same name that heads the rail. */
+const chip = (rail: HTMLElement, name: string) =>
+  within(rail)
+    .getAllByRole("button", { name })
+    .find((button) => !button.title.startsWith("Remove filter")) as HTMLElement;
 
 describe("FeedPage", () => {
   it("cards a request and a geolocation, each linked and credited by kind", () => {
@@ -296,63 +303,44 @@ describe("FeedPage", () => {
     expect(screen.getByText("Detected 5 Oct 2026")).toBeInTheDocument();
   });
 
-  it("shows detections by default and hides them from the Kind switch", () => {
+  it("lists every kind with no chip, and narrows to the chosen kinds, Detections included", () => {
     walk.items = [item({})];
     render(<FeedPage />);
     expect(lastPath()).toBe("/feed?scope=following");
     const rail = screen.getByRole("complementary", { name: "Filters" });
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-    const toggle = within(rail).getByRole("switch", { name: "Show detections" });
-    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(within(rail).queryByRole("switch")).toBeNull();
 
-    fireEvent.click(toggle);
-    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation&kind=request");
-    expect(within(rail).getByRole("switch", { name: "Show detections" })).toHaveAttribute(
-      "aria-checked",
-      "false",
+    fireEvent.click(chip(rail, "Detections"));
+    expect(lastPath()).toBe("/feed?scope=following&kind=detected");
+    expect(within(rail).getByTitle("Remove filter: Detections")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+
+    fireEvent.click(chip(rail, "Geolocations"));
+    expect(lastPath()).toBe("/feed?scope=following&kind=detected&kind=geolocation");
+
+    fireEvent.click(within(rail).getByTitle("Remove filter: Detections"));
+    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
+
+    fireEvent.click(chip(rail, "Geolocations"));
+    expect(lastPath()).toBe("/feed?scope=following");
+    expect(within(rail).queryByTitle(/^Remove filter/)).toBeNull();
+  });
+
+  it("sends only the chosen kinds", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
+
+    fireEvent.click(chip(rail, "Requests"));
+    expect(lastPath()).toBe("/feed?scope=following&kind=request");
+
+    fireEvent.click(chip(rail, "Geolocations"));
+    fireEvent.click(chip(rail, "Detections"));
+    expect(lastPath()).toBe(
+      "/feed?scope=following&kind=request&kind=geolocation&kind=detected",
     );
-    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTitle("Remove filter: Detections hidden"));
-    expect(lastPath()).toBe("/feed?scope=following");
-  });
-
-  it("sends only the chosen kinds and disables the detections switch while a chip is selected", () => {
-    walk.items = [item({})];
-    render(<FeedPage />);
-    const rail = screen.getByRole("complementary", { name: "Filters" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-    const toggle = () => within(rail).getByRole("switch", { name: "Show detections" });
-
-    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
-    expect(lastPath()).toBe("/feed?scope=following&kind=request");
-    expect(toggle()).toBeDisabled();
-
-    fireEvent.click(within(rail).getByRole("button", { name: "Geolocations" }));
-    expect(lastPath()).toBe("/feed?scope=following&kind=request&kind=geolocation");
-
-    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
-    fireEvent.click(within(rail).getByRole("button", { name: "Geolocations" }));
-    expect(lastPath()).toBe("/feed?scope=following");
-    expect(toggle()).toBeEnabled();
-  });
-
-  it("keeps the switch off across a chip choice, and shows its pill only while it applies", () => {
-    walk.items = [item({})];
-    render(<FeedPage />);
-    const rail = screen.getByRole("complementary", { name: "Filters" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-    fireEvent.click(within(rail).getByRole("switch", { name: "Show detections" }));
-    expect(screen.getByTitle("Remove filter: Detections hidden")).toBeInTheDocument();
-
-    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
-    expect(lastPath()).toBe("/feed?scope=following&kind=request");
-    expect(screen.queryByTitle("Remove filter: Detections hidden")).toBeNull();
-    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
-
-    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
-    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation&kind=request");
-    expect(screen.getByTitle("Remove filter: Detections hidden")).toBeInTheDocument();
   });
 
   it("narrows the walk from the rail: kind, conflict and tag", () => {
@@ -361,7 +349,7 @@ describe("FeedPage", () => {
     const rail = screen.getByRole("complementary", { name: "Filters" });
 
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    fireEvent.click(chip(rail, "Requests"));
     expect(lastPath()).toBe("/feed?scope=following&kind=request");
 
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Conflict" }));
@@ -375,7 +363,7 @@ describe("FeedPage", () => {
     );
     expect(screen.getByRole("button", { name: "Filters (3)" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTitle("Remove filter: Requests"));
+    fireEvent.click(within(rail).getByTitle("Remove filter: Requests"));
     expect(lastPath()).toBe(
       "/feed?scope=following&conflict=Russo-Ukrainian+war&tag=airstrike",
     );
@@ -421,7 +409,7 @@ describe("FeedPage", () => {
     render(<FeedPage />);
     const rail = screen.getByRole("complementary", { name: "Filters" });
     fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-    fireEvent.click(within(rail).getByRole("button", { name: "Requests" }));
+    fireEvent.click(chip(rail, "Requests"));
 
     expect(screen.getByText("Nothing in the feed matches the filters.")).toBeInTheDocument();
     expect(screen.queryByText("You follow no analysts yet")).toBeNull();

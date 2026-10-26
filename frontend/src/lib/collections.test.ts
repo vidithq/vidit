@@ -4,25 +4,33 @@ import { textHtml } from "@/test/proofEditorStub";
 
 import {
   addEventToCollection,
+  addEventsToCollection,
+  collectableEventsBody,
+  collectableEventsPath,
   collectionEventsPath,
   collectionHref,
   collectionMetaSegments,
   collectionPoints,
   collectionStepHref,
+  clearSelectionHandoff,
   createCollection,
   deleteCollection,
   eventCollectionsPath,
   fetchCollectionSequence,
+  newCollectionFromSelectionHref,
   PICKER_ROW_LIMIT,
   pickerBrowsePath,
   READER_MAX_ITEMS,
   readerStep,
+  readSelectionHandoff,
   removeEventFromCollection,
   pickableFromDetail,
   searchPickableEvents,
   updateCollection,
   userCollectionsPath,
+  BULK_ADD_MAX_EVENTS,
   type Collection,
+  type PickableEvent,
 } from "./collections";
 import { apiFetch, apiFetchPage } from "./api";
 import type { EventListItem } from "@/types";
@@ -453,5 +461,117 @@ describe("pickableFromDetail", () => {
     } as unknown as Parameters<typeof pickableFromDetail>[0];
 
     expect(pickableFromDetail(detail).media).toBeNull();
+  });
+});
+
+describe("the selection handoff to /collections/new", () => {
+  const token = (href: string) =>
+    new URL(href, "http://localhost").searchParams.get("selection") as string;
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    vi.useRealTimers();
+  });
+
+  it("parks the selection and its rows under a token, so no id list rides the URL", () => {
+    // The bulk add's cap, each row with a picture and tags: the entry stays far under the few
+    // megabytes `sessionStorage` holds.
+    const ids = Array.from({ length: BULK_ADD_MAX_EVENTS }, (_, i) => `event-${i}`);
+    const rows = ids.map((id) => ({
+      id,
+      title: "Strike on the rail junction near the eastern approach",
+      status: "geolocated" as const,
+      media: {
+        id: `m-${id}`,
+        storage_url: `https://media.example.com/sources/${id}/original.jpg`,
+        kind: "image" as const,
+        role: "source" as const,
+        filename: "frame.jpg",
+        mime_type: "image/jpeg",
+        size_bytes: 123456,
+      },
+      is_graphic: false,
+      occurred_date: "2026-03-14",
+      coords: { lat: 49.71, lng: 37.616 },
+      tags: [{ id: "t1", name: "rail" }],
+    })) as unknown as PickableEvent[];
+    const href = newCollectionFromSelectionHref({
+      target: { eventIds: ids },
+      rows,
+      count: ids.length,
+      from: "/search?q=dam",
+    });
+
+    expect(href).toMatch(/^\/collections\/new\?selection=[\w-]+$/);
+    expect(readSelectionHandoff(token(href))).toEqual({
+      target: { eventIds: ids },
+      rows,
+      count: ids.length,
+      from: "/search?q=dam",
+    });
+    const stored = window.sessionStorage.getItem(`vidit:collection-selection:${token(href)}`);
+    expect((stored ?? "").length).toBeLessThan(500_000);
+  });
+
+  it("reads a spent, stale or malformed handoff as missing", () => {
+    const href = newCollectionFromSelectionHref({
+      target: { match: { q: "dam" } },
+      rows: [],
+      count: 4,
+      from: "/search",
+    });
+    clearSelectionHandoff(token(href));
+    expect(readSelectionHandoff(token(href))).toBeNull();
+
+    vi.useFakeTimers({ now: new Date("2026-10-01T10:00:00Z"), toFake: ["Date"] });
+    const old = newCollectionFromSelectionHref({
+      target: { eventIds: ["e1"] },
+      rows: [],
+      count: 1,
+      from: "/",
+    });
+    vi.setSystemTime(new Date("2026-10-01T11:00:00Z"));
+    expect(readSelectionHandoff(token(old))).toBeNull();
+    vi.useRealTimers();
+
+    window.sessionStorage.setItem("vidit:collection-selection:bad", "{\"target\":{}}");
+    expect(readSelectionHandoff("bad")).toBeNull();
+    // An entry from before the rows rode along reads as missing too.
+    window.sessionStorage.setItem(
+      "vidit:collection-selection:rowless",
+      JSON.stringify({ target: { eventIds: ["e1"] }, count: 1, from: "/", at: Date.now() }),
+    );
+    expect(readSelectionHandoff("rowless")).toBeNull();
+  });
+
+  it("returns only to an in-app path", () => {
+    const href = newCollectionFromSelectionHref({
+      target: { eventIds: ["e1"] },
+      rows: [],
+      count: 1,
+      from: "//elsewhere.example/phish",
+    });
+    expect(readSelectionHandoff(token(href))?.from).toBe("/search");
+  });
+});
+
+describe("a search match's bulk requests", () => {
+  it("posts the match with the events taken off it", async () => {
+    mockFetch.mockResolvedValue({ added: 1, skipped: { already_in_collection: 0, not_collectable: 0 } });
+
+    await addEventsToCollection("c1", { match: { q: "dam", tags: ["flood"] }, excludeEventIds: ["e1"] });
+
+    const [path, init] = lastCall();
+    expect(path).toBe("/collections/c1/events");
+    expect(JSON.parse(init.body as string)).toEqual({
+      match: { q: "dam", filters: { tag: ["flood"] } },
+      exclude_event_ids: ["e1"],
+    });
+  });
+
+  it("pages the match's collectable events twenty at a time", () => {
+    expect(collectableEventsPath(null)).toBe("/collections/collectable-events?limit=20");
+    expect(collectableEventsPath("abc")).toBe("/collections/collectable-events?limit=20&cursor=abc");
+    expect(JSON.parse(collectableEventsBody({ q: "dam" }))).toEqual({ q: "dam", filters: {} });
   });
 });

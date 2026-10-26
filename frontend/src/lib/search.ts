@@ -46,26 +46,42 @@ export interface EventFilterParams extends Partial<ApprovalFilters> {
   addedTo?: string;
 }
 
-/** A list is any-match within itself and AND across lists. An author the `AUTHOR_FILTER_RE` gate
- *  refuses is dropped rather than sent to a 422. */
-export function appendEventFilterParams(params: URLSearchParams, f: EventFilterParams): void {
-  f.statuses?.forEach((v) => params.append("status", v));
-  f.conflicts?.forEach((v) => params.append("conflict", v));
-  f.sourceKinds?.forEach((v) => params.append("source_kind", v));
-  f.levels?.forEach((v) => params.append("level", v));
-  f.tags?.forEach((v) => params.append("tag", v));
-  f.mediaTypes?.forEach((v) => params.append("media", v));
+/** The filter set under its wire names, the one mapping the query string and a JSON body
+ *  (`SearchMatch.filters`, `lib/collections.ts`) both read. A list is any-match within itself
+ *  and AND across lists. An author the `AUTHOR_FILTER_RE` gate refuses is dropped rather than
+ *  sent to a 422. */
+export function eventFilterFields(
+  f: EventFilterParams,
+): Record<string, string[] | string | boolean> {
+  const fields: Record<string, string[] | string | boolean> = {};
+  const lists: Array<[string, string[] | undefined]> = [
+    ["status", f.statuses],
+    ["conflict", f.conflicts],
+    ["source_kind", f.sourceKinds],
+    ["level", f.levels],
+    ["tag", f.tags],
+    ["media", f.mediaTypes],
+  ];
+  for (const [key, values] of lists) if (values?.length) fields[key] = values;
   const author = f.author?.trim();
-  if (author && AUTHOR_FILTER_RE.test(author)) params.set("author", author);
-  if (f.hasCoords !== undefined) params.set("has_coords", String(f.hasCoords));
-  if (f.approved) params.set("approved", "true");
+  if (author && AUTHOR_FILTER_RE.test(author)) fields.author = author;
+  if (f.hasCoords !== undefined) fields.has_coords = f.hasCoords;
+  if (f.approved) fields.approved = true;
   const by = f.approvedBy;
-  if (by?.kind === "analyst") params.set("approved_by", by.username);
-  else if (by) params.set("approved_by_org", by.slug);
-  if (f.eventFrom) params.set("occurred_date_from", f.eventFrom);
-  if (f.eventTo) params.set("occurred_date_to", f.eventTo);
-  if (f.addedFrom) params.set("submitted_from", f.addedFrom);
-  if (f.addedTo) params.set("submitted_to", f.addedTo);
+  if (by?.kind === "analyst") fields.approved_by = by.username;
+  else if (by) fields.approved_by_org = by.slug;
+  if (f.eventFrom) fields.occurred_date_from = f.eventFrom;
+  if (f.eventTo) fields.occurred_date_to = f.eventTo;
+  if (f.addedFrom) fields.submitted_from = f.addedFrom;
+  if (f.addedTo) fields.submitted_to = f.addedTo;
+  return fields;
+}
+
+export function appendEventFilterParams(params: URLSearchParams, f: EventFilterParams): void {
+  for (const [key, value] of Object.entries(eventFilterFields(f))) {
+    if (Array.isArray(value)) value.forEach((v) => params.append(key, v));
+    else params.set(key, String(value));
+  }
 }
 
 /** A name the `AUTHOR_FILTER_RE` gate refuses is dropped, so a crafted URL cannot 422 every fetch,
