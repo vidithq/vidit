@@ -180,6 +180,25 @@ _WITHHELD_MARKER_WITH_VIDEO_HTML = (
     "</div>"
 )
 
+# The notice a post withholds its media with, and the hidden client fallback
+# the embed wraps the same notice in for a browser that cannot draw a custom emoji.
+_NOTICE = (
+    '<div class="message_media_not_supported_wrap"><div class="message_media_not_supported">'
+    "Please open Telegram to view this post</div> </div>"
+)
+
+
+def _emoji_post(lead: str, photo: str) -> str:
+    """A post whose text holds a custom emoji, so the embed carries the hidden fallback."""
+    return (
+        f'<div class="tgme_widget_message text_not_supported_wrap">{lead}'
+        '<div class="media_supported_cont"><a class="tgme_widget_message_photo_wrap" '
+        f"style=\"background-image:url('{photo}')\"></a>"
+        '<div class="tgme_widget_message_text"><tg-emoji emoji-id="1"></tg-emoji> text</div>'
+        f'</div><div class="media_not_supported_cont">{_NOTICE}</div>'
+        f'<time datetime="{_DATE}"></time></div>'
+    )
+
 
 def test_photo_embed_yields_date_and_image() -> None:
     embed = _fetch(_PHOTO_HTML)
@@ -236,6 +255,20 @@ def test_sensitive_post_yields_date_only() -> None:
     assert embed is not None
     assert embed.posted_at == _DATE
     assert embed.media == []
+
+
+@pytest.mark.parametrize(
+    "lead,media",
+    [
+        ("", [("image", "https://cdn4.cdn-telegram.org/file/photo1.jpg")]),
+        (_NOTICE, []),  # the notice outside the fallback still withholds
+    ],
+)
+def test_emoji_fallback_withholds_nothing(lead: str, media: list[tuple[str, str]]) -> None:
+    embed = _fetch(_emoji_post(lead, "https://cdn4.cdn-telegram.org/file/photo1.jpg"))
+    assert embed is not None
+    assert embed.posted_at == _DATE
+    assert [(m.kind, m.remote_url) for m in embed.media] == media
 
 
 def test_untrusted_media_host_dropped_date_kept() -> None:

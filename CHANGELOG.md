@@ -14,6 +14,11 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The API compresses responses at gzip level 6 and serves cached map points without compressing them again ([#695](https://github.com/vidithq/vidit/pull/695)).
 - Event pages and cards load resized images through the image optimizer in place of full-size originals, and the video player no longer loads on every page ([#695](https://github.com/vidithq/vidit/pull/695)).
 - Stored media and the map worker files carry a one-year immutable cache header, and pages open their API, media and basemap connections early. Media stored before this release keeps no cache header until an operator copies it with one ([#695](https://github.com/vidithq/vidit/pull/695)).
+- In the event form, a source link row imports the file of an X, public Telegram or TikTok post in one click, and a post with several files lets you pick one; `POST /uploads/from-link` stages it like an upload ([#697](https://github.com/vidithq/vidit/pull/697)).
+
+### Fixed
+
+- A Telegram post whose text holds a custom emoji now imports with its photo instead of the date alone ([#697](https://github.com/vidithq/vidit/pull/697)).
 
 ## v0.8.0, 2026-10-25
 

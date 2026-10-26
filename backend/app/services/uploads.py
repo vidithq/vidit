@@ -9,14 +9,16 @@ source's ``media`` row and deletes it. A row nobody takes expires after ``UPLOAD
 
 from __future__ import annotations
 
+import asyncio
 import uuid
-from collections.abc import Iterable
+from collections.abc import Awaitable, Iterable
 from datetime import UTC, datetime
 
 from fastapi import UploadFile
 from sqlalchemy import delete, func
 from sqlalchemy.orm import Session
 
+from app.models.media import MediaKind
 from app.models.upload import UPLOAD_TTL, Upload
 from app.models.user import User
 from app.services.evidence_intake import (
@@ -28,11 +30,22 @@ from app.services.evidence_intake import (
 )
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.storage import (
+    UploadResult,
     get_storage,
     safe_original_filename,
     sweep_keys,
+    upload_source_bytes,
     upload_source_file,
+    validate_bytes,
     validate_file,
+)
+from app.services.tweet_ingest import (
+    MediaTooLarge,
+    TweetFetchFailed,
+    TweetImportError,
+    chase_post,
+    download_cdn_media,
+    is_importable_link,
 )
 
 # Staged files one account may hold at once: two full event forms' worth. An abuse bound on
@@ -56,21 +69,33 @@ class TooManyUploadsError(EvidenceIntakeError):
     code = "too_many_uploads"
 
 
+_LINK_REFUSALS = {
+    "unsupported_link": "Import works with an X post, a public Telegram post or a TikTok post link.",
+    "link_not_accessible": "The post or its file is gone, restricted or unreadable without a login.",
+    "upstream_busy": "The post's host or its file host is not answering. Try again in a minute.",
+}
+
+
+class LinkImportError(EvidenceIntakeError):
+    """A post link whose file cannot be staged; ``code`` names why."""
+
+    def __init__(self, code: str, message: str | None = None) -> None:
+        super().__init__(message or _LINK_REFUSALS[code])
+        self.code = code
+
+
 UPLOAD_ERROR_STATUS: dict[str, int] = {
     "upload_not_found": 400,
     "upload_expired": 400,
     "too_many_uploads": 429,
+    "unsupported_link": 400,
+    "link_not_accessible": 404,
+    "link_has_no_file": 404,
+    "upstream_busy": 503,
 }
 
 
-async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> Upload:
-    """Store one source file and record it for a later event write; commits.
-
-    Raises :class:`TooManyUploadsError` past :data:`MAX_PENDING_UPLOADS_PER_USER` live rows,
-    :class:`InvalidFileError` on a disallowed type or size, and
-    :class:`EvidenceProcessingFailedError` when the image cannot be re-encoded.
-    """
-    now = datetime.now(UTC)
+def _ensure_room(db: Session, uploader: User, now: datetime) -> None:
     pending = (
         db.query(func.count(Upload.id))
         .filter(Upload.uploader_id == uploader.id, Upload.expires_at > now)
@@ -81,12 +106,20 @@ async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> Uplo
             f"You hold {pending} staged files no event uses yet; "
             f"submit or wait for them to expire before uploading more."
         )
+
+
+async def _record(
+    db: Session,
+    *,
+    uploader: User,
+    kind: str,
+    store: Awaitable[UploadResult],
+    original_filename: str | None,
+    now: datetime,
+) -> Upload:
+    """Await ``store`` and record what it stored as a staged row; commits."""
     try:
-        kind = validate_file(file)
-    except ValueError as exc:
-        raise InvalidFileError(str(exc)) from exc
-    try:
-        result = await upload_source_file(file)
+        result = await store
     except EvidenceProcessingError as exc:
         raise EvidenceProcessingFailedError(str(exc)) from exc
     storage = get_storage()
@@ -98,7 +131,7 @@ async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> Uplo
         storage_key=key,
         kind=kind,
         sha256=result.sha256,
-        original_filename=safe_original_filename(file.filename),
+        original_filename=original_filename,
         expires_at=now + UPLOAD_TTL,
     )
     db.add(row)
@@ -110,6 +143,76 @@ async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> Uplo
         raise
     db.refresh(row)
     return row
+
+
+async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> Upload:
+    """Store one source file and record it for a later event write; commits.
+
+    Raises :class:`TooManyUploadsError` past :data:`MAX_PENDING_UPLOADS_PER_USER` live rows,
+    :class:`InvalidFileError` on a disallowed type or size, and
+    :class:`EvidenceProcessingFailedError` when the image cannot be re-encoded.
+    """
+    now = datetime.now(UTC)
+    _ensure_room(db, uploader, now)
+    try:
+        kind = validate_file(file)
+    except ValueError as exc:
+        raise InvalidFileError(str(exc)) from exc
+    return await _record(
+        db,
+        uploader=uploader,
+        kind=kind,
+        store=upload_source_file(file),
+        original_filename=safe_original_filename(file.filename),
+        now=now,
+    )
+
+
+async def stage_from_link(
+    db: Session, *, uploader: User, url: str, index: int = 0
+) -> tuple[Upload, list[MediaKind]]:
+    """Stage file ``index`` of the post ``url`` names, with the kind of every file it holds.
+
+    Only a link a chaser reads is fetched (``tweet_ingest.chase_post``), and only a trusted CDN
+    serves the file. Raises :func:`stage_upload`'s errors and :class:`LinkImportError`.
+    """
+    if not is_importable_link(url):
+        raise LinkImportError("unsupported_link")
+    now = datetime.now(UTC)
+    _ensure_room(db, uploader, now)
+    chased = await asyncio.to_thread(chase_post, url)
+    if chased.outcome == "transient_failure":
+        raise LinkImportError("upstream_busy")
+    if chased.post is None:
+        raise LinkImportError("link_not_accessible")
+    media = chased.post.media
+    if index >= len(media):
+        raise LinkImportError(
+            "link_has_no_file",
+            "The post serves no file." if not media else f"The post holds {len(media)} files.",
+        )
+    parsed = media[index]
+    try:
+        data = await download_cdn_media(parsed)
+    except MediaTooLarge as exc:
+        raise InvalidFileError("File too large") from exc
+    except TweetFetchFailed as exc:
+        raise LinkImportError("upstream_busy") from exc
+    except TweetImportError as exc:
+        raise LinkImportError("link_not_accessible") from exc
+    try:
+        kind = validate_bytes(data, parsed.content_type)
+    except ValueError as exc:
+        raise InvalidFileError(str(exc)) from exc
+    upload = await _record(
+        db,
+        uploader=uploader,
+        kind=kind,
+        store=upload_source_bytes(data, parsed.content_type),
+        original_filename=None,
+        now=now,
+    )
+    return upload, [item.kind for item in media]
 
 
 def storage_url_of(upload: Upload) -> str:

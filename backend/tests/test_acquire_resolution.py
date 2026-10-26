@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 import app.services.tweet_ingest.chase.telegram as telegram_mod
+import app.services.tweet_ingest.chase.tiktok as tiktok_mod
 from app.services.tweet_ingest import (
     COORDS_MISSING,
     THREAD_TRUNCATED,
@@ -526,10 +527,25 @@ def test_nothing_is_chased_when_the_candidates_are_ambiguous(monkeypatch):
 
 
 def test_an_off_vocabulary_candidate_is_not_chased():
-    # A TikTok or article link is a valid link-only source: no fetch.
+    # An article link is a valid link-only source: no fetch.
     seen: list[str] = []
-    bodies = {_POST_ID: _linking_body("https://www.tiktok.com/@war/video/7")}
+    bodies = {_POST_ID: _linking_body("https://example.com/news/strike")}
     with _client(bodies, seen) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     assert acquired.records[0].quoted is None
+    assert acquired.records[0].telegram is None
     assert seen == [_POST_ID]
+
+
+def test_the_sole_tiktok_candidate_is_chased_into_the_off_platform_slot(monkeypatch):
+    tiktok = "https://www.tiktok.com/@war/video/7"
+    footage = ChasedPost(url=tiktok, posted_at="2026-03-04T13:20:00+00:00")
+    monkeypatch.setattr(
+        tiktok_mod,
+        "chase",
+        lambda target, *, client=None: ChaseResult(outcome="chased", post=footage),
+    )
+    with _client({_POST_ID: _linking_body(tiktok)}) as client:
+        acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
+    assert acquired.records[0].telegram is not None
+    assert acquired.records[0].telegram.url == tiktok
