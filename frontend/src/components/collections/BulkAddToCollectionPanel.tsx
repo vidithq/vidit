@@ -25,6 +25,7 @@ import {
   type BulkAddResult,
   type BulkTarget,
   type CollectionPage,
+  type PickableEvent,
 } from "@/lib/collections";
 import { countLabel } from "@/lib/format";
 
@@ -59,10 +60,13 @@ function summary({ added, skipped }: BulkAddResult): string {
 export function BulkAddToCollectionPanel({
   username,
   target,
+  rows,
   count,
 }: {
   username: string;
   target: BulkTarget;
+  /** The checked rows, handed to the create page; none for a search match. */
+  rows: PickableEvent[];
   /** How many geolocations the selection holds. */
   count: number;
 }) {
@@ -106,7 +110,7 @@ export function BulkAddToCollectionPanel({
   }
 
   const needle = find.trim().toLowerCase();
-  const rows = needle
+  const shown = needle
     ? data.items.filter((row) => row.title.toLowerCase().includes(needle))
     : data.items;
 
@@ -129,12 +133,12 @@ export function BulkAddToCollectionPanel({
         <EmptyState variant="plain" lead="No collections yet.">
           Open one with these geolocations below.
         </EmptyState>
-      ) : rows.length === 0 ? (
+      ) : shown.length === 0 ? (
         <p className="text-sm text-neutral-500">No collection matches.</p>
       ) : (
         /* The list scrolls inside the popover, which is fixed to the viewport. */
         <div className="max-h-72 space-y-0.5 overflow-y-auto">
-          {rows.map((row) => {
+          {shown.map((row) => {
             const result = done[row.id];
             return (
               <ActionRow
@@ -182,6 +186,7 @@ export function BulkAddToCollectionPanel({
           router.push(
             newCollectionFromSelectionHref({
               target,
+              rows,
               count,
               from: `${window.location.pathname}${window.location.search}`,
             }),

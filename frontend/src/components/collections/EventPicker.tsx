@@ -72,8 +72,6 @@ export function EventPicker({
   onAdd,
   onRemove,
   hideEmpty = false,
-  heldLoading = false,
-  heldNote,
 }: {
   /** Whose events the add card lists: the signed-in analyst (a collection
    *  holds its owner's own work only). */
@@ -84,10 +82,6 @@ export function EventPicker({
   /** Drops the held card while it is empty: a search selection the save adds already says what
    *  the collection opens with. */
   hideEmpty?: boolean;
-  /** Rows the page opened with are still loading (a search selection's events). */
-  heldLoading?: boolean;
-  /** A line under the held card's heading: what the page could not load into it. */
-  heldNote?: string;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -199,7 +193,6 @@ export function EventPicker({
       <p className="text-xs text-neutral-500">
         {eventCountLabel(held.length)}, ordered by event date, earliest first.
       </p>
-      {heldNote && <p className="text-xs text-neutral-500">{heldNote}</p>}
     </div>
   );
 
@@ -236,13 +229,9 @@ export function EventPicker({
           ) : (
             <>
               {heldHeading}
-              {heldLoading ? (
-                <p className="text-sm text-neutral-500">Loading the selected geolocations…</p>
-              ) : (
-                <EmptyState variant="plain" lead="Nothing on this collection yet.">
-                  Add your own geolocations from the search below.
-                </EmptyState>
-              )}
+              <EmptyState variant="plain" lead="Nothing on this collection yet.">
+                Add your own geolocations from the search below.
+              </EmptyState>
             </>
           )}
         </Card>

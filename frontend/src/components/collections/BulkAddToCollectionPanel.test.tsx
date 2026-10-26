@@ -18,7 +18,11 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
 }));
 
 import { ApiError } from "@/lib/api";
-import { readSelectionHandoff, type Collection } from "@/lib/collections";
+import {
+  readSelectionHandoff,
+  type Collection,
+  type PickableEvent,
+} from "@/lib/collections";
 
 import { BulkAddToCollectionPanel } from "./BulkAddToCollectionPanel";
 
@@ -42,6 +46,17 @@ const PAGE = page([shelf("c1", "Kupiansk rail corridor", 1), shelf("c2", "Dam br
 
 const row = (title: string) => screen.getByRole("button", { name: `Add to ${title}` });
 const ids = { eventIds: ["e1", "e2"] };
+const pickable = (id: string, title: string): PickableEvent => ({
+  id,
+  title,
+  status: "geolocated",
+  media: null,
+  is_graphic: false,
+  occurred_date: "2026-06-06",
+  coords: { lat: 46.77, lng: 33.37 },
+  tags: [],
+});
+const ROWS = [pickable("e1", "Kakhovka spillway"), pickable("e2", "Nova Kakhovka quay")];
 
 beforeEach(() => {
   push.mockReset();
@@ -53,7 +68,7 @@ beforeEach(() => {
 
 describe("BulkAddToCollectionPanel", () => {
   it("heads the list with what it adds, and lists the owner's collections as rows that add", () => {
-    render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
+    render(<BulkAddToCollectionPanel username="ana" target={ids} rows={ROWS} count={2} />);
 
     expect(screen.getByRole("heading", { name: "Add 2 geolocations" })).toBeInTheDocument();
     expect(useApiResource).toHaveBeenCalledWith("/users/ana/collections?per_page=100");
@@ -70,7 +85,7 @@ describe("BulkAddToCollectionPanel", () => {
       data: page(titles.map((t, i) => shelf(`c${i}`, t, i))),
       error: null,
     });
-    render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
+    render(<BulkAddToCollectionPanel username="ana" target={ids} rows={ROWS} count={2} />);
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Find a collection" }), {
       target: { value: "  ba" },
@@ -92,7 +107,7 @@ describe("BulkAddToCollectionPanel", () => {
     });
     const target = { match: { q: "kakhovka", tags: ["dam"] } };
 
-    render(<BulkAddToCollectionPanel username="ana" target={target} count={47} />);
+    render(<BulkAddToCollectionPanel username="ana" target={target} rows={[]} count={47} />);
     fireEvent.click(row("Kupiansk rail corridor"));
 
     expect(
@@ -114,7 +129,7 @@ describe("BulkAddToCollectionPanel", () => {
     addEventsToCollection.mockRejectedValue(
       new ApiError("Add at most 500 events at once; narrow the selection", 422, "too_many_events"),
     );
-    render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
+    render(<BulkAddToCollectionPanel username="ana" target={ids} rows={ROWS} count={2} />);
 
     fireEvent.click(row("Dam breach"));
 
@@ -125,14 +140,15 @@ describe("BulkAddToCollectionPanel", () => {
     expect(screen.queryByText(/^Added/)).not.toBeInTheDocument();
   });
 
-  it("opens the create page carrying the selection through a session handoff", () => {
-    render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
+  it("opens the create page carrying the selection and its rows through a session handoff", () => {
+    render(<BulkAddToCollectionPanel username="ana" target={ids} rows={ROWS} count={2} />);
 
     fireEvent.click(screen.getByRole("button", { name: "New collection with these 2" }));
 
     const href = push.mock.calls[0][0] as string;
     expect(href).toMatch(/^\/collections\/new\?selection=/);
     const token = new URL(href, "http://localhost").searchParams.get("selection") as string;
-    expect(readSelectionHandoff(token)).toMatchObject({ target: ids, count: 2 });
+    // The checked rows travel with it, so the create page reads no event.
+    expect(readSelectionHandoff(token)).toMatchObject({ target: ids, rows: ROWS, count: 2 });
   });
 });

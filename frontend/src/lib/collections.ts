@@ -174,41 +174,8 @@ export function pickableFromDetail(event: EventDetail): PickableEvent {
   };
 }
 
-/** Event reads in flight at once while a selection loads: no read takes a list of ids, and the
- *  event read is limited to 120 a minute per caller. */
-const HELD_READS_AT_ONCE = 4;
-
-/** A search selection's events as picker rows, in selection order, read one by one through
- *  `GET /events/{id}`. An event that fails to load, or whose status a collection does not hold,
- *  is left out and counted in `dropped`. */
-export async function fetchPickableEvents(
-  ids: string[],
-  signal?: AbortSignal,
-): Promise<{ rows: PickableEvent[]; dropped: number }> {
-  const rows: (PickableEvent | null)[] = ids.map(() => null);
-  let next = 0;
-  const reader = async () => {
-    while (next < ids.length) {
-      const index = next++;
-      try {
-        const event = await apiFetch<EventDetail>(`/events/${encodeURIComponent(ids[index])}`, {
-          signal,
-        });
-        if (COLLECTABLE_STATUSES.includes(event.status)) rows[index] = pickableFromDetail(event);
-      } catch (err) {
-        if (signal?.aborted) throw err;
-      }
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(HELD_READS_AT_ONCE, ids.length) }, reader),
-  );
-  const kept = rows.filter((row): row is PickableEvent => row !== null);
-  return { rows: kept, dropped: ids.length - kept.length };
-}
-
 /** A search hit as a picker row (the hit's thumbnail list of at most one is the `media`). */
-function pickableFromHit(hit: SearchEventHit): PickableEvent {
+export function pickableFromHit(hit: SearchEventHit): PickableEvent {
   return {
     id: hit.id,
     title: hit.title,
@@ -307,11 +274,15 @@ export type SearchMatchParams = { q: string } & EventFilterParams;
 export type BulkTarget = { eventIds: string[] } | { match: SearchMatchParams };
 
 /** A selection handed from the search page to `/collections/new`: what to add, how many
- *  geolocations that is, and the page to return to on Cancel. */
+ *  geolocations that is, the page to return to on Cancel, and, for checked rows, the rows
+ *  themselves (loaded search hits as picker rows), so the create page reads no event. A match
+ *  carries none. About a kilobyte a row, so the 500-event cap keeps an entry well under the few
+ *  megabytes `sessionStorage` holds. */
 export interface SelectionHandoff {
   target: BulkTarget;
   count: number;
   from: string;
+  rows: PickableEvent[];
 }
 
 export const NEW_COLLECTION_SELECTION_PARAM = "selection";
@@ -348,11 +319,16 @@ export function readSelectionHandoff(token: string): SelectionHandoff | null {
       !!target &&
       (Array.isArray(target.eventIds) || (typeof target.match === "object" && target.match !== null));
     if (!shaped || typeof parsed.count !== "number" || typeof parsed.at !== "number") return null;
+    if (!Array.isArray(parsed.rows)) return null;
+    const rows = parsed.rows.filter(
+      (row): row is PickableEvent =>
+        typeof row === "object" && row !== null && typeof row.id === "string" && typeof row.title === "string",
+    );
     if (Date.now() - parsed.at > HANDOFF_TTL_MS) return null;
     // An in-app path only, so a planted entry cannot send Cancel off the site.
     const from =
       typeof parsed.from === "string" && /^\/(?!\/)/.test(parsed.from) ? parsed.from : "/search";
-    return { target: parsed.target, count: parsed.count, from };
+    return { target: parsed.target, count: parsed.count, from, rows };
   } catch {
     return null;
   }

@@ -86,9 +86,7 @@ function missingCollectionFields(
  *
  * `selection` heads the picker with a *From your search* card saying how many
  * geolocations the caller adds on top of the picked rows: a search match,
- * handed to the create page. `pendingEvents` instead holds rows that are still
- * loading (`null`) when the form mounts: a selection of checked rows. Once they
- * arrive they join the held rows once, removable like any pick.
+ * handed to the create page.
  */
 export function CollectionDetailsForm({
   title: pageTitle,
@@ -105,8 +103,6 @@ export function CollectionDetailsForm({
   busy = false,
   error,
   selection,
-  pendingEvents,
-  heldNote,
   onEventsChange,
 }: {
   /** The page's heading. */
@@ -137,26 +133,12 @@ export function CollectionDetailsForm({
   error?: string | null;
   /** What the caller adds besides the picked rows: *44 geolocations will be added.* */
   selection?: string;
-  /** Held rows that load after the form mounts: `null` while loading, then the rows. */
-  pendingEvents?: PickableEvent[] | null;
-  /** A line under the held card's heading (`EventPicker`'s `heldNote`). */
-  heldNote?: string;
   /** The held count, each time it changes, for a caller whose header follows it. */
   onEventsChange?: (count: number) => void;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
   const [events, setEvents] = useState<PickableEvent[]>(initialEvents);
-  // Adjusted during render, React's pattern for state that follows a prop. The flag merges the
-  // pending rows once, whatever the reference the caller passes on later renders.
-  const [pendingMerged, setPendingMerged] = useState(false);
-  if (!pendingMerged && pendingEvents) {
-    setPendingMerged(true);
-    setEvents((current) => [
-      ...current,
-      ...pendingEvents.filter((row) => !current.some((held) => held.id === row.id)),
-    ]);
-  }
   useEffect(() => {
     onEventsChange?.(events.length);
   }, [events.length, onEventsChange]);
@@ -311,8 +293,6 @@ export function CollectionDetailsForm({
           onAdd={addEvent}
           onRemove={removeEvent}
           hideEmpty={!!selection}
-          heldLoading={pendingEvents === null}
-          heldNote={heldNote}
         />
       </form>
     </PageShell>

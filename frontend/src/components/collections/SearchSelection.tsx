@@ -12,6 +12,7 @@ import {
   COLLECTABLE_STATUSES,
   CollectionIcon,
   countCollectableMatches,
+  pickableFromHit,
   type BulkTarget,
   type SearchMatchParams,
 } from "@/lib/collections";
@@ -75,6 +76,8 @@ export function useSearchSelection(match: SearchMatchParams, hits: SearchEventHi
 
   const target: BulkTarget =
     picked.kind === "all" ? { match } : { eventIds: [...picked.ids] };
+  // Checked rows are always loaded hits, so a new collection can open holding them as they are.
+  const rows = picked.kind === "all" ? [] : hits.filter((h) => picked.ids.has(h.id)).map(pickableFromHit);
 
   return {
     username: user?.username ?? null,
@@ -82,6 +85,7 @@ export function useSearchSelection(match: SearchMatchParams, hits: SearchEventHi
     all: picked.kind === "all",
     matchTotal,
     target,
+    rows,
     /** Some loaded row is selectable, so every row takes the checkbox column. */
     gutter,
     canSelect,
@@ -122,6 +126,7 @@ export function SearchSelectionActions({ selection }: { selection: SearchSelecti
           <BulkAddToCollectionPanel
             username={username}
             target={selection.target}
+            rows={selection.rows}
             count={selection.count}
           />
         </PopoverPanel>

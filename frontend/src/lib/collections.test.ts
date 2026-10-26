@@ -14,7 +14,6 @@ import {
   deleteCollection,
   eventCollectionsPath,
   fetchCollectionSequence,
-  fetchPickableEvents,
   newCollectionFromSelectionHref,
   PICKER_ROW_LIMIT,
   pickerBrowsePath,
@@ -26,7 +25,9 @@ import {
   searchPickableEvents,
   updateCollection,
   userCollectionsPath,
+  BULK_ADD_MAX_EVENTS,
   type Collection,
+  type PickableEvent,
 } from "./collections";
 import { apiFetch, apiFetchPage } from "./api";
 import type { EventListItem } from "@/types";
@@ -469,25 +470,50 @@ describe("the selection handoff to /collections/new", () => {
     vi.useRealTimers();
   });
 
-  it("parks the selection under a token, so no id list rides the URL", () => {
-    const ids = Array.from({ length: 300 }, (_, i) => `e${i}`);
+  it("parks the selection and its rows under a token, so no id list rides the URL", () => {
+    // The bulk add's cap, each row with a picture and tags: the entry stays far under the few
+    // megabytes `sessionStorage` holds.
+    const ids = Array.from({ length: BULK_ADD_MAX_EVENTS }, (_, i) => `event-${i}`);
+    const rows = ids.map((id) => ({
+      id,
+      title: "Strike on the rail junction near the eastern approach",
+      status: "geolocated" as const,
+      media: {
+        id: `m-${id}`,
+        storage_url: `https://media.example.com/sources/${id}/original.jpg`,
+        kind: "image" as const,
+        role: "source" as const,
+        filename: "frame.jpg",
+        mime_type: "image/jpeg",
+        size_bytes: 123456,
+      },
+      is_graphic: false,
+      occurred_date: "2026-03-14",
+      coords: { lat: 49.71, lng: 37.616 },
+      tags: [{ id: "t1", name: "rail" }],
+    })) as unknown as PickableEvent[];
     const href = newCollectionFromSelectionHref({
       target: { eventIds: ids },
-      count: 300,
+      rows,
+      count: ids.length,
       from: "/search?q=dam",
     });
 
     expect(href).toMatch(/^\/collections\/new\?selection=[\w-]+$/);
     expect(readSelectionHandoff(token(href))).toEqual({
       target: { eventIds: ids },
-      count: 300,
+      rows,
+      count: ids.length,
       from: "/search?q=dam",
     });
+    const stored = window.sessionStorage.getItem(`vidit:collection-selection:${token(href)}`);
+    expect((stored ?? "").length).toBeLessThan(500_000);
   });
 
   it("reads a spent, stale or malformed handoff as missing", () => {
     const href = newCollectionFromSelectionHref({
       target: { match: { q: "dam" } },
+      rows: [],
       count: 4,
       from: "/search",
     });
@@ -495,60 +521,33 @@ describe("the selection handoff to /collections/new", () => {
     expect(readSelectionHandoff(token(href))).toBeNull();
 
     vi.useFakeTimers({ now: new Date("2026-10-01T10:00:00Z"), toFake: ["Date"] });
-    const old = newCollectionFromSelectionHref({ target: { eventIds: ["e1"] }, count: 1, from: "/" });
+    const old = newCollectionFromSelectionHref({
+      target: { eventIds: ["e1"] },
+      rows: [],
+      count: 1,
+      from: "/",
+    });
     vi.setSystemTime(new Date("2026-10-01T11:00:00Z"));
     expect(readSelectionHandoff(token(old))).toBeNull();
     vi.useRealTimers();
 
     window.sessionStorage.setItem("vidit:collection-selection:bad", "{\"target\":{}}");
     expect(readSelectionHandoff("bad")).toBeNull();
+    // An entry from before the rows rode along reads as missing too.
+    window.sessionStorage.setItem(
+      "vidit:collection-selection:rowless",
+      JSON.stringify({ target: { eventIds: ["e1"] }, count: 1, from: "/", at: Date.now() }),
+    );
+    expect(readSelectionHandoff("rowless")).toBeNull();
   });
 
   it("returns only to an in-app path", () => {
     const href = newCollectionFromSelectionHref({
       target: { eventIds: ["e1"] },
+      rows: [],
       count: 1,
       from: "//elsewhere.example/phish",
     });
     expect(readSelectionHandoff(token(href))?.from).toBe("/search");
-  });
-});
-
-describe("fetchPickableEvents", () => {
-  beforeEach(() => {
-    mockFetch.mockReset();
-  });
-
-  it("reads each id, keeps the selection's order, and drops what fails or cannot be held", async () => {
-    let inFlight = 0;
-    let peak = 0;
-    mockFetch.mockImplementation(async (path: string) => {
-      inFlight += 1;
-      peak = Math.max(peak, inFlight);
-      await new Promise((r) => setTimeout(r, 1));
-      inFlight -= 1;
-      const id = path.split("/").at(-1) as string;
-      if (id === "gone") throw new Error("Event not found");
-      return {
-        id,
-        title: `Event ${id}`,
-        status: id === "req" ? "requested" : "geolocated",
-        thumbnail: null,
-        is_graphic: false,
-        occurred_date: null,
-        coords: null,
-        tags: [],
-      };
-    });
-    const ids = ["e1", "gone", "e2", "req", "e3", "e4", "e5", "e6"];
-
-    const { rows, dropped } = await fetchPickableEvents(ids);
-    const paths = mockFetch.mock.calls.map((call) => call[0] as string);
-
-    expect(rows.map((r) => r.id)).toEqual(["e1", "e2", "e3", "e4", "e5", "e6"]);
-    expect(dropped).toBe(2);
-    expect(paths).toEqual(ids.map((id) => `/events/${id}`));
-    // A few at a time, never the whole selection at once.
-    expect(peak).toBeLessThanOrEqual(4);
   });
 });
