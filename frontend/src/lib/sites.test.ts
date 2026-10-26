@@ -232,11 +232,12 @@ describe("site image drafts", () => {
     });
   });
 
-  it("files an event's satellite source with its file, never another kind or an undated one", () => {
+  it("files an event's satellite source with its file, never another kind, an undated or a graphic one", () => {
     const source = {
       title: "Pass",
       kind: "satellite",
       captured_at: "2026-07-04T10:20:00Z",
+      is_graphic: false,
       media: { id: "m1" },
       links: [{ url: "https://example.org/a", archived: { url: "https://web.archive.org/x" } }],
     };
@@ -250,5 +251,6 @@ describe("site image drafts", () => {
     expect(imageFromEventSource({ ...source, kind: "drone" })).toBeNull();
     expect(imageFromEventSource({ ...source, captured_at: null })).toBeNull();
     expect(imageFromEventSource({ ...source, media: null })).toBeNull();
+    expect(imageFromEventSource({ ...source, is_graphic: true })).toBeNull();
   });
 });

@@ -344,7 +344,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
 | `lib/sites.ts::SITE_NAME_MAX_LEN`, `SITE_IMAGE_NOTE_MAX_LEN`, `siteImageMissing` | `models/event.TITLE_MAX_LENGTH`, `schemas/site.IMAGE_NOTE_MAX_LENGTH`, `schemas/site.SiteImageCreate` (a capture time not in the future, a link) | the site forms accept a value the API refuses |
 | `lib/sites.ts::contourOn` | `services/sites.zones_at` (the latest contour whose image was captured on or before the day, the later contour breaking a tie) | the site page shows a zone for a date that the map and the API read differently |
-| `lib/sites.ts::imageFromEventSource` | `services/sites._event_file` (a `satellite` source with a file) and `schemas/site.SiteImageCreate` (a capture time) | the link dialog offers to file an event image the API refuses (`source_media_not_found`) |
+| `lib/sites.ts::imageFromEventSource` | `services/sites._event_file` (a `satellite` source with a file, not flagged graphic) and `schemas/site.SiteImageCreate` (a capture time) | the link dialog offers to file an event image the API refuses (`source_media_not_found`) |
 | `lib/sites.ts::SITE_MARGIN_KM` | the `margin_m` default of `routers/sites` and `routers/events/sites` | the site page and the link dialog name a distance the reads do not use |
 | `components/sites/EventSitesBlock.tsx` link gate on `geolocated` | `event_filters.site_linkable_events` | the event page offers a link the API refuses (409) |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |

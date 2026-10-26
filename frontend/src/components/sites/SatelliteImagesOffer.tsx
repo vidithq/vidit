@@ -18,7 +18,7 @@ function satelliteSources(sources: Source[]) {
 /**
  * The link dialog's offer to file an event's satellite images in the site's imagery history
  * too, one switch per satellite source, all off at first. A source without a file or a capture
- * time cannot be filed, so its switch reads why and refuses. Renders nothing for an event with
+ * time, or flagged graphic, cannot be filed, so its switch reads why and refuses. Renders nothing for an event with
  * no satellite source. The caller holds the picks and files them with `fileOffered`.
  */
 export function SatelliteImagesOffer({
@@ -45,7 +45,9 @@ export function SatelliteImagesOffer({
             description={
               fileable
                 ? `${what}, captured ${formatInstant(source.captured_at)}`
-                : `${what}: a site image needs a file and a capture time, and this source lacks one.`
+                : source.is_graphic
+                  ? `${what}: a source flagged graphic cannot be filed as a site image.`
+                  : `${what}: a site image needs a file and a capture time, and this source lacks one.`
             }
             on={fileable && picked.has(source.id)}
             disabled={!fileable}

@@ -301,16 +301,19 @@ export function siteImagePayload(draft: SourceDraft, note: string): SiteImageCre
 }
 
 /** The site image a satellite source of an event becomes, its file shared: the offer the link
- *  dialog makes. Null when the source cannot be filed (no file or no capture time). Mirrors
- *  backend `services/sites._event_file`; change both. */
+ *  dialog makes. Null when the source cannot be filed (no file, no capture time, or flagged
+ *  graphic). Mirrors backend `services/sites._event_file`; change both. */
 export function imageFromEventSource(source: {
   title: string;
   kind: string;
   captured_at: string | null;
+  is_graphic: boolean;
   media: { id: string } | null;
   links: { url: string; archived: { url: string } | null }[];
 }): SiteImageCreate | null {
-  if (source.kind !== "satellite" || !source.media || !source.captured_at) return null;
+  if (source.kind !== "satellite" || source.is_graphic || !source.media || !source.captured_at) {
+    return null;
+  }
   return {
     title: source.title,
     captured_at: source.captured_at,
