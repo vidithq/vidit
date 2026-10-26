@@ -51,8 +51,6 @@ duplicate_image_ids  # schemas/site.py SiteImageFiledRead
 inside_zone  # schemas/site.py SiteLinkedEventRead
 measured_contour_id  # schemas/site.py SiteLinkedEventRead
 last_image  # schemas/site.py SiteState
-corroboration_count  # schemas/site.py SiteState
-is_corroborated  # schemas/site.py SiteState
 latest_link_effect  # schemas/site.py SiteState
 linked_events  # schemas/site.py SiteRead
 overlapping_sites  # schemas/site.py SiteCreatedRead

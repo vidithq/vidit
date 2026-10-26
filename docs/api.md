@@ -134,12 +134,11 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/sites` | 🔒 | Create a site with its first image and contour; answers with the sites its zone overlaps |
 | POST | `/sites/overlaps` | 🔒 | List the sites whose current zone shares area with a drawn zone |
 | POST | `/sites/{id}/report` | 🌐 | Report a site for moderation (anonymous allowed) |
-| GET | `/sites/{id}` | 🌐 | One site: current zone, last image, corroboration, images, contours, linked events |
+| GET | `/sites/{id}` | 🌐 | One site: current zone, last image, images, contours, linked events |
 | PATCH | `/sites/{id}` | 🔒 | Rename or retype your site; the superseded record is kept |
-| GET | `/sites/{id}/history` | 🌐 | The site's history feed, ordered by `fact` date or `recorded` time |
+| GET | `/sites/{id}/history` | 🌐 | The site's history feed, ordered by date on the ground |
 | POST | `/sites/{id}/images` | 🔒 | File a dated satellite image in a site's imagery history |
 | POST | `/sites/{id}/contours` | 🔒 | Draw a new contour of your site, citing one of its images |
-| GET | `/sites/{id}/nearby-events` | 🌐 | Visible events near the site's current zone and not linked to it |
 | GET | `/events/{id}/site-links` | 🌐 | The sites an event is linked to |
 | POST | `/events/{id}/site-links` | 🔒 | Link your published event to a site, or change the effect of its link (idempotent) |
 | DELETE | `/events/{id}/site-links/{site_id}` | 🔒 | Unlink your event from a site (idempotent) |
@@ -275,7 +274,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
 | **Sites** | |
 | `GET /sites`, `POST /sites/overlaps` | 60/min |
-| `GET /sites/{id}`, `GET /sites/{id}/history`, `GET /sites/{id}/nearby-events` | 120/min |
+| `GET /sites/{id}`, `GET /sites/{id}/history` | 120/min |
 | `POST /sites`, `PATCH /sites/{id}`, `POST /sites/{id}/images`, `POST /sites/{id}/contours` | 30/min |
 | `POST /sites/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
@@ -322,7 +321,7 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 **1000/hour per account.** One bucket is shared across these 29 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/{id}` · `/sites/{id}/history` · `/sites/{id}/nearby-events` · `/feed`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/{id}` · `/sites/{id}/history` · `/feed`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
@@ -2329,9 +2328,8 @@ An image names one file, through `upload_id` or `media_id`, or none; both is a 4
 - **Who writes:** any signed-in analyst files an image. Only the site's owner edits its name and kind and draws a contour (403 `not_site_owner`). Only an event's owner links or unlinks the event (403 `not_event_owner`).
 - **Zone selection:** the zone valid on a date is the contour whose image has the latest `captured_at` on or before that date, the later contour breaking a tie. The current zone is the one valid now. A site has no zone before the capture day of its earliest contour's image.
 - **Append-only:** an image and a contour are never edited. An edit to the record files the superseded one. A link is never deleted: an unlink stamps the link, and an effect change closes the live link and opens a new one.
-- **Corroboration:** `corroboration_count` is the number of distinct analysts who filed an image on the site or hold a live link from a visible event to it. `is_corroborated` is `true` when one of them is not the site's owner, so a site only its owner documented is not corroborated. Approvals never enter a site read.
-- **What a site shows of an event:** a linked event counts only while it is `geolocated` and neither soft-deleted nor withheld. The linked event list, the corroboration, `latest_link_effect` and the nearby events all use this one predicate. An event that closes or is taken down leaves them with no write to its link.
-- **Visibility:** a withheld site, or one whose owner is soft-deleted, answers 404 `site_not_found` on every endpoint and leaves the map, the event's site links, the suggestions and the overlap check. An admin also reads a withheld site on `GET /sites/{id}`, `GET /sites/{id}/history` and `GET /sites/{id}/nearby-events`.
+- **What a site shows of an event:** a linked event counts only while it is `geolocated` and neither soft-deleted nor withheld. The linked event list and `latest_link_effect` both use this one predicate. An event that closes or is taken down leaves them with no write to its link.
+- **Visibility:** a withheld site, or one whose owner is soft-deleted, answers 404 `site_not_found` on every endpoint and leaves the map, the event's site links, the suggestions and the overlap check. An admin also reads a withheld site on `GET /sites/{id}` and `GET /sites/{id}/history`.
 
 ### `GET /sites` 🌐
 
@@ -2359,8 +2357,6 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
       "captured_at": "2026-06-01T09:30:00Z",
       "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" }
     },
-    "corroboration_count": 2,
-    "is_corroborated": true,
     "latest_link_effect": { "effect": "damage", "occurred_date": "2026-07-09", "event_id": "uuid" },
     "owner_id": "uuid"
   }
@@ -2371,7 +2367,6 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
 |---|---|
 | `zone`, `centroid`, `contour_id` | The zone valid on `as_of`, its centroid and its contour |
 | `last_image` | The image with the latest `captured_at` on or before `as_of`, and the provider its links open. `provider` is `null` when no link opens a listed provider |
-| `corroboration_count`, `is_corroborated` | The corroboration at `as_of`: images captured and linked events dated on or before it. An undated linked event counts at every date |
 | `latest_link_effect` | The `effect` of the linked event with the latest `occurred_date` on or before `as_of`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries such a date |
 | `owner_id` | The id of the site's owner |
 
@@ -2478,8 +2473,6 @@ One site: its current state, every image and contour, and the events linked to i
   "centroid": { "lat": 47.475, "lng": 34.6 },
   "contour_id": "uuid",
   "last_image": { "id": "uuid", "captured_at": "2026-06-01T09:30:00Z", "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" } },
-  "corroboration_count": 1,
-  "is_corroborated": false,
   "latest_link_effect": { "effect": "damage", "occurred_date": "2026-07-09", "event_id": "uuid" },
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
   "hidden_at": null,
@@ -2525,6 +2518,8 @@ One site: its current state, every image and contour, and the events linked to i
       "occurred_date": "2026-07-09",
       "coords": { "lat": 47.49, "lng": 34.6 },
       "owner": { "id": "uuid", "username": "geolocator", "avatar_url": null },
+      "is_graphic": false,
+      "media": null,
       "effect": "damage",
       "linked_at": "2026-08-02T10:00:00Z",
       "inside_zone": true,
@@ -2544,6 +2539,7 @@ One site: its current state, every image and contour, and the events linked to i
 | `images` | Every image, oldest `captured_at` first: a [`SourceRead`](#get-eventsid) plus `provider` (the [imagery provider](imagery.md) its links open, or `null`), `author`, `note` and `created_at`. `author` is `null` once that account is soft-deleted or erased |
 | `contours` | Every contour, by the `captured_at` of its image, oldest first. `image_id` names the image it cites and `captured_at` is that image's, the date the contour holds from |
 | `linked_events` | The linked events that are `geolocated` and neither soft-deleted nor withheld, oldest `occurred_date` first, an event without a date last |
+| `linked_events[].media`, `linked_events[].is_graphic` | The event's card thumbnail and graphic flag, on the rule of [`GET /events`](#get-events) |
 | `linked_events[].inside_zone` | `true` when the event's point lies in the measured zone |
 | `linked_events[].distance_m` | Metres from the event's point to the measured zone, `null` when `inside_zone` is `true` |
 | `linked_events[].measured_contour_id` | The contour whose zone the event was measured against: the one valid on the event's `occurred_date`, the earliest one when the event predates every contour, or the current one when the event has no date |
@@ -2581,18 +2577,12 @@ Rename or retype your site. Owner only. The record the edit supersedes is kept (
 
 The site's history as one feed of dated facts, computed from the site's tables. No log table backs it.
 
-**Query params:**
-
-| Param | Rule |
-|---|---|
-| `order` | `fact` (default) or `recorded`. Any other value is a 422 |
-
 Each entry carries two clocks:
 
 - **`recorded_at`:** when the fact entered Vidit.
 - **`fact_date`:** when it happened on the ground. It is the capture day (UTC) of an image or of the image a contour cites, the `occurred_date` of a link entry, and `null` for `site_created`, `record_edited` or an event without a date.
 
-`order=recorded` sorts by `recorded_at`. `order=fact` sorts by `fact_date`, with `recorded_at` breaking ties, and places an entry whose `fact_date` is `null` on the day it was recorded. Imagery found after the fact keeps its capture date, so the two orders differ.
+The feed sorts by `fact_date`, with `recorded_at` breaking ties, and places an entry whose `fact_date` is `null` on the day it was recorded. Imagery found after the fact keeps its capture date.
 
 **Response 200:** an array of `SiteHistoryEntry`:
 ```json
@@ -2625,7 +2615,6 @@ A payload field the kind does not use is `null`. `actor` is `null` once that acc
 | Code | Case |
 |------|------|
 | 404 | `site_not_found` |
-| 422 | `order` is neither `fact` nor `recorded` |
 
 ---
 
@@ -2675,40 +2664,6 @@ The zone holds from the image's capture date, not from the day you draw it. A re
 | 403 | `not_site_owner` |
 | 404 | `site_not_found` |
 | 422 | A malformed zone or `image_id` |
-
----
-
-### `GET /sites/{id}/nearby-events` 🌐
-
-The events that may belong to the site but are not linked to it: visible `geolocated` events within a distance of the site's current zone, nearest first, capped at 50. Use it to prompt event owners to link.
-
-**Query params:**
-
-| Param | Rule |
-|---|---|
-| `margin_m` | Metres from the current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
-
-**Response 200:** an array of `SiteNearbyEventRead`:
-```json
-[
-  {
-    "id": "uuid",
-    "title": "Fire at the fuel depot",
-    "occurred_date": "2026-07-10",
-    "coords": { "lat": 47.52, "lng": 34.6 },
-    "owner": { "id": "uuid", "username": "geolocator", "avatar_url": null },
-    "distance_m": 1840.5
-  }
-]
-```
-
-`distance_m` is the distance in metres to the current zone, 0 for a point inside it. An event with a live link to the site is absent, whichever effect the link carries.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | `site_not_found` |
-| 422 | `margin_m` outside 0 to 10000 |
 
 ---
 

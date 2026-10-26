@@ -149,7 +149,7 @@ export const FIELD_HELP = {
     label: "Why can the last org manager not leave?",
   },
   sites_layer: {
-    text: "Places analysts monitor through dated satellite imagery, such as bases, depots and radars. Below zoom 10 each corroborated site is a square; from zoom 10 the map draws every zone, faded and dashed for a site that is not corroborated. Your own sites show at every zoom. A zone turns amber when its latest linked event shows damage and red for destruction. Each zone is the one valid at the end of the event date window.",
+    text: "Places analysts monitor through dated satellite imagery, such as bases, depots and radars. Below zoom 10 each site is a square; from zoom 10 the map draws its zone. A zone turns amber when its latest linked event shows damage and red for destruction. Each zone is the one valid at the end of the event date window.",
     label: "What is the sites layer?",
   },
   site_last_image: {
@@ -169,7 +169,7 @@ export const FIELD_HELP = {
     label: "What are the coordinates?",
   },
   site_details: {
-    text: "Who documents the site, what kind of place it is, when it was last imaged, the latest effect a linked event shows, and how many analysts corroborate it.",
+    text: "Who documents the site, what kind of place it is, when it was last imaged, and the latest effect a linked event shows.",
     label: "What goes in Details?",
   },
   site_zone: {
@@ -200,17 +200,9 @@ export const FIELD_HELP = {
     text: "The sites this event is linked to, each with what the event shows there. Only the event's owner links it, and a link holds even when the event lies outside the site's zone.",
     label: "What are linked sites?",
   },
-  site_corroboration: {
-    text: "The number of different analysts who filed an image on the site or linked an event to it. A site only its owner documented is not corroborated: the map shows it faded, and from zoom 10 only, for everyone but its owner. Approvals never count.",
-    label: "What is corroboration?",
-  },
-  site_history: {
-    text: "Each image and each event carries two dates: when it happened on the ground, and when it was added to Vidit. Imagery found after the fact keeps its capture date, so the two orders differ.",
-    label: "What do the two orders mean?",
-  },
-  site_nearby: {
-    text: "A spatial computation, not a link: published events within 2 km of the current zone that nobody has linked to this site. Only an event's owner can link it.",
-    label: "What are nearby events?",
+  site_linked_events: {
+    text: "The published events their authors linked to this site, newest first by the date they occurred, each with what it shows at the site and where it lies against the zone valid on its date. A link holds even when the event lies outside the zone. Only an event's author links it, changes its effect or unlinks it.",
+    label: "What are linked events?",
   },
 } as const;
 

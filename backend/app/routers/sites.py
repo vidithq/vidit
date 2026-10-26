@@ -1,5 +1,5 @@
 """The ``/sites`` endpoints: named areas of interest, their imagery history and contours, and
-the events near them.
+the events linked to them.
 
 Rules live in ``services/sites``; this module resolves the row, hands the verb its
 arguments and maps a typed service error to its status.
@@ -7,7 +7,7 @@ arguments and maps a typed service error to its status.
 
 import uuid
 from datetime import UTC, datetime
-from typing import Literal, NoReturn
+from typing import NoReturn
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from sqlalchemy.orm import Session
@@ -29,7 +29,6 @@ from app.schemas.site import (
     SiteImageCreate,
     SiteImageFiledRead,
     SiteList,
-    SiteNearbyEventRead,
     SiteOverlapCheck,
     SiteOverlapRead,
     SiteRead,
@@ -185,18 +184,13 @@ def edit_site(
 def get_site_history(
     request: Request,
     site_id: uuid.UUID,
-    order: Literal["fact", "recorded"] = Query("fact"),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> list[SiteHistoryEntry]:
     """The site's history: creation, record edits, images, contours, and every link, unlink and
-    effect change.
-
-    ``order=fact`` sorts by when each fact happened on the ground, ``order=recorded`` by when
-    it entered Vidit.
-    """
+    effect change, ordered by when each fact happened on the ground."""
     site = _resolve(db, site_id, current_user)
-    return sites_service.site_history(db, site=site, order=order)
+    return sites_service.site_history(db, site=site)
 
 
 @router.post(
@@ -240,19 +234,3 @@ def change_contour(
         return sites_service.change_contour(db, site=site, user=current_user, body=body)
     except sites_service.SiteError as exc:
         _raise_site_error(exc)
-
-
-@router.get("/{site_id}/nearby-events", response_model=list[SiteNearbyEventRead])
-@authenticated_read_quota
-@limiter.limit("120/minute")
-def list_nearby_events(
-    request: Request,
-    site_id: uuid.UUID,
-    margin_m: float = Query(2000, ge=0, le=sites_service.MAX_MARGIN_M),
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
-) -> list[SiteNearbyEventRead]:
-    """Visible events within ``margin_m`` metres of the current zone and not linked to the
-    site, nearest first. Capped at 50."""
-    site = _resolve(db, site_id, current_user)
-    return sites_service.nearby_events(db, site=site, margin_m=margin_m)

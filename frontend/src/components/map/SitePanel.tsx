@@ -9,7 +9,7 @@ import { AuthorByline } from "@/components/ui/AuthorByline";
 import { buttonClasses } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { CorroborationPill, SiteKindPill } from "@/components/sites/SiteBadges";
+import { SiteKindPill } from "@/components/sites/SiteBadges";
 import { LastImageValue, LatestEffectValue } from "@/components/sites/SiteFacts";
 import { MapOverlayPanel } from "./DetailSidePanel";
 
@@ -35,7 +35,6 @@ export function SitePanel({
             </h2>
             <div className="flex flex-wrap gap-1.5">
               <SiteKindPill kind={site.kind} />
-              <CorroborationPill site={site} />
             </div>
           </div>
           <div className="space-y-2 text-sm">

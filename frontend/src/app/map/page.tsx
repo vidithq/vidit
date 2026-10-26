@@ -21,9 +21,7 @@ import { useMapState } from "@/contexts/MapStateContext";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { toMapSite } from "@/components/sites/useSitesInView";
-import { useAuth } from "@/contexts/AuthContext";
 import {
-  shownAtEveryZoom,
   sitePath,
   sitesAsOf,
   sitesPath,
@@ -137,17 +135,15 @@ export default function HomePage() {
     VIEWPORT_DEBOUNCE_MS,
   );
 
-  const viewerId = useAuth().user?.id ?? null;
   const mapSites = useMemo(
     () =>
       sitesShown
         ? sites.map((site) => ({
             ...toMapSite(site),
-            everyZoom: shownAtEveryZoom(site, viewerId),
             emphasis: zoneEmphasis(site),
           }))
         : [],
-    [sites, sitesShown, viewerId],
+    [sites, sitesShown],
   );
 
   // One panel at a time: a pin closes the site panel, a site closes the event panel.

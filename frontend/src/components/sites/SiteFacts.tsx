@@ -5,7 +5,7 @@ import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { formatDate, formatInstantDate } from "@/lib/format";
 import { eventHref } from "@/lib/routes";
-import { corroborationLabel, type Site } from "@/lib/sites";
+import type { Site } from "@/lib/sites";
 import { LinkEffectPill, SiteKindPill } from "./SiteBadges";
 
 /** "7 Sep 2026, Copernicus Browser": when the site was last imaged and by which provider. */
@@ -49,7 +49,6 @@ export function SiteDetails({ site }: { site: Site }) {
           <LatestEffectValue effect={site.latest_link_effect} />
         </DetailRow>
       )}
-      <DetailRow label="Corroboration" concept="site_corroboration" value={corroborationLabel(site)} />
       <DetailRow label="Created" value={formatInstantDate(site.created_at)} />
       {site.hidden_at && <DetailRow label="Withheld" value={formatInstantDate(site.hidden_at)} />}
     </DetailCard>

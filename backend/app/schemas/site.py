@@ -15,6 +15,7 @@ from app.models.event import TITLE_MAX_LENGTH
 from app.models.site import LinkEffect, SiteKind
 from app.models.source import SOURCE_TITLE_MAX_LENGTH
 from app.schemas.event import CoordsRead
+from app.schemas.media import MediaRead
 from app.schemas.source import (
     LIST_PARSE_CEILING,
     ImageryProviderRead,
@@ -192,6 +193,7 @@ class SiteLinkedEventRead(BaseModel):
     ``inside_zone`` and ``distance_m`` are measured against ``measured_contour_id``: the
     contour valid on ``occurred_date``, the earliest one when the event predates them all, or
     the current one when the event has no date. ``distance_m`` is null inside the zone.
+    ``media`` is the event's card thumbnail (``services.thumbnails``).
     """
 
     id: uuid.UUID
@@ -199,6 +201,8 @@ class SiteLinkedEventRead(BaseModel):
     occurred_date: date | None
     coords: CoordsRead
     owner: AuthorRef
+    is_graphic: bool
+    media: MediaRead | None
     effect: LinkEffect
     linked_at: datetime
     inside_zone: bool
@@ -208,11 +212,7 @@ class SiteLinkedEventRead(BaseModel):
 
 class SiteState(BaseModel):
     """What every site read derives from the contours, the images and the links, at the read's
-    date.
-
-    ``corroboration_count`` counts the distinct analysts who filed an image on the site or
-    linked a visible event to it; ``is_corroborated`` holds when one of them is not the owner.
-    """
+    date."""
 
     id: uuid.UUID
     name: str
@@ -221,8 +221,6 @@ class SiteState(BaseModel):
     centroid: CoordsRead
     contour_id: uuid.UUID
     last_image: SiteLastImageRead | None
-    corroboration_count: int
-    is_corroborated: bool
     latest_link_effect: LatestLinkEffect | None
 
 
@@ -250,17 +248,6 @@ class SiteCreatedRead(SiteRead):
     """``POST /sites`` answer: the new site and the visible sites its zone overlaps."""
 
     overlapping_sites: list[SiteOverlapRead]
-
-
-class SiteNearbyEventRead(BaseModel):
-    """A visible event within the margin of the current zone and not linked to the site."""
-
-    id: uuid.UUID
-    title: str
-    occurred_date: date | None
-    coords: CoordsRead
-    owner: AuthorRef
-    distance_m: float
 
 
 class SiteSuggestionRead(SiteRef):

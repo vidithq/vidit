@@ -10,7 +10,7 @@
 import type { components } from "@/lib/api-types";
 import type { Approval, OrganizationApproval } from "@/lib/approvals";
 import type { Collection } from "@/lib/collections";
-import type { Site, SiteContour, SiteImage, SiteNearbyEvent } from "@/lib/sites";
+import type { Site, SiteContour, SiteImage } from "@/lib/sites";
 import type { Notification, UnreadCount } from "@/lib/notifications";
 import type {
   InviteCandidate,
@@ -649,8 +649,6 @@ export const SITE: Site = {
     captured_at: SITE_IMAGES[2].captured_at!,
     provider: { id: "copernicus_browser", name: "Copernicus Browser" },
   },
-  corroboration_count: 2,
-  is_corroborated: true,
   owner: SITE_OWNER,
   hidden_at: null,
   latest_link_effect: { effect: "destruction", occurred_date: "2025-09-02", event_id: EVENT_ID },
@@ -663,6 +661,8 @@ export const SITE: Site = {
       occurred_date: "2025-09-02",
       coords: { lat: -25.39, lng: 137.185 },
       owner: SITE_OWNER,
+      is_graphic: false,
+      media: null,
       effect: "destruction",
       linked_at: "2026-02-01T10:00:00Z",
       inside_zone: false,
@@ -673,14 +673,3 @@ export const SITE: Site = {
   created_at: "2026-01-01T10:00:00Z",
   updated_at: "2026-01-01T10:00:00Z",
 };
-
-export const SITE_NEARBY: SiteNearbyEvent[] = [
-  {
-    id: COLLECTED_EVENT.id,
-    title: COLLECTED_EVENT.title,
-    occurred_date: "2025-07-01",
-    coords: { lat: -25.44, lng: 137.18 },
-    owner: SITE_OWNER,
-    distance_m: 1300,
-  },
-];

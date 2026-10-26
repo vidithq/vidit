@@ -9,8 +9,6 @@ const SITE = {
   name: "Depot",
   kind: "depot",
   owner: { id: "u1", username: "mira", avatar_url: null },
-  is_corroborated: true,
-  corroboration_count: 3,
   last_image: {
     id: "i1",
     captured_at: "2026-09-07T10:30:00Z",
@@ -28,27 +26,18 @@ const rowLabels = () =>
   );
 
 describe("SiteDetails", () => {
-  it("reads the owner, the kind, the last image, the latest effect, the corroboration and the creation", () => {
+  it("reads the owner, the kind, the last image, the latest effect and the creation", () => {
     render(<SiteDetails site={SITE} />);
-    expect(rowLabels()).toEqual([
-      "Owner",
-      "Kind",
-      "Last image",
-      "Latest effect",
-      "Corroboration",
-      "Created",
-    ]);
-    expect(screen.getByText("Corroborated by 3 analysts")).toBeInTheDocument();
+    expect(rowLabels()).toEqual(["Owner", "Kind", "Last image", "Latest effect", "Created"]);
     expect(screen.getByText("7 Sept 2026, Copernicus Browser")).toBeInTheDocument();
   });
 
   it("adds Withheld on a withheld site and drops the effect without one", () => {
     render(
       <SiteDetails
-        site={{ ...SITE, is_corroborated: false, latest_link_effect: null, hidden_at: "2026-10-02T08:00:00Z" }}
+        site={{ ...SITE, latest_link_effect: null, hidden_at: "2026-10-02T08:00:00Z" }}
       />,
     );
-    expect(rowLabels()).toEqual(["Owner", "Kind", "Last image", "Corroboration", "Created", "Withheld"]);
-    expect(screen.getByText("Not corroborated")).toBeInTheDocument();
+    expect(rowLabels()).toEqual(["Owner", "Kind", "Last image", "Created", "Withheld"]);
   });
 });

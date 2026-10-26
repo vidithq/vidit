@@ -1221,7 +1221,7 @@ Both foreign keys cascade, so neither a hard-deleted event nor a hard-deleted co
 
 ### Sites
 
-A site is a named area of interest that analysts monitor through dated satellite imagery, such as a base, a depot or a radar. Five tables carry it, and every read derives the zone, the last image and the corroboration from them.
+A site is a named area of interest that analysts monitor through dated satellite imagery, such as a base, a depot or a radar. Five tables carry it, and every read derives the zone and the last image from them.
 
 ```mermaid
 flowchart LR
@@ -1271,9 +1271,9 @@ flowchart LR
   unlinked_at IS NULL, published and visible`"]:::core
 
   state["`**GET /sites**, **GET /sites/{id}**
-  zone, last image, corroboration, linked events`"]:::read
+  zone, last image, linked events`"]:::read
   history["`**GET /sites/{id}/history**
-  every row, on two clocks`"]:::read
+  every row, by date on the ground`"]:::read
 
   create --> sites
   create --> reopen
@@ -1300,8 +1300,6 @@ flowchart LR
 **A site image is a source.** It is a [`sources`](#sources) row with `site_id` set: a `satellite` source of level `context` with a capture time, its links, their archived copies and an optional file, plus its analyst (`author_id`) and an optional `note`. It states no effect. `services/sites` files it through `services/events/sources.file_source` and refuses it when no link lets a reader reopen it (`services/imagery.can_reopen`): a link to a reopenable [imagery provider](imagery.md), or to an unlisted publication with an archived copy. It then carries the same imagery warnings as an event's satellite source. An image with the same provider (`services/imagery.image_provider`) and the same UTC capture day as one already filed on the site is flagged on the write, not refused.
 
 **The zone valid on a date is computed.** It is the contour whose image has the latest `captured_at` on or before the date, the later contour breaking a tie (`services/sites.zones_at`). The current zone is the one valid now. A site has no zone before the capture day of its earliest contour's image. A linked event is measured against the zone valid on its `occurred_date`: the earliest contour when the event predates them all, and the current one when the event has no date.
-
-**Corroboration is computed.** The corroborating analysts are the distinct authors of the site's images and the analysts who hold a live link from a published, visible event to the site (`linked_by_id`). `corroboration_count` counts them, and a site is corroborated when one of them is not its owner. The map read counts the images captured and the events dated on or before its date; an undated event counts at every date. Approvals never enter a site computation.
 
 **The rest of the state is computed too.** The last image is the latest captured one, with the provider of its links. The latest link effect is the effect of the linked event with the latest `occurred_date`. Both read at the request's date. No column stores an active or current status. Every computed read counts live links to events in `services/event_filters.site_linkable_events` (not soft-deleted, not withheld, `geolocated`), so a closed or withheld event drops out with no write to `event_site_links`.
 
@@ -1381,7 +1379,7 @@ One period during which an event was linked to a site with one effect. A link is
 | `site_id` | `UUID` | FK → `sites.id` ON DELETE CASCADE, NOT NULL |
 | `effect` | `VARCHAR(20)` | NOT NULL, CHECK `ck_event_site_links_effect_valid` in `('damage', 'destruction', 'activity', 'other')`. What the event shows at the site. `activity` is the neutral effect: activity observed, such as a column leaving or a launch. |
 | `linked_at` | `TIMESTAMPTZ` | NOT NULL, server_default `now()` |
-| `linked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The event owner at link time; event ownership can move. A corroborating analyst of the site while the link is live. |
+| `linked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The event owner at link time; event ownership can move. |
 | `unlinked_at` | `TIMESTAMPTZ` | nullable. NULL while the link is live. |
 | `unlinked_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The event owner at unlink time. |
 

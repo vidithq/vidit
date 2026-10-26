@@ -70,7 +70,7 @@ export default function SiteContourPage() {
 function ContourForm({ site }: { site: Site }) {
   const router = useRouter();
   const search = useSearchParams();
-  const images = sortImages(site.images, "fact");
+  const images = sortImages(site.images);
   const asked = search.get("image");
   const [imageId, setImageId] = useState(
     images.some((i) => i.id === asked) ? asked! : (images[0]?.id ?? ""),

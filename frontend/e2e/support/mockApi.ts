@@ -43,7 +43,6 @@ import {
   SIGNED_IN_USER,
   SITE,
   SITE_ID,
-  SITE_NEARBY,
   X_HANDLE,
 } from "./fixtures";
 
@@ -105,7 +104,6 @@ const ROUTES: [RegExp, unknown][] = [
   // The site page and its forms: the site, which the signed-in analyst owns, and its unlinked
   // neighbours, one of them the analyst's own. The imagery provider check answers no provider.
   [new RegExp(`^/sites/${SITE_ID}$`), SITE],
-  [new RegExp(`^/sites/${SITE_ID}/nearby-events$`), SITE_NEARBY],
   [/^\/sources\/check$/, { links: [], warnings: [] }],
   // The organization page as its org manager reads it.
   [new RegExp(`^/organizations/${ORGANIZATION_SLUG}$`), ORGANIZATION],

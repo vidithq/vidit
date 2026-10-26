@@ -1,7 +1,7 @@
 """Sites: create with the first image and contour, the imagery history (any analyst files, the
 provider check refuses an image no reader can reopen, a repeat is flagged), the owner-only
-contour and record edits, the zone valid on a date, event links, corroboration, nearby events,
-suggestions, moderation, and the history on both clocks."""
+contour and record edits, the zone valid on a date, event links, suggestions, moderation, and
+the history by date on the ground."""
 
 from __future__ import annotations
 
@@ -214,9 +214,6 @@ def test_create_site_with_its_first_image_and_contour(users):
         "captured_at": "2025-01-01T10:00:00Z",
         "provider": {"id": "copernicus_browser", "name": "Copernicus Browser"},
     }
-    # The owner filed the first image: one contributor, not corroborated.
-    assert body["corroboration_count"] == 1
-    assert body["is_corroborated"] is False
     assert body["latest_link_effect"] is None
 
 
@@ -361,8 +358,6 @@ def test_any_analyst_files_an_image_and_a_repeat_is_flagged(users):
 
     read = _read(site["id"])
     assert len(read["images"]) == 4
-    assert read["corroboration_count"] == 2
-    assert read["is_corroborated"] is True
     # Images never move the contour.
     assert [c["id"] for c in read["contours"]] == [site["contour_id"]]
 
@@ -490,8 +485,9 @@ def test_only_the_owner_edits_the_record_and_each_edit_is_versioned(db, users):
     assert db.query(Site.version_no).filter(Site.id == site["id"]).scalar() == 2
 
     client.cookies.clear()
-    history = client.get(f"{path}/history", params={"order": "recorded"}).json()
-    created, *_, last = history
+    history = client.get(f"{path}/history").json()
+    (created,) = [entry for entry in history if entry["kind"] == "site_created"]
+    last = history[-1]
     assert created["kind"] == "site_created"
     assert created["record"] == {"name": "Depot North", "kind": "airbase"}
     assert last["kind"] == "record_edited"
@@ -537,7 +533,6 @@ def test_only_the_event_owner_links_and_unlinks(db, users):
     assert (row.linked_by_id, row.unlinked_by_id) == (owner.id, owner.id)
     body = _read(site["id"])
     assert body["linked_events"] == []
-    assert body["corroboration_count"] == 1
     assert body["latest_link_effect"] is None
 
 
@@ -588,7 +583,7 @@ def test_a_closed_or_withheld_event_drops_out_of_the_site(db, users):
     withheld = _event(db, analyst)
     assert _link(analyst, retracted, site["id"]).status_code == 200
     assert _link(analyst, withheld, site["id"]).status_code == 200
-    assert _read(site["id"])["corroboration_count"] == 2
+    assert len(_read(site["id"])["linked_events"]) == 2
 
     retracted.status = STATUS_CLOSED
     retracted.closed_at = datetime.now(UTC)
@@ -598,8 +593,6 @@ def test_a_closed_or_withheld_event_drops_out_of_the_site(db, users):
 
     body = _read(site["id"])
     assert body["linked_events"] == []
-    assert body["corroboration_count"] == 1
-    assert body["is_corroborated"] is False
     assert body["latest_link_effect"] is None
     assert client.get(f"/api/v1/events/{withheld.id}/site-links").status_code == 404
 
@@ -622,6 +615,7 @@ def test_inside_zone_is_measured_against_the_zone_valid_on_the_occurred_date(db,
     assert by_id[str(early.id)]["inside_zone"] is False
     assert by_id[str(early.id)]["distance_m"] == pytest.approx(_metres_east(0.02), rel=0.01)
     assert by_id[str(early.id)]["measured_contour_id"] == site["contour_id"]
+    assert (by_id[str(early.id)]["media"], by_id[str(early.id)]["is_graphic"]) == (None, False)
     assert by_id[str(late.id)]["inside_zone"] is True
     assert by_id[str(late.id)]["distance_m"] is None
     assert by_id[str(late.id)]["measured_contour_id"] == grown["id"]
@@ -636,30 +630,19 @@ def test_inside_zone_is_measured_against_the_zone_valid_on_the_occurred_date(db,
     ]
 
 
-def test_corroboration_counts_distinct_analysts_who_link_or_file(db, users):
-    owner, linker, filer = users(), users(), users()
+def test_the_latest_link_effect_is_the_latest_dated_linked_event(db, users):
+    owner, linker = users(), users()
     lng = LNG + 0.6
     site = _create_site(owner, _square(0.01, lng=lng), captured="2025-01-01")
 
     _link(owner, _event(db, owner, lng=lng, occurred_date=date(2025, 2, 1)), site["id"])
-    body = _read(site["id"])
-    assert (body["corroboration_count"], body["is_corroborated"]) == (1, False)
-
     linked = _event(db, linker, lng=lng, occurred_date=date(2025, 4, 1))
     _link(linker, linked, site["id"], "destruction")
-    assert _file(filer, site["id"], _image("2025-08-01")).status_code == 201
-    body = _read(site["id"])
-    assert (body["corroboration_count"], body["is_corroborated"]) == (3, True)
-    assert body["latest_link_effect"] == {
+    assert _read(site["id"])["latest_link_effect"] == {
         "effect": "destruction",
         "occurred_date": "2025-04-01",
         "event_id": str(linked.id),
     }
-
-    # The map reads both legs at its date.
-    assert _on_map(site["id"], "2025-03-01")["corroboration_count"] == 1
-    assert _on_map(site["id"], "2025-05-01")["corroboration_count"] == 2
-    assert _on_map(site["id"], "2025-09-01")["corroboration_count"] == 3
 
 
 def test_map_read_carries_the_owner_and_the_latest_link_effect_on_as_of(db, users):
@@ -694,25 +677,6 @@ def test_map_read_carries_the_owner_and_the_latest_link_effect_on_as_of(db, user
     }
     assert _on_map(site["id"], "2025-06-01")["latest_link_effect"]["event_id"] == str(damage.id)
     assert _on_map(site["id"], "2025-02-01")["latest_link_effect"] is None
-
-
-def test_nearby_events_exclude_linked_and_distant_ones(db, users):
-    owner = users()
-    lat = LAT + 0.4
-    site = _create_site(owner, _square(0.01, lat=lat))
-    linked = _event(db, owner, lat=lat)
-    near = _event(db, owner, lat=lat, lng=LNG + 0.02)
-    far = _event(db, owner, lat=lat, lng=LNG + 0.2)
-    _link(owner, linked, site["id"])
-
-    client.cookies.clear()
-    response = client.get(f"{SITES}/{site['id']}/nearby-events", params={"margin_m": 2000})
-    assert response.status_code == 200
-    ids = [row["id"] for row in response.json()]
-    assert str(near.id) in ids
-    assert str(linked.id) not in ids
-    assert str(far.id) not in ids
-    assert response.json()[0]["distance_m"] == pytest.approx(_metres_east(0.01, lat), rel=0.01)
 
 
 def test_site_suggestions_by_distance_and_by_name(db, users):
@@ -795,7 +759,7 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
     assert _code(unknown) == "site_not_found"
 
 
-def test_history_orders_by_either_clock(db, users):
+def test_history_orders_by_the_date_on_the_ground(db, users):
     owner, analyst = users(), users()
     site = _create_site(owner, _square(0.01), captured="2025-05-01")
     old_imagery = _file(analyst, site["id"], _image("2024-01-01"))
@@ -808,22 +772,11 @@ def test_history_orders_by_either_clock(db, users):
         f"/api/v1/events/{event.id}/site-links/{site['id']}", headers=login_as(client, owner)
     )
 
-    def history(order: str) -> list[tuple[str, str | None]]:
-        client.cookies.clear()
-        response = client.get(f"{SITES}/{site['id']}/history", params={"order": order})
-        assert response.status_code == 200
-        return [(entry["kind"], entry["fact_date"]) for entry in response.json()]
-
-    assert history("recorded") == [
-        ("site_created", None),
-        ("image_filed", "2025-05-01"),
-        ("image_filed", "2024-01-01"),
-        ("contour_changed", "2024-01-01"),
-        ("event_linked", "2024-06-01"),
-        ("event_unlinked", "2024-06-01"),
-    ]
+    client.cookies.clear()
+    response = client.get(f"{SITES}/{site['id']}/history")
+    assert response.status_code == 200
     # Record-only entries sit on the day they were recorded.
-    assert history("fact") == [
+    assert [(entry["kind"], entry["fact_date"]) for entry in response.json()] == [
         ("image_filed", "2024-01-01"),
         ("contour_changed", "2024-01-01"),
         ("event_linked", "2024-06-01"),
@@ -831,13 +784,12 @@ def test_history_orders_by_either_clock(db, users):
         ("image_filed", "2025-05-01"),
         ("site_created", None),
     ]
-    entries = client.get(f"{SITES}/{site['id']}/history").json()
+    entries = response.json()
     created = next(entry for entry in entries if entry["kind"] == "site_created")
     assert created["contour_id"] == site["contour_id"]
     assert created["image_id"] == site["images"][0]["id"]
     filed = next(entry for entry in entries if entry["fact_date"] == "2024-01-01")
     assert filed["actor"]["id"] == str(analyst.id)
-    assert client.get(f"{SITES}/{site['id']}/history", params={"order": "x"}).status_code == 422
 
 
 def test_erasing_the_owner_takes_the_site_and_sweeps_its_image_files(db, users, monkeypatch):

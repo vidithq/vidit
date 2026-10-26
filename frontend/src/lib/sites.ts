@@ -10,7 +10,6 @@ export type SiteImageFiled = components["schemas"]["SiteImageFiledRead"];
 export type SiteImageCreate = components["schemas"]["SiteImageCreate"];
 export type SiteContour = components["schemas"]["SiteContourRead"];
 export type SiteLinkedEvent = components["schemas"]["SiteLinkedEventRead"];
-export type SiteNearbyEvent = components["schemas"]["SiteNearbyEventRead"];
 export type SiteOverlap = components["schemas"]["SiteOverlapRead"];
 export type SiteSuggestion = components["schemas"]["SiteSuggestionRead"];
 export type EventSiteLink = components["schemas"]["EventSiteLinkRead"];
@@ -19,16 +18,12 @@ export type SiteHistoryEntry = components["schemas"]["SiteHistoryEntry"];
 
 export type SiteKind = Site["kind"];
 export type LinkEffect = EventSiteLink["effect"];
-/** The two clocks a site's history reads by: when a fact happened on the ground, or when it
- *  entered Vidit. */
-export type HistoryOrder = "fact" | "recorded";
 
 /** Mirrors backend `models/event.TITLE_MAX_LENGTH`, the cap on a site name; change both. */
 export const SITE_NAME_MAX_LEN = 255;
 /** Mirrors backend `schemas/site.IMAGE_NOTE_MAX_LENGTH`; change both. */
 export const SITE_IMAGE_NOTE_MAX_LEN = 500;
-/** Mirrors the `margin_m` default (2000 m) of backend `routers/sites` and `routers/events/sites`;
- *  change both. */
+/** Mirrors the `margin_m` default (2000 m) of backend `routers/events/sites`; change both. */
 export const SITE_MARGIN_KM = 2;
 
 /** Keyed by the generated union, so a kind the backend adds fails the type-check. */
@@ -57,11 +52,6 @@ export const LINK_EFFECT_LABELS: Record<LinkEffect, string> = {
 
 export const LINK_EFFECTS = Object.keys(LINK_EFFECT_LABELS) as LinkEffect[];
 
-export const HISTORY_ORDER_LABELS: Record<HistoryOrder, string> = {
-  fact: "Date on the ground",
-  recorded: "Date added to Vidit",
-};
-
 export function siteHref(id: string): string {
   return `/sites/${encodeURIComponent(id)}`;
 }
@@ -88,12 +78,8 @@ export function sitePath(id: string): string {
   return `/sites/${encodeURIComponent(id)}`;
 }
 
-export function siteHistoryPath(id: string, order: HistoryOrder): string {
-  return `${sitePath(id)}/history?order=${order}`;
-}
-
-export function siteNearbyEventsPath(id: string): string {
-  return `${sitePath(id)}/nearby-events`;
+export function siteHistoryPath(id: string): string {
+  return `${sitePath(id)}/history`;
 }
 
 export function eventSiteLinksPath(eventId: string): string {
@@ -187,14 +173,6 @@ export function formatDistance(metres: number): string {
   return `${(metres / 1000).toFixed(1)} km`;
 }
 
-/** "Corroborated by 3 analysts", or "Not corroborated" when only the owner documented it. */
-export function corroborationLabel(
-  site: Pick<Site, "is_corroborated" | "corroboration_count">,
-): string {
-  if (!site.is_corroborated) return "Not corroborated";
-  return `Corroborated by ${site.corroboration_count} ${site.corroboration_count === 1 ? "analyst" : "analysts"}`;
-}
-
 /** Whether the viewer owns the site: the one reader who renames it and draws its contour. */
 export function ownsSite(site: Pick<Site, "owner">, viewerId: string | null | undefined): boolean {
   return !!viewerId && site.owner.id === viewerId;
@@ -233,33 +211,22 @@ export function contourFromImage(contours: SiteContour[], imageId: string): Site
   return contourOrder(contours).filter((c) => c.image_id === imageId).at(-1) ?? null;
 }
 
-/** The images newest first under one clock: the capture time, or when each was filed. */
-export function sortImages(images: SiteImage[], order: HistoryOrder): SiteImage[] {
-  const key = (image: SiteImage) =>
-    order === "fact" ? (image.captured_at ?? image.created_at) : image.created_at;
+/** The images newest first by capture time. */
+export function sortImages(images: SiteImage[]): SiteImage[] {
+  const key = (image: SiteImage) => image.captured_at ?? image.created_at;
   return [...images].sort((a, b) => key(b).localeCompare(key(a)));
 }
 
-/** The linked events newest first under one clock: the event date (an undated event sits on the
- *  day it was linked, as the API's history places it), or when the link opened. */
-export function sortLinkedEvents(events: SiteLinkedEvent[], order: HistoryOrder): SiteLinkedEvent[] {
-  const key = (event: SiteLinkedEvent) =>
-    order === "fact" ? (event.occurred_date ?? utcDay(event.linked_at)) : event.linked_at;
+/** The linked events newest first by event date. An undated event sits on the day it was
+ *  linked, as the API's history places it. */
+export function sortLinkedEvents(events: SiteLinkedEvent[]): SiteLinkedEvent[] {
+  const key = (event: SiteLinkedEvent) => event.occurred_date ?? utcDay(event.linked_at);
   return [...events].sort((a, b) => key(b).localeCompare(key(a)));
 }
 
 /** The image the page opens on: the latest capture, whose zone is the one valid now. */
 export function latestImage(images: SiteImage[]): SiteImage | null {
-  return sortImages(images, "fact")[0] ?? null;
-}
-
-/** Whether the main map draws a site below the zone zoom: a corroborated site for everyone, an
- *  uncorroborated one for its owner only. */
-export function shownAtEveryZoom(
-  site: Pick<SiteListItem, "is_corroborated" | "owner_id">,
-  viewerId: string | null,
-): boolean {
-  return site.is_corroborated || (viewerId !== null && site.owner_id === viewerId);
+  return sortImages(images)[0] ?? null;
 }
 
 /** The zone effect a site's map paints: damage or destruction from the latest linked event;

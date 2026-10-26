@@ -1,7 +1,7 @@
 """Sites: named areas of interest, their imagery history, their contours, and the events linked
 to them.
 
-Nothing about a site's state is stored. Four rules hold everywhere in this module:
+Nothing about a site's state is stored. Three rules hold everywhere in this module:
 
 * **A site image is a source** whose owner is the site (``sources.site_id``): a dated
   ``satellite`` capture, filed through ``services/events/sources.file_source`` and refused when
@@ -11,8 +11,6 @@ Nothing about a site's state is stored. Four rules hold everywhere in this modul
 * **What a site shows of an event** is one predicate,
   :func:`services.event_filters.site_linkable_events`, so an event that closes, is taken down
   or is soft-deleted leaves every read with no write to ``event_site_links``.
-* **Corroboration** counts the distinct analysts who filed an image on the site or linked a
-  visible event to it (:func:`_contributors`). Approvals never enter a site computation.
 """
 
 from __future__ import annotations
@@ -41,7 +39,6 @@ from sqlalchemy import (
     or_,
     select,
     true,
-    union,
 )
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
@@ -51,6 +48,7 @@ from app.models.site import EventSiteLink, LinkEffect, Site, SiteContour, SiteVe
 from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.schemas.event import CoordsRead
+from app.schemas.media import MediaRead
 from app.schemas.site import (
     MAX_ZONE_AREA_KM2,
     MAX_ZONE_LNG_SPAN_DEG,
@@ -67,7 +65,6 @@ from app.schemas.site import (
     SiteLastImageRead,
     SiteLinkedEventRead,
     SiteList,
-    SiteNearbyEventRead,
     SiteOverlapRead,
     SiteRead,
     SiteRecord,
@@ -84,13 +81,13 @@ from app.services.events.errors import SourceMediaNotFoundError
 from app.services.events.sources import build_source_read, file_source
 from app.services.evidence_intake import StoredObject, media_objects
 from app.services.imagery import LinkCheck, can_reopen, image_provider
+from app.services.thumbnails import pick_thumbnail, thumbnail_loads
 from app.services.uploads import UPLOAD_ERROR_STATUS
 from app.services.versions import MAX_VERSIONS_PER_EVENT, VersionLimitError
 
 # Sites one map read returns; past it the oldest sites are absent from the response.
 MAP_SITES_LIMIT = 1000
 OVERLAPS_LIMIT = 20
-NEARBY_EVENTS_LIMIT = 50
 SUGGESTIONS_LIMIT = 20
 MAX_MARGIN_M = 10_000
 
@@ -312,35 +309,6 @@ def _last_images(
     return last
 
 
-def _contributors(
-    db: Session, site_ids: Sequence[uuid.UUID], as_of: date | None
-) -> dict[uuid.UUID, set[uuid.UUID]]:
-    """Per site, the analysts who filed an image captured on or before ``as_of``, or linked a
-    visible event dated on or before it (an undated event counts at every date)."""
-    if not site_ids:
-        return {}
-    images = select(Source.site_id.label("site_id"), Source.author_id.label("user_id")).where(
-        Source.site_id.in_(site_ids), Source.author_id.is_not(None)
-    )
-    links = (
-        select(EventSiteLink.site_id, EventSiteLink.linked_by_id)
-        .join(Event, Event.id == EventSiteLink.event_id)
-        .where(
-            EventSiteLink.site_id.in_(site_ids),
-            EventSiteLink.linked_by_id.is_not(None),
-            live_links(),
-            site_linkable_events(),
-        )
-    )
-    if as_of is not None:
-        images = images.where(_captured_date() <= as_of)
-        links = links.where(or_(Event.occurred_date.is_(None), Event.occurred_date <= as_of))
-    contributors: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
-    for site_id, user_id in db.execute(union(images, links)):
-        contributors[site_id].add(user_id)
-    return contributors
-
-
 def _site_states(
     db: Session,
     *,
@@ -382,10 +350,8 @@ def _site_states(
     )
     site_ids = [row[0].id for row in rows]
     last_images = _last_images(db, site_ids, as_of)
-    contributors = _contributors(db, site_ids, as_of)
     states: list[tuple[Site, dict[str, Any]]] = []
     for site, zone_json, lat, lng, contour_id, link_effect, link_date, link_event_id in rows:
-        analysts = contributors.get(site.id, set())
         states.append(
             (
                 site,
@@ -397,8 +363,6 @@ def _site_states(
                     "centroid": CoordsRead(lat=lat, lng=lng),
                     "contour_id": contour_id,
                     "last_image": last_images.get(site.id),
-                    "corroboration_count": len(analysts),
-                    "is_corroborated": any(user_id != site.owner_id for user_id in analysts),
                     "latest_link_effect": None
                     if link_event_id is None
                     else LatestLinkEffect(
@@ -480,6 +444,11 @@ def _contours(db: Session, criterion: ColumnElement[bool]) -> list[SiteContourRe
     ]
 
 
+def _thumbnail(event: Event) -> MediaRead | None:
+    row = pick_thumbnail(event)
+    return MediaRead.model_validate(row) if row is not None else None
+
+
 def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]:
     """Visible linked events, each measured against the contour valid on its date.
 
@@ -520,7 +489,7 @@ def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]
         .select_from(EventSiteLink)
         .join(Event, Event.id == EventSiteLink.event_id)
         .join(measured, true())
-        .options(joinedload(Event.owner))
+        .options(joinedload(Event.owner), *thumbnail_loads())
         .filter(EventSiteLink.site_id == site_id, live_links(), site_linkable_events())
         .order_by(Event.occurred_date.asc().nulls_last(), Event.created_at.asc())
         .all()
@@ -532,6 +501,8 @@ def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]
             occurred_date=event.occurred_date,
             coords=CoordsRead(lat=lat, lng=lng),
             owner=event.owner,
+            is_graphic=event.is_graphic,
+            media=_thumbnail(event),
             effect=effect,
             linked_at=linked_at,
             inside_zone=inside,
@@ -767,45 +738,6 @@ def edit_site(db: Session, *, site: Site, user: User, body: SiteUpdate) -> Site:
     return locked
 
 
-def _current_zone_geography(site_id: uuid.UUID) -> Any:
-    current = zones_at(None)
-    return (
-        select(cast(current.c.zone, Geography))
-        .where(current.c.site_id == site_id)
-        .scalar_subquery()
-    )
-
-
-def nearby_events(db: Session, *, site: Site, margin_m: float) -> list[SiteNearbyEventRead]:
-    """Visible events within ``margin_m`` metres of the current zone and not linked to it,
-    nearest first."""
-    zone = _current_zone_geography(site.id)
-    point = cast(Event.coords, Geography)
-    distance = func.ST_Distance(point, zone)
-    linked = exists().where(
-        EventSiteLink.site_id == site.id, EventSiteLink.event_id == Event.id, live_links()
-    )
-    rows = (
-        db.query(Event, ST_Y(Event.coords), ST_X(Event.coords), distance)
-        .options(joinedload(Event.owner))
-        .filter(site_linkable_events(), ~linked, func.ST_DWithin(point, zone, margin_m))
-        .order_by(distance.asc(), Event.id)
-        .limit(NEARBY_EVENTS_LIMIT)
-        .all()
-    )
-    return [
-        SiteNearbyEventRead(
-            id=event.id,
-            title=event.title,
-            occurred_date=event.occurred_date,
-            coords=CoordsRead(lat=lat, lng=lng),
-            owner=event.owner,
-            distance_m=float(dist),
-        )
-        for event, lat, lng, dist in rows
-    ]
-
-
 def suggest_sites(
     db: Session, *, event: Event, margin_m: float, q: str | None
 ) -> list[SiteSuggestionRead]:
@@ -1018,10 +950,10 @@ def _link_entries(db: Session, site: Site) -> list[SiteHistoryEntry]:
     return entries
 
 
-def site_history(db: Session, *, site: Site, order: str) -> list[SiteHistoryEntry]:
+def site_history(db: Session, *, site: Site) -> list[SiteHistoryEntry]:
     """The site's history, computed from its record versions, images, contours and links.
 
-    ``order`` is ``fact`` (by ``fact_date``, ``recorded_at`` breaking ties) or ``recorded``.
+    Ordered by ``fact_date``, ``recorded_at`` breaking ties.
     Link entries name visible events only, so a withheld or deleted event leaves the history.
     """
     images = (
@@ -1074,10 +1006,7 @@ def site_history(db: Session, *, site: Site, order: str) -> list[SiteHistoryEntr
         for contour, captured_at in contours[1:]
     ]
     entries += _link_entries(db, site)
-    if order == "recorded":
-        entries.sort(key=lambda entry: entry.recorded_at)
-    else:
-        entries.sort(key=_fact_order)
+    entries.sort(key=_fact_order)
     return entries
 
 

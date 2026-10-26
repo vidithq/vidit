@@ -2222,10 +2222,7 @@ export interface paths {
         /**
          * Get Site History
          * @description The site's history: creation, record edits, images, contours, and every link, unlink and
-         *     effect change.
-         *
-         *     ``order=fact`` sorts by when each fact happened on the ground, ``order=recorded`` by when
-         *     it entered Vidit.
+         *     effect change, ordered by when each fact happened on the ground.
          */
         get: operations["get_site_history_api_v1_sites__site_id__history_get"];
         put?: never;
@@ -2251,27 +2248,6 @@ export interface paths {
          *     image is never edited.
          */
         post: operations["file_image_api_v1_sites__site_id__images_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sites/{site_id}/nearby-events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Nearby Events
-         * @description Visible events within ``margin_m`` metres of the current zone and not linked to the
-         *     site, nearest first. Capped at 50.
-         */
-        get: operations["list_nearby_events_api_v1_sites__site_id__nearby_events_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4853,8 +4829,6 @@ export interface components {
             contour_id: string;
             /** Contours */
             contours: components["schemas"]["SiteContourRead"][];
-            /** Corroboration Count */
-            corroboration_count: number;
             /**
              * Created At
              * Format: date-time
@@ -4869,8 +4843,6 @@ export interface components {
             id: string;
             /** Images */
             images: components["schemas"]["SiteImageRead"][];
-            /** Is Corroborated */
-            is_corroborated: boolean;
             /**
              * Kind
              * @enum {string}
@@ -5085,6 +5057,7 @@ export interface components {
          *     ``inside_zone`` and ``distance_m`` are measured against ``measured_contour_id``: the
          *     contour valid on ``occurred_date``, the earliest one when the event predates them all, or
          *     the current one when the event has no date. ``distance_m`` is null inside the zone.
+         *     ``media`` is the event's card thumbnail (``services.thumbnails``).
          */
         SiteLinkedEventRead: {
             coords: components["schemas"]["CoordsRead"];
@@ -5102,6 +5075,8 @@ export interface components {
             id: string;
             /** Inside Zone */
             inside_zone: boolean;
+            /** Is Graphic */
+            is_graphic: boolean;
             /**
              * Linked At
              * Format: date-time
@@ -5112,6 +5087,7 @@ export interface components {
              * Format: uuid
              */
             measured_contour_id: string;
+            media: components["schemas"]["MediaRead"] | null;
             /** Occurred Date */
             occurred_date: string | null;
             owner: components["schemas"]["AuthorRef"];
@@ -5129,15 +5105,11 @@ export interface components {
              * Format: uuid
              */
             contour_id: string;
-            /** Corroboration Count */
-            corroboration_count: number;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Is Corroborated */
-            is_corroborated: boolean;
             /**
              * Kind
              * @enum {string}
@@ -5153,25 +5125,6 @@ export interface components {
              */
             owner_id: string;
             zone: components["schemas"]["ZonePolygon"];
-        };
-        /**
-         * SiteNearbyEventRead
-         * @description A visible event within the margin of the current zone and not linked to the site.
-         */
-        SiteNearbyEventRead: {
-            coords: components["schemas"]["CoordsRead"];
-            /** Distance M */
-            distance_m: number;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Occurred Date */
-            occurred_date: string | null;
-            owner: components["schemas"]["AuthorRef"];
-            /** Title */
-            title: string;
         };
         /**
          * SiteOverlapCheck
@@ -5219,8 +5172,6 @@ export interface components {
             contour_id: string;
             /** Contours */
             contours: components["schemas"]["SiteContourRead"][];
-            /** Corroboration Count */
-            corroboration_count: number;
             /**
              * Created At
              * Format: date-time
@@ -5235,8 +5186,6 @@ export interface components {
             id: string;
             /** Images */
             images: components["schemas"]["SiteImageRead"][];
-            /** Is Corroborated */
-            is_corroborated: boolean;
             /**
              * Kind
              * @enum {string}
@@ -9638,9 +9587,7 @@ export interface operations {
     };
     get_site_history_api_v1_sites__site_id__history_get: {
         parameters: {
-            query?: {
-                order?: "fact" | "recorded";
-            };
+            query?: never;
             header?: never;
             path: {
                 site_id: string;
@@ -9695,41 +9642,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SiteImageFiledRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_nearby_events_api_v1_sites__site_id__nearby_events_get: {
-        parameters: {
-            query?: {
-                margin_m?: number;
-            };
-            header?: never;
-            path: {
-                site_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SiteNearbyEventRead"][];
                 };
             };
             /** @description Validation Error */

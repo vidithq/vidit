@@ -5,13 +5,11 @@ import {
   contourBefore,
   contourFromImage,
   contourOn,
-  corroborationLabel,
   formatDistance,
   imageFromEventSource,
   latestImage,
   newSiteImageDraft,
   ownsSite,
-  shownAtEveryZoom,
   siteContourHref,
   siteImageMissing,
   siteImagePayload,
@@ -68,6 +66,8 @@ function linked(id: string, occurred: string | null, linkedAt: string): SiteLink
     occurred_date: occurred,
     coords: { lat: -25, lng: 137 },
     owner: { id: "u1", username: "ana", avatar_url: null },
+    is_graphic: false,
+    media: null,
     effect: "damage",
     linked_at: linkedAt,
     inside_zone: true,
@@ -115,13 +115,12 @@ describe("contour neighbours", () => {
   });
 });
 
-describe("history order", () => {
+describe("date on the ground order", () => {
   const found = image("found", "2025-01-01T00:00:00Z", "2026-09-01T00:00:00Z");
   const fresh = image("fresh", "2026-08-01T00:00:00Z", "2026-08-02T00:00:00Z");
 
-  it("sorts images newest first by capture or by filing", () => {
-    expect(sortImages([found, fresh], "fact").map((i) => i.id)).toEqual(["fresh", "found"]);
-    expect(sortImages([fresh, found], "recorded").map((i) => i.id)).toEqual(["found", "fresh"]);
+  it("sorts images newest first by capture, whenever each was filed", () => {
+    expect(sortImages([found, fresh]).map((i) => i.id)).toEqual(["fresh", "found"]);
     expect(latestImage([found, fresh])?.id).toBe("fresh");
     expect(latestImage([])).toBeNull();
   });
@@ -130,27 +129,15 @@ describe("history order", () => {
     const old = linked("old", "2026-04-10", "2026-10-20T00:00:00Z");
     const undated = linked("undated", null, "2026-05-01T00:00:00Z");
     const recent = linked("recent", "2026-09-05", "2026-09-06T00:00:00Z");
-    expect(sortLinkedEvents([old, undated, recent], "fact").map((e) => e.id)).toEqual([
+    expect(sortLinkedEvents([old, undated, recent]).map((e) => e.id)).toEqual([
       "recent",
       "undated",
       "old",
-    ]);
-    expect(sortLinkedEvents([old, undated, recent], "recorded").map((e) => e.id)).toEqual([
-      "old",
-      "recent",
-      "undated",
     ]);
   });
 });
 
 describe("visibility rules", () => {
-  it("draws a corroborated site at every zoom, an uncorroborated one for its owner only", () => {
-    expect(shownAtEveryZoom({ is_corroborated: true, owner_id: "a" }, null)).toBe(true);
-    expect(shownAtEveryZoom({ is_corroborated: false, owner_id: "a" }, "a")).toBe(true);
-    expect(shownAtEveryZoom({ is_corroborated: false, owner_id: "a" }, "b")).toBe(false);
-    expect(shownAtEveryZoom({ is_corroborated: false, owner_id: "a" }, null)).toBe(false);
-  });
-
   it("gives the owner controls to the owner alone", () => {
     const site = { owner: { id: "a", username: "ana", avatar_url: null } };
     expect(ownsSite(site, "a")).toBe(true);
@@ -170,13 +157,6 @@ describe("visibility rules", () => {
 });
 
 describe("labels", () => {
-  it("says Not corroborated rather than a count of one", () => {
-    expect(corroborationLabel({ is_corroborated: false, corroboration_count: 1 })).toBe("Not corroborated");
-    expect(corroborationLabel({ is_corroborated: true, corroboration_count: 3 })).toBe(
-      "Corroborated by 3 analysts",
-    );
-  });
-
   it("writes a distance in metres, then kilometres", () => {
     expect(formatDistance(640.4)).toBe("640 m");
     expect(formatDistance(2400)).toBe("2.4 km");

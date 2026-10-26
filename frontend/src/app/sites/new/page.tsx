@@ -227,8 +227,7 @@ export default function NewSitePage() {
                 </Select>
               </div>
               <p className={META_LINE}>
-                You own the site: only you rename it and redraw its contour. It reads as not
-                corroborated until another analyst files an image or links an event.
+                You own the site: only you rename it and redraw its contour.
               </p>
             </Card>
           </section>

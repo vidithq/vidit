@@ -10,16 +10,15 @@ import { SITE_MAP_COLORS } from "@/lib/palette";
 import type { Zone } from "@/lib/sites";
 import { CLUSTER_LAYER, TAP_TARGET_LAYERS } from "./layers";
 
-/** From this zoom the map draws zones; below it a site shown at every zoom is one square. */
+/** From this zoom the map draws zones; below it each site is one square. */
 export const ZONE_MIN_ZOOM = 10;
 
 const FILL = "sites-zone-fill";
 const LINE = "sites-zone-line";
-const LINE_FADED = "sites-zone-line-faded";
 const MARKER = "sites-marker";
 const LABEL = "sites-label";
 const CLICK_LAYERS = [FILL, MARKER, LABEL];
-const ALL_LAYERS = [FILL, LINE, LINE_FADED, MARKER, LABEL];
+const ALL_LAYERS = [FILL, LINE, MARKER, LABEL];
 
 const ICON_PX = 24;
 const ICON_BORDER_PX = 3;
@@ -30,9 +29,6 @@ export interface MapSite {
   name: string;
   zone: Zone;
   centroid: { lat: number; lng: number };
-  corroborated: boolean;
-  /** Drawn as a square below `zoneMinZoom`; defaults to `corroborated`. */
-  everyZoom?: boolean;
   emphasis?: "damage" | "destruction" | null;
 }
 
@@ -87,9 +83,8 @@ function squareIcon(color: string) {
 }
 
 /**
- * The sites layer of a map, mounted as `<Map>` children: zones from `zoneMinZoom` (faded and dashed
- * for a site nobody but its owner corroborates), one square per `everyZoom` site below it (faded
- * when uncorroborated), names beside both. Every layer sits under the event pins.
+ * The sites layer of a map, mounted as `<Map>` children: zones from `zoneMinZoom`, one square per
+ * site below it, names beside both. Every layer sits under the event pins.
  */
 export function SiteLayers({
   sites,
@@ -167,7 +162,6 @@ export function SiteLayers({
         type: "Feature",
         properties: {
           id: site.id,
-          corroborated: site.corroborated ? 1 : 0,
           selected: site.id === selectedId ? 1 : 0,
           emphasis: site.emphasis ?? "none",
         },
@@ -184,8 +178,6 @@ export function SiteLayers({
         properties: {
           id: site.id,
           name: site.name,
-          corroborated: site.corroborated ? 1 : 0,
-          everyZoom: (site.everyZoom ?? site.corroborated) ? 1 : 0,
           selected: site.id === selectedId ? 1 : 0,
           emphasis: site.emphasis ?? "none",
         },
@@ -204,7 +196,6 @@ export function SiteLayers({
     colors.destruction,
     colors.zone,
   ];
-  const faded: ExpressionSpecification = ["case", ["==", ["get", "corroborated"], 1], 1, 0.6];
 
   return (
     <>
@@ -215,36 +206,16 @@ export function SiteLayers({
           minzoom={zoneMinZoom}
           paint={{
             "fill-color": color,
-            "fill-opacity": [
-              "case",
-              ["==", ["get", "corroborated"], 0],
-              0.04,
-              ["==", ["get", "selected"], 1],
-              0.14,
-              0.08,
-            ],
+            "fill-opacity": ["case", ["==", ["get", "selected"], 1], 0.14, 0.08],
           }}
         />
         <Layer
           id={LINE}
           type="line"
           minzoom={zoneMinZoom}
-          filter={["==", ["get", "corroborated"], 1]}
           paint={{
             "line-color": color,
             "line-width": ["case", ["==", ["get", "selected"], 1], 3, 2],
-          }}
-        />
-        <Layer
-          id={LINE_FADED}
-          type="line"
-          minzoom={zoneMinZoom}
-          filter={["==", ["get", "corroborated"], 0]}
-          paint={{
-            "line-color": color,
-            "line-width": ["case", ["==", ["get", "selected"], 1], 2, 1.5],
-            "line-opacity": 0.7,
-            "line-dasharray": [2, 2],
           }}
         />
       </Source>
@@ -254,7 +225,6 @@ export function SiteLayers({
             id={MARKER}
             type="symbol"
             maxzoom={zoneMinZoom}
-            filter={["==", ["get", "everyZoom"], 1]}
             layout={{
               "icon-image": [
                 "match",
@@ -275,11 +245,9 @@ export function SiteLayers({
               "text-optional": true,
             }}
             paint={{
-              "icon-opacity": faded,
               "text-color": colors.zone,
               "text-halo-color": colors.halo,
               "text-halo-width": 1.2,
-              "text-opacity": faded,
             }}
           />
         )}
@@ -296,7 +264,6 @@ export function SiteLayers({
             "text-color": colors.zone,
             "text-halo-color": colors.halo,
             "text-halo-width": 1.2,
-            "text-opacity": faded,
           }}
         />
       </Source>

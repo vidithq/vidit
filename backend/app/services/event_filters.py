@@ -172,9 +172,9 @@ def collectable_events() -> ColumnElement[bool]:
 def site_linkable_events() -> ColumnElement[bool]:
     """The predicate for an event a site may show as linked: visible and published.
 
-    The link verb checks it and every site read filters on it (linked events, corroboration,
-    the latest link effect, nearby events), so an event that closes, is taken down or is
-    soft-deleted drops out of all of them with no write to ``event_site_links``.
+    The link verb checks it and every site read filters on it (linked events, the latest link
+    effect), so an event that closes, is taken down or is soft-deleted drops out of all of them
+    with no write to ``event_site_links``.
     """
     return and_(*visible_events(), published_events())
 

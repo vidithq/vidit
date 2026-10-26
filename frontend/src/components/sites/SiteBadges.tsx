@@ -2,9 +2,7 @@ import { Pill, type PillTone } from "@/components/ui/Pill";
 import {
   LINK_EFFECT_LABELS,
   SITE_KIND_LABELS,
-  corroborationLabel,
   type LinkEffect,
-  type Site,
   type SiteKind,
 } from "@/lib/sites";
 
@@ -18,14 +16,6 @@ const LINK_EFFECT_TONE: Record<LinkEffect, PillTone> = {
 
 export function SiteKindPill({ kind }: { kind: SiteKind }) {
   return <Pill tone="neutral">{SITE_KIND_LABELS[kind]}</Pill>;
-}
-
-export function CorroborationPill({
-  site,
-}: {
-  site: Pick<Site, "is_corroborated" | "corroboration_count">;
-}) {
-  return <Pill tone="neutral">{corroborationLabel(site)}</Pill>;
 }
 
 /** A link's effect. `keyed` prints the field's name before it, where the row does not say it. */

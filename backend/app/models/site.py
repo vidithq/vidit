@@ -33,8 +33,8 @@ class Site(Base):
     """A named area of interest that analysts monitor through dated satellite imagery.
 
     The zone is not a column: each contour is a ``site_contours`` row citing a site image (a
-    ``sources`` row with ``site_id`` set), and every read derives the zone, the last image and
-    the corroboration (``services/sites``). ``name`` and ``kind`` are versioned in
+    ``sources`` row with ``site_id`` set), and every read derives the zone and the last image
+    (``services/sites``). ``name`` and ``kind`` are versioned in
     ``site_versions``. ``owner_id`` cascades like ``Collection.owner_id``.
     """
 
