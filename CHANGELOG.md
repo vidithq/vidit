@@ -14,6 +14,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The API compresses responses at gzip level 6 and serves cached map points without compressing them again ([#695](https://github.com/vidithq/vidit/pull/695)).
 - Event pages and cards load resized images through the image optimizer in place of full-size originals, and the video player no longer loads on every page ([#695](https://github.com/vidithq/vidit/pull/695)).
 - Stored media and the map worker files carry a one-year immutable cache header, and pages open their API, media and basemap connections early. Media stored before this release keeps no cache header until an operator copies it with one ([#695](https://github.com/vidithq/vidit/pull/695)).
+- Search loads every matching geolocation: **Load more** under the Geolocations group appends the next page, and `GET /search` pages that group with `geolocations_cursor` ([#696](https://github.com/vidithq/vidit/pull/696)).
 - Sites: map an area of interest such as a depot with its dated satellite images and contours, link your events to it with their effect, and read its history on its page; sites show on the map and can be reported ([#644](https://github.com/vidithq/vidit/pull/644)).
 - In the event form, a source link row imports the file of an X, public Telegram or TikTok post in one click, and a post with several files lets you pick one; `POST /uploads/from-link` stages it like an upload ([#697](https://github.com/vidithq/vidit/pull/697)).
 

@@ -18,8 +18,10 @@ parameter) or Postgres falls back to a sequential scan: ``_geo_tsvector``,
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import ColumnElement, func, literal_column, or_, text
+from sqlalchemy import ColumnElement, cast, func, literal_column, or_, text, tuple_
+from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.elements import ColumnClause
 
@@ -47,6 +49,7 @@ from app.services.event_filters import (
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD, live_geolocators
+from app.services.pagination import encode_ranked_cursor
 from app.services.thumbnails import pick_thumbnail, thumbnail_loads
 
 # ``ts_headline`` sentinels: STX / ETX, not an ASCII marker like ``[[HL]]``,
@@ -120,65 +123,87 @@ def _search_events(
     limit: int,
     view: str,
     filters: EventFilters,
-) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int]:
-    """Run the FTS over ``events`` and return ``(ids, highlights, total)``.
+    after: tuple[float, datetime, uuid.UUID] | None = None,
+) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int, str | None]:
+    """Run the FTS over ``events`` and return ``(ids, highlights, total, next_cursor)``.
 
     The query matches an event's title, its sources' titles and its source URLs
-    (:func:`_event_match`). ``ids`` are ranked (``ts_rank`` of the title desc,
-    ``created_at`` desc), ``highlights`` maps id to its ``ts_headline`` title, ``total`` is the pre-``LIMIT`` count
-    (``COUNT(*) OVER ()``). Soft-deleted rows are excluded in ``filters.apply``.
+    (:func:`_event_match`). ``ids`` are ranked by ``ts_rank`` of the title desc,
+    then ``created_at`` desc and ``id`` desc, a total order. ``highlights`` maps
+    id to its ``ts_headline`` title. ``total`` is the whole match count
+    (``COUNT(*) OVER ()``), whatever ``after`` skips. Soft-deleted rows are
+    excluded in ``filters.apply``.
 
     With active filters and an empty ``query`` the FTS predicate drops: browse
-    mode, newest first, plain title as the "highlight". The profile's "Show
-    more" lands here.
+    mode, newest first, plain title as the "highlight", rank 0 for every row.
+    The profile's "Show more" lands here.
+
+    ``after`` resumes the walk past a :func:`encode_ranked_cursor` position.
+    ``next_cursor`` names the page's last row when a further row exists, else
+    ``None``. The count runs in the inner query, before the cursor predicate, so
+    every page reports the same total.
 
     ``extra_criteria`` narrow the view further (closed rows stay out of search).
     """
     q = query.strip()
+    # Sentinel-stripped in browse mode too: planted STX/ETX must not render fake <mark>s.
+    title = func.translate(Event.title, literal_column("chr(2) || chr(3)"), literal_column("''"))
+    rank: ColumnElement[float] = literal_column("0", DOUBLE_PRECISION)
     if q:
         tsquery = func.plainto_tsquery(_TS_CONFIG, q)
-        headline = func.ts_headline(
-            _TS_CONFIG,
-            func.translate(Event.title, literal_column("chr(2) || chr(3)"), literal_column("''")),
-            tsquery,
-            _HEADLINE_OPTS_FULL,
-        ).label("title_highlight")
-        stmt = db.query(Event.id, headline, func.count().over().label("total_count"))
-        stmt = filters.apply(stmt, view=view).filter(*extra_criteria)
+        title = func.ts_headline(_TS_CONFIG, title, tsquery, _HEADLINE_OPTS_FULL)
+        # ``real`` widened to ``double precision``: a ``real`` reaches Python as its
+        # shortest float4 text, a different double than the one Postgres compares
+        # against the cursor, so the walk would skip the cursor row's rank ties.
+        rank = cast(func.ts_rank(_geo_tsvector(), tsquery), DOUBLE_PRECISION)
+    stmt = db.query(
+        Event.id,
+        Event.created_at,
+        title.label("title_highlight"),
+        rank.label("rank"),
+        func.count().over().label("total_count"),
+    )
+    stmt = filters.apply(stmt, view=view).filter(*extra_criteria)
+    if q:
         stmt = stmt.filter(_event_match(q, tsquery))
-        stmt = stmt.order_by(func.ts_rank(_geo_tsvector(), tsquery).desc(), Event.created_at.desc())
-    else:
-        stmt = db.query(
-            Event.id,
-            # Still sentinel-stripped: planted STX/ETX must not render fake <mark>s.
-            func.translate(
-                Event.title, literal_column("chr(2) || chr(3)"), literal_column("''")
-            ).label("title_highlight"),
-            func.count().over().label("total_count"),
-        )
-        stmt = filters.apply(stmt, view=view).filter(*extra_criteria)
-        stmt = stmt.order_by(Event.created_at.desc())
+    ranked = stmt.subquery()
 
-    rows = stmt.limit(limit).all()
+    page = db.query(ranked)
+    if after is not None:
+        page = page.filter(tuple_(ranked.c.rank, ranked.c.created_at, ranked.c.id) < after)
+    rows = (
+        page.order_by(ranked.c.rank.desc(), ranked.c.created_at.desc(), ranked.c.id.desc())
+        .limit(limit + 1)
+        .all()
+    )
     if not rows:
-        return [], {}, 0
-    total = int(rows[0].total_count)
-    ids = [r.id for r in rows]
-    highlight_by_id: dict[uuid.UUID, str] = {r.id: r.title_highlight for r in rows}
-    return ids, highlight_by_id, total
+        return [], {}, 0, None
+    served = rows[:limit]
+    last = served[-1]
+    next_cursor = (
+        encode_ranked_cursor(last.rank, last.created_at, last.id) if len(rows) > limit else None
+    )
+    highlight_by_id: dict[uuid.UUID, str] = {r.id: r.title_highlight for r in served}
+    return [r.id for r in served], highlight_by_id, int(rows[0].total_count), next_cursor
 
 
 def search_geolocations(
-    db: Session, *, query: str, limit: int, filters: EventFilters | None = None
-) -> tuple[list[dict], int]:
-    """Top-N located events matching ``query`` + the pre-LIMIT total.
+    db: Session,
+    *,
+    query: str,
+    limit: int,
+    filters: EventFilters | None = None,
+    after: tuple[float, datetime, uuid.UUID] | None = None,
+) -> tuple[list[dict], int, str | None]:
+    """One page of located events matching ``query``, the whole match count, and the
+    next page's cursor (``None`` on the last page). ``after`` is the decoded cursor.
 
     Live ``geolocated`` / ``detected`` rows with a subject coordinate. The
     status predicate is needed because a ``requested`` row may carry an
     approximate guess yet belongs to the requested view. Closed rows stay out.
     ``hits`` are dicts for the router's Pydantic schema.
     """
-    ids, highlight_by_id, total = _search_events(
+    ids, highlight_by_id, total, next_cursor = _search_events(
         db,
         Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
         Event.coords.isnot(None),
@@ -186,9 +211,10 @@ def search_geolocations(
         limit=limit,
         view="located",
         filters=filters or EventFilters(),
+        after=after,
     )
     if not ids:
-        return [], 0
+        return [], 0, None
 
     # Hydrate in one round-trip; re-sort in Python because ``IN (...)`` loses rank order.
     geos = (
@@ -231,7 +257,7 @@ def search_geolocations(
                 "tags": geo.tags,
             }
         )
-    return out, total
+    return out, total, next_cursor
 
 
 def search_requests(
@@ -241,7 +267,7 @@ def search_requests(
 
     ``status = 'requested'`` only (withdrawn requests stay out of search).
     """
-    ids, highlight_by_id, total = _search_events(
+    ids, highlight_by_id, total, _ = _search_events(
         db,
         Event.status == STATUS_REQUESTED,
         query=query,
@@ -478,6 +504,7 @@ def search_all(
     types: set[str],
     limit: int,
     filters: EventFilters | None = None,
+    after: tuple[float, datetime, uuid.UUID] | None = None,
 ) -> dict[str, dict]:
     """Run grouped FTS across the requested entity types.
 
@@ -493,12 +520,16 @@ def search_all(
     narrows it (and enables browse mode); any other filter names an event
     property and empties it (``EventFilters.active_beyond_author``).
 
+    ``after`` pages the geolocations group (``search_geolocations``).
+
     Returns ``{group: {"hits": [...], "total": int}}`` for every group, with
-    empty hits and total 0 for unrequested ones so the shape stays stable.
+    empty hits and total 0 for unrequested ones so the shape stays stable. The
+    geolocations group also carries ``"cursor"``, its next page's cursor or
+    ``None``.
     """
     filters = filters or EventFilters()
     result: dict[str, dict] = {
-        "geolocations": {"hits": [], "total": 0},
+        "geolocations": {"hits": [], "total": 0, "cursor": None},
         "requests": {"hits": [], "total": 0},
         "collections": {"hits": [], "total": 0},
         "users": {"hits": [], "total": 0},
@@ -508,8 +539,10 @@ def search_all(
         return result
 
     if "geolocation" in types:
-        hits, total = search_geolocations(db, query=query, limit=limit, filters=filters)
-        result["geolocations"] = {"hits": hits, "total": total}
+        hits, total, cursor = search_geolocations(
+            db, query=query, limit=limit, filters=filters, after=after
+        )
+        result["geolocations"] = {"hits": hits, "total": total, "cursor": cursor}
     if "request" in types:
         hits, total = search_requests(db, query=query, limit=limit, filters=filters)
         result["requests"] = {"hits": hits, "total": total}

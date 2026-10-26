@@ -44,6 +44,7 @@ _.handle_data  # app/services/sanitize.py
 # Set by the service layer and serialized by Pydantic; never read back in app/.
 redeemer  # schemas/admin.py AdminInviteCodeRead
 username_highlight  # schemas/search.py SearchUserHit
+geolocations_cursor  # schemas/search.py SearchResponse
 in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
 share_of_existing_zone  # schemas/site.py SiteOverlapRead

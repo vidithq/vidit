@@ -48,7 +48,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   ...over,
 });
 
-const eventHit = (): SearchEventHit => ({
+const eventHit = (over: Partial<SearchEventHit> = {}): SearchEventHit => ({
   id: "e1",
   title: "Kakhovka spillway",
   title_highlight: "Kakhovka spillway",
@@ -61,6 +61,7 @@ const eventHit = (): SearchEventHit => ({
   geolocators: [],
   media: [],
   tags: [],
+  ...over,
 });
 
 const userHit = (): SearchUserHit => ({
@@ -92,6 +93,7 @@ const response = (over: Partial<SearchResponse> = {}): SearchResponse => ({
   users: [],
   organizations: [],
   total: NO_TOTALS,
+  geolocations_cursor: null,
   query: "kakhovka",
   type: "all",
   ...over,
@@ -167,6 +169,78 @@ describe("the search page's Collections group", () => {
         expect.objectContaining({ q: "", type: "collection", author: "ana" }),
       ),
     );
+  });
+});
+
+describe("the search page's Geolocations group", () => {
+  const loadMore = () => screen.queryByRole("button", { name: "Load more" });
+
+  it("appends the next page from the cursor, with the request that minted it", async () => {
+    searchParams = new URLSearchParams("conflict=Yemen&author=ana");
+    search
+      .mockResolvedValueOnce(
+        response({
+          query: "",
+          type: "event",
+          geolocations: [eventHit()],
+          geolocations_cursor: "c1",
+          total: { ...NO_TOTALS, geolocations: 2 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          query: "",
+          type: "geolocation",
+          geolocations: [eventHit({ id: "e2", title: "Mukalla port", title_highlight: "Mukalla port" })],
+          total: { ...NO_TOTALS, geolocations: 2 },
+        }),
+      );
+
+    render(<SearchPage />);
+
+    expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
+    fireEvent.click(loadMore()!);
+
+    expect(await screen.findByText("Mukalla port")).toBeInTheDocument();
+    expect(screen.getByText("Kakhovka spillway")).toBeInTheDocument();
+    expect(search).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        q: "",
+        type: "geolocation",
+        cursor: "c1",
+        conflicts: ["Yemen"],
+        author: "ana",
+      }),
+    );
+    // The last page carries no cursor, so the control leaves.
+    expect(loadMore()).not.toBeInTheDocument();
+  });
+
+  it("offers no Load more when the first page holds every match", async () => {
+    search.mockResolvedValue(
+      response({ geolocations: [eventHit()], total: { ...NO_TOTALS, geolocations: 1 } }),
+    );
+
+    render(<SearchPage />);
+
+    expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
+    expect(loadMore()).not.toBeInTheDocument();
+  });
+
+  it("keeps the loaded rows and offers a retry when a page fails", async () => {
+    search
+      .mockResolvedValueOnce(
+        response({ geolocations: [eventHit()], geolocations_cursor: "c1" }),
+      )
+      .mockRejectedValueOnce(new Error("API error 500"));
+
+    render(<SearchPage />);
+
+    fireEvent.click((await screen.findByRole("button", { name: "Load more" })));
+
+    expect(await screen.findByText("API error 500")).toBeInTheDocument();
+    expect(screen.getByText("Kakhovka spillway")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 });
 

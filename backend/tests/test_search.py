@@ -7,6 +7,8 @@ Each test seeds rows with a unique token so matches stay bounded to its own data
 
 from __future__ import annotations
 
+import base64
+import json
 import uuid
 from datetime import UTC, date, datetime
 
@@ -884,6 +886,100 @@ def test_search_limit_caps_per_group(db, caller):
         for bid in request_ids:
             db.query(Event).filter(Event.id == bid).delete(synchronize_session=False)
         db.commit()
+
+
+def _walk_geolocations(params: str, limit: int) -> tuple[list[str], list[int]]:
+    """Follow ``geolocations_cursor`` to the end; return the ids in order and each page's total."""
+    response = client.get(f"/api/v1/search?{params}&limit={limit}")
+    assert response.status_code == 200
+    body = response.json()
+    ids = [h["id"] for h in body["geolocations"]]
+    totals = [body["total"]["geolocations"]]
+    while body["geolocations_cursor"] is not None:
+        response = client.get(
+            f"/api/v1/search?{params}&type=geolocation&limit={limit}"
+            f"&cursor={body['geolocations_cursor']}"
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["geolocations"], "a cursor never leads to an empty page"
+        ids += [h["id"] for h in body["geolocations"]]
+        totals.append(body["total"]["geolocations"])
+    return ids, totals
+
+
+def test_geolocations_cursor_walks_every_ranked_match_once(db, caller):
+    """Pages follow rank, then newest first, and never repeat or skip a row, ties included."""
+    token = _unique_token()
+    # Two rank levels: the token twice outranks it once; each level ties on rank.
+    titles = [f"{token} {token} strike"] * 3 + [f"{token} strike"] * 4
+    ids = [_seed_geo(db, caller, title) for title in titles]
+    try:
+        walked, totals = _walk_geolocations(f"q={token}", limit=2)
+        assert totals == [7] * 4
+        assert sorted(walked) == sorted(str(i) for i in ids)
+        # Within a rank level the newest comes first; seeding order is creation order.
+        assert walked == [str(i) for i in reversed(ids[:3])] + [str(i) for i in reversed(ids[3:])]
+    finally:
+        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_geolocations_cursor_walks_a_filtered_browse(db, caller):
+    """With an empty query the walk is newest first over the filtered view."""
+    ids = [_seed_geo(db, caller, f"Browse {i}") for i in range(5)]
+    try:
+        walked, totals = _walk_geolocations(f"author={caller.username}", limit=2)
+        assert totals == [5] * 3
+        assert walked == [str(i) for i in reversed(ids)]
+    finally:
+        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_geolocations_cursor_is_none_on_a_single_page(db, caller):
+    token = _unique_token()
+    geo = _seed_geo(db, caller, f"Lone {token}")
+    try:
+        body = client.get(f"/api/v1/search?q={token}&limit=1").json()
+        assert [h["id"] for h in body["geolocations"]] == [str(geo)]
+        assert body["geolocations_cursor"] is None
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_cursor_requires_the_geolocation_type(db, caller):
+    token = _unique_token()
+    ids = [_seed_geo(db, caller, f"Pair {token}") for _ in range(2)]
+    try:
+        cursor = client.get(f"/api/v1/search?q={token}&limit=1").json()["geolocations_cursor"]
+        assert cursor is not None
+        response = client.get(f"/api/v1/search?q={token}&limit=1&cursor={cursor}")
+        assert response.status_code == 422
+        assert "type=geolocation" in response.json()["detail"]
+    finally:
+        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def _raw_cursor(parts: list) -> str:
+    return base64.urlsafe_b64encode(json.dumps(parts).encode()).decode().rstrip("=")
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        "garbage",
+        _raw_cursor(["0.1"]),
+        _raw_cursor(["nan", "2026-05-01T00:00:00+00:00", str(uuid.UUID(int=1))]),
+        _raw_cursor(["high", "2026-05-01T00:00:00+00:00", str(uuid.UUID(int=1))]),
+    ],
+)
+def test_malformed_cursor_returns_422(cursor):
+    response = client.get(f"/api/v1/search?q=x&type=geolocation&cursor={cursor}")
+    assert response.status_code == 422
+    assert response.json()["detail"] == "cursor is malformed"
 
 
 def test_search_strips_planted_sentinel_bytes_from_bio(db, caller):

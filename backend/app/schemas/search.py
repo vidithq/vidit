@@ -125,6 +125,11 @@ class SearchResponse(BaseModel):
     # Group totals, so the UI needn't re-sum the lists.
     total: SearchTotals
 
+    # The next geolocations page, passed back as ``?cursor=`` with
+    # ``type=geolocation``; ``None`` once the group is exhausted. In the body, not
+    # a ``Link`` header: the next page is a different ``type`` than this one.
+    geolocations_cursor: str | None
+
     # Echoes the inputs so the frontend can match a response to the current
     # query among in-flight requests.
     query: str
