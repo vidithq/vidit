@@ -122,6 +122,12 @@ interface EntityCardBaseProps {
   date?: string;
   /** How long the entity has been open ("Open 3 days"), after the date in the meta line. */
   age?: string;
+  /** Where the entity lies against the area the surface reads ("Inside the zone"), after the
+   *  date in the compact meta line. */
+  place?: string;
+  /** Controls beside the badge, above the stretched link (a site's linked event: change the
+   *  effect, unlink). Compact layout only. */
+  actions?: ReactNode;
   /** The feed card's dates, each named (`Event 9 May 2026`, `Published 3 Oct
    *  2026`), since it carries more than one. */
   dates?: { label: string; date: string }[];
@@ -180,6 +186,8 @@ export function EntityCard({
   selected = false,
   date,
   age,
+  place,
+  actions,
   dates,
   coords,
   source,
@@ -296,6 +304,7 @@ export function EntityCard({
             )}
             {date && <span>{formatDate(date)}</span>}
             {age && <span>{age}</span>}
+            {place && <span>{place}</span>}
             {coords && <CoordsMeta coords={coords} />}
             {source && (
               <span className="relative z-20">
@@ -305,7 +314,12 @@ export function EntityCard({
           </div>
           {tagRow}
         </div>
-        {badge && <div className="shrink-0">{badge}</div>}
+        {(badge || actions) && (
+          <div className="flex shrink-0 items-center gap-1">
+            {badge}
+            {actions && <div className="relative z-20 flex items-center gap-1">{actions}</div>}
+          </div>
+        )}
       </div>
     </div>
   );

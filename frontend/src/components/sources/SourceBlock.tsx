@@ -8,6 +8,8 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { LIST_TILE } from "@/components/ui/form-styles";
 import { META_LINE } from "@/components/ui/styles";
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/cn";
 import { formatInstant, formatInstantOrDate, safeHostname } from "@/lib/format";
 import {
@@ -32,7 +34,8 @@ import { SourceWarnings } from "./SourceWarnings";
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
- * rows once the card is wide enough.
+ * rows once the card is wide enough. A site's image adds its own rows as `children` and its map
+ * control as `actions`, which head the card under its name like a source editor's.
  */
 export function SourceBlock({
   source,
@@ -40,6 +43,10 @@ export function SourceBlock({
   alt,
   compact = false,
   wide = false,
+  name = sourceName(index),
+  actions,
+  className,
+  children,
 }: {
   source: Source;
   /** Position in the event's source order, for the names ("Source 2"). */
@@ -48,8 +55,14 @@ export function SourceBlock({
   alt: string;
   compact?: boolean;
   wide?: boolean;
+  /** The card's accessible name, and its visible title when `actions` head the card. */
+  name?: string;
+  /** Controls on the card, in a header with its name (`SourceHeader`). */
+  actions?: ReactNode;
+  className?: string;
+  /** More rows, after the source's own. */
+  children?: ReactNode;
 }) {
-  const name = sourceName(index);
   const file = source.media === null && !isEvidenceLevel(source.level) ? null : (
     <MediaGallery
       media={source.media ? [source.media] : []}
@@ -60,7 +73,12 @@ export function SourceBlock({
       empty="No file"
     />
   );
-  const rows = <SourceRows source={source} index={index} compact={compact} />;
+  const rows = (
+    <>
+      <SourceRows source={source} name={name} compact={compact} />
+      {children}
+    </>
+  );
   if (compact) {
     return (
       <section aria-label={name} className={cn(LIST_TILE, "space-y-2 text-sm")}>
@@ -70,24 +88,40 @@ export function SourceBlock({
     );
   }
   return (
-    <DetailCard label={name} lead={file} leadBeside={wide}>
+    <DetailCard
+      label={name}
+      header={actions && <SourceHeader name={name} actions={actions} />}
+      lead={file}
+      leadBeside={wide}
+      className={className}
+    >
       {rows}
     </DetailCard>
   );
 }
 
+/** A source card's header: its name, then its controls at the right end. A source editor and a
+ *  site's image block share it. */
+export function SourceHeader({ name, actions }: { name: string; actions?: ReactNode }) {
+  return (
+    <header className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
+      <div className="flex flex-wrap items-center gap-1">{actions}</div>
+    </header>
+  );
+}
+
 function SourceRows({
   source,
-  index,
+  name,
   compact,
 }: {
   source: Source;
-  index: number;
+  name: string;
   compact: boolean;
 }) {
   const kind = sourceKindLabel(source);
   const position = source.capture_position;
-  const links = source.links;
   return (
     <>
       {source.title && <DetailRow {...SOURCE_FIELDS.title} value={source.title} compact={compact} />}
@@ -95,39 +129,8 @@ function SourceRows({
         <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
       </DetailRow>
       {kind && <DetailRow {...SOURCE_FIELDS.kind} compact={compact} value={kind} />}
-      {links.length > 0 && (
-        <DetailRow
-          {...SOURCE_FIELDS.links}
-          label={`${SOURCE_FIELDS.links.label} (${links.length})`}
-          compact={compact}
-          align="start"
-        >
-          <ul className="space-y-1.5 text-right" aria-label={`Links of ${sourceName(index).toLowerCase()}`}>
-            {links.map((link, i) => (
-              <li key={link.url}>
-                <div className="flex items-center justify-end">
-                  <SourceLabel url={link.url} variant="link" className="text-sm" />
-                  <ArchivedCopies
-                    copy={link.archived}
-                    describes={linkDescription(index, safeHostname(link.url), i, links.length)}
-                  />
-                </div>
-                <p className={META_LINE}>
-                  {link.posted_at ? `Posted ${formatInstantOrDate(link.posted_at)}` : "Date unknown"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </DetailRow>
-      )}
-      <SourceWarnings warnings={source.warnings} label={`Warnings of ${sourceName(index).toLowerCase()}`} />
-      {source.captured_at && (
-        <DetailRow
-          {...SOURCE_FIELDS.captured_at}
-          compact={compact}
-          value={formatInstant(source.captured_at)}
-        />
-      )}
+      <SourceLinkRows source={source} name={name.charAt(0).toLowerCase() + name.slice(1)} compact={compact} />
+      <CapturedRow source={source} compact={compact} />
       {position && (
         <DetailRow
           {...SOURCE_FIELDS.capture_position}
@@ -147,19 +150,81 @@ function SourceRows({
   );
 }
 
+/** A source's links, each with its archived copy and post time, then its imagery warnings. */
+function SourceLinkRows({
+  source,
+  name,
+  compact,
+}: {
+  source: Source;
+  name: string;
+  compact: boolean;
+}) {
+  const links = source.links;
+  return (
+    <>
+      {links.length > 0 && (
+        <DetailRow
+          {...SOURCE_FIELDS.links}
+          label={`${SOURCE_FIELDS.links.label} (${links.length})`}
+          compact={compact}
+          align="start"
+        >
+          <ul className="space-y-1.5 text-right" aria-label={`Links of ${name}`}>
+            {links.map((link, i) => (
+              <li key={link.url}>
+                <div className="flex items-center justify-end">
+                  <SourceLabel url={link.url} variant="link" className="text-sm" />
+                  <ArchivedCopies
+                    copy={link.archived}
+                    describes={linkDescription(name, safeHostname(link.url), i, links.length)}
+                  />
+                </div>
+                <p className={META_LINE}>
+                  {link.posted_at ? `Posted ${formatInstantOrDate(link.posted_at)}` : "Date unknown"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </DetailRow>
+      )}
+      <SourceWarnings warnings={source.warnings} label={`Warnings of ${name}`} />
+    </>
+  );
+}
+
+function CapturedRow({ source, compact }: { source: Source; compact: boolean }) {
+  if (!source.captured_at) return null;
+  return (
+    <DetailRow
+      {...SOURCE_FIELDS.captured_at}
+      compact={compact}
+      value={formatInstant(source.captured_at)}
+    />
+  );
+}
+
+/** What a caller adds to one block of `SourceBlocks`: a site image's name, rows and map control. */
+export type SourceBlockExtras = Pick<
+  Parameters<typeof SourceBlock>[0],
+  "name" | "actions" | "className" | "children"
+>;
+
 /**
  * An event's sources in the order the API serves them: a `SourcesRow` on the page, a lone source
  * taking the whole row as a `wide` block; a vertical stack under a **Sources** eyebrow in the map
- * panel.
+ * panel. A site page passes its images with each block's `extras`.
  */
-export function SourceBlocks({
+export function SourceBlocks<S extends Source>({
   sources,
   alt,
   compact = false,
+  extras,
 }: {
-  sources: Source[];
+  sources: S[];
   alt: string;
   compact?: boolean;
+  extras?: (source: S) => SourceBlockExtras;
 }) {
   const blocks = sources.map((source, index) => (
     <SourceBlock
@@ -169,6 +234,7 @@ export function SourceBlocks({
       alt={alt}
       compact={compact}
       wide={!compact && sources.length === 1}
+      {...extras?.(source)}
     />
   ));
   const empty = <p className="text-sm text-neutral-500 italic">No source yet</p>;

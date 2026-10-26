@@ -338,3 +338,40 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("button", { name: "What does the graphic flag do?" })).toBeInTheDocument();
   });
 });
+
+describe("SourceEditor as a site image", () => {
+  it("explains the required capture time, not the optional one of an event source", () => {
+    render(
+      <SourceEditor
+        draft={{ ...newSourceDraft(), kind: "satellite", level: "context" }}
+        index={0}
+        variant="site-image"
+        name="Image"
+        update={() => {}}
+        onPickFile={() => {}}
+        onImportLink={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "When was the image captured?" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "What is the capture time?" })).not.toBeInTheDocument();
+  });
+
+  it("imports the file of a post link, like an event source", () => {
+    const onImportLink = vi.fn();
+    const url = "https://x.com/someone/status/1";
+    const draft = newSourceDraft();
+    render(
+      <SourceEditor
+        draft={{ ...draft, kind: "satellite", level: "context", links: [{ ...draft.links[0], url }] }}
+        index={0}
+        variant="site-image"
+        name="Image"
+        update={() => {}}
+        onPickFile={() => {}}
+        onImportLink={onImportLink}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Import the file of/ }));
+    expect(onImportLink).toHaveBeenCalledWith({ url, index: 0, kinds: [] });
+  });
+});
