@@ -34,6 +34,7 @@ import type {
   GeoJSONSource,
   MapLayerMouseEvent,
   MapMouseEvent,
+  StyleSpecification,
 } from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
 import type { MapBounds } from "@/lib/viewport";
@@ -49,14 +50,12 @@ import {
   ringRadius,
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
-import { buildViditStyle, DEFAULT_BASEMAP_OPTIONS, VIDIT_STYLES } from "./basemap";
+import { BASEMAP_PRESETS, BLANK_STYLE, carryOverlay, resolvePreset } from "./basemap";
+import { BasemapControl } from "./BasemapControl";
+import { useBasemapSettings } from "./basemapSettings";
 
-// The Vidit basemap pair on OpenFreeMap tiles. maplibre paint can't read CSS variables, so the
-// style swaps off the theme here.
-const BASEMAP_STYLE = {
-  dark: buildViditStyle(VIDIT_STYLES.dark, DEFAULT_BASEMAP_OPTIONS),
-  light: buildViditStyle(VIDIT_STYLES.light, DEFAULT_BASEMAP_OPTIONS),
-};
+const POINTS_SOURCE = "points";
+const KEEP_POINTS = carryOverlay(POINTS_SOURCE);
 
 // Hover ring: dot geometry and the grace margin (px) the pointer may roam before it collapses.
 const SPIDER_DOT_PX = 12;
@@ -204,7 +203,7 @@ function StackInteractions({
     const coincidentLeaves = async (
       clusterId: number
     ): Promise<{ zoom: number; points: SpiderPoint[] | null }> => {
-      const source = map.getSource("points") as GeoJSONSource | undefined;
+      const source = map.getSource(POINTS_SOURCE) as GeoJSONSource | undefined;
       if (!source) throw new Error("points source missing");
       const zoom = await source.getClusterExpansionZoom(clusterId);
       if (zoom <= CLUSTER_MAX_ZOOM) return { zoom, points: null };
@@ -774,6 +773,22 @@ function FlyToCamera({ target }: { target: { lat: number; lng: number } | null }
   return null;
 }
 
+/** Applies the basemap style. The map mounts on `BLANK_STYLE`; every later style swaps in with
+ *  MapLibre's diff, which keeps the event points (`KEEP_POINTS`) and turns an option change into
+ *  `setLayoutProperty` and `setFilter` calls. The first swap rebuilds from scratch: a diff against
+ *  a style still loading would fail and fall back to the same rebuild, with a console warning. */
+function BasemapStyle({ style }: { style: StyleSpecification | string }) {
+  const { current: map } = useMap();
+  const applied = useRef<StyleSpecification | string | null>(null);
+  useEffect(() => {
+    if (!map || applied.current === style) return;
+    const first = applied.current === null;
+    applied.current = style;
+    map.getMap().setStyle(style, { diff: !first, transformStyle: KEEP_POINTS });
+  }, [map, style]);
+  return null;
+}
+
 // Dev-only camera handle for the promo recordings, whose tooling is maintained separately: exposes the
 // maplibre instance for Playwright easeTo moves. Gated at the render site, so never mounted in production.
 function DevMapHandle() {
@@ -813,8 +828,12 @@ export default function Map({
   const marker = paletteMapColors(usePalette());
   const DETECTED = marker.detected;
   const theme = useTheme();
-  // Halo around the selected point: white on the dark basemap, a dark ring on light Positron.
-  const SELECTED_STROKE = theme === "light" ? "#1a1a1a" : "#ffffff";
+  const [basemap, setBasemap] = useBasemapSettings();
+  const presetId = resolvePreset(basemap.preset, theme);
+  const { brightness } = BASEMAP_PRESETS[presetId];
+  const basemapStyle = useMemo(() => BASEMAP_PRESETS[presetId].style(basemap), [presetId, basemap]);
+  // Halo around the selected point: white on a dark basemap, a dark ring on a light one.
+  const SELECTED_STROKE = brightness === "light" ? "#1a1a1a" : "#ffffff";
 
   // Open hover ring. Closing is two-phase: `spiderClosing` runs the dots back to the center, then
   // the timer unmounts the ring and the hidden circle reappears.
@@ -1077,6 +1096,8 @@ export default function Map({
     <div
       className={className || ""}
       style={{ width: "100%", height: "100%", position: "relative" }}
+      // Read by the light-basemap tint in globals.css.
+      data-basemap={brightness}
     >
     <MapGL
       mapLib={guardedMaplibre}
@@ -1106,7 +1127,7 @@ export default function Map({
       onZoomStart={() => setZoomInFlight(true)}
       onZoomEnd={() => setZoomInFlight(false)}
       style={{ width: "100%", height: "100%" }}
-      mapStyle={BASEMAP_STYLE[theme]}
+      mapStyle={BLANK_STYLE}
       projection="globe"
       attributionControl={false}
       cooperativeGestures={embedded}
@@ -1122,11 +1143,13 @@ export default function Map({
       <FlyToCamera target={flyTo ?? null} />
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
+      <BasemapStyle style={basemapStyle} />
+      <BasemapControl settings={basemap} onChange={setBasemap} />
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
 
       <Source
-        id="points"
+        id={POINTS_SOURCE}
         type="geojson"
         data={geojson}
         cluster={true}

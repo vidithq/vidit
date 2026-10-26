@@ -288,7 +288,7 @@ input.picker-glyph::-webkit-calendar-picker-indicator {
     left: 60px !important;
   }
 }
-.map-fullscreen .maplibregl-ctrl-bottom-left .maplibregl-ctrl-group {
+.map-fullscreen .maplibregl-ctrl-bottom-left .maplibregl-ctrl:not(.maplibregl-ctrl-attrib) {
   order: 1 !important;
 }
 .map-fullscreen .maplibregl-ctrl-bottom-left .maplibregl-ctrl-attrib {
@@ -326,13 +326,14 @@ input.picker-glyph::-webkit-calendar-picker-indicator {
 [data-theme="light"] .maplibregl-ctrl-attrib button.maplibregl-ctrl-attrib-button {
   filter: none;
 }
-/* Warm the light basemap (Positron ships a cool grey) so it matches the warm
-   off-white surfaces, without hosting a custom style: a faint sepia on the map
-   canvas tints the greyscale land toward cream. The filter covers the whole
-   WebGL canvas, so the accent markers warm-shift slightly too; at 0.12 they stay
-   clearly on-hue (verified down to the blue palette, the coolest one). Light
-   theme only; the dark basemap (dark-matter) is untouched. The controls +
-   attribution are separate DOM, so they keep their neutral chrome above. */
-[data-theme="light"] .maplibregl-canvas {
+/* Warm a light basemap (the light style ships Positron's cool grey) so it
+   matches the warm off-white surfaces: a faint sepia on the map canvas tints the
+   greyscale land toward cream. The filter covers the whole WebGL canvas, so the
+   accent markers warm-shift slightly too; at 0.12 they stay clearly on-hue
+   (verified down to the blue palette, the coolest one). It follows the
+   basemap's brightness, which `Map.tsx` stamps as `data-basemap`, not the
+   theme: a dark basemap is untouched. The controls + attribution are separate
+   DOM, so they keep their neutral chrome above. */
+[data-basemap="light"] .maplibregl-canvas {
   filter: sepia(0.12) saturate(1.05);
 }

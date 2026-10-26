@@ -18,7 +18,7 @@ import { ACCENT_SURFACE, TOOLTIP_SURFACE } from "./styles";
 
 // The panel keeps this much room from either viewport edge.
 const EDGE_PX = 8;
-// Between the trigger's bottom edge and the panel.
+// Between the trigger's edge and the panel.
 const GAP_PX = 4;
 
 /** True when `target` sits in the panel or in a popup a control in it owns through
@@ -93,10 +93,11 @@ export function Popover({
 
 /**
  * The panel of a `<Popover>`, for a caller that owns its trigger (a write that asks one more
- * thing before it runs, the edit form's version note). Mount it while open. It is fixed to the
- * viewport from a portal under `anchorRef`, starting at the anchor's left edge, or ending at its
- * right edge with `align="end"`, shifted to stay inside the viewport, and follows the anchor on
- * scroll. It takes focus when no field in it took it, so Escape reaches it. Escape calls `onClose(true)`, so focus can return to the anchor; a press outside the
+ * thing before it runs, the edit form's version note, the map's basemap control). Mount it while
+ * open. It is fixed to the viewport from a portal under `anchorRef`, or above it when the room
+ * below is too short, starting at the anchor's left edge, or ending at its right edge with
+ * `align="end"`, shifted to stay inside the viewport, and follows the anchor on scroll and on a
+ * change of its own size. It takes focus when no field in it took it, so Escape reaches it. Escape calls `onClose(true)`, so focus can return to the anchor; a press outside the
  * panel and the anchor calls `onClose(false)`.
  */
 export function PopoverPanel({
@@ -105,6 +106,7 @@ export function PopoverPanel({
   anchorRef,
   onClose,
   align = "start",
+  wide = false,
   children,
 }: {
   id?: string;
@@ -113,6 +115,8 @@ export function PopoverPanel({
   anchorRef: RefObject<HTMLElement | null>;
   onClose: (restoreFocus: boolean) => void;
   align?: "start" | "end";
+  /** 24rem instead of 18rem, for a row of choices that needs the room. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -124,15 +128,22 @@ export function PopoverPanel({
     if (!panel || !anchorEl) return;
     const place = () => {
       const anchor = anchorEl.getBoundingClientRect();
-      const room = document.documentElement.clientWidth - EDGE_PX - panel.offsetWidth;
+      const { clientWidth, clientHeight } = document.documentElement;
+      const room = clientWidth - EDGE_PX - panel.offsetWidth;
       const left = align === "end" ? anchor.right - panel.offsetWidth : anchor.left;
-      panel.style.top = `${anchor.bottom + GAP_PX}px`;
+      const below = anchor.bottom + GAP_PX;
+      const fitsBelow = below + panel.offsetHeight <= clientHeight - EDGE_PX;
+      const top = fitsBelow ? below : Math.max(EDGE_PX, anchor.top - GAP_PX - panel.offsetHeight);
+      panel.style.top = `${top}px`;
       panel.style.left = `${Math.max(EDGE_PX, Math.min(left, room))}px`;
     };
     place();
+    const resize = new ResizeObserver(place);
+    resize.observe(panel);
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
     return () => {
+      resize.disconnect();
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
     };
@@ -170,7 +181,11 @@ export function PopoverPanel({
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      className={cn("fixed z-50 outline-none w-72 max-w-[calc(100vw-1rem)] space-y-2 rounded-md p-2", TOOLTIP_SURFACE)}
+      className={cn(
+        "fixed z-50 outline-none max-w-[calc(100vw-1rem)] space-y-2 rounded-md p-2",
+        wide ? "w-96" : "w-72",
+        TOOLTIP_SURFACE,
+      )}
     >
       {children}
     </div>,

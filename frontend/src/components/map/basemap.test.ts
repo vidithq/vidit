@@ -9,9 +9,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  BASEMAP_PRESETS,
+  BLANK_STYLE,
   buildViditStyle,
+  carryOverlay,
   DEFAULT_BASEMAP_OPTIONS,
   LOW_ZOOM,
+  resolvePreset,
   VIDIT_STYLES,
   type BasemapOptions,
 } from "./basemap";
@@ -168,5 +172,85 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
     for (const layer of shields) {
       expect(JSON.stringify(layer.layout?.["text-field"])).not.toContain('"name');
     }
+  });
+});
+
+describe("basemap presets", () => {
+  it("resolves Auto to the Vidit style of the theme", () => {
+    expect(resolvePreset("auto", "dark")).toBe("vidit-dark");
+    expect(resolvePreset("auto", "light")).toBe("vidit-light");
+    expect(resolvePreset("terrain", "dark")).toBe("terrain");
+  });
+
+  it("declares each preset's brightness, which the halo and the tint follow", () => {
+    expect(BASEMAP_PRESETS["vidit-dark"].brightness).toBe("dark");
+    for (const id of ["vidit-light", "streets", "terrain"] as const) {
+      expect(BASEMAP_PRESETS[id].brightness, id).toBe("light");
+    }
+  });
+
+  it("applies the reader's options to the Vidit styles only", () => {
+    const off = { ...DEFAULT_BASEMAP_OPTIONS, roads: false };
+    for (const id of ["streets", "terrain"] as const) {
+      expect(BASEMAP_PRESETS[id].adjustable, id).toBe(false);
+      expect(BASEMAP_PRESETS[id].style(off)).toEqual(BASEMAP_PRESETS[id].style(DEFAULT_BASEMAP_OPTIONS));
+    }
+    const dark = BASEMAP_PRESETS["vidit-dark"].style(off) as StyleSpecification;
+    expect(withRole(dark.layers as Layer[], "road").every((layer) => !visible(layer))).toBe(true);
+  });
+
+  it("builds valid object styles", () => {
+    expect(validateStyleMin(BLANK_STYLE)).toEqual([]);
+    const terrain = BASEMAP_PRESETS.terrain.style(DEFAULT_BASEMAP_OPTIONS) as StyleSpecification;
+    expect(validateStyleMin(terrain)).toEqual([]);
+    expect(terrain.sources.opentopomap).toMatchObject({ maxzoom: 17 });
+  });
+});
+
+describe("carryOverlay", () => {
+  const keep = carryOverlay("points");
+  const previous: StyleSpecification = {
+    version: 8,
+    projection: { type: "globe" },
+    sources: {
+      basemap: { type: "vector", url: "https://example.org/old" },
+      points: { type: "geojson", data: { type: "FeatureCollection", features: [] } },
+    },
+    layers: [
+      { id: "old-land", type: "background" },
+      { id: "clusters", type: "circle", source: "points" },
+      { id: "cluster-count", type: "symbol", source: "points", layout: { "text-font": ["Montserrat Medium"] } },
+    ],
+  };
+  const thirdParty: StyleSpecification = {
+    version: 8,
+    glyphs: "https://example.org/fonts/{fontstack}/{range}.pbf",
+    sources: { basemap: { type: "vector", url: "https://example.org/new" } },
+    layers: [
+      { id: "land", type: "background" },
+      { id: "city", type: "symbol", source: "basemap", "source-layer": "place", layout: { "text-font": ["Noto Sans Bold"] } },
+      { id: "water", type: "symbol", source: "basemap", "source-layer": "water_name", layout: { "text-font": ["Noto Sans Italic"] } },
+    ],
+  };
+
+  it("keeps the overlay source and draws its layers above the incoming basemap", () => {
+    const next = keep(previous, thirdParty);
+    expect(next.layers.map((layer) => layer.id)).toEqual([
+      "land",
+      "city",
+      "water",
+      "clusters",
+      "cluster-count",
+    ]);
+    expect(next.sources.points).toBe(previous.sources.points);
+    expect(next.sources.basemap).toEqual(thirdParty.sources.basemap);
+    expect(next.projection).toEqual({ type: "globe" });
+  });
+
+  it("points every style at the Montserrat glyphs", () => {
+    const next = keep(undefined, thirdParty);
+    expect(next.glyphs).toBe("/map-glyphs/{fontstack}/{range}.pbf");
+    const fonts = next.layers.map((layer) => (layer as Layer).layout?.["text-font"]);
+    expect(fonts).toEqual([undefined, ["Montserrat Medium"], ["Montserrat Regular"]]);
   });
 });

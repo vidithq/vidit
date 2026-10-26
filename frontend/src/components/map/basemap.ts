@@ -5,6 +5,8 @@ import type {
   StyleSpecification,
 } from "maplibre-gl";
 
+import type { ThemeId } from "@/lib/theme";
+
 import viditDark from "./styles/vidit-dark.json";
 import viditLight from "./styles/vidit-light.json";
 
@@ -150,5 +152,116 @@ export function buildViditStyle(
   return {
     ...base,
     layers: base.layers.map((layer) => adjustLayer(layer as AdjustableLayer, options)),
+  };
+}
+
+const GLYPHS = "/map-glyphs/{fontstack}/{range}.pbf";
+
+/** What the map mounts with: nothing to fetch, and a glyphs URL so the count labels can attach
+ *  before the basemap arrives. */
+export const BLANK_STYLE: StyleSpecification = {
+  version: 8,
+  glyphs: GLYPHS,
+  sources: {},
+  layers: [],
+};
+
+// Raster tiles stop at 17; MapLibre scales the last level past it.
+const TERRAIN_STYLE: StyleSpecification = {
+  version: 8,
+  name: "OpenTopoMap",
+  glyphs: GLYPHS,
+  sources: {
+    opentopomap: {
+      type: "raster",
+      tiles: ["a", "b", "c"].map((s) => `https://${s}.tile.opentopomap.org/{z}/{x}/{y}.png`),
+      tileSize: 256,
+      maxzoom: 17,
+      attribution:
+        'Map data: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org" target="_blank">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank">CC-BY-SA</a>)',
+    },
+  },
+  layers: [{ id: "opentopomap", type: "raster", source: "opentopomap" }],
+};
+
+export type Brightness = "dark" | "light";
+
+export const BASEMAP_PRESET_IDS = ["auto", "vidit-dark", "vidit-light", "streets", "terrain"] as const;
+export type BasemapPresetId = (typeof BASEMAP_PRESET_IDS)[number];
+type ConcretePresetId = Exclude<BasemapPresetId, "auto">;
+
+interface BasemapPreset {
+  brightness: Brightness;
+  /** Whether the reader's options apply. Third-party styles draw as published. */
+  adjustable: boolean;
+  style: (options: BasemapOptions) => StyleSpecification | string;
+}
+
+export const BASEMAP_PRESETS: Record<ConcretePresetId, BasemapPreset> = {
+  "vidit-dark": {
+    brightness: "dark",
+    adjustable: true,
+    style: (options) => buildViditStyle(VIDIT_STYLES.dark, options),
+  },
+  "vidit-light": {
+    brightness: "light",
+    adjustable: true,
+    style: (options) => buildViditStyle(VIDIT_STYLES.light, options),
+  },
+  streets: {
+    brightness: "light",
+    adjustable: false,
+    style: () => "https://tiles.openfreemap.org/styles/liberty",
+  },
+  terrain: { brightness: "light", adjustable: false, style: () => TERRAIN_STYLE },
+};
+
+/** Auto follows the theme onto the Vidit style of the same brightness. */
+export function resolvePreset(id: BasemapPresetId, theme: ThemeId): ConcretePresetId {
+  if (id !== "auto") return id;
+  return theme === "light" ? "vidit-light" : "vidit-dark";
+}
+
+function viditFont(font: string): string {
+  return /medium|semibold|bold|black/i.test(font) ? "Montserrat Medium" : "Montserrat Regular";
+}
+
+/** Points a style at the Montserrat glyphs: a third-party style's labels, and the map's own count
+ *  labels on top of it, then draw from the one glyph server a style can name. */
+function withViditGlyphs(style: StyleSpecification): StyleSpecification {
+  return {
+    ...style,
+    glyphs: GLYPHS,
+    layers: style.layers.map((layer) => {
+      const fonts = (layer.layout as Record<string, unknown> | undefined)?.["text-font"];
+      if (!Array.isArray(fonts) || fonts.length === 0) return layer;
+      return {
+        ...layer,
+        layout: { ...layer.layout, "text-font": [viditFont(String(fonts[0]))] },
+      } as LayerSpecification;
+    }),
+  };
+}
+
+/** The `transformStyle` of a basemap swap. It keeps the overlay source and its layers from the
+ *  outgoing style, drawn above the incoming basemap, so the event points never leave the map, and
+ *  keeps the projection, which the incoming style does not set. */
+export function carryOverlay(sourceId: string) {
+  return (
+    previous: StyleSpecification | undefined,
+    next: StyleSpecification,
+  ): StyleSpecification => {
+    const style = withViditGlyphs(next);
+    const source = previous?.sources[sourceId];
+    if (!previous || !source) return style;
+    return {
+      ...style,
+      projection: previous.projection ?? style.projection,
+      sources: { ...style.sources, [sourceId]: source },
+      layers: [
+        ...style.layers,
+        ...previous.layers.filter((layer) => "source" in layer && layer.source === sourceId),
+      ],
+    };
   };
 }

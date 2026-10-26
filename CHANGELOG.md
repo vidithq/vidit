@@ -4,6 +4,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
+### Added
+
+- A map control beside the zoom buttons picks the basemap: Auto, which follows the theme, Dark, Light, Streets or Terrain; the browser keeps the choice ([#706](https://github.com/vidithq/vidit/issues/706)).
+
 ### Changed
 
 - The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#703](https://github.com/vidithq/vidit/issues/703)).
