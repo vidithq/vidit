@@ -9,14 +9,17 @@ import {
   collectionMetaSegments,
   collectionPoints,
   collectionStepHref,
+  clearSelectionHandoff,
   createCollection,
   deleteCollection,
   eventCollectionsPath,
   fetchCollectionSequence,
+  newCollectionFromSelectionHref,
   PICKER_ROW_LIMIT,
   pickerBrowsePath,
   READER_MAX_ITEMS,
   readerStep,
+  readSelectionHandoff,
   removeEventFromCollection,
   pickableFromDetail,
   searchPickableEvents,
@@ -453,5 +456,59 @@ describe("pickableFromDetail", () => {
     } as unknown as Parameters<typeof pickableFromDetail>[0];
 
     expect(pickableFromDetail(detail).media).toBeNull();
+  });
+});
+
+describe("the selection handoff to /collections/new", () => {
+  const token = (href: string) =>
+    new URL(href, "http://localhost").searchParams.get("selection") as string;
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    vi.useRealTimers();
+  });
+
+  it("parks the selection under a token, so no id list rides the URL", () => {
+    const ids = Array.from({ length: 300 }, (_, i) => `e${i}`);
+    const href = newCollectionFromSelectionHref({
+      target: { eventIds: ids },
+      count: 300,
+      from: "/search?q=dam",
+    });
+
+    expect(href).toMatch(/^\/collections\/new\?selection=[\w-]+$/);
+    expect(readSelectionHandoff(token(href))).toEqual({
+      target: { eventIds: ids },
+      count: 300,
+      from: "/search?q=dam",
+    });
+  });
+
+  it("reads a spent, stale or malformed handoff as missing", () => {
+    const href = newCollectionFromSelectionHref({
+      target: { match: { q: "dam" } },
+      count: 4,
+      from: "/search",
+    });
+    clearSelectionHandoff(token(href));
+    expect(readSelectionHandoff(token(href))).toBeNull();
+
+    vi.useFakeTimers({ now: new Date("2026-10-01T10:00:00Z"), toFake: ["Date"] });
+    const old = newCollectionFromSelectionHref({ target: { eventIds: ["e1"] }, count: 1, from: "/" });
+    vi.setSystemTime(new Date("2026-10-01T11:00:00Z"));
+    expect(readSelectionHandoff(token(old))).toBeNull();
+    vi.useRealTimers();
+
+    window.sessionStorage.setItem("vidit:collection-selection:bad", "{\"target\":{}}");
+    expect(readSelectionHandoff("bad")).toBeNull();
+  });
+
+  it("returns only to an in-app path", () => {
+    const href = newCollectionFromSelectionHref({
+      target: { eventIds: ["e1"] },
+      count: 1,
+      from: "//elsewhere.example/phish",
+    });
+    expect(readSelectionHandoff(token(href))?.from).toBe("/search");
   });
 });

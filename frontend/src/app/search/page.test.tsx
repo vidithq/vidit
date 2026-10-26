@@ -525,6 +525,37 @@ describe("the Geolocations selection", () => {
     expect(screen.getByText("1 selected")).toBeInTheDocument();
   });
 
+  it("makes a row from Load more selectable, and Select all covers it", async () => {
+    search.mockReset();
+    search
+      .mockResolvedValueOnce(
+        response({
+          geolocations: [eventHit()],
+          geolocations_cursor: "c1",
+          total: { ...NO_TOTALS, geolocations: 2 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          type: "geolocation",
+          geolocations: [eventHit({ id: "e3", title: "Mukalla port", title_highlight: "Mukalla port" })],
+          total: { ...NO_TOTALS, geolocations: 2 },
+        }),
+      );
+    countCollectableMatches.mockResolvedValue(2);
+    render(<SearchPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Mukalla port" }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Clear selection" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select Mukalla port" })).toBeChecked();
+    expect(own()).toBeChecked();
+  });
+
   it("starts over when the query changes", async () => {
     render(<SearchPage />);
     await screen.findByRole("checkbox", { name: "Select all" });

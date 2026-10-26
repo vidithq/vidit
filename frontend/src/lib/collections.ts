@@ -270,6 +270,70 @@ export const BULK_ADD_MAX_EVENTS = 500;
 /** One search as the server resolves it: the query and the search page's filters. */
 export type SearchMatchParams = { q: string } & EventFilterParams;
 
+/** What a bulk add shelves: explicit event ids, or every collectable event a search matches. */
+export type BulkTarget = { eventIds: string[] } | { match: SearchMatchParams };
+
+/** A selection handed from the search page to `/collections/new`: what to add, how many
+ *  geolocations that is, and the page to return to on Cancel. */
+export interface SelectionHandoff {
+  target: BulkTarget;
+  count: number;
+  from: string;
+}
+
+export const NEW_COLLECTION_SELECTION_PARAM = "selection";
+
+const HANDOFF_PREFIX = "vidit:collection-selection:";
+
+/** A handoff older than this reads as missing: the create page opens an empty form. */
+const HANDOFF_TTL_MS = 30 * 60 * 1000;
+
+/** Park a selection in `sessionStorage` under a fresh token and return the create page's URL
+ *  carrying the token, so no id list rides the URL. Storage that throws (a private window,
+ *  blocked site data) yields the plain create page. */
+export function newCollectionFromSelectionHref(handoff: SelectionHandoff): string {
+  const token = crypto.randomUUID();
+  try {
+    window.sessionStorage.setItem(
+      HANDOFF_PREFIX + token,
+      JSON.stringify({ ...handoff, at: Date.now() }),
+    );
+  } catch {
+    return newCollectionHref();
+  }
+  return `/collections/new?${NEW_COLLECTION_SELECTION_PARAM}=${encodeURIComponent(token)}`;
+}
+
+/** The handoff a token names, or `null` when it is missing, malformed or past its TTL. */
+export function readSelectionHandoff(token: string): SelectionHandoff | null {
+  try {
+    const raw = window.sessionStorage.getItem(HANDOFF_PREFIX + token);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SelectionHandoff & { at?: number };
+    const target = parsed.target as Partial<{ eventIds: unknown; match: unknown }> | undefined;
+    const shaped =
+      !!target &&
+      (Array.isArray(target.eventIds) || (typeof target.match === "object" && target.match !== null));
+    if (!shaped || typeof parsed.count !== "number" || typeof parsed.at !== "number") return null;
+    if (Date.now() - parsed.at > HANDOFF_TTL_MS) return null;
+    // An in-app path only, so a planted entry cannot send Cancel off the site.
+    const from =
+      typeof parsed.from === "string" && /^\/(?!\/)/.test(parsed.from) ? parsed.from : "/search";
+    return { target: parsed.target, count: parsed.count, from };
+  } catch {
+    return null;
+  }
+}
+
+/** Drop a handoff once its collection exists, so Back to the create page cannot add it twice. */
+export function clearSelectionHandoff(token: string): void {
+  try {
+    window.sessionStorage.removeItem(HANDOFF_PREFIX + token);
+  } catch {
+    // Nothing to clear when storage is unavailable.
+  }
+}
+
 function searchMatchBody({ q, ...filters }: SearchMatchParams) {
   return { q, filters: eventFilterFields(filters) };
 }
@@ -278,7 +342,7 @@ function searchMatchBody({ q, ...filters }: SearchMatchParams) {
  *  lists them. Idempotent; at most 500 events, else a 422 `too_many_events`. */
 export function addEventsToCollection(
   collectionId: string,
-  target: { eventIds: string[] } | { match: SearchMatchParams },
+  target: BulkTarget,
 ): Promise<BulkAddResult> {
   const body =
     "eventIds" in target

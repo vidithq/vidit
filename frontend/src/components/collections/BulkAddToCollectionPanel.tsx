@@ -2,32 +2,38 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, Plus, Search as SearchIcon } from "lucide-react";
 
+import { CollectionCover } from "@/components/collections/CollectionCover";
 import { ActionRow } from "@/components/ui/ActionRow";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import { TEXT_LINK } from "@/components/ui/styles";
+import { META_LINE, TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
   addEventsToCollection,
   collectionHref,
   eventCountLabel,
-  newCollectionHref,
+  newCollectionFromSelectionHref,
   userCollectionsPath,
   type BulkAddResult,
+  type BulkTarget,
   type CollectionPage,
-  type SearchMatchParams,
 } from "@/lib/collections";
+import { countLabel } from "@/lib/format";
 
 /** One page of the owner's list at the endpoint's page cap (`services/pagination.MAX_PAGE_SIZE`);
  *  older collections past it are absent, as in the event page's panel. */
 const PANEL_COLLECTIONS = 100;
 
-export type BulkTarget = { eventIds: string[] } | { match: SearchMatchParams };
+/** Past this many collections the panel offers a field that narrows them by title. */
+const FIND_FROM = 6;
 
 function summary({ added, skipped }: BulkAddResult): string {
   const parts = [`${added} added`];
@@ -42,24 +48,31 @@ function summary({ added, skipped }: BulkAddResult): string {
 
 /**
  * Puts a selection of the owner's events on one of their collections in one write
- * (`POST /collections/{id}/events`). Each collection is an `<ActionRow>`: the title over its
- * item count, and an **Add** button. Once the selection is on it, the button gives way to a
- * static **Added** pill with a check, since a bulk add has no undo here, and the count moves by
- * what was added. The line under the list says what the write did and links to the collection.
- * A `New collection` link closes the list.
+ * (`POST /collections/{id}/events`).
+ *
+ * Under the *Add N geolocations* heading, each collection is an `<ActionRow>`: its lead cover
+ * tile as a 40px square, the title, and its item count. The whole row adds; once the write lands
+ * the row reads *Added N* and its count moves, and the line under the list says what the write
+ * did and links to the collection. Past `FIND_FROM` collections a field narrows them by title.
+ * The footer opens `/collections/new` carrying the selection (`newCollectionFromSelectionHref`).
  */
 export function BulkAddToCollectionPanel({
   username,
   target,
+  count,
 }: {
   username: string;
   target: BulkTarget;
+  /** How many geolocations the selection holds. */
+  count: number;
 }) {
+  const router = useRouter();
   const { data, error } = useApiResource<CollectionPage>(
     userCollectionsPath(username, PANEL_COLLECTIONS),
   );
   const [done, setDone] = useState<Record<string, BulkAddResult>>({});
   const [last, setLast] = useState<{ id: string; result: BulkAddResult } | null>(null);
+  const [find, setFind] = useState("");
 
   const write = useMutation(
     (collectionId: string) => addEventsToCollection(collectionId, target),
@@ -72,44 +85,89 @@ export function BulkAddToCollectionPanel({
     },
   );
 
-  if (error) return <div className={FORM_ERROR_BANNER}>{error}</div>;
-  if (data === null) return <p className="text-sm text-neutral-500">Loading…</p>;
+  const geolocations = countLabel(count, "geolocation");
+  const header = (
+    <div className="flex items-baseline justify-between gap-2">
+      <SectionHeading title={`Add ${geolocations}`} />
+      <span className={META_LINE}>to a collection</span>
+    </div>
+  );
+
+  if (error) {
+    return (
+      <div className="space-y-3">
+        {header}
+        <div className={FORM_ERROR_BANNER}>{error}</div>
+      </div>
+    );
+  }
+  if (data === null) {
+    return (
+      <div className="space-y-3">
+        {header}
+        <p className="text-sm text-neutral-500">Loading…</p>
+      </div>
+    );
+  }
+
+  const needle = find.trim().toLowerCase();
+  const rows = needle
+    ? data.items.filter((row) => row.title.toLowerCase().includes(needle))
+    : data.items;
 
   return (
-    <div className="space-y-4">
-      {data.items.length > 0 ? (
-        /* As in AddToCollectionPanel: the list owns its dividers and row padding, and scrolls
-           inside the viewport-fixed popover. */
-        <div className="max-h-72 divide-y divide-neutral-800 overflow-y-auto">
-          {data.items.map((row) => (
-            <ActionRow
-              key={row.id}
-              label={row.title}
-              description={eventCountLabel(row.event_count + (done[row.id]?.added ?? 0))}
-              className="py-2.5"
-              action={
-                row.id in done ? (
-                  <Pill tone="accent" icon={<Check size={11} />}>
-                    Added
-                  </Pill>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    aria-label={`Add to ${row.title}`}
-                    disabled={write.loading}
-                    onClick={() => void write.run(row.id)}
-                  >
-                    Add
-                  </Button>
-                )
-              }
-            />
-          ))}
-        </div>
-      ) : (
+    <div className="space-y-3">
+      {header}
+
+      {data.items.length >= FIND_FROM && (
+        <Input
+          type="search"
+          icon={<SearchIcon size={14} />}
+          value={find}
+          onChange={(e) => setFind(e.target.value)}
+          placeholder="Find a collection"
+          aria-label="Find a collection"
+        />
+      )}
+
+      {data.items.length === 0 ? (
         <EmptyState variant="plain" lead="No collections yet.">
-          Open one, then come back to add this selection.
+          Open one with these geolocations below.
         </EmptyState>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-neutral-500">No collection matches.</p>
+      ) : (
+        /* The list scrolls inside the popover, which is fixed to the viewport. */
+        <div className="max-h-72 space-y-0.5 overflow-y-auto">
+          {rows.map((row) => {
+            const result = done[row.id];
+            return (
+              <ActionRow
+                key={row.id}
+                leading={
+                  <CollectionCover
+                    cover={row.cover.slice(0, 1)}
+                    className="aspect-square size-10"
+                  />
+                }
+                label={row.title}
+                description={eventCountLabel(row.event_count + (result?.added ?? 0))}
+                actionLabel="Add"
+                aria-label={`Add to ${row.title}`}
+                disabled={write.loading}
+                onAct={() => void write.run(row.id)}
+                className="py-1.5"
+                done={
+                  result && (
+                    <Pill tone="accent" icon={<Check size={11} />}>
+                      Added {result.added}
+                    </Pill>
+                  )
+                }
+              />
+            );
+          })}
+        </div>
       )}
 
       {write.loading && <p className="text-xs text-neutral-500">Adding…</p>}
@@ -123,10 +181,21 @@ export function BulkAddToCollectionPanel({
         </p>
       )}
 
-      <Link href={newCollectionHref()} className={buttonClasses("ghost")}>
+      <Button
+        variant="ghost"
+        onClick={() =>
+          router.push(
+            newCollectionFromSelectionHref({
+              target,
+              count,
+              from: `${window.location.pathname}${window.location.search}`,
+            }),
+          )
+        }
+      >
         <Plus size={14} strokeWidth={1.8} />
-        New collection
-      </Link>
+        New collection with these {count}
+      </Button>
     </div>
   );
 }

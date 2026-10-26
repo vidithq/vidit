@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { BulkAddToCollectionPanel, type BulkTarget } from "@/components/collections/BulkAddToCollectionPanel";
+import { BulkAddToCollectionPanel } from "@/components/collections/BulkAddToCollectionPanel";
 import { Button, ICON_TAP_STEP } from "@/components/ui/Button";
 import { PopoverPanel } from "@/components/ui/Popover";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/cn";
 import {
@@ -13,6 +12,7 @@ import {
   COLLECTABLE_STATUSES,
   CollectionIcon,
   countCollectableMatches,
+  type BulkTarget,
   type SearchMatchParams,
 } from "@/lib/collections";
 import { creditedAuthors } from "@/lib/geolocatorCredit";
@@ -119,8 +119,11 @@ export function SearchSelectionActions({ selection }: { selection: SearchSelecti
       </Button>
       {open && (
         <PopoverPanel label="Add to collection" anchorRef={anchorRef} onClose={close}>
-          <SectionEyebrow title="Add to collection" margin="none" />
-          <BulkAddToCollectionPanel username={username} target={selection.target} />
+          <BulkAddToCollectionPanel
+            username={username}
+            target={selection.target}
+            count={selection.count}
+          />
         </PopoverPanel>
       )}
     </>

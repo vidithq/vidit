@@ -1,6 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const push = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace: vi.fn(), back: vi.fn() }),
+}));
+
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
@@ -13,7 +18,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
 }));
 
 import { ApiError } from "@/lib/api";
-import type { Collection } from "@/lib/collections";
+import { readSelectionHandoff, type Collection } from "@/lib/collections";
 
 import { BulkAddToCollectionPanel } from "./BulkAddToCollectionPanel";
 
@@ -31,48 +36,65 @@ const shelf = (id: string, title: string, event_count: number): Collection => ({
   created_at: "2026-06-20T09:00:00Z",
 });
 
-const PAGE = {
-  items: [shelf("c1", "Kupiansk rail corridor", 1), shelf("c2", "Dam breach", 0)],
-  total: 2,
-  page: 1,
-  per_page: 100,
-};
+const page = (items: Collection[]) => ({ items, total: items.length, page: 1, per_page: 100 });
 
-const add = (title: string) => screen.getByRole("button", { name: `Add to ${title}` });
-const queryAdd = (title: string) => screen.queryByRole("button", { name: `Add to ${title}` });
+const PAGE = page([shelf("c1", "Kupiansk rail corridor", 1), shelf("c2", "Dam breach", 0)]);
+
+const row = (title: string) => screen.getByRole("button", { name: `Add to ${title}` });
+const ids = { eventIds: ["e1", "e2"] };
 
 beforeEach(() => {
+  push.mockReset();
   useApiResource.mockReset();
   addEventsToCollection.mockReset();
+  window.sessionStorage.clear();
   useApiResource.mockReturnValue({ data: PAGE, error: null });
 });
 
 describe("BulkAddToCollectionPanel", () => {
-  it("lists the owner's collections, empty ones included, each with an Add action", () => {
-    render(<BulkAddToCollectionPanel username="ana" target={{ eventIds: ["e1"] }} />);
+  it("heads the list with what it adds, and lists the owner's collections as rows that add", () => {
+    render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
 
+    expect(screen.getByRole("heading", { name: "Add 2 geolocations" })).toBeInTheDocument();
+    expect(screen.getByText("to a collection")).toBeInTheDocument();
     expect(useApiResource).toHaveBeenCalledWith("/users/ana/collections?per_page=100");
-    expect(add("Kupiansk rail corridor")).toBeEnabled();
-    expect(add("Dam breach")).toBeEnabled();
-    expect(screen.getByText("1 event")).toBeInTheDocument();
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
-    // A row acts through its button alone: the only link is New collection.
-    expect(screen.getAllByRole("link").map((l) => l.textContent)).toEqual(["New collection"]);
-    expect(screen.getByRole("link", { name: "New collection" })).toHaveAttribute(
-      "href",
-      "/collections/new",
-    );
+    expect(row("Kupiansk rail corridor")).toHaveTextContent("1 event");
+    expect(row("Dam breach")).toBeEnabled();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    // Two collections need no finder.
+    expect(screen.queryByRole("searchbox", { name: "Find a collection" })).not.toBeInTheDocument();
   });
 
-  it("adds the selection on Add, then marks the row Added and says what the write did", async () => {
+  it("narrows a long list by title", () => {
+    const titles = ["Avdiivka", "Bakhmut", "Chasiv Yar", "Dam breach", "Kupiansk", "Pokrovsk"];
+    useApiResource.mockReturnValue({
+      data: page(titles.map((t, i) => shelf(`c${i}`, t, i))),
+      error: null,
+    });
+    render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find a collection" }), {
+      target: { value: "  ba" },
+    });
+
+    expect(row("Bakhmut")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Add to / })).toHaveLength(1);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find a collection" }), {
+      target: { value: "zzz" },
+    });
+    expect(screen.getByText("No collection matches.")).toBeInTheDocument();
+  });
+
+  it("adds on a row, then marks it Added N, moves its count and says what the write did", async () => {
     addEventsToCollection.mockResolvedValue({
       added: 44,
       skipped: { already_in_collection: 3, not_collectable: 0 },
     });
     const target = { match: { q: "kakhovka", tags: ["dam"] } };
 
-    render(<BulkAddToCollectionPanel username="ana" target={target} />);
-    fireEvent.click(add("Kupiansk rail corridor"));
+    render(<BulkAddToCollectionPanel username="ana" target={target} count={47} />);
+    fireEvent.click(row("Kupiansk rail corridor"));
 
     expect(
       await screen.findByText(/44 added, 3 already in this collection\./),
@@ -82,25 +104,36 @@ describe("BulkAddToCollectionPanel", () => {
       "href",
       "/collections/c1",
     );
-    // The action gives way to a static state: nothing left to click on that row.
-    expect(queryAdd("Kupiansk rail corridor")).not.toBeInTheDocument();
-    expect(screen.getByText("Added")).toBeInTheDocument();
-    expect(screen.getByText("45 events")).toBeInTheDocument();
-    expect(add("Dam breach")).toBeEnabled();
+    const done = screen.getByRole("button", { name: /Kupiansk rail corridor/ });
+    expect(done).toHaveTextContent("Added 44");
+    expect(done).toHaveTextContent("45 events");
+    expect(done).toBeDisabled();
+    expect(row("Dam breach")).toBeEnabled();
   });
 
-  it("keeps the Add action after a refusal and shows why", async () => {
+  it("keeps the row actionable after a refusal and shows why", async () => {
     addEventsToCollection.mockRejectedValue(
       new ApiError("Add at most 500 events at once; narrow the selection", 422, "too_many_events"),
     );
-    render(<BulkAddToCollectionPanel username="ana" target={{ eventIds: ["e1"] }} />);
+    render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
 
-    fireEvent.click(add("Dam breach"));
+    fireEvent.click(row("Dam breach"));
 
     expect(
       await screen.findByText("Add at most 500 events at once; narrow the selection"),
     ).toBeInTheDocument();
-    expect(add("Dam breach")).toBeEnabled();
-    expect(screen.queryByText("Added")).not.toBeInTheDocument();
+    expect(row("Dam breach")).toBeEnabled();
+    expect(screen.queryByText(/^Added/)).not.toBeInTheDocument();
+  });
+
+  it("opens the create page carrying the selection through a session handoff", () => {
+    render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New collection with these 2" }));
+
+    const href = push.mock.calls[0][0] as string;
+    expect(href).toMatch(/^\/collections\/new\?selection=/);
+    const token = new URL(href, "http://localhost").searchParams.get("selection") as string;
+    expect(readSelectionHandoff(token)).toMatchObject({ target: ids, count: 2 });
   });
 });

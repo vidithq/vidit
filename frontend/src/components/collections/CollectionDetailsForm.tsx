@@ -83,6 +83,10 @@ function missingCollectionFields(
  * The pending event set is rows, not ids, because the first card renders what
  * the collection will hold. It is seeded from `initialEvents` and handed back
  * as ids on submit.
+ *
+ * `selection` heads the picker with a *From your search* card saying how many
+ * geolocations the caller adds on top of the picked rows: the search page's
+ * selection, handed to the create page.
  */
 export function CollectionDetailsForm({
   title: pageTitle,
@@ -98,6 +102,7 @@ export function CollectionDetailsForm({
   onCancel,
   busy = false,
   error,
+  selection,
 }: {
   /** The page's heading. */
   title: string;
@@ -125,6 +130,8 @@ export function CollectionDetailsForm({
   /** The caller's write is in flight. */
   busy?: boolean;
   error?: string | null;
+  /** What the caller adds besides the picked rows: *44 geolocations will be added.* */
+  selection?: string;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [description, setDescription] = useState(initialDescription);
@@ -266,6 +273,13 @@ export function CollectionDetailsForm({
             )}
           </div>
         </Card>
+
+        {selection && (
+          <Card as="section">
+            <SectionHeading title="From your search" />
+            <p className="text-sm text-neutral-300">{selection}</p>
+          </Card>
+        )}
 
         <EventPicker
           username={username}

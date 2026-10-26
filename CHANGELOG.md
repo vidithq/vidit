@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
-- In search, you can check your own geolocations, or select every match, and add them to one of your collections at once, up to 500 events; `POST /collections/{id}/events` takes event ids or a search ([#702](https://github.com/vidithq/vidit/pull/702)).
+- In search, you can check your own geolocations, or select every match, and add them to one of your collections at once or open a new collection with them, up to 500 events; `POST /collections/{id}/events` takes event ids or a search ([#702](https://github.com/vidithq/vidit/pull/702)).
 
 ### Changed
 

@@ -23,6 +23,7 @@ vi.mock("@/hooks/useApiResource", () => ({
 }));
 
 const createCollection = vi.fn();
+const addEventsToCollection = vi.fn();
 const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
@@ -31,6 +32,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     description: string,
     ids: string[],
   ) => createCollection(title, description, ids),
+  addEventsToCollection: (id: string, target: unknown) => addEventsToCollection(id, target),
   searchPickableEvents: (username: string, q: string) =>
     searchPickableEvents(username, q),
 }));
@@ -41,7 +43,12 @@ vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => useCursorList(),
 }));
 
-import type { Collection } from "@/lib/collections";
+import { ApiError } from "@/lib/api";
+import {
+  newCollectionFromSelectionHref,
+  type Collection,
+  type SelectionHandoff,
+} from "@/lib/collections";
 
 import NewCollectionPage from "./page";
 
@@ -111,6 +118,9 @@ beforeEach(() => {
   searchPickableEvents.mockReset();
   useCursorList.mockReset();
   searchParams.delete("event");
+  searchParams.delete("selection");
+  window.sessionStorage.clear();
+  addEventsToCollection.mockReset();
   useAuth.mockReturnValue({ user: USER, loading: false });
   // The hook reads nothing while the path is null (every render without `?event=`).
   useApiResource.mockImplementation((path: string | null) => ({
@@ -267,5 +277,91 @@ describe("NewCollectionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(push).toHaveBeenCalledWith("/events/e1");
+  });
+});
+
+describe("NewCollectionPage with a search selection", () => {
+  /** Park a selection the way the search page does and point the page at its token. */
+  function handOff(handoff: SelectionHandoff) {
+    const href = newCollectionFromSelectionHref(handoff);
+    const token = new URL(href, "http://localhost").searchParams.get("selection");
+    expect(token).toBeTruthy();
+    searchParams.set("selection", token as string);
+  }
+
+  it("says what it will add and carries explicit ids on the create", async () => {
+    handOff({ target: { eventIds: ["e7", "e8"] }, count: 2, from: "/search?q=dam" });
+    render(<NewCollectionPage />);
+
+    expect(screen.getByText("2 geolocations will be added.")).toBeInTheDocument();
+    await fillForm();
+    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c9"));
+    expect(createCollection).toHaveBeenCalledWith(
+      "March strikes",
+      expect.any(String),
+      ["e7", "e8"],
+    );
+    expect(addEventsToCollection).not.toHaveBeenCalled();
+    // Spent: Back to this page opens the plain form.
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("adds a search match once the collection exists", async () => {
+    const match = { q: "dam", tags: ["flood"] };
+    handOff({ target: { match }, count: 44, from: "/search?q=dam" });
+    addEventsToCollection.mockResolvedValue({
+      added: 44,
+      skipped: { already_in_collection: 0, not_collectable: 0 },
+    });
+    render(<NewCollectionPage />);
+
+    expect(screen.getByText("44 geolocations will be added.")).toBeInTheDocument();
+    await fillForm();
+    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c9"));
+    expect(createCollection).toHaveBeenCalledWith("March strikes", expect.any(String), []);
+    expect(addEventsToCollection).toHaveBeenCalledWith("c9", { match });
+  });
+
+  it("keeps the collection it made when the match add fails, and a retry only adds", async () => {
+    handOff({ target: { match: { q: "dam" } }, count: 600, from: "/search?q=dam" });
+    addEventsToCollection.mockRejectedValueOnce(
+      new ApiError("Add at most 500 events at once; narrow the selection", 422, "too_many_events"),
+    );
+    render(<NewCollectionPage />);
+    await fillForm();
+    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
+
+    expect(
+      await screen.findByText(/The collection is created, but the geolocations were not added/),
+    ).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+
+    addEventsToCollection.mockResolvedValueOnce({
+      added: 1,
+      skipped: { already_in_collection: 0, not_collectable: 0 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c9"));
+    expect(createCollection).toHaveBeenCalledOnce();
+  });
+
+  it("cancels back to the search the selection came from", () => {
+    handOff({ target: { eventIds: ["e7"] }, count: 1, from: "/search?q=dam" });
+    render(<NewCollectionPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(push).toHaveBeenCalledWith("/search?q=dam");
+  });
+
+  it("opens the plain form on an unknown token", () => {
+    searchParams.set("selection", "gone");
+    render(<NewCollectionPage />);
+
+    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create collection" })).toBeInTheDocument();
   });
 });

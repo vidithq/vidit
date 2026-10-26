@@ -701,21 +701,25 @@ export default function PalettePage() {
             <PaletteChoiceRow />
           </Item>
 
-          <Item name="<ActionRow>" usage="A row that offers one action on a named thing, the sibling of <ToggleRow> and <ChoiceRow>: the label at reading size over a muted line, and the caller's action at the right edge. The row itself does nothing on a click, so only the action acts, and the action names its target in its aria-label. The action slot also takes the static state that replaces a control once it has acted. The search page's bulk Add to collection lists the owner's collections through it: an Add button, then an accent Added pill with a check.">
-            <div className="w-full max-w-md divide-y divide-neutral-800">
+          <Item name="<ActionRow>" usage="A row that is one action on a named thing, the sibling of <ToggleRow> and <ChoiceRow>: an optional small picture (leading), the label at reading size over a muted line, and the action's verb at the right edge. The whole row is the button, with the accent wash on hover and keyboard focus. The verb (+ Add) shows on hover and keyboard focus, through HOVER_REVEAL, and always on a touch screen. done is the static state that takes the verb's place once the row has acted (an accent Added N pill with a check); the row then stops acting. disabled refuses the action while another write runs, dimmed. aria-label names the action and its target until done. The search page's bulk Add to collection lists the owner's collections through it, each led by its CollectionCover tile at 40px.">
+            <div className="w-full max-w-sm space-y-0.5">
               <ActionRow
                 label="Kupiansk rail corridor"
                 description="12 events"
-                className="py-2.5"
-                action={<Button variant="secondary">Add</Button>}
+                actionLabel="Add"
+                aria-label="Add to Kupiansk rail corridor"
+                onAct={() => {}}
+                className="py-1.5"
               />
               <ActionRow
                 label="Dam breach"
                 description="44 events"
-                className="py-2.5"
-                action={
+                actionLabel="Add"
+                onAct={() => {}}
+                className="py-1.5"
+                done={
                   <Pill tone="accent" icon={<Check size={11} />}>
-                    Added
+                    Added 44
                   </Pill>
                 }
               />
