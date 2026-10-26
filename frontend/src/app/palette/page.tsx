@@ -693,7 +693,7 @@ export default function PalettePage() {
             <PaletteFilterSearchFields />
           </Item>
 
-          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (the feed's Show detections while a kind chip is selected). Settings lists one described row per notification kind, its Email switch.">
+          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file as a site image). Settings lists one described row per notification kind, its Email switch.">
             <PaletteToggleRow />
           </Item>
 
@@ -2502,19 +2502,19 @@ function PaletteToggleRow() {
       </div>
       <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-3">
         <ToggleRow
-          label="Show help tooltips"
-          description="The small ? icons that explain each field and section."
-          on={described}
-          onToggle={() => setDescribed((v) => !v)}
+          label="Also file source 1 in the imagery history"
+          description="Satellite image: a site image needs a file and a capture time, and this source lacks one."
+          on={false}
+          disabled
+          onToggle={() => {}}
         />
       </div>
       <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-3">
         <ToggleRow
-          label="Show detections"
-          description="Applies while no kind is selected."
-          on
-          disabled
-          onToggle={() => {}}
+          label="Show help tooltips"
+          description="The small ? icons that explain each field and section."
+          on={described}
+          onToggle={() => setDescribed((v) => !v)}
         />
       </div>
     </div>

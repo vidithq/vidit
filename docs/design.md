@@ -1176,7 +1176,7 @@ flowchart TB
   toggle["`**SegmentedControl**
   scope: Following (default) or All`"]:::page
   filters["`**filter rail**
-  Kind and Show detections, Conflict, Source kind, Level, Tags`"]:::shared
+  Kind, Conflict, Source kind, Level, Tags`"]:::shared
   walk["`**useCursorList**
   one walk per scope and filter set; a change starts a new walk`"]:::shared
   api["`**GET /feed**
@@ -1210,12 +1210,7 @@ flowchart TB
 
 **The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind**, Conflict, Source kind, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
 
-**Kind** holds two controls:
-
-- The **Geolocations** and **Requests** chips narrow the feed to the kinds you select, and then it lists no detections.
-- The **Show detections** [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx) applies only while neither chip is selected. It is on by default, so the feed lists geolocations, requests and detections. Turned off, it hides the detections and adds a *Detections hidden* pill, which turns it back on when removed. While a chip is selected the switch is `disabled`, keeps its state, and its description says when it applies. The pill leaves with it.
-
-The page sends no `kind` while no chip is selected and the switch is on. It names `geolocation` and `request` when the switch is off, and only the selected kinds when a chip is selected. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
+**Kind** is one [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) of three chips: **Geolocations**, **Requests** and **Detections**. With no chip selected the feed lists all three kinds, and the page sends no `kind`. Selected chips narrow the feed to those kinds, and the page sends each one as a `kind` value (`geolocation`, `request`, `detected`). Each selected chip has a removable pill, as every other filter does. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
 
 **A card names its kind.** Each row is the `feed` [`<EntityCard>`](../frontend/src/components/ui/EntityCard.tsx), which only the feed renders. Read top to bottom, it holds:
 
