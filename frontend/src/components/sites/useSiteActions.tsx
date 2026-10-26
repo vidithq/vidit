@@ -181,10 +181,10 @@ type Dialog =
   | { kind: "effect"; event: SiteLinkedEvent };
 
 /**
- * The controls of one site, assembled once like `useEventActions`: one icon row (File an image
- * and Link one of my events for any signed-in analyst, Edit and Redraw the contour for the
- * owner, Withhold or Restore for an admin, Report for every reader but the owner, Share for
- * every reader); and the panels they open. `linkControls` gives a linked event's
+ * The controls of one site, assembled once like `useEventActions` and in its order: one icon
+ * row (Edit and Redraw the contour for the owner, Share for every reader, File an image and Link
+ * one of my events for any signed-in analyst, Withhold or Restore for an admin, Report last for
+ * every reader but the owner); and the panels they open. `linkControls` gives a linked event's
  * author the effect change and the unlink on its row.
  */
 export function useSiteActions({
@@ -234,22 +234,6 @@ export function useSiteActions({
     );
 
   const icons = [
-    user && !withheld && (
-      <Tooltip key="file" label="File an image">
-        <Link
-          href={siteFileImageHref(site.id)}
-          className={buttonClasses("ghost", { icon: true })}
-          aria-label="File an image"
-        >
-          <ImagePlus size={14} />
-        </Link>
-      </Tooltip>
-    ),
-    user && !withheld && (
-      <Button key="link" icon variant="ghost" aria-label="Link one of my events" onClick={() => setDialog({ kind: "link" })}>
-        <Link2 size={14} />
-      </Button>
-    ),
     owner && (
       <Button key="edit" icon variant="ghost" aria-label="Edit the name and kind" onClick={() => setDialog({ kind: "edit" })}>
         <SquarePen size={14} />
@@ -266,6 +250,23 @@ export function useSiteActions({
         </Link>
       </Tooltip>
     ),
+    <ShareControl key="share" path={siteHref(site.id)} title={site.name} />,
+    user && !withheld && (
+      <Tooltip key="file" label="File an image">
+        <Link
+          href={siteFileImageHref(site.id)}
+          className={buttonClasses("ghost", { icon: true })}
+          aria-label="File an image"
+        >
+          <ImagePlus size={14} />
+        </Link>
+      </Tooltip>
+    ),
+    user && !withheld && (
+      <Button key="link" icon variant="ghost" aria-label="Link one of my events" onClick={() => setDialog({ kind: "link" })}>
+        <Link2 size={14} />
+      </Button>
+    ),
     isAdmin && (
       <Button
         key="moderate"
@@ -278,7 +279,6 @@ export function useSiteActions({
       </Button>
     ),
     !owner && <Fragment key="report">{report.trigger}</Fragment>,
-    <ShareControl key="share" path={siteHref(site.id)} title={site.name} />,
   ].filter(Boolean);
 
   const pinned = (
