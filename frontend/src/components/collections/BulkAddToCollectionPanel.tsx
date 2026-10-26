@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
-import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -27,7 +26,6 @@ import {
   type CollectionPage,
   type PickableEvent,
 } from "@/lib/collections";
-import { countLabel } from "@/lib/format";
 
 /** One page of the owner's list at the endpoint's page cap (`services/pagination.MAX_PAGE_SIZE`);
  *  older collections past it are absent, as in the event page's panel. */
@@ -51,10 +49,11 @@ function summary({ added, skipped }: BulkAddResult): string {
  * Puts a selection of the owner's events on one of their collections in one write
  * (`POST /collections/{id}/events`).
  *
- * Under the *Add N geolocations* heading, each collection is an `<ActionRow>`: its lead cover
- * tile as a 40px square, the title, and its item count. The whole row adds; once the write lands
- * the row reads *Added N* and its count moves, and the line under the list says what the write
- * did and links to the collection. Past `FIND_FROM` collections a field narrows them by title.
+ * Each collection is an `<ActionRow>`: its lead cover tile as a 40px square, the title, and its
+ * item count. No heading, since the search page's head row already counts the selection, and the
+ * popover's `PopoverPanel` names the dialog. The whole row adds; once the write lands the row
+ * reads *Added N* and its count moves, and the line under the list says what the write did and
+ * links to the collection. Past `FIND_FROM` collections a field narrows them by title.
  * The footer opens `/collections/new` carrying the selection (`newCollectionFromSelectionHref`).
  */
 export function BulkAddToCollectionPanel({
@@ -89,25 +88,8 @@ export function BulkAddToCollectionPanel({
     },
   );
 
-  const geolocations = countLabel(count, "geolocation");
-  const header = <SectionHeading title={`Add ${geolocations}`} />;
-
-  if (error) {
-    return (
-      <div className="space-y-3">
-        {header}
-        <div className={FORM_ERROR_BANNER}>{error}</div>
-      </div>
-    );
-  }
-  if (data === null) {
-    return (
-      <div className="space-y-3">
-        {header}
-        <p className="text-sm text-neutral-500">Loading…</p>
-      </div>
-    );
-  }
+  if (error) return <div className={FORM_ERROR_BANNER}>{error}</div>;
+  if (data === null) return <p className="text-sm text-neutral-500">Loading…</p>;
 
   const needle = find.trim().toLowerCase();
   const shown = needle
@@ -116,8 +98,6 @@ export function BulkAddToCollectionPanel({
 
   return (
     <div className="space-y-3">
-      {header}
-
       {data.items.length >= FIND_FROM && (
         <Input
           type="search"
@@ -194,7 +174,7 @@ export function BulkAddToCollectionPanel({
         }
       >
         <Plus size={14} strokeWidth={1.8} />
-        New collection with these {count}
+        New collection
       </Button>
     </div>
   );

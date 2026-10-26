@@ -67,10 +67,11 @@ beforeEach(() => {
 });
 
 describe("BulkAddToCollectionPanel", () => {
-  it("heads the list with what it adds, and lists the owner's collections as rows that add", () => {
+  it("lists the owner's collections as rows that add, under no heading of its own", () => {
     render(<BulkAddToCollectionPanel username="ana" target={ids} rows={ROWS} count={2} />);
 
-    expect(screen.getByRole("heading", { name: "Add 2 geolocations" })).toBeInTheDocument();
+    // The search page's head row already says how many are selected.
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     expect(useApiResource).toHaveBeenCalledWith("/users/ana/collections?per_page=100");
     expect(row("Kupiansk rail corridor")).toHaveTextContent("1 event");
     expect(row("Dam breach")).toBeEnabled();
@@ -143,7 +144,7 @@ describe("BulkAddToCollectionPanel", () => {
   it("opens the create page carrying the selection and its rows through a session handoff", () => {
     render(<BulkAddToCollectionPanel username="ana" target={ids} rows={ROWS} count={2} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New collection with these 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "New collection" }));
 
     const href = push.mock.calls[0][0] as string;
     expect(href).toMatch(/^\/collections\/new\?selection=/);
