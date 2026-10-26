@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { Download } from "lucide-react";
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { MediaManager } from "@/components/geolocations/MediaManager";
@@ -10,6 +11,7 @@ import {
   ArchiveSnapshotField,
   linkDescription,
 } from "@/components/ui/ArchivedCopies";
+import { Button } from "@/components/ui/Button";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { CharCounter } from "@/components/ui/CharCounter";
@@ -29,6 +31,7 @@ import {
   capturePositionInvalid,
   draftUrls,
   hasCapturePosition,
+  isImportableLink,
   LEVEL_LABELS,
   MAX_LINKS_PER_SOURCE,
   SOURCE_FIELDS,
@@ -39,6 +42,7 @@ import {
   SOURCE_KINDS,
   SOURCE_LEVELS,
   type LinkDraft,
+  type LinkPost,
   type SourceDraft,
   type SourceKind,
   type SourceLevel,
@@ -72,14 +76,16 @@ function holdsDetails(draft: SourceDraft): boolean {
  * under both.
  *
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
- * and `onPickFile` hands a picked file to the list, which uploads it. `actions` is the
- * header's slot for the list's controls (remove).
+ * `onPickFile` hands a picked file to the list, which uploads it, and `onImportLink` hands it a
+ * link whose post's file it imports. `actions` is the header's slot for the list's controls
+ * (remove).
  */
 export function SourceEditor({
   draft,
   index,
   update,
   onPickFile,
+  onImportLink,
   tags,
   setTags,
   invalid = {},
@@ -91,6 +97,7 @@ export function SourceEditor({
   index: number;
   update: (patch: Partial<SourceDraft>) => void;
   onPickFile: (file: File) => void;
+  onImportLink: (post: LinkPost) => void;
   /** The tag catalogue the event's Details card also reads. */
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
@@ -119,6 +126,8 @@ export function SourceEditor({
         ? { ...file.upload, role: "source" }
         : null;
 
+  const post = file?.state === "importing" || file?.state === "staged" ? file.post : undefined;
+
   const describe = (i: number, url: string) =>
     linkDescription(index, safeHostname(url.trim()), i, draft.links.length);
 
@@ -138,9 +147,28 @@ export function SourceEditor({
           Uploading {file.file.name}…
         </p>
       )}
+      {file?.state === "importing" && (
+        <p className="text-xs text-neutral-500" role="status">
+          Importing the file from {safeHostname(file.post.url)}…
+        </p>
+      )}
+      {post && post.kinds.length > 1 && (
+        <Select
+          aria-label={`${name} file from the post`}
+          value={post.index}
+          disabled={file?.state === "importing"}
+          onChange={(e) => onImportLink({ ...post, index: Number(e.target.value) })}
+        >
+          {post.kinds.map((kind, i) => (
+            <option key={i} value={i}>
+              File {i + 1} of {post.kinds.length} ({kind === "image" ? "photo" : kind})
+            </option>
+          ))}
+        </Select>
+      )}
       {file?.state === "failed" && (
         <p className="text-xs text-red-400" role="alert">
-          {file.file.name}: {file.error}
+          {file.name}: {file.error}
         </p>
       )}
     </div>
@@ -247,6 +275,26 @@ export function SourceEditor({
                   />
                 ),
               },
+              ...(hasFile || !draft.links.some((link) => isImportableLink(link.url))
+                ? []
+                : [
+                    {
+                      header: "Import",
+                      width: "auto",
+                      cell: ({ index: i, row }: { index: number; row: LinkDraft }) =>
+                        isImportableLink(row.url) && (
+                          <Button
+                            icon
+                            variant="ghost"
+                            onClick={() => onImportLink({ url: row.url.trim(), index: 0, kinds: [] })}
+                            aria-label={`Import the file of ${describe(i, row.url)}`}
+                            title="Import file from link"
+                          >
+                            <Download size={14} />
+                          </Button>
+                        ),
+                    },
+                  ]),
             ]}
             expansion={({ index: i, row, update: updateLink }) => (
               <ArchiveSnapshotField

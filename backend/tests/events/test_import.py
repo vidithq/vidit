@@ -51,7 +51,7 @@ BODIES: dict[str, dict] = {
         "user": {"screen_name": HANDLE},
         "text": "Two impacts\n48.123456, 37.654321\n49.223456, 38.754321",
     },
-    # A link outside the chase vocabulary: stored link-only, no date, no footage.
+    # A TikTok link whose embed serves nothing: stored link-only, no date, no footage.
     SOURCED_ID: {
         "id_str": SOURCED_ID,
         "created_at": "2026-04-02T10:30:00.000Z",

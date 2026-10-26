@@ -26,7 +26,6 @@ _TELEGRAM = SourceLink(url="https://t.me/example_channel/351", shortlink="https:
 _YOUTUBE = SourceLink(
     url="https://www.youtube.com/watch?v=FAKEVIDEO01", shortlink="https://t.co/fakeYT"
 )
-_TIKTOK = SourceLink(url="https://www.tiktok.com/@war/video/7", shortlink="https://t.co/fakeTT")
 _OWN_STATUS = SourceLink(url="https://x.com/analyst/status/17", shortlink="https://t.co/fakeOWN")
 _X_PROFILE = SourceLink(url="https://x.com/front_owl", shortlink="https://t.co/fakePRO")
 
@@ -366,10 +365,10 @@ def _request_reason(thread: list[TweetRecord]) -> str | None:
 
 
 def test_a_source_off_the_chase_vocabulary_and_no_own_clip_names_why() -> None:
-    """Nothing chases a TikTok link and no clip is attached: name what to attach."""
+    """Nothing chases a YouTube link and no clip is attached: name what to attach."""
     assert (
         _request_reason(
-            [_rec(text="Clip worth a look\nhttps://t.co/fakeTT", external_sources=[_TIKTOK])]
+            [_rec(text="Clip worth a look\nhttps://t.co/fakeYT", external_sources=[_YOUTUBE])]
         )
         == REQUEST_NOT_POSSIBLE
     )

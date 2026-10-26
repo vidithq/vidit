@@ -64,9 +64,9 @@ class QuotedTweet:
 
 @dataclass(frozen=True)
 class TelegramFootage:
-    """An off-platform Telegram footage source, chased from its public embed.
+    """An off-platform footage source (a Telegram or TikTok post), chased from its public embed.
 
-    Not a ``QuotedTweet``: a t.me post has only a date and, when served, media.
+    Not a ``QuotedTweet``: such a post has only a date and, when served, media.
     ``url`` must equal the resolved ``SourceLink.url`` for the resolution to
     pick this footage up.
     """

@@ -532,6 +532,14 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"files": {"file": ("probe.txt", b"probe", "text/plain")}},
     ),
+    # An unsupported link is refused before any fetch.
+    _Case(
+        "post",
+        "/api/v1/uploads/from-link",
+        30,
+        "user",
+        {"json": {"url": "https://example.com/probe"}},
+    ),
     _Case("post", "/api/v1/sources/check", 120, "user", {"json": {"kind": "satellite"}}),
     _Case("patch", ME, 30, "user", {"json": {"bio": "probe"}}),
     # The PUT probe is `text/plain`: rejected before any storage write.
