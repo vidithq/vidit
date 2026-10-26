@@ -405,7 +405,7 @@ export function SourceEditor({
             )}
           />
         </div>
-        <SourceImageryCheck draft={draft} name={name} />
+        <SourceImageryCheck draft={draft} name={name} captureRequired={siteImage} />
       </div>
 
       {siteImage ? extra : details}

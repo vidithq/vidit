@@ -21,9 +21,18 @@ const CHECK_DEBOUNCE_MS = 500;
  * (`POST /sources/check`): each provider a link opens, with how a reader reopens the image and
  * the credit it carries, then the warnings the saved source would show. Renders nothing for
  * another kind, and an empty live region while the check has not answered or failed: it is
- * advice, never a gate.
+ * advice, never a gate. `captureRequired` drops the missing capture date warning: the form
+ * flags that field red on a write attempt.
  */
-export function SourceImageryCheck({ draft, name }: { draft: SourceDraft; name: string }) {
+export function SourceImageryCheck({
+  draft,
+  name,
+  captureRequired = false,
+}: {
+  draft: SourceDraft;
+  name: string;
+  captureRequired?: boolean;
+}) {
   const [check, setCheck] = useState<SourceCheck | null>(null);
   const kind = draft.kind;
   const fields = isImageryKind(kind)
@@ -71,7 +80,12 @@ export function SourceImageryCheck({ draft, name }: { draft: SourceDraft; name: 
           <p className="text-neutral-500">Credit: {provider.credit}</p>
         </div>
       ))}
-      <SourceWarnings warnings={check?.warnings ?? []} label={`Warnings of ${name}`} />
+      <SourceWarnings
+        warnings={(check?.warnings ?? []).filter(
+          (w) => !(captureRequired && w.code === "capture_date_missing"),
+        )}
+        label={`Warnings of ${name}`}
+      />
     </div>
   );
 }
