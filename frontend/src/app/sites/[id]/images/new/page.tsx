@@ -11,9 +11,9 @@ import { PageColumns, PageError, PageLoading, PageShell } from "@/components/ui/
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
-import { imageName } from "@/components/sites/SiteImageCard";
+import { imageName } from "@/components/sites/SiteImageBlock";
 import { SiteImageEditor, SiteWriteActions, useSiteImageDraft } from "@/components/sites/SiteImageEditor";
-import { SiteZoneModule } from "@/components/sites/SiteZoneModule";
+import { SiteLocation } from "@/components/sites/SiteLocation";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
@@ -132,7 +132,7 @@ export default function FileSiteImagePage() {
         side={
           <section>
             <SectionEyebrow title="Current zone" concept="site_zone" besideScroller />
-            <SiteZoneModule site={site} image={latestImage(site.images)} />
+            <SiteLocation site={site} image={latestImage(site.images)} />
           </section>
         }
       />

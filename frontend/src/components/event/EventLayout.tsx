@@ -13,7 +13,7 @@ export const EVENT_SECTIONS = {
   details: { title: "Details", concept: "section_details" },
 } as const satisfies Record<string, { title: string; concept: Concept }>;
 
-type EventSection = keyof typeof EVENT_SECTIONS;
+type EventSectionName = keyof typeof EVENT_SECTIONS;
 
 /** One section's filling: the card under the eyebrow, whether a publish flagged it (a red
  *  eyebrow), and a node beside the eyebrow (the proof's guide link). */
@@ -37,17 +37,20 @@ export interface EventLayoutSlots {
 }
 
 /** A section under its eyebrow. `besideScroller` levels the side column's first eyebrow with
- *  the sources row's 32px header. */
-function Section({
+ *  the sources row's 32px header. The site page heads its Location and Details blocks with it,
+ *  with its own `concept`, since the event's `?` describes an event. */
+export function EventSection({
   name,
   slot,
   besideScroller = false,
+  concept = EVENT_SECTIONS[name].concept,
 }: {
-  name: Exclude<EventSection, "sources">;
+  name: Exclude<EventSectionName, "sources">;
   slot: EventSlot;
   besideScroller?: boolean;
+  concept?: Concept;
 }) {
-  const { title, concept } = EVENT_SECTIONS[name];
+  const { title } = EVENT_SECTIONS[name];
   const eyebrow = (
     <SectionEyebrow
       title={title}
@@ -94,13 +97,13 @@ export function EventLayout({
       main={
         <>
           {sources}
-          <Section name="proof" slot={proof} />
+          <EventSection name="proof" slot={proof} />
         </>
       }
       side={
         <>
-          {location && <Section name="location" slot={location} besideScroller />}
-          <Section name="details" slot={details} besideScroller={!location} />
+          {location && <EventSection name="location" slot={location} besideScroller />}
+          <EventSection name="details" slot={details} besideScroller={!location} />
           {sites}
         </>
       }

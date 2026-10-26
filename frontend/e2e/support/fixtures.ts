@@ -572,7 +572,7 @@ export const ONE_PIXEL_PNG = Buffer.from(
 );
 
 /** A site with a long name, three images on two contours and an event linked outside its zone:
- *  the site page's header, image cards and Zone module at their widest. Fictional desert
+ *  the site page's header, image blocks and Location block at their widest. Fictional desert
  *  coordinates. */
 export const SITE_ID = "88888888-8888-4888-8888-888888888881";
 

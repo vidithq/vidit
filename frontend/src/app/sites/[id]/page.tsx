@@ -3,18 +3,16 @@
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
 
-import { AuthorByline } from "@/components/ui/AuthorByline";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { PageColumns, PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { CorroborationPill, SiteKindPill } from "@/components/sites/SiteBadges";
-import { lastImageText } from "@/components/sites/SiteFacts";
+import { EventSection } from "@/components/event/EventLayout";
+import { SiteDetails } from "@/components/sites/SiteFacts";
 import { SiteChanges } from "@/components/sites/SiteChanges";
-import { SiteImageCard } from "@/components/sites/SiteImageCard";
+import { SITE_IMAGE_NAMES, siteImageExtras } from "@/components/sites/SiteImageBlock";
+import { SourceBlocks } from "@/components/sources/SourceBlock";
 import { LinkedEventRows, NearbyEvents } from "@/components/sites/SiteEventLists";
-import { SiteZoneModule } from "@/components/sites/SiteZoneModule";
+import { SiteLocation } from "@/components/sites/SiteLocation";
 import { nearbyCandidate, useSiteActions } from "@/components/sites/useSiteActions";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -38,15 +36,16 @@ const ORDER_OPTIONS = (Object.keys(HISTORY_ORDER_LABELS) as HistoryOrder[]).map(
   label: HISTORY_ORDER_LABELS[value],
 }));
 
-// Below `lg` the map sits above the lists, so a pick scrolls it into view.
+// Below `lg` the map sits under the lists, so a pick scrolls it into view.
 const NARROW = "(max-width: 1023.98px)";
 
 /**
  * A site's page, on the event page's frame: the title section and the pinned actions on
  * `PageShell`, then a `PageColumns` body. The main column switches between the imagery history
  * and the linked events, both read by date on the ground or by date added, and ends on the
- * nearby events nobody linked. The side column holds the Zone module, which shows the zone of
- * the picked image's date. Below `lg` the side column comes first, so the map heads the page.
+ * nearby events nobody linked. The side column holds the event page's Location block, which
+ * shows the zone of the picked image's date, then its Details block. Below `lg` the side column
+ * follows the main column, the event page's order.
  */
 export default function SitePage() {
   const params = useParams();
@@ -83,26 +82,11 @@ export default function SitePage() {
       back
       backFallback="/map"
       title={site.name}
-      subtitle={
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <AuthorByline author={site.owner} avatar />
-          <span className="flex flex-wrap items-center gap-1.5">
-            <SiteKindPill kind={site.kind} />
-            <CorroborationPill site={site} />
-            <FieldHelp concept="site_corroboration" />
-          </span>
-          <span className="inline-flex items-center gap-1 text-sm text-neutral-400">
-            Last image: {lastImageText(site)}
-            <FieldHelp concept="site_last_image" />
-          </span>
-        </span>
-      }
       stickyActions={actions.pinned}
       headerSide={null}
     >
       {actions.panels}
       <PageColumns
-        sideFirst
         stickySide
         main={
           <>
@@ -128,23 +112,19 @@ export default function SitePage() {
             </div>
 
             {view === "images" ? (
-              images.length === 0 ? (
-                <EmptyState>No image is filed yet.</EmptyState>
-              ) : (
-                <ol className="space-y-4" aria-label="Imagery history">
-                  {images.map((image) => (
-                    <li key={image.id}>
-                      <SiteImageCard
-                        image={image}
-                        contour={contourFromImage(site.contours, image.id)}
-                        alt={site.name}
-                        shown={image.id === picked?.id}
-                        onShow={() => show(image.id)}
-                      />
-                    </li>
-                  ))}
-                </ol>
-              )
+              <SourceBlocks
+                sources={images}
+                alt={site.name}
+                names={SITE_IMAGE_NAMES}
+                extras={(image) =>
+                  siteImageExtras({
+                    image,
+                    contour: contourFromImage(site.contours, image.id),
+                    shown: image.id === picked?.id,
+                    onShow: () => show(image.id),
+                  })
+                }
+              />
             ) : (
               <LinkedEventRows events={events} />
             )}
@@ -165,12 +145,19 @@ export default function SitePage() {
           </>
         }
         side={
-          <section>
-            <div className="mb-3 flex h-9 items-center">
-              <SectionEyebrow title="Zone" concept="site_zone" margin="none" />
-            </div>
-            <SiteZoneModule ref={zoneRef} site={site} image={picked} />
-          </section>
+          <>
+            <EventSection
+              name="location"
+              concept="site_location"
+              besideScroller
+              slot={{ content: <SiteLocation ref={zoneRef} site={site} image={picked} /> }}
+            />
+            <EventSection
+              name="details"
+              concept="site_details"
+              slot={{ content: <SiteDetails site={site} /> }}
+            />
+          </>
         }
       />
     </PageShell>

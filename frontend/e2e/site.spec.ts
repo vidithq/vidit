@@ -11,10 +11,10 @@ import {
 /**
  * A site's page and its three forms, read by the signed-in analyst who owns the site.
  *
- * The narrow cases: the header holds a long name beside two pills, a byline and the last image;
- * the pinned row holds four icons and two buttons; an image card holds a long title and a
- * provider credit beside its file; the contour editor stacks a toolbar over a map; and the image
- * editor holds the link list with its archive box.
+ * The narrow cases: the header holds a long name; the pinned row holds four icons and two
+ * buttons; an image's source block holds a long title and a provider credit beside its file; the
+ * Location and Details blocks follow the main column, as on the event page; the contour editor
+ * stacks a toolbar over a map; and the image editor holds the link list with its archive box.
  */
 test.describe("site page", () => {
   test.beforeEach(async ({ context, page }) => {
@@ -22,11 +22,29 @@ test.describe("site page", () => {
     await mockApi(page);
   });
 
-  test("lays the header, the views and the image cards out inside the column", async ({ page }) => {
+  test("lays the header, the views and the image blocks out inside the column", async ({ page }) => {
     await page.goto(`/sites/${SITE_ID}`);
 
     await expect(page.getByRole("heading", { level: 1, name: SITE.name })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Image of 18 Jun 2026" })).toBeVisible();
+    await expect(page.getByText("Images (3)")).toBeVisible();
+    const latest = page.getByRole("region", { name: "Image of 18 Jun 2026" });
+    await expect(latest.getByText("On the map")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    // Below `lg` the side column follows the main column: Location, then Details.
+    const location = page.getByRole("heading", { name: /^Location/ });
+    const details = page.getByRole("heading", { name: /^Details/ });
+    const nearby = page.getByRole("heading", { name: /^Nearby events/ });
+    const top = async (l: typeof location) => (await l.boundingBox())!.y;
+    expect(await top(nearby)).toBeLessThan(await top(location));
+    expect(await top(location)).toBeLessThan(await top(details));
+    await expectControlInsideViewport(page, page.getByRole("button", { name: "Copy coordinates" }));
+
+    await page.getByRole("button", { name: "Next image" }).click();
+    const older = page.getByRole("region", { name: "Image of 14 Nov 2025" });
+    await older.getByRole("button", { name: "Show the zone of the image of 14 Nov 2025 on the map" }).click();
+    await expect(older.getByText("On the map")).toBeVisible();
+    await expect(page.getByText("Zone on")).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectControlInsideViewport(page, page.getByRole("link", { name: "File an image" }));
     await expectControlInsideViewport(page, page.getByRole("button", { name: "Date added to Vidit" }));

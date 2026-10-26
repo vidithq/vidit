@@ -160,6 +160,18 @@ export const FIELD_HELP = {
     text: "What kind of place the site is. Only its owner changes it.",
     label: "What is the site kind?",
   },
+  site_location: {
+    text: "The site's zone on the date on show, the contour before it dashed, and the linked events, with the coordinates of the current zone's centre.",
+    label: "What goes in Location?",
+  },
+  site_coordinates: {
+    text: "Decimal degrees, latitude then longitude: the centre of the site's current zone.",
+    label: "What are the coordinates?",
+  },
+  site_details: {
+    text: "Who documents the site, what kind of place it is, when it was last imaged, the latest effect a linked event shows, and how many analysts corroborate it.",
+    label: "What goes in Details?",
+  },
   site_zone: {
     text: "The outline of the site, drawn over one dated image. A new contour holds from that image's capture date, and the earlier ones stay on record. Only the site's owner draws it.",
     label: "What is the contour?",

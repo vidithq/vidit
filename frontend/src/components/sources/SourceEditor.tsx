@@ -45,6 +45,7 @@ import {
 } from "@/lib/sources";
 import type { Media, Tag } from "@/types";
 
+import { SourceHeader } from "./SourceBlock";
 import { SourceImageryCheck } from "./SourceImageryCheck";
 
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
@@ -365,10 +366,7 @@ export function SourceEditor({
 
   return (
     <Card as="section" aria-label={name} dense className="@container">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
-        <div className="flex flex-wrap items-center gap-1">{actions}</div>
-      </header>
+      <SourceHeader name={name} actions={actions} />
       {/* A lone editor reads like the event page's lone source: once the card is 42rem wide the
           file sits left of the title, level and kind, 3:2 (`DetailCard leadBeside`), and the links
           and More details take the card's width under both, so a link keeps its one-row layout;

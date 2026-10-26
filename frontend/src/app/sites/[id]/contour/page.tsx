@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/Input";
 import { PageColumns, PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
-import { imageChoiceLabels, imageName } from "@/components/sites/SiteImageCard";
+import { imageChoiceLabels, imageName } from "@/components/sites/SiteImageBlock";
 import { SiteWriteActions } from "@/components/sites/SiteImageEditor";
 import { ZoneEditor, useDrawHistory } from "@/components/sites/ZoneEditor";
 import { useAuth } from "@/contexts/AuthContext";
@@ -165,7 +165,7 @@ function ContourForm({ site }: { site: Site }) {
               </p>
             )}
             {image && (
-              <SourceBlock source={image} index={0} alt={site.name} compact variant="site-image" name={imageName(image)} />
+              <SourceBlock source={image} index={0} alt={site.name} compact name={imageName(image)} />
             )}
           </section>
         }
