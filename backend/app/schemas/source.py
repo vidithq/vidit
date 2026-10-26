@@ -168,6 +168,23 @@ class UploadRead(BaseModel):
     expires_at: datetime
 
 
+class UploadFromLink(BaseModel):
+    """A post link to stage a file from, for ``POST /uploads/from-link``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: SourceUrl
+    # Which of the post's files, in post order.
+    index: int = Field(default=0, ge=0)
+
+
+class LinkUploadRead(UploadRead):
+    """A file staged from a post link."""
+
+    # The kind of every file the post holds, in post order; ``index`` picks one.
+    post_media: list[MediaKind]
+
+
 class SourceCheckLink(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

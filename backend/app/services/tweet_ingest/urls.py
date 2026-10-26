@@ -29,6 +29,8 @@ _TWITTER_HOSTS = frozenset({"x.com", "www.x.com", "twitter.com", "www.twitter.co
 TWITTER_URL_HOST_RE = re.compile(r"^(?:www\.)?(?:x|twitter)\.com$", re.IGNORECASE)
 T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
 TELEGRAM_HOST_RE = re.compile(r"^(?:www\.)?t\.me$", re.IGNORECASE)
+TIKTOK_HOST_RE = re.compile(r"^(?:www\.|m\.)?tiktok\.com$", re.IGNORECASE)
+TIKTOK_SHORT_HOST_RE = re.compile(r"^v[mt]\.tiktok\.com$", re.IGNORECASE)
 
 # A tweet status path: ``/<handle>/status/<id>`` or the handle-less
 # ``/i/web/status/<id>``. Separates a status from a profile or search page.
@@ -37,6 +39,13 @@ X_STATUS_URL_RE = re.compile(r"(?:x|twitter)\.com/(?:\w+/status|i/web/status)/(\
 # A public t.me post path: ``/<channel>/<id>``. Excludes the private
 # ``/c/<n>/<m>`` and ``/joinchat/...`` forms, which have no public embed.
 TELEGRAM_POST_PATH_RE = re.compile(r"^/([A-Za-z0-9_]{1,64})/(\d{1,19})$")
+
+# A TikTok post path: ``/@<user>/video/<id>`` or ``/@<user>/photo/<id>``.
+TIKTOK_POST_PATH_RE = re.compile(r"^/@[A-Za-z0-9_.]{1,64}/(?:video|photo)/(\d{1,25})/?$")
+# A TikTok short link: ``vm.tiktok.com/<code>``, ``vt.tiktok.com/<code>`` or
+# ``www.tiktok.com/t/<code>``.
+TIKTOK_SHORT_PATH_RE = re.compile(r"^/([A-Za-z0-9]{1,32})/?$")
+TIKTOK_T_PATH_RE = re.compile(r"^/t/([A-Za-z0-9]{1,32})/?$")
 
 
 def hostname(url: str) -> str:
@@ -132,6 +141,19 @@ def context_host(url: str) -> ContextHost | None:
     return None
 
 
+def _plain_web_url(url: str) -> tuple[str, str] | None:
+    """``url``'s lowercased host and path, ``None`` unless it is ``http(s)`` with no
+    credentials and no port."""
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return None
+    if parsed.scheme not in ("http", "https") or parsed.username or parsed.password or port:
+        return None
+    return (parsed.hostname or "").lower(), parsed.path
+
+
 def telegram_post_url(url: str) -> str | None:
     """The canonical ``https://t.me/<channel>/<id>`` post URL, or ``None``.
 
@@ -139,21 +161,51 @@ def telegram_post_url(url: str) -> str | None:
     ``t.me/c/...`` links, invites, channel-only links, credentials, ports and
     non-Telegram hosts yield ``None`` and are never fetched.
     """
-    try:
-        parsed = urlparse(url)
-    except ValueError:
+    parts = _plain_web_url(url)
+    if parts is None or TELEGRAM_HOST_RE.match(parts[0]) is None:
         return None
-    if parsed.scheme not in ("http", "https"):
-        return None
-    if parsed.username or parsed.password or parsed.port:
-        return None
-    if TELEGRAM_HOST_RE.match((parsed.hostname or "").lower()) is None:
-        return None
-    match = TELEGRAM_POST_PATH_RE.match(parsed.path)
+    match = TELEGRAM_POST_PATH_RE.match(parts[1])
     if match is None:
         return None
     channel, post_id = match.group(1), match.group(2)
     return f"https://t.me/{channel}/{post_id}"
+
+
+def tiktok_post_id(url: str) -> str | None:
+    """The id of the TikTok video or photo post ``url`` names, or ``None``."""
+    parts = _plain_web_url(url)
+    if parts is None or TIKTOK_HOST_RE.match(parts[0]) is None:
+        return None
+    match = TIKTOK_POST_PATH_RE.match(parts[1])
+    return match.group(1) if match is not None else None
+
+
+def tiktok_short_url(url: str) -> str | None:
+    """The canonical ``https`` form of a TikTok short link, or ``None``."""
+    parts = _plain_web_url(url)
+    if parts is None:
+        return None
+    host, path = parts
+    if TIKTOK_SHORT_HOST_RE.match(host) is not None:
+        match = TIKTOK_SHORT_PATH_RE.match(path)
+        return f"https://{host}/{match.group(1)}/" if match is not None else None
+    if TIKTOK_HOST_RE.match(host) is not None:
+        match = TIKTOK_T_PATH_RE.match(path)
+        return f"https://www.tiktok.com/t/{match.group(1)}/" if match is not None else None
+    return None
+
+
+def is_importable_link(url: str) -> bool:
+    """Whether a chaser of ``chase.chase_post`` reads ``url``.
+
+    Mirrored by frontend ``lib/sources.ts::isImportableLink``; change both.
+    """
+    return (
+        x_status_id(url) is not None
+        or telegram_post_url(url) is not None
+        or tiktok_post_id(url) is not None
+        or tiktok_short_url(url) is not None
+    )
 
 
 # ── Reading a post URL ────────────────────────────────────────────────────
@@ -226,6 +278,9 @@ TWITTER_MEDIA_HOSTS = frozenset({"pbs.twimg.com", "video.twimg.com"})
 # dot-boundary suffix (:func:`_host_matches_base`) so ``evil-cdn-telegram.org`` fails.
 TELEGRAM_MEDIA_BASE_HOSTS = frozenset({"cdn-telegram.org", "telesco.pe"})
 
+# TikTok's global, EU and US CDNs, matched by dot-boundary suffix like Telegram's.
+TIKTOK_MEDIA_BASE_HOSTS = frozenset({"tiktokcdn.com", "tiktokcdn-eu.com", "tiktokcdn-us.com"})
+
 
 def _host_matches_base(host: str, base: str) -> bool:
     """Whether ``host`` is ``base`` or a subdomain of it (dot-boundary, not substring)."""
@@ -235,9 +290,9 @@ def _host_matches_base(host: str, base: str) -> bool:
 def is_trusted_media_url(url: str) -> bool:
     """The allowlist gate every remote media fetch passes first (SSRF guard).
 
-    Admits the X CDN (exact hosts) and the Telegram CDN (dot-boundary suffix),
-    ``https`` only. The syndication mapper, the Telegram embed reader and the
-    archive chase all call this.
+    Admits the X CDN (exact hosts) and the Telegram and TikTok CDNs
+    (dot-boundary suffix), ``https`` only. The syndication mapper, the Telegram
+    and TikTok embed readers and the archive chase all call this.
     """
     try:
         parsed = urlparse(url)
@@ -248,4 +303,7 @@ def is_trusted_media_url(url: str) -> bool:
     host = (parsed.hostname or "").lower()
     if host in TWITTER_MEDIA_HOSTS:
         return True
-    return any(_host_matches_base(host, base) for base in TELEGRAM_MEDIA_BASE_HOSTS)
+    return any(
+        _host_matches_base(host, base)
+        for base in TELEGRAM_MEDIA_BASE_HOSTS | TIKTOK_MEDIA_BASE_HOSTS
+    )

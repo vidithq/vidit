@@ -6,10 +6,12 @@ import type { MissingFieldKey } from "@/lib/events";
 import type { SourceDraft } from "@/lib/sources";
 
 const upload = vi.hoisted(() => vi.fn());
+const importFile = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/sources", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/sources")>()),
   uploadSourceFile: upload,
+  importSourceFile: importFile,
 }));
 
 import { newSourceDraft } from "@/lib/sources";
@@ -160,6 +162,43 @@ describe("SourcesField", () => {
     expect(sourcesBlockWrite(seen.current)).toBe("Wait for the source files to finish uploading.");
     await waitFor(() => expect(seen.current[0].file?.state).toBe("staged"));
     expect(sourcesBlockWrite(seen.current)).toBeNull();
+  });
+
+  it("imports a link's file, then re-imports the file picked from the post", async () => {
+    const staged = (id: string) => ({
+      id,
+      kind: "image",
+      sha256: "0",
+      original_filename: null,
+      storage_url: `https://cdn/uploads/${id}`,
+      expires_at: "2099-01-01T00:00:00Z",
+      post_media: ["image", "video"],
+    });
+    importFile.mockResolvedValueOnce(staged("u1")).mockResolvedValueOnce(staged("u2"));
+    const url = "https://x.com/someone/status/1";
+    render(<Host initial={[withUrl(url)]} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Import the file of source 1/ }));
+
+    expect(importFile).toHaveBeenCalledWith(url, 0);
+    expect(seen.current[0].file?.state).toBe("importing");
+    expect(sourcesBlockWrite(seen.current)).toBe("Wait for the source files to finish uploading.");
+    await waitFor(() => expect(seen.current[0].file?.state).toBe("staged"));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Source 1 file from the post" }), {
+      target: { value: "1" },
+    });
+    expect(importFile).toHaveBeenLastCalledWith(url, 1);
+    await waitFor(() => {
+      const file = seen.current[0].file;
+      expect(file?.state === "staged" && file.upload.id).toBe("u2");
+    });
+  });
+
+  it("prints an import refusal under the file slot", async () => {
+    importFile.mockRejectedValue(new Error("The post serves no file."));
+    render(<Host initial={[withUrl("https://t.me/channel/12345")]} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Import the file of source 1/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("t.me: The post serves no file.");
   });
 
   it("flags the section when no direct or indirect source carries a file", () => {

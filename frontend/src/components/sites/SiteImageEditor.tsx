@@ -55,7 +55,7 @@ export function SiteImageEditor({
 }) {
   const { drafts, setDrafts, note, setNote } = state;
   const draft = drafts[0];
-  const { update, pickFile } = sourceDraftUpdaters(setDrafts);
+  const { update, pickFile, importLink } = sourceDraftUpdaters(setDrafts);
   const noteTooLong = note.length > SITE_IMAGE_NOTE_MAX_LEN;
   return (
     <SourceEditor
@@ -66,6 +66,7 @@ export function SiteImageEditor({
       wide
       update={update(draft.key)}
       onPickFile={(file) => void pickFile(draft.key)(file)}
+      onImportLink={(post) => void importLink(draft.key)(post)}
       invalid={{
         captured: flagged && !draft.capturedAt,
         link: flagged && draft.links.every((l) => !l.url.trim()),
