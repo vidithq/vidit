@@ -2,6 +2,16 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- In search, you can check your own geolocations, or select every match, and add them to one of your collections at once, up to 500 events; `POST /collections/{id}/events` takes event ids or a search ([#702](https://github.com/vidithq/vidit/pull/702)).
+
+### Changed
+
+- Search, feed and requests show the active filters at the top of the filter panel on a wide screen, and search puts the result count at the head of the list ([#702](https://github.com/vidithq/vidit/pull/702)).
+
 ## v0.8.0, 2026-10-25
 
 ### Added
