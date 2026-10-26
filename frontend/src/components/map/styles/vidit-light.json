@@ -9,7 +9,7 @@
     }
   },
   "sprite": "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
-  "glyphs": "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+  "glyphs": "/map-glyphs/{fontstack}/{range}.pbf",
   "layers": [
     {
       "id": "background",
@@ -1941,7 +1941,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Italic"
+          "Montserrat Regular"
         ],
         "text-letter-spacing": 0.2,
         "text-max-width": 5,
@@ -2005,7 +2005,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Italic"
+          "Montserrat Regular"
         ],
         "text-letter-spacing": 0.2,
         "text-max-width": 5,
@@ -2083,7 +2083,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Italic"
+          "Montserrat Regular"
         ],
         "text-letter-spacing": 0.2,
         "text-max-width": 5,
@@ -2145,7 +2145,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-rotation-alignment": "map",
         "text-size": [
@@ -2239,7 +2239,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-rotation-alignment": "map",
         "text-size": [
@@ -2319,7 +2319,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-rotation-alignment": "map",
         "text-size": [
@@ -2417,7 +2417,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-rotation-alignment": "viewport",
         "text-size": 10
@@ -2502,7 +2502,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-rotation-alignment": "viewport",
         "text-size": 10
@@ -2586,7 +2586,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-rotation-alignment": "viewport",
         "text-size": 10
@@ -2643,7 +2643,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-max-width": 9,
         "text-offset": [
@@ -2719,7 +2719,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Italic"
+          "Montserrat Regular"
         ],
         "text-letter-spacing": 0.1,
         "text-max-width": 9,
@@ -2807,7 +2807,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-max-width": 8,
         "text-size": [
@@ -2894,7 +2894,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-max-width": 8,
         "text-size": [
@@ -2969,7 +2969,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Italic"
+          "Montserrat Regular"
         ],
         "text-letter-spacing": 0.2,
         "text-max-width": 9,
@@ -3068,7 +3068,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Regular"
+          "Montserrat Regular"
         ],
         "text-max-width": 8,
         "text-offset": [
@@ -3172,7 +3172,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Bold"
+          "Montserrat Medium"
         ],
         "text-max-width": 8,
         "text-offset": [
@@ -3264,7 +3264,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Bold"
+          "Montserrat Medium"
         ],
         "text-max-width": 6.25,
         "text-size": [
@@ -3348,7 +3348,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Bold"
+          "Montserrat Medium"
         ],
         "text-max-width": 6.25,
         "text-size": [
@@ -3432,7 +3432,7 @@
           ]
         ],
         "text-font": [
-          "Noto Sans Bold"
+          "Montserrat Medium"
         ],
         "text-max-width": 6.25,
         "text-size": [

@@ -1173,7 +1173,7 @@ export default function Map({
           filter={clusterFilter}
           layout={{
             "text-field": "{point_count_abbreviated}",
-            "text-font": ["Noto Sans Bold"],
+            "text-font": ["Montserrat Medium"],
             "text-size": [
               "step",
               ["get", "point_count"],
@@ -1264,7 +1264,7 @@ export default function Map({
           filter={stackFilter}
           layout={{
             "text-field": "{stack_count}",
-            "text-font": ["Noto Sans Bold"],
+            "text-font": ["Montserrat Medium"],
             "text-size": 11,
             "text-allow-overlap": true,
             "text-ignore-placement": true,

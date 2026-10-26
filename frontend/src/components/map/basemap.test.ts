@@ -4,6 +4,8 @@ import {
   validateStyleMin,
 } from "@maplibre/maplibre-gl-style-spec";
 import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -22,6 +24,7 @@ type Layer = LayerSpecification & {
 };
 
 const BASES = Object.entries(VIDIT_STYLES);
+const GLYPHS_DIR = join(process.cwd(), "public", "map-glyphs");
 
 function build(base: StyleSpecification, options: Partial<BasemapOptions> = {}): Layer[] {
   return buildViditStyle(base, { ...DEFAULT_BASEMAP_OPTIONS, ...options }).layers as Layer[];
@@ -55,6 +58,20 @@ describe.each(BASES)("buildViditStyle on the %s style", (_, base) => {
       { language: "local", density: "sparse", regionBorders: false, roads: true },
     ] as BasemapOptions[]) {
       expect(validateStyleMin(buildViditStyle(base, options))).toEqual([]);
+    }
+  });
+
+  it("names only fontstacks the glyph build committed", () => {
+    expect(base.glyphs).toBe("/map-glyphs/{fontstack}/{range}.pbf");
+    const stacks = new Set(
+      (base.layers as Layer[]).flatMap((layer) => {
+        const fonts = layer.layout?.["text-font"] as string[] | undefined;
+        return fonts ? [fonts.join(",")] : [];
+      }),
+    );
+    expect(stacks.size).toBeGreaterThan(0);
+    for (const stack of stacks) {
+      expect(existsSync(join(GLYPHS_DIR, stack, "0-255.pbf")), stack).toBe(true);
     }
   });
 

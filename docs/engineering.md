@@ -121,6 +121,13 @@ MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports 
 
 The MapLibre web worker is served from `public/`, not from the bundle. MapLibre builds the worker URL at runtime, so the bundler never emits it, and the worker imports `maplibre-gl-shared.mjs` by its unhashed name. [`next.config.mjs`](../frontend/next.config.mjs) runs [`scripts/copy-maplibre-worker.mjs`](../frontend/scripts/copy-maplibre-worker.mjs) on every `next dev`, `next build` and `next start`, which copies both files to `public/maplibre-gl/<version>/`. [`maplibreWorker.ts`](../frontend/src/components/map/maplibreWorker.ts) calls `setWorkerUrl` with that path before the first map is created. The `proxy.ts` matcher skips `/maplibre-gl/`, so a signed-out reader gets the worker and not the login page. The `loads the map worker` test in [`e2e/map.spec.ts`](../frontend/e2e/map.spec.ts) fails when the worker request does not return JavaScript.
 
+The map's label glyphs are served from `public/map-glyphs/`, one folder per fontstack (`Montserrat Regular`, `Montserrat Medium`) of 256 PBF ranges each, 3.3 MB in all. [`scripts/build-map-glyphs.sh`](../frontend/scripts/build-map-glyphs.sh) builds them in Docker with [maplibre/font-maker](https://github.com/maplibre/font-maker), from sources pinned to a commit, so a rerun reproduces the committed files. MapLibre requests one URL per fontstack, and a static host cannot merge fonts at request time, so the script merges each fontstack at build time: Montserrat first, then Noto Sans and the Noto Sans Armenian, Georgian, Ethiopic, Thai and Lao fonts for the scripts Montserrat lacks. Two kinds of text draw no glyph from these files:
+
+- CJK ideographs render from a system font. MapLibre's `localIdeographFontFamily` defaults to `sans-serif`, so the map requests no ideograph range.
+- MapLibre cannot shape Indic scripts, and draws right-to-left scripts only with an RTL plugin, which the map does not load. The style shows such a name in its Latin form (`is-supported-script` in [`basemap.ts`](../frontend/src/components/map/basemap.ts)).
+
+The folder also holds the font licences, `OFL-Montserrat.txt` and `OFL-Noto.txt`. The `proxy.ts` matcher skips `/map-glyphs/`, so a signed-out reader gets the glyphs and not the login page.
+
 MapLibre renders only on WebGL2, with alpha, depth and stencil buffers. A browser without that context gets a message in place of the map. Two checks in [`webgl.ts`](../frontend/src/components/map/webgl.ts) produce that message:
 
 - `supportsMaplibreWebGL` requests the same context on mount, so a browser that offers WebGL1 only, or blocks WebGL entirely, never mounts the map.
