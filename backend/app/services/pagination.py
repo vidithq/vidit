@@ -23,7 +23,8 @@ swaps in its own timestamp (``models/event.feed_at``). A list
 with a unique ordinal pages on that (:func:`encode_ordinal_cursor`, a version
 history on ``version_no``). A collection's items page on
 ``occurred_date, occurred_time, created_at, id`` ascending
-(:func:`encode_chronological_cursor`). Cursors are opaque (base64 of compact
+(:func:`encode_chronological_cursor`). Search's geolocations group pages on
+``rank, created_at, id`` descending (:func:`encode_ranked_cursor`). Cursors are opaque (base64 of compact
 JSON); callers do not build them.
 """
 
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import math
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import date, datetime, time
@@ -159,6 +161,27 @@ def decode_chronological_cursor(cursor: str) -> tuple[date, time, datetime, uuid
             datetime.fromisoformat(created_raw),
             uuid.UUID(id_raw),
         )
+    except ValueError as exc:
+        raise _malformed_cursor() from exc
+
+
+def encode_ranked_cursor(rank: float, created_at: datetime, row_id: uuid.UUID) -> str:
+    """Opaque cursor for a list ordered by ``rank DESC, created_at DESC, id DESC``.
+
+    ``rank`` travels as the shortest ``repr`` of the double, which parses back to
+    the same value, so the next page's row comparison ties on it exactly.
+    """
+    return _encode([repr(rank), created_at.isoformat(), str(row_id)])
+
+
+def decode_ranked_cursor(cursor: str) -> tuple[float, datetime, uuid.UUID]:
+    """Parse a ranked cursor into its three sort values, 422 on anything else."""
+    rank_raw, created_raw, id_raw = _decode_parts(cursor, 3)
+    try:
+        rank = float(rank_raw)
+        if not math.isfinite(rank):
+            raise ValueError(rank_raw)
+        return rank, datetime.fromisoformat(created_raw), uuid.UUID(id_raw)
     except ValueError as exc:
         raise _malformed_cursor() from exc
 

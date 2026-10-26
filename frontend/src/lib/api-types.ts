@@ -2087,6 +2087,9 @@ export interface paths {
          *     view, collections included when ``author`` is the only filter (the
          *     profile's two "Show more" entry points). Filter semantics are
          *     ``services/event_filters.apply_filters``.
+         *
+         *     The geolocations group pages: ``geolocations_cursor`` is set exactly when a
+         *     further page holds a row, and ``cursor`` with ``type=geolocation`` fetches it.
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -4761,6 +4764,8 @@ export interface components {
             collections: components["schemas"]["CollectionRead"][];
             /** Geolocations */
             geolocations: components["schemas"]["SearchEventHit"][];
+            /** Geolocations Cursor */
+            geolocations_cursor: string | null;
             /** Organizations */
             organizations: components["schemas"]["SearchOrganizationHit"][];
             /** Query */
@@ -9359,6 +9364,8 @@ export interface operations {
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;
+                /** @description Opaque cursor from `geolocations_cursor`: the next page of the geolocations group. Requires type=geolocation and the query and filters of the page that minted it */
+                cursor?: string | null;
                 status?: string[] | null;
                 conflict?: string[] | null;
                 source_kind?: string[] | null;
