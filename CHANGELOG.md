@@ -7,6 +7,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Changed
 
 - The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#703](https://github.com/vidithq/vidit/issues/703)).
+- The map labels only countries and capitals when zoomed out, hides region borders, and shows one name per label, in Latin script ([#705](https://github.com/vidithq/vidit/issues/705)).
 
 ## v0.8.0, 2026-10-25
 

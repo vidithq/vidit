@@ -29,7 +29,8 @@ export const API_BASE_URL = "http://localhost:9999/api/v1";
 export const MEDIA_ORIGIN = "http://localhost:8000";
 
 /**
- * OpenFreeMap serves the basemap style `components/map/Map.tsx` names. Mocked
- * too, so `/map` renders without reaching the network.
+ * OpenFreeMap serves the basemap tiles, sprite and third-party styles the map
+ * requests. Refused, so `/map` renders without reaching the network: the map
+ * still mounts and draws its own point layers over the style's background.
  */
-export const BASEMAP_STYLE_URL_PATTERN = "https://tiles.openfreemap.org/styles/**";
+export const BASEMAP_URL_PATTERN = "https://tiles.openfreemap.org/**";

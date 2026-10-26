@@ -49,13 +49,14 @@ import {
   ringRadius,
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
+import { buildViditStyle, DEFAULT_BASEMAP_OPTIONS, VIDIT_STYLES } from "./basemap";
 
-// OpenFreeMap basemap pair: no key, no request cap. maplibre paint can't read CSS variables, so
-// tiles swap off the theme here.
+// The Vidit basemap pair on OpenFreeMap tiles. maplibre paint can't read CSS variables, so the
+// style swaps off the theme here.
 const BASEMAP_STYLE = {
-  dark: "https://tiles.openfreemap.org/styles/dark",
-  light: "https://tiles.openfreemap.org/styles/positron",
-} as const;
+  dark: buildViditStyle(VIDIT_STYLES.dark, DEFAULT_BASEMAP_OPTIONS),
+  light: buildViditStyle(VIDIT_STYLES.light, DEFAULT_BASEMAP_OPTIONS),
+};
 
 // Hover ring: dot geometry and the grace margin (px) the pointer may roam before it collapses.
 const SPIDER_DOT_PX = 12;
