@@ -21,7 +21,7 @@ import {
   type Source,
 } from "@/lib/sources";
 
-import { EVENT_SOURCE_NAMES, SourcesRow, type SourcesNames } from "./SourcesRow";
+import { SourcesRow } from "./SourcesRow";
 import { SourceWarnings } from "./SourceWarnings";
 
 /**
@@ -213,19 +213,17 @@ export type SourceBlockExtras = Pick<
 /**
  * An event's sources in the order the API serves them: a `SourcesRow` on the page, a lone source
  * taking the whole row as a `wide` block; a vertical stack under a **Sources** eyebrow in the map
- * panel. A site page passes its images with `names` and each block's `extras`.
+ * panel. A site page passes its images with each block's `extras`.
  */
 export function SourceBlocks<S extends Source>({
   sources,
   alt,
   compact = false,
-  names = EVENT_SOURCE_NAMES,
   extras,
 }: {
   sources: S[];
   alt: string;
   compact?: boolean;
-  names?: SourcesNames;
   extras?: (source: S) => SourceBlockExtras;
 }) {
   const blocks = sources.map((source, index) => (
@@ -239,13 +237,9 @@ export function SourceBlocks<S extends Source>({
       {...extras?.(source)}
     />
   ));
-  const empty = <p className="text-sm text-neutral-500 italic">{names.empty}</p>;
+  const empty = <p className="text-sm text-neutral-500 italic">No source yet</p>;
   if (!compact) {
-    return (
-      <SourcesRow count={sources.length} names={names}>
-        {sources.length === 0 ? empty : blocks}
-      </SourcesRow>
-    );
+    return <SourcesRow count={sources.length}>{sources.length === 0 ? empty : blocks}</SourcesRow>;
   }
   const { title, concept } = EVENT_SECTIONS.sources;
   return (

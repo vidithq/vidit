@@ -25,10 +25,24 @@ export interface LinkCandidate {
   meta: string;
 }
 
+/** The suggestions a dialog offers before any search. */
+interface LinkSuggestions {
+  label: string;
+  /** Null while they load. */
+  rows: LinkCandidate[] | null;
+  empty: string;
+}
+
+/** The dialog's words when it changes a live link's effect, from either page. */
+export const CHANGE_EFFECT_COPY = {
+  title: "Change the effect",
+  intro: "The link keeps its history: the site's page records the effect it had and the new one.",
+};
+
 /**
  * The one dialog behind both directions of a link, on `ConfirmDialog`: an event's owner picks a
- * site from the event page, or one of their events from a site page. The nearby suggestions show
- * as chips, any other pick comes from the name search, and the pick shows as an accent chip a
+ * site from the event page, or one of their events from a site page. The suggestions, when the
+ * caller has some (the sites near the event), show as chips, any other pick comes from the search, and the pick shows as an accent chip a
  * click removes. The effect has no default: the analyst says what the event shows. `extra`
  * renders under the effect once a pick is made (the offer to file the event's satellite images).
  */
@@ -36,14 +50,11 @@ export function LinkDialog({
   title,
   intro,
   pickLabel,
-  suggestedLabel,
   suggestions,
-  emptySuggestions,
   searchLabel,
   searchPlaceholder,
   search,
   initial,
-  preset,
   extra,
   onLink,
   onClose,
@@ -52,22 +63,17 @@ export function LinkDialog({
   intro: ReactNode;
   /** The pick's name: Site, Event. */
   pickLabel: string;
-  suggestedLabel: string;
-  /** Null while the suggestions load. */
-  suggestions: LinkCandidate[] | null;
-  emptySuggestions: string;
+  suggestions?: LinkSuggestions;
   searchLabel: string;
   searchPlaceholder: string;
   search: (q: string, signal: AbortSignal) => Promise<LinkCandidate[]>;
   /** A live link whose effect the dialog changes: the pick is fixed. */
   initial?: { candidate: LinkCandidate; effect: LinkEffect };
-  /** A pick to start from, which the analyst may still remove (a nearby event's Link). */
-  preset?: LinkCandidate;
   extra?: (picked: LinkCandidate) => ReactNode;
   onLink: (picked: LinkCandidate, effect: LinkEffect) => Promise<unknown>;
   onClose: () => void;
 }) {
-  const [picked, setPicked] = useState<LinkCandidate | null>(initial?.candidate ?? preset ?? null);
+  const [picked, setPicked] = useState<LinkCandidate | null>(initial?.candidate ?? null);
   const [effect, setEffect] = useState<LinkEffect | "">(initial?.effect ?? "");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -141,22 +147,26 @@ export function LinkDialog({
           </div>
         ) : (
           <>
-            <p className="text-xs text-neutral-500">{suggestedLabel}</p>
-            {suggestions === null ? (
-              <p className="text-xs text-neutral-500">Loading…</p>
-            ) : suggestions.length === 0 ? (
-              <p className="text-xs text-neutral-500">{emptySuggestions}</p>
-            ) : (
-              <ul className="flex flex-wrap gap-1.5" aria-label={suggestedLabel}>
-                {suggestions.map((s) => (
-                  <li key={s.id} className="max-w-full">
-                    <Pill tone="neutral" title={s.meta} onClick={() => pick(s)}>
-                      {s.label}
-                      <span className="font-normal opacity-70">{s.meta}</span>
-                    </Pill>
-                  </li>
-                ))}
-              </ul>
+            {suggestions && (
+              <>
+                <p className="text-xs text-neutral-500">{suggestions.label}</p>
+                {suggestions.rows === null ? (
+                  <p className="text-xs text-neutral-500">Loading…</p>
+                ) : suggestions.rows.length === 0 ? (
+                  <p className="text-xs text-neutral-500">{suggestions.empty}</p>
+                ) : (
+                  <ul className="flex flex-wrap gap-1.5" aria-label={suggestions.label}>
+                    {suggestions.rows.map((s) => (
+                      <li key={s.id} className="max-w-full">
+                        <Pill tone="neutral" title={s.meta} onClick={() => pick(s)}>
+                          {s.label}
+                          <span className="font-normal opacity-70">{s.meta}</span>
+                        </Pill>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
             <Combobox
               aria-label={searchLabel}

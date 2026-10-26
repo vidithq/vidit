@@ -21,6 +21,7 @@ import {
   MessageCircle,
   Save,
   Search as SearchIcon,
+  SquarePen,
   Swords,
   Upload,
   X,
@@ -1860,6 +1861,28 @@ export default function PalettePage() {
                 date={MOCK_CARD_GEO.occurred_date}
                 coords={{ lat: 48.0159, lng: 37.8024 }}
                 tags={MOCK_CARD_GEO.tags}
+              />
+            </div>
+          </Item>
+
+          <Item name="<EntityCard variant=compact>: linked event" usage="A site page's Linked events: the effect pill as the badge, `place` adds where the event lies against the zone to the meta line, and `actions` holds the event author's controls (change the effect, unlink) above the stretched link.">
+            <div className="w-full max-w-xl">
+              <EntityCard
+                variant="compact"
+                detailHref="/events/demo"
+                title={MOCK_CARD_GEO.title}
+                badge={<Pill tone="danger">Destruction</Pill>}
+                author={MOCK_CARD_GEO.owner}
+                date={MOCK_CARD_GEO.occurred_date}
+                place="3.3 km outside the zone"
+                actions={
+                  <>
+                    <Button icon variant="ghost" aria-label="Change the effect">
+                      <SquarePen size={14} />
+                    </Button>
+                    <RemoveButton label="Unlink from the site" />
+                  </>
+                }
               />
             </div>
           </Item>

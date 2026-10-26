@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SourceBlocks } from "@/components/sources/SourceBlock";
 import type { SiteImage } from "@/lib/sites";
-import { SITE_IMAGE_NAMES, imageChoiceLabels, siteImageExtras } from "./SiteImageBlock";
+import { imageChoiceLabels, siteImageExtras } from "./SiteImageBlock";
 
 function image(id: string, capturedAt: string, author: string): SiteImage {
   return {
@@ -51,17 +51,16 @@ describe("siteImageExtras", () => {
       <SourceBlocks
         sources={images}
         alt="Depot"
-        names={SITE_IMAGE_NAMES}
         extras={(i) => siteImageExtras({ image: i, contour: null, shown: i.id === shownId, onShow })}
       />,
     );
     return onShow;
   }
 
-  it("renders each image as the event page's source block in the Images row", () => {
+  it("renders each image as the event page's source block in the Sources row", () => {
     renderHistory("a");
-    expect(screen.getByText("Images (2)")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Next image" })).toBeInTheDocument();
+    expect(screen.getByText("Sources (2)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next source" })).toBeInTheDocument();
     const block = screen.getByRole("region", { name: "Image of 7 Sept 2026" });
     for (const label of ["Level", "Kind", "Captured", "Provider", "Filed"]) {
       expect(within(block).getByText(label)).toBeInTheDocument();

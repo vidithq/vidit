@@ -13,14 +13,10 @@ import {
   LINK_EFFECT_LABELS,
   SITE_KIND_LABELS,
   siteHistoryPath,
-  type HistoryOrder,
   type SiteHistoryEntry,
 } from "@/lib/sites";
 
-type ChangeKind = Extract<
-  SiteHistoryEntry["kind"],
-  "record_edited" | "event_unlinked" | "link_effect_changed"
->;
+const CHANGE_KINDS: SiteHistoryEntry["kind"][] = ["record_edited", "event_unlinked", "link_effect_changed"];
 
 function sentence(entry: SiteHistoryEntry) {
   const { record, previous_record: before, event } = entry;
@@ -53,22 +49,14 @@ function sentence(entry: SiteHistoryEntry) {
 }
 
 /**
- * The changes a view's rows do not show, from the site's history (`GET /sites/{id}/history`):
- * the record's renames and kind changes under the imagery history, and the unlinks and effect
- * changes under the linked events. Nothing on a site is overwritten, so each stays on record.
- * Newest first on the page's clock. Renders nothing without one.
+ * The changes the page's sections do not show, from the site's history (`GET /sites/{id}/history`):
+ * the record's renames and kind changes, the unlinks and the effect changes. Nothing on a site is
+ * overwritten, so each stays on record. Newest first by date on the ground; a record edit sits on
+ * the day it was recorded. Renders nothing without one.
  */
-export function SiteChanges({
-  siteId,
-  kinds,
-  order,
-}: {
-  siteId: string;
-  kinds: ChangeKind[];
-  order: HistoryOrder;
-}) {
-  const { data } = useApiResource<SiteHistoryEntry[]>(siteHistoryPath(siteId, order));
-  const changes = (data ?? []).filter((entry) => (kinds as string[]).includes(entry.kind)).reverse();
+export function SiteChanges({ siteId }: { siteId: string }) {
+  const { data } = useApiResource<SiteHistoryEntry[]>(siteHistoryPath(siteId));
+  const changes = (data ?? []).filter((entry) => CHANGE_KINDS.includes(entry.kind)).reverse();
   if (changes.length === 0) return null;
   return (
     <section>
@@ -78,7 +66,7 @@ export function SiteChanges({
           <DetailRow
             key={`${entry.kind}-${entry.recorded_at}-${i}`}
             align="start"
-            label={formatDate(order === "fact" && entry.fact_date ? entry.fact_date : entry.recorded_at)}
+            label={formatDate(entry.fact_date ?? entry.recorded_at)}
           >
             <span className="flex flex-col items-end gap-1 text-right text-sm text-neutral-200">
               {sentence(entry)}

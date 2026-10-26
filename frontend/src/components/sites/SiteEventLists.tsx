@@ -1,19 +1,12 @@
 "use client";
 
-import { Link2, MapPin } from "lucide-react";
+import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { LinkRow } from "@/components/ui/LinkRow";
+import { EntityCard } from "@/components/ui/EntityCard";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { formatDate } from "@/lib/format";
 import { eventHref } from "@/lib/routes";
-import {
-  SITE_MARGIN_KM,
-  formatDistance,
-  type SiteLinkedEvent,
-  type SiteNearbyEvent,
-} from "@/lib/sites";
+import { formatDistance, sortLinkedEvents, type SiteLinkedEvent } from "@/lib/sites";
 import { LinkEffectPill } from "./SiteBadges";
 
 function where(insideZone: boolean, distance: number | null): string {
@@ -21,98 +14,41 @@ function where(insideZone: boolean, distance: number | null): string {
   return `${formatDistance(distance)} outside the zone`;
 }
 
-/** The Linked events view: one row per event, its effect, date, owner and where it lies against
- *  the contour it was measured against. Each row opens the event. */
-export function LinkedEventRows({ events }: { events: SiteLinkedEvent[] }) {
-  if (events.length === 0) {
-    return (
-      <EmptyState>
-        No event is linked yet. The author of an event links it from the event page or from here.
-      </EmptyState>
-    );
-  }
-  return (
-    <ul className="space-y-2">
-      {events.map((event) => (
-        <li key={event.id}>
-          <LinkRow
-            icon={MapPin}
-            variant="arrow"
-            external={false}
-            href={eventHref(event.id)}
-            value={event.title}
-            meta={
-              <>
-                <LinkEffectPill effect={event.effect} />
-                <span>{event.occurred_date ? formatDate(event.occurred_date) : "Undated"}</span>
-                <span>{event.owner.username}</span>
-                <span>{where(event.inside_zone, event.distance_m)}</span>
-              </>
-            }
-          />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /**
- * Nearby events, not linked: a spatial computation, kept apart from the links. The reader's
- * own events carry **Link**, which opens the link dialog on that event.
+ * The site page's Linked events section, newest event date first: one catalogue card per event,
+ * with its thumbnail, title, author, date, where it lies against the contour it was measured
+ * against, and its effect. Each card opens the event; `controls` adds the author's controls.
  */
-export function NearbyEvents({
+export function LinkedEvents({
   events,
-  error,
-  viewerId,
-  onLink,
+  controls,
 }: {
-  events: SiteNearbyEvent[] | null;
-  error: string | null;
-  viewerId: string | null;
-  onLink: (event: SiteNearbyEvent) => void;
+  events: SiteLinkedEvent[];
+  controls: (event: SiteLinkedEvent) => ReactNode;
 }) {
   return (
     <section>
-      <SectionEyebrow title="Nearby events, not linked" concept="site_nearby" />
-      <p className="mb-3 text-sm text-neutral-400">
-        Computed from position alone: published events within {SITE_MARGIN_KM} km of the current
-        zone that nobody has linked to this site.
-      </p>
-      {error ? (
-        <EmptyState>{error}</EmptyState>
-      ) : events === null ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
-      ) : events.length === 0 ? (
-        <EmptyState>No unlinked event within {SITE_MARGIN_KM} km.</EmptyState>
+      <SectionEyebrow title={`Linked events (${events.length})`} concept="site_linked_events" />
+      {events.length === 0 ? (
+        <EmptyState>
+          No event is linked yet. The author of an event links it from the event page or from here.
+        </EmptyState>
       ) : (
         <ul className="space-y-2">
-          {events.map((event) => (
+          {sortLinkedEvents(events).map((event) => (
             <li key={event.id}>
-              <LinkRow
-                icon={MapPin}
-                variant="arrow"
-                external={false}
-                href={eventHref(event.id)}
-                value={event.title}
-                meta={
-                  <>
-                    <span>{event.occurred_date ? formatDate(event.occurred_date) : "Undated"}</span>
-                    <span>{event.owner.username}</span>
-                    <span>
-                      {event.distance_m === 0
-                        ? "Inside the zone"
-                        : `${formatDistance(event.distance_m)} from the zone`}
-                    </span>
-                  </>
-                }
-                action={
-                  event.owner.id === viewerId && (
-                    <Button variant="secondary" onClick={() => onLink(event)}>
-                      <Link2 size={14} />
-                      Link
-                    </Button>
-                  )
-                }
+              <EntityCard
+                variant="compact"
+                uniformHeight={false}
+                detailHref={eventHref(event.id)}
+                title={event.title}
+                media={event.media ?? undefined}
+                isGraphic={event.is_graphic}
+                author={event.owner}
+                date={event.occurred_date ?? undefined}
+                place={where(event.inside_zone, event.distance_m)}
+                badge={<LinkEffectPill effect={event.effect} />}
+                actions={controls(event)}
               />
             </li>
           ))}

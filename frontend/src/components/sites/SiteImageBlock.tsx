@@ -3,7 +3,6 @@
 import { MapPinned } from "lucide-react";
 
 import type { SourceBlockExtras } from "@/components/sources/SourceBlock";
-import type { SourcesNames } from "@/components/sources/SourcesRow";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
@@ -38,14 +37,6 @@ export function imageChoiceLabels(images: SiteImage[]): Map<string, string> {
 function creditFor(credit: string, capturedAt: string | null): string {
   return capturedAt ? credit.replace("[year]", capturedAt.slice(0, 4)) : credit;
 }
-
-/** The imagery history's row: the event page's sources row, retitled. */
-export const SITE_IMAGE_NAMES: SourcesNames = {
-  title: "Images",
-  concept: "site_image",
-  item: "image",
-  empty: "No image is filed yet.",
-};
 
 /**
  * What one image adds to the event page's source block in a site's imagery history: its name

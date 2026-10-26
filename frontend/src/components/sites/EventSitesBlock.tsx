@@ -27,7 +27,7 @@ import {
   type SiteSuggestion,
 } from "@/lib/sites";
 import type { EventDetail } from "@/types";
-import { LinkDialog, type LinkCandidate } from "./LinkDialog";
+import { CHANGE_EFFECT_COPY, LinkDialog, type LinkCandidate } from "./LinkDialog";
 import { LinkEffectPill } from "./SiteBadges";
 import { SatelliteImagesOffer, fileOffered, useSatelliteOffer } from "./SatelliteImagesOffer";
 
@@ -122,16 +122,18 @@ export function EventSitesBlock({ event }: { event: EventDetail }) {
 
       {dialog && (
         <LinkDialog
-          title={dialog.edit ? "Change the effect" : "Link to a site"}
+          title={dialog.edit ? CHANGE_EFFECT_COPY.title : "Link to a site"}
           intro={
             dialog.edit
-              ? "The link keeps its history: the site's page records the effect it had and the new one."
+              ? CHANGE_EFFECT_COPY.intro
               : "Pick the site this event happened at, then say what the event shows there. The link holds even when the event lies outside the site's zone."
           }
           pickLabel="Site"
-          suggestedLabel={`Sites within ${SITE_MARGIN_KM} km of the event`}
-          suggestions={suggestions.data?.map(suggestionCandidate) ?? (suggestions.error ? [] : null)}
-          emptySuggestions={`No site within ${SITE_MARGIN_KM} km. Search one by name.`}
+          suggestions={{
+            label: `Sites within ${SITE_MARGIN_KM} km of the event`,
+            rows: suggestions.data?.map(suggestionCandidate) ?? (suggestions.error ? [] : null),
+            empty: `No site within ${SITE_MARGIN_KM} km. Search one by name.`,
+          }}
           searchLabel="Search a site by name"
           searchPlaceholder="Search a site by name"
           search={(q, signal) =>

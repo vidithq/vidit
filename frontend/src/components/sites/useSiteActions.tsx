@@ -14,18 +14,17 @@ import { formatDate, formatInstant } from "@/lib/format";
 import {
   SITE_KIND_LABELS,
   SITE_KINDS,
-  SITE_MARGIN_KM,
   SITE_NAME_MAX_LEN,
-  formatDistance,
   linkEventToSite,
   ownsSite,
   siteContourHref,
   siteFileImageHref,
   siteHref,
+  unlinkEventFromSite,
   updateSite,
   type Site,
   type SiteKind,
-  type SiteNearbyEvent,
+  type SiteLinkedEvent,
 } from "@/lib/sites";
 import type { EventDetail } from "@/types";
 import { ShareControl } from "@/components/share/ShareControl";
@@ -35,18 +34,21 @@ import { CharCounter } from "@/components/ui/CharCounter";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input, Select } from "@/components/ui/Input";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
-import { LinkDialog, type LinkCandidate } from "./LinkDialog";
+import { CHANGE_EFFECT_COPY, LinkDialog, type LinkCandidate } from "./LinkDialog";
 import { SatelliteImagesOffer, fileOffered, useSatelliteOffer } from "./SatelliteImagesOffer";
 import { useApiResource } from "@/hooks/useApiResource";
 
-/** A nearby event as the link dialog offers it. */
-export function nearbyCandidate(event: SiteNearbyEvent): LinkCandidate {
-  const date = event.occurred_date ? formatDate(event.occurred_date) : "Undated";
-  const where = event.distance_m === 0 ? "inside the zone" : `${formatDistance(event.distance_m)} from the zone`;
-  return { id: event.id, label: event.title, meta: `${date} · ${where}` };
+function eventCandidate(event: { id: string; title: string; occurred_date: string | null }): LinkCandidate {
+  return {
+    id: event.id,
+    label: event.title,
+    meta: event.occurred_date ? formatDate(event.occurred_date) : "Undated",
+  };
 }
 
 /** The picked event's satellite sources, read once it is picked. */
@@ -172,41 +174,64 @@ function ModerationDialog({
   );
 }
 
-type Dialog = { kind: "edit" } | { kind: "moderate" } | { kind: "link"; preset?: LinkCandidate };
+type Dialog =
+  | { kind: "edit" }
+  | { kind: "moderate" }
+  | { kind: "link" }
+  | { kind: "effect"; event: SiteLinkedEvent };
 
 /**
  * The controls of one site, assembled once like `useEventActions`: the pinned row (Edit and
  * Redraw the contour for the owner, Share for every reader, Withhold or Restore for an admin,
  * Report for every reader but the owner), then **Link one of my events** and **File an image**
- * for any signed-in analyst; and the panels they open. `openLink` opens the link dialog on one
- * event, from a nearby event's row.
+ * for any signed-in analyst; and the panels they open. `linkControls` gives a linked event's
+ * author the effect change and the unlink on its row.
  */
 export function useSiteActions({
   site,
-  nearby,
   onChanged,
 }: {
   site: Site | null;
-  nearby: SiteNearbyEvent[] | null;
   onChanged: () => void;
 }): {
   pinned: ReactNode;
   panels: ReactNode;
-  openLink: (preset?: LinkCandidate) => void;
+  linkControls: (event: SiteLinkedEvent) => ReactNode;
 } {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
   const report = useReportContent("site", site?.id ?? "");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const offer = useSatelliteOffer();
-  const openLink = (preset?: LinkCandidate) => setDialog({ kind: "link", preset });
+  const unlink = useMutation((eventId: string) => unlinkEventFromSite(eventId, site!.id), {
+    fallback: "The unlink failed. Try again.",
+    onSuccess: onChanged,
+  });
 
-  if (!site) return { pinned: null, panels: null, openLink };
+  if (!site) return { pinned: null, panels: null, linkControls: () => null };
 
   const owner = ownsSite(site, user?.id);
   const withheld = site.hidden_at !== null;
   const linked = new Set(site.linked_events.map((e) => e.id));
-  const mine = (nearby ?? []).filter((e) => e.owner.id === user?.id);
+
+  const linkControls = (event: SiteLinkedEvent) =>
+    user?.id === event.owner.id && (
+      <>
+        <Button
+          icon
+          variant="ghost"
+          aria-label={`Change the effect of ${event.title}`}
+          onClick={() => setDialog({ kind: "effect", event })}
+        >
+          <SquarePen size={14} />
+        </Button>
+        <RemoveButton
+          label={`Unlink ${event.title}`}
+          disabled={unlink.loading}
+          onClick={() => void unlink.run(event.id)}
+        />
+      </>
+    );
 
   const icons = [
     owner && (
@@ -247,7 +272,7 @@ export function useSiteActions({
       </div>
       {user && !withheld && (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="secondary" onClick={() => openLink()}>
+          <Button variant="secondary" onClick={() => setDialog({ kind: "link" })}>
             <Link2 size={14} />
             Link one of my events
           </Button>
@@ -268,6 +293,7 @@ export function useSiteActions({
         </p>
       )}
       {!owner && report.panel}
+      {unlink.error && <p className={FORM_ERROR_BANNER}>{unlink.error}</p>}
       {dialog?.kind === "edit" && (
         <EditSiteDialog site={site} onSaved={onChanged} onClose={() => setDialog(null)} />
       )}
@@ -279,22 +305,14 @@ export function useSiteActions({
           title="Link one of my events"
           intro="Pick one of your published events, then say what it shows at this site. The link holds even when the event lies outside the zone."
           pickLabel="Event"
-          suggestedLabel={`Your events within ${SITE_MARGIN_KM} km, not linked yet`}
-          suggestions={nearby ? mine.map(nearbyCandidate) : null}
-          emptySuggestions="None of your published events lies near this site. Search one by title."
           searchLabel="Search your events by title"
           searchPlaceholder="Search your events by title"
           search={async (q) => {
             const { items } = await searchPickableEvents(user.username, q);
             return items
               .filter((e) => e.status === "geolocated" && !linked.has(e.id))
-              .map((e) => ({
-                id: e.id,
-                label: e.title,
-                meta: e.occurred_date ? formatDate(e.occurred_date) : "Undated",
-              }));
+              .map(eventCandidate);
           }}
-          preset={dialog.preset}
           extra={(picked) => <PickedEventOffer eventId={picked.id} offer={offer} />}
           onLink={async (event, effect) => {
             await linkEventToSite(event.id, site.id, effect);
@@ -309,8 +327,20 @@ export function useSiteActions({
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog?.kind === "effect" && (
+        <LinkDialog
+          {...CHANGE_EFFECT_COPY}
+          pickLabel="Event"
+          searchLabel="Search your events by title"
+          searchPlaceholder="Search your events by title"
+          search={async () => []}
+          initial={{ candidate: eventCandidate(dialog.event), effect: dialog.event.effect }}
+          onLink={(event, effect) => linkEventToSite(event.id, site.id, effect).then(onChanged)}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </>
   );
 
-  return { pinned, panels, openLink };
+  return { pinned, panels, linkControls };
 }
