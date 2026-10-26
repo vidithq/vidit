@@ -476,7 +476,8 @@ describe("the Geolocations selection", () => {
     expect(screen.queryByRole("checkbox", { name: "Select Their strike" })).not.toBeInTheDocument();
     // Mounted but inert: the header keeps its height for when a row is picked.
     expect(actions()).toHaveAttribute("inert");
-    expect(await screen.findByRole("checkbox", { name: "Select all" })).toBeEnabled();
+    const head = await screen.findByRole("checkbox", { name: "Select all" });
+    await waitFor(() => expect(head).toBeEnabled());
   });
 
   it("wakes Add to collection on a pick, and the head checkbox clears a partial selection", async () => {
@@ -500,7 +501,10 @@ describe("the Geolocations selection", () => {
 
   it("selects every match from the head checkbox, then clears it from there", async () => {
     render(<SearchPage />);
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Select all" }));
+    const head = await screen.findByRole("checkbox", { name: "Select all" });
+    // The box stays disabled until the match count lands.
+    await waitFor(() => expect(head).toBeEnabled());
+    fireEvent.click(head);
 
     expect(countCollectableMatches).toHaveBeenCalledWith(
       expect.objectContaining({ q: "kakhovka" }),
@@ -550,7 +554,9 @@ describe("the Geolocations selection", () => {
     expect(screen.getByText("1 selected")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Clear selection" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
+    const head = screen.getByRole("checkbox", { name: "Select all" });
+    await waitFor(() => expect(head).toBeEnabled());
+    fireEvent.click(head);
     expect(screen.getByText("2 selected")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Select Mukalla port" })).toBeChecked();
     expect(own()).toBeChecked();
