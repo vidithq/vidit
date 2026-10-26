@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import { META_LINE, TEXT_LINK } from "@/components/ui/styles";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
@@ -86,12 +86,7 @@ export function BulkAddToCollectionPanel({
   );
 
   const geolocations = countLabel(count, "geolocation");
-  const header = (
-    <div className="flex items-baseline justify-between gap-2">
-      <SectionHeading title={`Add ${geolocations}`} />
-      <span className={META_LINE}>to a collection</span>
-    </div>
-  );
+  const header = <SectionHeading title={`Add ${geolocations}`} />;
 
   if (error) {
     return (

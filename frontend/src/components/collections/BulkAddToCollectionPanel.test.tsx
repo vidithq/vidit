@@ -56,7 +56,6 @@ describe("BulkAddToCollectionPanel", () => {
     render(<BulkAddToCollectionPanel username="ana" target={ids} count={2} />);
 
     expect(screen.getByRole("heading", { name: "Add 2 geolocations" })).toBeInTheDocument();
-    expect(screen.getByText("to a collection")).toBeInTheDocument();
     expect(useApiResource).toHaveBeenCalledWith("/users/ana/collections?per_page=100");
     expect(row("Kupiansk rail corridor")).toHaveTextContent("1 event");
     expect(row("Dam breach")).toBeEnabled();
