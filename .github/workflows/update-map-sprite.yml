@@ -1,0 +1,62 @@
+name: update-map-sprite
+
+# Refresh the vendored basemap sprite (frontend/public/map-sprites/) from
+# OpenFreeMap once a month. scripts/update-map-sprite.sh reads the sprite
+# URL from OpenFreeMap's published dark style and downloads the files only
+# when it differs from the one in manifest.json. When files changed, the job
+# commits them, signed off, to a fixed branch and opens a PR labelled
+# no-docs-needed, or updates the open one.
+#
+# GITHUB_TOKEN opens the PR, which needs the repository setting
+# "Allow GitHub Actions to create and approve pull requests". GitHub does
+# not run workflows on a PR that GITHUB_TOKEN opens, so a maintainer closes
+# and reopens it to run the required checks (docs/engineering.md).
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-map-sprite
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update the map sprite
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BRANCH: chore/update-map-sprite
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the current sprite
+        working-directory: frontend
+        run: scripts/update-map-sprite.sh
+
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet -- frontend/public/map-sprites && [ -z "$(git ls-files --others --exclude-standard frontend/public/map-sprites)" ]; then
+            echo "The sprite is current."
+            exit 0
+          fi
+          sprite="$(jq -r '.sprite' frontend/public/map-sprites/manifest.json)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add frontend/public/map-sprites
+          git commit -s -m "chore(map): update the basemap sprite" -m "Downloaded from $sprite by scripts/update-map-sprite.sh."
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(map): update the basemap sprite" \
+              --label no-docs-needed \
+              --body "OpenFreeMap publishes a new sprite at $sprite. This PR vendors it into \`frontend/public/map-sprites/\`. It changes no documented behaviour, hence \`no-docs-needed\`. Check the icons on the Dark and Light basemaps, then close and reopen this PR to run the required checks."
+          fi
