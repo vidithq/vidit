@@ -31,6 +31,7 @@ import {
   capturePositionInvalid,
   draftUrls,
   hasCapturePosition,
+  isImportableLink,
   LEVEL_LABELS,
   MAX_LINKS_PER_SOURCE,
   SOURCE_FIELDS,
@@ -76,7 +77,8 @@ function holdsDetails(draft: SourceDraft): boolean {
  *
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
  * `onPickFile` hands a picked file to the list, which uploads it, and `onImportLink` hands it a
- * link whose post's file it imports: each link row offers it while the source has no file, and a
+ * link whose post's file it imports: each X or Telegram post link offers it while the source has
+ * no file (`isImportableLink`), and a
  * post with several files gets a picker under the slot. `actions` is the header's slot for the
  * list's controls (remove).
  */
@@ -276,25 +278,25 @@ export function SourceEditor({
                   />
                 ),
               },
-              // Offered while the source has no file; the server says which links it reads.
-              ...(hasFile
+              // Offered on the links the server reads, while the source has no file.
+              ...(hasFile || !draft.links.some((link) => isImportableLink(link.url))
                 ? []
                 : [
                     {
                       header: "Import",
                       width: "auto",
-                      cell: ({ index: i, row }: { index: number; row: LinkDraft }) => (
-                        <Button
-                          icon
-                          variant="ghost"
-                          disabled={row.url.trim() === ""}
-                          onClick={() => onImportLink({ url: row.url.trim(), index: 0, kinds: [] })}
-                          aria-label={`Import the file of ${describe(i, row.url)}`}
-                          title="Import file from link"
-                        >
-                          <Download size={14} />
-                        </Button>
-                      ),
+                      cell: ({ index: i, row }: { index: number; row: LinkDraft }) =>
+                        isImportableLink(row.url) && (
+                          <Button
+                            icon
+                            variant="ghost"
+                            onClick={() => onImportLink({ url: row.url.trim(), index: 0, kinds: [] })}
+                            aria-label={`Import the file of ${describe(i, row.url)}`}
+                            title="Import file from link"
+                          >
+                            <Download size={14} />
+                          </Button>
+                        ),
                     },
                   ]),
             ]}

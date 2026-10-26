@@ -156,6 +156,16 @@ def telegram_post_url(url: str) -> str | None:
     return f"https://t.me/{channel}/{post_id}"
 
 
+def is_importable_link(url: str) -> bool:
+    """Whether a chaser reads ``url``: an X status or a public Telegram post.
+
+    The chasers' own gates (:func:`x_status_id`, :func:`telegram_post_url`), so the answer
+    matches what ``chase.chase_post`` fetches. Mirrored by frontend
+    ``lib/sources.ts::isImportableLink``; change both.
+    """
+    return x_status_id(url) is not None or telegram_post_url(url) is not None
+
+
 # ── Reading a post URL ────────────────────────────────────────────────────
 
 

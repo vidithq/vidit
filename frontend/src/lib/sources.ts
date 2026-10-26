@@ -374,6 +374,31 @@ export function uploadSourceFile(file: File): Promise<Upload> {
   return apiFetch<Upload>("/uploads", { method: "POST", body: fd });
 }
 
+const X_HOST_RE = /^(?:www\.)?(?:x|twitter)\.com$/i;
+const X_STATUS_RE = /(?:x|twitter)\.com\/(?:\w+\/status|i\/web\/status)\/(\d+)/i;
+const TELEGRAM_HOST_RE = /^(?:www\.)?t\.me$/i;
+const TELEGRAM_POST_PATH_RE = /^\/[A-Za-z0-9_]{1,64}\/\d{1,19}$/;
+
+/** Whether `POST /uploads/from-link` reads this link: an X status or a public `t.me` post.
+ *  Mirrors backend `tweet_ingest/urls.is_importable_link`; change both. */
+export function isImportableLink(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return false;
+  }
+  if (X_HOST_RE.test(parsed.hostname)) return X_STATUS_RE.test(url);
+  return (
+    (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+    !parsed.username &&
+    !parsed.password &&
+    !parsed.port &&
+    TELEGRAM_HOST_RE.test(parsed.hostname) &&
+    TELEGRAM_POST_PATH_RE.test(parsed.pathname)
+  );
+}
+
 /** `POST /uploads/from-link`: stage file `index` of the post a link names, as `uploadSourceFile`
  *  stages a picked one. The answer also holds the kind of every file the post holds. */
 export function importSourceFile(url: string, index: number): Promise<LinkUpload> {

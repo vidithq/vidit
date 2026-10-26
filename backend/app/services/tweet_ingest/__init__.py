@@ -69,7 +69,7 @@ from .resolve import (
     sole_refusal,
 )
 from .stitch import stitch
-from .urls import is_trusted_media_url, normalise_tweet_url
+from .urls import is_importable_link, is_trusted_media_url, normalise_tweet_url
 
 __all__ = [
     "COORDS_INVALID",
@@ -111,6 +111,7 @@ __all__ = [
     "download_cdn_media",
     "extract_coords",
     "fetch_cdn_media",
+    "is_importable_link",
     "is_trusted_media_url",
     "normalise_tweet_url",
     "read_pasted_post",

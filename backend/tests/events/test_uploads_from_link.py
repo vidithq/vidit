@@ -13,6 +13,7 @@ import pytest
 
 from app.config import settings
 from app.services import uploads as uploads_service
+from app.services.tweet_ingest import is_importable_link
 from app.services.tweet_ingest.syndication import _cache_clear
 from tests._fixtures import TINY_JPEG, TINY_MP4, stored_path
 from tests.conftest import login_as
@@ -190,6 +191,40 @@ def test_an_unsupported_link_is_refused_without_a_fetch(upstream, author, url):
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "unsupported_link"
     assert upstream["seen"] == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://x.com/someone/status/1790000000000000000",
+        "https://www.x.com/someone/status/1790000000000000000?s=20",
+        "https://twitter.com/someone/status/1790000000000000000",
+        "https://www.twitter.com/someone/status/1790000000000000000/video/1",
+        "https://x.com/i/web/status/1790000000000000000",
+        "https://t.me/somechannel/12345",
+        "http://www.t.me/somechannel/12345?single",
+    ],
+)
+def test_an_x_status_or_a_public_telegram_post_is_importable(url):
+    assert is_importable_link(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/article",
+        "https://x.com/someone",
+        "https://web.archive.org/web/2026/https://x.com/someone/status/1",
+        "https://x.com.evil.example/someone/status/1",
+        "https://t.me/somechannel",
+        "https://t.me/c/1234567890/42",
+        "https://t.me:8080/somechannel/12345",
+        "https://user:pass@t.me/somechannel/12345",
+        "not a url",
+    ],
+)
+def test_any_other_link_is_not_importable(url):
+    assert not is_importable_link(url)
 
 
 def test_a_gone_post_is_not_accessible(upstream, author):

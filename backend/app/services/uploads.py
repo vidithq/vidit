@@ -46,6 +46,7 @@ from app.services.tweet_ingest import (
     TweetImportError,
     chase_post,
     download_cdn_media,
+    is_importable_link,
 )
 
 # Staged files one account may hold at once: two full event forms' worth. An abuse bound on
@@ -70,7 +71,7 @@ class TooManyUploadsError(EvidenceIntakeError):
 
 
 class UnsupportedLinkError(EvidenceIntakeError):
-    """No chaser serves the link's host, so nothing was fetched."""
+    """No chaser reads the link (``tweet_ingest.is_importable_link``), so nothing is fetched."""
 
     code = "unsupported_link"
 
@@ -194,11 +195,11 @@ async def stage_from_link(db: Session, *, uploader: User, url: str, index: int =
     :class:`LinkNotAccessibleError`, :class:`LinkHasNoFileError` and
     :class:`LinkUpstreamBusyError`.
     """
+    if not is_importable_link(url):
+        raise UnsupportedLinkError("Import works with an X post or a public Telegram post link.")
     now = datetime.now(UTC)
     _ensure_room(db, uploader, now)
     chased = await asyncio.to_thread(chase_post, url)
-    if chased.outcome == "no_target":
-        raise UnsupportedLinkError("Import works with an X post or a public Telegram post link.")
     if chased.outcome == "transient_failure":
         raise LinkUpstreamBusyError("The post's host is not answering. Try again in a minute.")
     if chased.post is None:

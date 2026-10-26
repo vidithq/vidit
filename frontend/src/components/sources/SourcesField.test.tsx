@@ -195,12 +195,10 @@ describe("SourcesField", () => {
   });
 
   it("prints an import refusal under the file slot", async () => {
-    importFile.mockRejectedValue(new Error("Import works with an X post or a public Telegram post link."));
-    render(<Host initial={[withUrl("https://example.com/a")]} />);
+    importFile.mockRejectedValue(new Error("The post serves no file."));
+    render(<Host initial={[withUrl("https://t.me/channel/12345")]} />);
     fireEvent.click(screen.getByRole("button", { name: /^Import the file of source 1/ }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "example.com: Import works with an X post or a public Telegram post link."
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("t.me: The post serves no file.");
   });
 
   it("flags the section when no direct or indirect source carries a file", () => {
