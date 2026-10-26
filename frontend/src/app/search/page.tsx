@@ -40,6 +40,7 @@ import type {
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
@@ -118,6 +119,8 @@ const EMPTY_SEARCH_FILTERS: SearchFilters = {
   dates: EMPTY_DATE_WINDOWS,
 };
 
+type SearchRequest = Parameters<typeof search>[0];
+
 // Debounce window: live-feeling, but not one request per keystroke.
 const DEBOUNCE_MS = 300;
 
@@ -163,6 +166,11 @@ function SearchPageBody() {
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The request behind `results`: a further geolocations page must repeat its query and filters,
+  // not the live inputs, which may have moved on since.
+  const resultsRequest = useRef<SearchRequest | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
 
   const { tags, conflicts } = useFilterVocabulary();
 
@@ -297,11 +305,14 @@ function SearchPageBody() {
     const requestId = ++latestRequestId.current;
     setLoading(true);
     setError(null);
-    search({ q, type: typeFilter, ...v, ...d })
+    const request: SearchRequest = { q, type: typeFilter, ...v, ...d };
+    search(request)
       .then((response) => {
         // Stale response (a newer request started): drop it.
         if (requestId !== latestRequestId.current) return;
+        resultsRequest.current = request;
         setResults(response);
+        setMoreError(null);
         setLoading(false);
       })
       .catch((err: Error) => {
@@ -316,6 +327,33 @@ function SearchPageBody() {
     { q: committed.q, ...committed.values, ...committed.dates },
     results?.geolocations ?? [],
   );
+
+  // Appends the next geolocations page. A page that lands after a new search started is dropped,
+  // like a stale first page.
+  const loadMoreGeolocations = () => {
+    const cursor = results?.geolocations_cursor;
+    const request = resultsRequest.current;
+    if (!cursor || !request || loadingMore) return;
+    const requestId = latestRequestId.current;
+    setLoadingMore(true);
+    search({ ...request, type: "geolocation", cursor })
+      .then((page) => {
+        if (requestId !== latestRequestId.current) return;
+        setMoreError(null);
+        setResults((prev) =>
+          prev && {
+            ...prev,
+            geolocations: [...prev.geolocations, ...page.geolocations],
+            geolocations_cursor: page.geolocations_cursor,
+          }
+        );
+      })
+      .catch((err: Error) => {
+        if (requestId !== latestRequestId.current) return;
+        setMoreError(err.message);
+      })
+      .finally(() => setLoadingMore(false));
+  };
 
   const totalHits = useMemo(() => {
     if (!results) return 0;
@@ -482,6 +520,14 @@ function SearchPageBody() {
                 {results.geolocations.map((g) => (
                   <EventResult key={g.id} hit={g} selection={selection} />
                 ))}
+                <LoadMoreRow
+                  walk={{
+                    hasMore: results.geolocations_cursor !== null,
+                    loadingMore,
+                    loadMore: loadMoreGeolocations,
+                    error: moreError,
+                  }}
+                />
               </ResultGroup>
             )}
 

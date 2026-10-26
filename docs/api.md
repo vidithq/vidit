@@ -1946,6 +1946,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | `q` | string | Free-text query. |
 | `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, or `organization`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
+| `cursor` | string | The `geolocations_cursor` of a previous response. Returns the next page of the geolocations group. Requires `type=geolocation`; send the same `q` and filters as the request that returned it. |
 | *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `source_kind`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
 
 **Rules.**
@@ -1957,7 +1958,8 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 - An event hit matches on its title, on a source's title, or on a source URL that contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. The title highlight and the rank read the event title only.
 - A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable are absent.
 - An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no approval request audience and no creator. `member_count` counts live members.
-- Ranking is `ts_rank` descending, then `created_at` descending.
+- Ranking is `ts_rank` descending, then `created_at` descending, then `id` descending. In browse mode every row ranks equal, so the order is newest first.
+- The geolocations group pages by cursor. `geolocations_cursor` is set when another page holds at least one row, and `null` on the last page. To read the next page, repeat the request with `type=geolocation` and `cursor` set to that value. The cursor encodes the last row's position in the ranking, so a walk never repeats or skips a row. The other groups return their first `limit` rows only.
 - Every group excludes soft-deleted rows.
 
 **Highlight markers:** each event, user and organization hit carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
@@ -2018,6 +2020,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
     }
   ],
   "total": { "geolocations": 1, "requests": 1, "collections": 1, "users": 1, "organizations": 1 },
+  "geolocations_cursor": null,
   "query": "kharkiv",
   "type": "all"
 }
@@ -2027,13 +2030,13 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 - `source_urls` on a request hit lists every URL of every source of the request, in source order.
 - `bio_highlight` is `null` when only the username, or an organization's name or slug, matched.
 - Groups you did not request through `type` come back as empty arrays.
-- `total` holds each group's match count before the `limit` cap, in browse mode too.
+- `total` holds each group's match count before the `limit` cap, in browse mode too. On a page read with `cursor`, `total.geolocations` is still the whole match count.
 - `type` echoes the request.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 422 | `type` outside the allowed set, `limit` outside [1, 50], or a `source_kind` or `level` value outside its domain |
+| 422 | `type` outside the allowed set, `limit` outside [1, 50], a `source_kind` or `level` value outside its domain, a malformed `cursor`, or a `cursor` without `type=geolocation` |
 
 ---
 
@@ -4187,7 +4190,7 @@ One Account Activity delivery.
 | [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |
-| [`GET /search`](#get-search) | per-group `limit`, no paging | `ts_rank DESC, created_at DESC` | 20 | 50 |
+| [`GET /search`](#get-search) | per-group `limit`; the geolocations group pages by cursor in the body | `ts_rank DESC, created_at DESC, id DESC` | 20 | 50 |
 | [`GET /events/{id}/collections`](#get-eventsidcollections) | none | newest first | | 100 |
 | [`GET /events/{id}/approvals`](#get-eventsidapprovals) | none | version, then oldest first; the newest are kept | | 500 |
 | [`GET /tags`](#get-tags), [`GET /conflicts`](#get-conflicts) | none, returned whole | see endpoint | | 2000 (referential ceiling) |

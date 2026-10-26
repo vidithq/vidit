@@ -24,6 +24,7 @@ from app.services.event_filters import (
     validate_source_filters,
     validate_status_filter,
 )
+from app.services.pagination import decode_ranked_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,13 @@ def search(
         ),
     ),
     limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
+    cursor: str | None = Query(
+        None,
+        description=(
+            "Opaque cursor from `geolocations_cursor`: the next page of the geolocations group."
+            " Requires type=geolocation and the query and filters of the page that minted it"
+        ),
+    ),
     # The standard event filter set (``services/event_filters``); scopes the two
     # event groups. List params take multiple values (?tag=a&tag=b).
     status: list[str] | None = Query(None),
@@ -85,12 +93,18 @@ def search(
     view, collections included when ``author`` is the only filter (the
     profile's two "Show more" entry points). Filter semantics are
     ``services/event_filters.apply_filters``.
+
+    The geolocations group pages: ``geolocations_cursor`` is set exactly when a
+    further page holds a row, and ``cursor`` with ``type=geolocation`` fetches it.
     """
     if type not in search_service.ALLOWED_TYPES:
         raise HTTPException(
             status_code=422,
             detail=(f"type must be one of: {', '.join(sorted(search_service.ALLOWED_TYPES))}"),
         )
+    if cursor is not None and type != "geolocation":
+        raise HTTPException(status_code=422, detail="cursor requires type=geolocation")
+    after = decode_ranked_cursor(cursor) if cursor is not None else None
     validate_media_types(media)
     validate_status_filter(status)
     validate_source_filters(source_kind, level)
@@ -112,7 +126,9 @@ def search(
         approved_by=approved_by,
         approved_by_org=approved_by_org,
     )
-    grouped = search_service.search_all(db, query=q, types=types, limit=limit, filters=filters)
+    grouped = search_service.search_all(
+        db, query=q, types=types, limit=limit, filters=filters, after=after
+    )
 
     # ``total`` is the pre-LIMIT match count (``COUNT(*) OVER ()``), so it can
     # exceed ``len(hits)``.
@@ -129,6 +145,7 @@ def search(
             users=grouped["users"]["total"],
             organizations=grouped["organizations"]["total"],
         ),
+        geolocations_cursor=grouped["geolocations"]["cursor"],
         query=q,
         # Safe: the ``ALLOWED_TYPES`` guard above proves membership.
         type=cast(SearchType, type),
