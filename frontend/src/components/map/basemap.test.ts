@@ -333,7 +333,7 @@ describe("basemap presets", () => {
       "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg",
     ]);
     expect(source.maxzoom).toBe(14);
-    const credit = source.attribution.replace(/<[^>]+>/g, "");
+    const credit = new DOMParser().parseFromString(source.attribution, "text/html").body.textContent ?? "";
     expect(credit).toContain(
       "Sentinel-2 cloudless 2016 by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)",
     );
