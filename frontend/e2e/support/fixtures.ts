@@ -216,6 +216,7 @@ export const EMPTY_SEARCH: SearchResponse = {
   users: [],
   organizations: [],
   total: { geolocations: 0, requests: 0, collections: 0, users: 0, organizations: 0 },
+  geolocations_cursor: null,
   query: "",
   type: "event",
 };

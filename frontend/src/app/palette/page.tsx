@@ -1793,7 +1793,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LoadMoreRow>" usage="The one foot of a paged list (requests, feed, version history, invite codes, the admin reports queue, and the detections queue, whose pages are numbered): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
+          <Item name="<LoadMoreRow>" usage="The one foot of a paged list (requests, feed, version history, invite codes, the admin reports queue, the search page's Geolocations group, and the detections queue, whose pages are numbered): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />

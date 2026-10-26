@@ -8,15 +8,18 @@ import type {
 
 /** `GET /search`. Debouncing is the caller's job; the endpoint short-circuits empty queries. The
  *  event filters scope the two event groups and empty the users group. With an empty `q` and any
- *  filter the backend browses the filtered view (the profile's "Show more"). */
+ *  filter the backend browses the filtered view (the profile's "Show more"). `cursor` is a
+ *  response's `geolocations_cursor`, sent with `type: "geolocation"` and the options that
+ *  minted it. */
 export function search(
-  opts: { q: string; type?: SearchType; limit?: number } & EventFilterParams,
+  opts: { q: string; type?: SearchType; limit?: number; cursor?: string } & EventFilterParams,
 ): Promise<SearchResponse> {
   const params = new URLSearchParams({
     q: opts.q,
     type: opts.type ?? "all",
     limit: String(opts.limit ?? 20),
   });
+  if (opts.cursor) params.set("cursor", opts.cursor);
   appendEventFilterParams(params, opts);
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
 }
