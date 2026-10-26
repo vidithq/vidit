@@ -225,7 +225,7 @@ The host decides what gets *fetched*, never what gets *stored*: one module per t
 | Target | Chaser | Fills |
 |---|---|---|
 | An X status | Syndication ([`chase/x.py`](../backend/app/services/tweet_ingest/chase/x.py)) | The author, the post date, the media |
-| A public `t.me/<channel>/<id>` post | Its embed ([`chase/telegram.py`](../backend/app/services/tweet_ingest/chase/telegram.py)) | The post date, plus the media when the embed serves it; a sensitive post serves the date and no media |
+| A public `t.me/<channel>/<id>` post | Its embed ([`chase/telegram.py`](../backend/app/services/tweet_ingest/chase/telegram.py)) | The post date, plus the media when the embed serves it; a sensitive post serves the date and no media. The notice the embed shows a browser that cannot draw a custom emoji does not withhold the media |
 | A TikTok post (`tiktok.com/@<user>/video/<id>` or `/photo/<id>`, with or without `www.` or `m.`) or short link (`vm.tiktok.com/<code>`, `vt.tiktok.com/<code>`, `www.tiktok.com/t/<code>`) | Its embed, `www.tiktok.com/embed/v2/<id>` ([`chase/tiktok.py`](../backend/app/services/tweet_ingest/chase/tiktok.py)); a short link first costs one GET whose redirect is read, never followed, and must name a post | The post date, plus the video file, or one image per photo of a photo post; the music track is not read |
 | Every other candidate | None | `source_url`, link-only |
 

@@ -51,6 +51,13 @@ _MEDIA_WITHHELD_RE = re.compile(
     r"message_media_not_supported|Please open Telegram to view this post"
 )
 
+# The same notice inside ``media_not_supported_cont`` is hidden by the embed's
+# CSS and shown by its script only when the browser cannot draw a custom emoji
+# or a sticker; the post's media is served beside it, so it withholds nothing.
+_CLIENT_FALLBACK_RE = re.compile(
+    r'<div class="media_not_supported_cont"[^>]*>.*?</div>\s*</div>\s*</div>', re.DOTALL
+)
+
 
 def _fetch_embed_html(post_url: str, *, client: httpx.Client | None) -> str | None:
     """The embed HTML for a canonical post URL, ``None`` when there is none.
@@ -86,7 +93,7 @@ def _extract_media(embed_html: str) -> list[ParsedMedia]:
     ]
     if videos:
         return videos
-    if _MEDIA_WITHHELD_RE.search(embed_html) is not None:
+    if _MEDIA_WITHHELD_RE.search(_CLIENT_FALLBACK_RE.sub("", embed_html)) is not None:
         return []
     return [
         ParsedMedia(kind="image", remote_url=src, origin="quote")

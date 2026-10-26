@@ -8,6 +8,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - In the event form, a source link row imports the file of an X, public Telegram or TikTok post in one click, and a post with several files lets you pick one; `POST /uploads/from-link` stages it like an upload ([#697](https://github.com/vidithq/vidit/pull/697)).
 
+### Fixed
+
+- A Telegram post whose text holds a custom emoji now imports with its photo instead of the date alone ([#697](https://github.com/vidithq/vidit/pull/697)).
+
 ## v0.8.0, 2026-10-25
 
 ### Added
