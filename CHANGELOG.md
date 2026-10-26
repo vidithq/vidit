@@ -7,6 +7,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Added
 
 - A map control beside the zoom buttons picks the basemap: Auto, which follows the theme, Dark, Light, Streets or Terrain; the browser keeps the choice ([#706](https://github.com/vidithq/vidit/issues/706)).
+- On the Dark and Light basemaps, the same control sets the label language (Latin, local or both), the label density, and whether region borders and roads show ([#707](https://github.com/vidithq/vidit/issues/707)).
 
 ### Changed
 

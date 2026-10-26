@@ -1144,7 +1144,11 @@ export default function Map({
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <BasemapStyle style={basemapStyle} />
-      <BasemapControl settings={basemap} onChange={setBasemap} />
+      <BasemapControl
+        settings={basemap}
+        adjustable={BASEMAP_PRESETS[presetId].adjustable}
+        onChange={setBasemap}
+      />
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
 
