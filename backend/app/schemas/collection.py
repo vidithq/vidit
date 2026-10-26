@@ -182,15 +182,17 @@ class CollectionBulkAdd(BaseModel):
     """Body of ``POST /collections/{id}/events``: exactly one of ``event_ids`` or ``match``.
 
     ``event_ids`` are de-duplicated in arrival order. ``match`` names the
-    caller's collectable events a search lists in its Geolocations group. Either
-    way past :data:`MAX_CREATE_EVENTS` events is a 422 ``too_many_events``,
-    raised by the service so both modes answer with the same code.
+    caller's collectable events a search lists in its Geolocations group, less
+    ``exclude_event_ids`` (match only, de-duplicated). Past
+    :data:`MAX_CREATE_EVENTS` events, or exclusions, is a 422 ``too_many_events``,
+    raised by the service so every mode answers with the same code.
     """
 
     event_ids: list[uuid.UUID] | None = None
     match: SearchMatch | None = None
+    exclude_event_ids: list[uuid.UUID] = Field(default_factory=list)
 
-    @field_validator("event_ids")
+    @field_validator("event_ids", "exclude_event_ids")
     @classmethod
     def _unique(cls, v: list[uuid.UUID] | None) -> list[uuid.UUID] | None:
         return None if v is None else list(dict.fromkeys(v))
@@ -199,6 +201,8 @@ class CollectionBulkAdd(BaseModel):
     def _exactly_one(self) -> Self:
         if (self.event_ids is None) == (self.match is None):
             raise ValueError("send exactly one of event_ids or match")
+        if self.exclude_event_ids and self.match is None:
+            raise ValueError("exclude_event_ids narrows a match only")
         return self
 
 

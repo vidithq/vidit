@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import ColumnElement, cast, false, func, literal_column, or_, text, tuple_
 from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
@@ -272,10 +273,13 @@ def search_geolocations(
     return out, total, next_cursor
 
 
-def collectable_matches(db: Session, *, query: str, filters: EventFilters, user: User) -> SAQuery:
-    """``Event.id`` of each of ``user``'s events the Geolocations group lists for ``query`` and
-    ``filters`` that a collection can hold. Unordered and unlimited, so the set does not depend
-    on how many hits a page has loaded.
+def collectable_matches(
+    db: Session, *columns: Any, query: str, filters: EventFilters, user: User
+) -> SAQuery:
+    """``columns`` (``Event.id`` when none) of each of ``user``'s events the Geolocations group
+    lists for ``query`` and ``filters`` that a collection can hold. Unordered and unlimited, so
+    the set does not depend on how many hits a page has loaded; the count, the paged read and
+    the bulk add of ``services/collections_bulk`` all read it.
 
     The group's own matching (:func:`_matching` on :func:`_located_hits`), narrowed to the
     events credited to ``user`` (``services/event_filters.credited_to``) and to
@@ -284,7 +288,7 @@ def collectable_matches(db: Session, *, query: str, filters: EventFilters, user:
     """
     q = query.strip()
     stmt = _matching(
-        db.query(Event.id),
+        db.query(*(columns or (Event.id,))),
         *_located_hits(),
         credited_to([user.id]),
         collectable_events(),

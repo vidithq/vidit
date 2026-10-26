@@ -1865,3 +1865,97 @@ def test_bulk_add_with_an_unknown_event_is_404(db, cleanup, owner):
 def test_collectable_count_requires_auth():
     client.cookies.clear()
     assert client.post("/api/v1/collections/collectable-count", json={"q": "x"}).status_code == 401
+
+
+def test_bulk_add_by_match_leaves_out_the_excluded_events(db, cleanup, owner):
+    token = f"bulk{uuid.uuid4().hex[:10]}"
+    collection = _make_collection(db, cleanup, owner=owner)
+    kept, dropped = (
+        _titled(db, _make_event(db, cleanup, owner=owner), f"Strike near {token} {n}")
+        for n in range(2)
+    )
+
+    response = _bulk(
+        collection,
+        {"match": {"q": token}, "exclude_event_ids": [str(dropped.id), str(dropped.id)]},
+        owner,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["added"] == 1
+    assert _members(db, collection) == {kept.id}
+
+
+def test_bulk_add_applies_the_exclusions_before_the_cap(db, cleanup, owner, monkeypatch):
+    monkeypatch.setattr(collections_bulk, "MAX_CREATE_EVENTS", 1)
+    token = f"bulk{uuid.uuid4().hex[:10]}"
+    collection = _make_collection(db, cleanup, owner=owner)
+    events = [
+        _titled(db, _make_event(db, cleanup, owner=owner), f"Strike near {token}") for _ in range(2)
+    ]
+
+    response = _bulk(
+        collection, {"match": {"q": token}, "exclude_event_ids": [str(events[0].id)]}, owner
+    )
+
+    assert response.status_code == 200
+    assert _members(db, collection) == {events[1].id}
+
+
+def test_bulk_add_refuses_exclusions_beside_ids(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    event = _make_event(db, cleanup, owner=owner)
+
+    response = _bulk(
+        collection,
+        {"event_ids": [str(event.id)], "exclude_event_ids": [str(event.id)]},
+        owner,
+    )
+
+    assert response.status_code == 422
+    assert _members(db, collection) == set()
+
+
+def test_bulk_add_caps_the_exclusions(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    exclusions = [str(uuid.uuid4()) for _ in range(MAX_CREATE_EVENTS + 1)]
+
+    response = _bulk(collection, {"match": {"q": "x"}, "exclude_event_ids": exclusions}, owner)
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "too_many_events"
+
+
+def test_collectable_events_pages_the_set_the_count_counts(db, cleanup, owner, stranger):
+    """Newest first through the Link cursor; only the caller's collectable matches."""
+    token = f"bulk{uuid.uuid4().hex[:10]}"
+    mine = [
+        _titled(db, _make_event(db, cleanup, owner=owner), f"Strike near {token} {n}")
+        for n in range(3)
+    ]
+    _titled(db, _make_event(db, cleanup, owner=owner, status=STATUS_REQUESTED), f"{token} ask")
+    _titled(db, _make_event(db, cleanup, owner=stranger), f"Their {token}")
+    headers = login_as(client, owner)
+    match = {"q": token, "filters": {}}
+
+    first = client.post(
+        "/api/v1/collections/collectable-events?limit=2", json=match, headers=headers
+    )
+    assert first.status_code == 200
+    link = first.headers["link"]
+    next_url = link[link.index("<") + 1 : link.index(">")]
+    second = client.post(next_url, json=match, headers=headers)
+
+    assert second.status_code == 200
+    assert "link" not in second.headers
+    listed = [row["id"] for row in first.json() + second.json()]
+    newest_first = sorted(mine, key=lambda e: (e.created_at, e.id), reverse=True)
+    assert listed == [str(e.id) for e in newest_first]
+    count = client.post("/api/v1/collections/collectable-count", json=match, headers=headers)
+    assert count.json()["total"] == len(listed)
+
+
+def test_collectable_events_requires_auth():
+    client.cookies.clear()
+    response = client.post("/api/v1/collections/collectable-events", json={"q": "x"})
+    assert response.status_code == 401

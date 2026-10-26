@@ -4,6 +4,9 @@ import { textHtml } from "@/test/proofEditorStub";
 
 import {
   addEventToCollection,
+  addEventsToCollection,
+  collectableEventsBody,
+  collectableEventsPath,
   collectionEventsPath,
   collectionHref,
   collectionMetaSegments,
@@ -549,5 +552,26 @@ describe("the selection handoff to /collections/new", () => {
       from: "//elsewhere.example/phish",
     });
     expect(readSelectionHandoff(token(href))?.from).toBe("/search");
+  });
+});
+
+describe("a search match's bulk requests", () => {
+  it("posts the match with the events taken off it", async () => {
+    mockFetch.mockResolvedValue({ added: 1, skipped: { already_in_collection: 0, not_collectable: 0 } });
+
+    await addEventsToCollection("c1", { match: { q: "dam", tags: ["flood"] }, excludeEventIds: ["e1"] });
+
+    const [path, init] = lastCall();
+    expect(path).toBe("/collections/c1/events");
+    expect(JSON.parse(init.body as string)).toEqual({
+      match: { q: "dam", filters: { tag: ["flood"] } },
+      exclude_event_ids: ["e1"],
+    });
+  });
+
+  it("pages the match's collectable events twenty at a time", () => {
+    expect(collectableEventsPath(null)).toBe("/collections/collectable-events?limit=20");
+    expect(collectableEventsPath("abc")).toBe("/collections/collectable-events?limit=20&cursor=abc");
+    expect(JSON.parse(collectableEventsBody({ q: "dam" }))).toEqual({ q: "dam", filters: {} });
   });
 });

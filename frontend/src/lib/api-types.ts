@@ -797,6 +797,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections/collectable-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Collectable Matches
+         * @description Page through the events ``POST /collections/collectable-count`` counts, newest first.
+         *
+         *     The set ``POST /collections/{id}/events`` shelves for the same ``match``. Capped at 100
+         *     rows; follow the ``Link: rel="next"`` cursor.
+         */
+        post: operations["list_collectable_matches_api_v1_collections_collectable_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}": {
         parameters: {
             query?: never;
@@ -3563,13 +3586,16 @@ export interface components {
          * @description Body of ``POST /collections/{id}/events``: exactly one of ``event_ids`` or ``match``.
          *
          *     ``event_ids`` are de-duplicated in arrival order. ``match`` names the
-         *     caller's collectable events a search lists in its Geolocations group. Either
-         *     way past :data:`MAX_CREATE_EVENTS` events is a 422 ``too_many_events``,
-         *     raised by the service so both modes answer with the same code.
+         *     caller's collectable events a search lists in its Geolocations group, less
+         *     ``exclude_event_ids`` (match only, de-duplicated). Past
+         *     :data:`MAX_CREATE_EVENTS` events, or exclusions, is a 422 ``too_many_events``,
+         *     raised by the service so every mode answers with the same code.
          */
         CollectionBulkAdd: {
             /** Event Ids */
             event_ids?: string[] | null;
+            /** Exclude Event Ids */
+            exclude_event_ids?: string[];
             match?: components["schemas"]["SearchMatch"] | null;
         };
         /**
@@ -7254,6 +7280,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectableCount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collectable_matches_api_v1_collections_collectable_events_post: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchMatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventList"][];
                 };
             };
             /** @description Validation Error */

@@ -270,8 +270,11 @@ export const BULK_ADD_MAX_EVENTS = 500;
 /** One search as the server resolves it: the query and the search page's filters. */
 export type SearchMatchParams = { q: string } & EventFilterParams;
 
-/** What a bulk add shelves: explicit event ids, or every collectable event a search matches. */
-export type BulkTarget = { eventIds: string[] } | { match: SearchMatchParams };
+/** What a bulk add shelves: explicit event ids, or every collectable event a search matches
+ *  less `excludeEventIds`. */
+export type BulkTarget =
+  | { eventIds: string[] }
+  | { match: SearchMatchParams; excludeEventIds?: string[] };
 
 /** A selection handed from the search page to `/collections/new`: what to add, how many
  *  geolocations that is, the page to return to on Cancel, and, for checked rows, the rows
@@ -347,6 +350,22 @@ function searchMatchBody({ q, ...filters }: SearchMatchParams) {
   return { q, filters: eventFilterFields(filters) };
 }
 
+/** Rows a page of a match's events holds on the create page, one **Load more** at a time. */
+const MATCH_PAGE_SIZE = 20;
+
+/** One page of the caller's collectable events a match names, newest first:
+ *  `POST /collections/collectable-events`, the set the bulk add shelves. Pair with
+ *  `collectableEventsBody` as `useCursorList`'s body. */
+export function collectableEventsPath(cursor: string | null): string {
+  const params = new URLSearchParams({ limit: String(MATCH_PAGE_SIZE) });
+  if (cursor) params.set("cursor", cursor);
+  return `/collections/collectable-events?${params}`;
+}
+
+export function collectableEventsBody(match: SearchMatchParams): string {
+  return JSON.stringify(searchMatchBody(match));
+}
+
 /** `POST /collections/{id}/events`: many events in one write, by id or by the search that
  *  lists them. Idempotent; at most 500 events, else a 422 `too_many_events`. */
 export function addEventsToCollection(
@@ -356,7 +375,10 @@ export function addEventsToCollection(
   const body =
     "eventIds" in target
       ? { event_ids: target.eventIds }
-      : { match: searchMatchBody(target.match) };
+      : {
+          match: searchMatchBody(target.match),
+          exclude_event_ids: target.excludeEventIds ?? [],
+        };
   return apiFetch<BulkAddResult>(
     `/collections/${encodeURIComponent(collectionId)}/events`,
     { method: "POST", body: JSON.stringify(body) },

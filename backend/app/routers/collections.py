@@ -35,7 +35,9 @@ from app.services import reports as reports_service
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_chronological_cursor,
+    decode_cursor,
     encode_chronological_cursor,
+    encode_cursor,
     page_size,
     paged,
 )
@@ -99,6 +101,35 @@ def count_collectable_matches(
     The set ``POST /collections/{id}/events`` shelves for the same ``match``.
     """
     return CollectableCount(total=collections_bulk.count_matches(db, match=body, user=current_user))
+
+
+@router.post("/collectable-events", response_model=list[EventList])
+@authenticated_read_quota
+@limiter.limit("60/minute")
+def list_collectable_matches(
+    request: Request,
+    response: Response,
+    body: SearchMatch,
+    limit: int = Query(20, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[EventList]:
+    """Page through the events ``POST /collections/collectable-count`` counts, newest first.
+
+    The set ``POST /collections/{id}/events`` shelves for the same ``match``. Capped at 100
+    rows; follow the ``Link: rel="next"`` cursor.
+    """
+    size = page_size(limit)
+    window = collections_bulk.list_matches(
+        db,
+        match=body,
+        user=current_user,
+        limit=size,
+        after=decode_cursor(cursor) if cursor is not None else None,
+    )
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r[0].created_at, r[0].id))
+    return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
 
 
 @router.post(
@@ -254,6 +285,7 @@ def add_events_to_collection(
             user=current_user,
             event_ids=body.event_ids,
             match=body.match,
+            exclude_event_ids=body.exclude_event_ids,
         )
     except collections_service.CollectionError as exc:
         _raise_collection_error(exc)

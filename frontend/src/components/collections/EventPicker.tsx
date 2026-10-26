@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { X } from "lucide-react";
 
 import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
@@ -13,6 +13,7 @@ import {
   HorizontalScroller,
   type HorizontalScrollerHandle,
 } from "@/components/ui/HorizontalScroller";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { errorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -71,7 +72,7 @@ export function EventPicker({
   events,
   onAdd,
   onRemove,
-  hideEmpty = false,
+  matched,
 }: {
   /** Whose events the add card lists: the signed-in analyst (a collection
    *  holds its owner's own work only). */
@@ -79,9 +80,15 @@ export function EventPicker({
   events: PickableEvent[];
   onAdd: (event: PickableEvent) => void;
   onRemove: (eventId: string) => void;
-  /** Drops the held card while it is empty: a search selection the save adds already says what
-   *  the collection opens with. */
-  hideEmpty?: boolean;
+  /** A search match the save adds besides `events`, loaded a page at a time into the held card:
+   *  the rows so far, how many the match holds (less the removed), the walk behind **Load more**,
+   *  and the removal of one matched row. */
+  matched?: {
+    rows: PickableEvent[];
+    total: number;
+    walk: ComponentProps<typeof LoadMoreRow>["walk"] & { loading: boolean };
+    onRemove: (eventId: string) => void;
+  };
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -131,16 +138,26 @@ export function EventPicker({
     DEBOUNCE_MS,
   );
 
-  const held = chronological(events);
   const heldIds = new Set(events.map((e) => e.id));
+  const matchedRows = matched?.rows;
+  const held = useMemo(() => {
+    const picked = new Set(events.map((e) => e.id));
+    return chronological([...events, ...(matchedRows ?? []).filter((row) => !picked.has(row.id))]);
+  }, [events, matchedRows]);
+  // Matches not loaded yet count too, so the heading says what the save holds. A pick that is
+  // also a loaded match counts once.
+  const heldCount =
+    events.length +
+    (matched ? matched.total - matched.rows.filter((row) => heldIds.has(row.id)).length : 0);
+  const matchedLoading = !!matched?.walk.loading && held.length === 0;
 
   useEffect(() => {
     const id = reveal.current;
     reveal.current = null;
     if (!id) return;
-    const index = chronological(events).findIndex((e) => e.id === id);
+    const index = held.findIndex((e) => e.id === id);
     if (index >= 0) scroller.current?.show(index);
-  }, [events]);
+  }, [held]);
 
   const add = (event: PickableEvent) => {
     reveal.current = event.id;
@@ -148,7 +165,9 @@ export function EventPicker({
   };
   const remove = (index: number) => {
     reveal.current = (held[index + 1] ?? held[index - 1])?.id ?? null;
-    onRemove(held[index].id);
+    const { id } = held[index];
+    if (heldIds.has(id)) onRemove(id);
+    else matched?.onRemove(id);
   };
 
   const searching = typed.length > 0;
@@ -191,51 +210,54 @@ export function EventPicker({
     <div className="space-y-1">
       <SectionHeading title="Events in this collection" />
       <p className="text-xs text-neutral-500">
-        {eventCountLabel(held.length)}, ordered by event date, earliest first.
+        {eventCountLabel(heldCount)}, ordered by event date, earliest first.
       </p>
     </div>
   );
 
   return (
     <>
-      {(held.length > 0 || !hideEmpty) && (
-        <Card as="section">
-          {held.length > 0 ? (
-            <HorizontalScroller
-              ref={scroller}
-              variant="carousel"
-              heading={heldHeading}
-              label="Events in this collection"
-              previousLabel="Previous event"
-              nextLabel="Next event"
-              dotLabel={(index) => `Show event ${index + 1}`}
-            >
-              {held.map((row, index) => (
-                <div key={row.id} className="space-y-2">
-                  <CollectionItemCard item={row} />
-                  <div className="flex justify-end">
-                    <Button
-                      variant="dangerGhost"
-                      onClick={() => remove(index)}
-                      aria-label={`Remove ${row.title} from this collection`}
-                    >
-                      <X size={13} />
-                      Remove
-                    </Button>
-                  </div>
+      <Card as="section">
+        {held.length > 0 ? (
+          <HorizontalScroller
+            ref={scroller}
+            variant="carousel"
+            heading={heldHeading}
+            label="Events in this collection"
+            previousLabel="Previous event"
+            nextLabel="Next event"
+            dotLabel={(index) => `Show event ${index + 1}`}
+          >
+            {held.map((row, index) => (
+              <div key={row.id} className="space-y-2">
+                <CollectionItemCard item={row} />
+                <div className="flex justify-end">
+                  <Button
+                    variant="dangerGhost"
+                    onClick={() => remove(index)}
+                    aria-label={`Remove ${row.title} from this collection`}
+                  >
+                    <X size={13} />
+                    Remove
+                  </Button>
                 </div>
-              ))}
-            </HorizontalScroller>
-          ) : (
-            <>
-              {heldHeading}
+              </div>
+            ))}
+          </HorizontalScroller>
+        ) : (
+          <>
+            {heldHeading}
+            {matchedLoading ? (
+              <p className="text-sm text-neutral-500">Loading the geolocations you selected…</p>
+            ) : (
               <EmptyState variant="plain" lead="Nothing on this collection yet.">
                 Add your own geolocations from the search below.
               </EmptyState>
-            </>
-          )}
-        </Card>
-      )}
+            )}
+          </>
+        )}
+        {matched && <LoadMoreRow walk={matched.walk} />}
+      </Card>
 
       <Card as="section">
         <div className="space-y-1">

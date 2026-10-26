@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ComponentProps, type ReactNode } from "react";
 
 import { EventPicker } from "@/components/collections/EventPicker";
 import { Button } from "@/components/ui/Button";
@@ -84,9 +84,9 @@ function missingCollectionFields(
  * the collection will hold. It is seeded from `initialEvents` and handed back
  * as ids on submit.
  *
- * `selection` heads the picker with a *From your search* card saying how many
- * geolocations the caller adds on top of the picked rows: a search match,
- * handed to the create page.
+ * `matched` is a search match the caller adds after the save, shown a page at a
+ * time in the held card (`EventPicker`). Its rows are not the form's: removing
+ * one goes to the caller, and the ids handed back on submit are the picks alone.
  */
 export function CollectionDetailsForm({
   title: pageTitle,
@@ -102,7 +102,7 @@ export function CollectionDetailsForm({
   onCancel,
   busy = false,
   error,
-  selection,
+  matched,
   onEventsChange,
 }: {
   /** The page's heading. */
@@ -131,8 +131,8 @@ export function CollectionDetailsForm({
   /** The caller's write is in flight. */
   busy?: boolean;
   error?: string | null;
-  /** What the caller adds besides the picked rows: *44 geolocations will be added.* */
-  selection?: string;
+  /** A search match the caller adds after the save (`EventPicker`'s `matched`). */
+  matched?: ComponentProps<typeof EventPicker>["matched"];
   /** The held count, each time it changes, for a caller whose header follows it. */
   onEventsChange?: (count: number) => void;
 }) {
@@ -280,19 +280,12 @@ export function CollectionDetailsForm({
           </div>
         </Card>
 
-        {selection && (
-          <Card as="section">
-            <SectionHeading title="From your search" />
-            <p className="text-sm text-neutral-300">{selection}</p>
-          </Card>
-        )}
-
         <EventPicker
           username={username}
           events={events}
           onAdd={addEvent}
           onRemove={removeEvent}
-          hideEmpty={!!selection}
+          matched={matched}
         />
       </form>
     </PageShell>
