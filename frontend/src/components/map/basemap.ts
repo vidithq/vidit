@@ -2,6 +2,7 @@ import type {
   ExpressionSpecification,
   FilterSpecification,
   LayerSpecification,
+  SourceSpecification,
   StyleSpecification,
 } from "maplibre-gl";
 
@@ -29,7 +30,8 @@ type LayerRole =
   | "region-border"
   | "disputed-border"
   | "building"
-  | "military-airport";
+  | "military-airport"
+  | "relief";
 
 const ROAD_ROLES: ReadonlySet<LayerRole> = new Set(["road", "minor-road", "road-label"]);
 
@@ -43,6 +45,7 @@ export interface BasemapOptions {
   roads: boolean;
   buildings: boolean;
   militaryAndAirports: boolean;
+  relief: boolean;
   /** Dashed, a disputed country border reads apart from a settled one; solid, it reads like one. */
   disputedDashed: boolean;
 }
@@ -54,6 +57,7 @@ export const DEFAULT_BASEMAP_OPTIONS: BasemapOptions = {
   roads: true,
   buildings: true,
   militaryAndAirports: true,
+  relief: false,
   disputedDashed: true,
 };
 
@@ -139,7 +143,8 @@ function adjustLayer(layer: AdjustableLayer, options: BasemapOptions): LayerSpec
     (role === "region-border" && !options.regionBorders) ||
     (ROAD_ROLES.has(role) && !options.roads) ||
     (role === "building" && !options.buildings) ||
-    (role === "military-airport" && !options.militaryAndAirports);
+    (role === "military-airport" && !options.militaryAndAirports) ||
+    (role === "relief" && !options.relief);
   if (hidden) layout.visibility = "none";
 
   if (role === "disputed-border" && !options.disputedDashed) {
@@ -237,20 +242,57 @@ function militaryAirportLayers(brightness: Brightness): LayerSpecification[] {
   ];
 }
 
+const RELIEF_SOURCE = "relief-dem";
+
+// The elevation tiles stop at 15; MapLibre scales the last level past it.
+const RELIEF_SOURCE_SPEC: SourceSpecification = {
+  type: "raster-dem",
+  tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+  encoding: "terrarium",
+  tileSize: 256,
+  maxzoom: 15,
+  attribution:
+    '<a href="https://registry.opendata.aws/terrain-tiles" target="_blank">Terrain Tiles</a>: USGS, NOAA, Copernicus EU-DEM and <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank">others</a>',
+};
+
+const LAND_SOURCE_LAYERS: ReadonlySet<string> = new Set(["water", "landcover", "landuse", "park"]);
+
+function reliefLayer(brightness: Brightness): LayerSpecification {
+  const { reliefShadow, reliefHighlight, reliefAccent } = MAP_LAYER_COLORS[brightness];
+  return {
+    id: "vidit-relief",
+    type: "hillshade",
+    source: RELIEF_SOURCE,
+    metadata: { "vidit:role": "relief" },
+    paint: {
+      "hillshade-exaggeration": 0.35,
+      "hillshade-shadow-color": reliefShadow,
+      "hillshade-highlight-color": reliefHighlight,
+      "hillshade-accent-color": reliefAccent,
+    },
+  };
+}
+
 /** A Vidit style with the reader's options applied. Pure: the same inputs give an equal style,
  *  so MapLibre's style diff turns an option change into `setLayoutProperty`, `setPaintProperty`,
  *  `setFilter` and `setLayerZoomRange` calls on the live map. */
 export function buildViditStyle(brightness: Brightness, options: BasemapOptions): StyleSpecification {
   const base = VIDIT_STYLES[brightness];
   const layers = [...base.layers];
+  const after = (sourceLayers: ReadonlySet<string>) => {
+    let at = 0;
+    layers.forEach((layer, i) => {
+      if (sourceLayers.has((layer as AdjustableLayer)["source-layer"] ?? "")) at = i + 1;
+    });
+    return at;
+  };
+  // Above the water and land fills, under everything drawn on the land.
+  layers.splice(after(LAND_SOURCE_LAYERS), 0, reliefLayer(brightness));
   // Above the style's own aeroway layers, under its roads and labels.
-  let at = 0;
-  layers.forEach((layer, i) => {
-    if ((layer as AdjustableLayer)["source-layer"] === "aeroway") at = i + 1;
-  });
-  layers.splice(at, 0, ...militaryAirportLayers(brightness));
+  layers.splice(after(new Set(["aeroway"])), 0, ...militaryAirportLayers(brightness));
   return {
     ...base,
+    sources: { ...base.sources, [RELIEF_SOURCE]: RELIEF_SOURCE_SPEC },
     layers: layers.map((layer) => adjustLayer(layer as AdjustableLayer, options)),
   };
 }

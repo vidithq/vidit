@@ -56,6 +56,7 @@ const LAYER_TOGGLES: SwitchSetting[] = [
     label: "Military areas and airports",
     description: "Outlined in colour, from zoom 10.",
   },
+  { key: "relief", label: "Relief", description: "Hills and mountains shaded from elevation data." },
   {
     key: "disputedDashed",
     label: "Dashed disputed borders",

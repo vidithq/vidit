@@ -63,8 +63,8 @@ describe.each(BASES)("buildViditStyle on the %s style", (brightness, base) => {
   it("validates against the style spec with every option set", () => {
     for (const options of [
       DEFAULT_BASEMAP_OPTIONS,
-      { language: "both", density: "normal", regionBorders: true, roads: false, buildings: false, militaryAndAirports: false, disputedDashed: false },
-      { language: "local", density: "sparse", regionBorders: false, roads: true, buildings: true, militaryAndAirports: true, disputedDashed: true },
+      { language: "both", density: "normal", regionBorders: true, roads: false, buildings: false, militaryAndAirports: false, relief: true, disputedDashed: false },
+      { language: "local", density: "sparse", regionBorders: false, roads: true, buildings: true, militaryAndAirports: true, relief: false, disputedDashed: true },
     ] as BasemapOptions[]) {
       expect(validateStyleMin(buildViditStyle(brightness, options))).toEqual([]);
     }
@@ -231,6 +231,31 @@ describe.each(BASES)("buildViditStyle on the %s style", (brightness, base) => {
     const highlights = withRole(build(brightness, { militaryAndAirports: false }), "military-airport");
     expect(highlights).not.toHaveLength(0);
     expect(highlights.every((layer) => !visible(layer))).toBe(true);
+  });
+
+  it("shades the relief above the land fills and under everything drawn on the land, when on", () => {
+    const layers = build(brightness, { relief: true });
+    const [relief] = withRole(layers, "relief");
+    expect(relief.type).toBe("hillshade");
+    expect(visible(relief)).toBe(true);
+
+    const at = layers.indexOf(relief);
+    const land = new Set(["water", "landcover", "landuse", "park"]);
+    for (const [i, layer] of layers.entries()) {
+      const fill = land.has(layer["source-layer"] ?? "") && !layer.metadata;
+      if (fill) expect(i, layer.id).toBeLessThan(at);
+      if (layer.type === "symbol" || layer.metadata?.["vidit:role"] === "road") expect(i, layer.id).toBeGreaterThan(at);
+    }
+    for (const layer of withRole(layers, "military-airport")) expect(layers.indexOf(layer)).toBeGreaterThan(at);
+
+    const source = buildViditStyle(brightness, DEFAULT_BASEMAP_OPTIONS).sources[(relief as { source: string }).source];
+    expect(source).toMatchObject({ type: "raster-dem", encoding: "terrarium", maxzoom: 15 });
+    expect(JSON.stringify(source)).toContain("Terrain Tiles");
+    expect(JSON.stringify(relief.paint)).toContain(MAP_LAYER_COLORS[brightness].reliefShadow);
+  });
+
+  it("hides the relief by default", () => {
+    expect(withRole(build(brightness), "relief").every((layer) => !visible(layer))).toBe(true);
   });
 
   it("writes one language per label, Latin by default", () => {

@@ -135,6 +135,32 @@ MapLibre renders only on WebGL2, with alpha, depth and stencil buffers. A browse
 - `supportsMaplibreWebGL` requests the same context on mount, so a browser that offers WebGL1 only, or blocks WebGL entirely, never mounts the map.
 - `guardedMaplibre` is the `mapLib` that `<Map>` hands to react-map-gl. When MapLibre still fails to create its context, it fires `error` from inside its constructor, before react-map-gl attaches `onError`, and returns a map with no painter that throws on `getBounds()` and `remove()`. The guarded constructor throws `WebGLUnavailableError` instead. react-map-gl passes that error to `onError`, which switches `<Map>` to the message, and never registers a map to remove.
 
+#### Map data sources
+
+Every map source is keyless and loads straight from its host in the reader's browser. Each source carries its own attribution, and the attribution control lists the credit of every source a visible layer draws. What each layer shows, and where it draws: [`design.md`](design.md#map).
+
+| Layer | Source | Host | Credit in the attribution control |
+|---|---|---|---|
+| Dark, Light and Streets basemaps | OpenFreeMap vector tiles (OpenMapTiles schema) | `tiles.openfreemap.org` | OpenFreeMap, OpenMapTiles, OpenStreetMap contributors |
+| Terrain basemap | OpenTopoMap raster tiles, to zoom 17 | `tile.opentopomap.org` | OpenStreetMap contributors, SRTM, OpenTopoMap (CC BY-SA) |
+| Relief | [Terrain Tiles](https://registry.opendata.aws/terrain-tiles) on AWS Open Data, Terrarium-encoded elevation PNG, to zoom 15 | `s3.amazonaws.com/elevation-tiles-prod` | Terrain Tiles: USGS, NOAA, Copernicus EU-DEM and others, linked to the full list |
+
+Terrain Tiles merges several elevation datasets, and its [attribution list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md) asks each to be credited:
+
+- ArcticDEM terrain data DEM(s) were created from DigitalGlobe, Inc., imagery and funded under National Science Foundation awards 1043681, 1559691, and 1542736.
+- Australia terrain data © Commonwealth of Australia (Geoscience Australia) 2017.
+- Austria terrain data © offene Daten Österreichs, Digitales Geländemodell (DGM) Österreich.
+- Canada terrain data contains information licensed under the Open Government Licence, Canada.
+- Europe terrain data produced using Copernicus data and information funded by the European Union, EU-DEM layers.
+- Global ETOPO1 terrain data U.S. National Oceanic and Atmospheric Administration.
+- Mexico terrain data source: INEGI, Continental relief, 2016.
+- New Zealand terrain data Copyright 2011 Crown copyright (c) Land Information New Zealand and the New Zealand Government (All rights reserved).
+- Norway terrain data © Kartverket.
+- United Kingdom terrain data © Environment Agency copyright and/or database right 2015. All rights reserved.
+- United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.
+
+The attribution control names the three largest contributors and links to that list.
+
 ### Hosting
 
 An instance needs these pieces. [Deployment](#deployment) describes how to run them.

@@ -19,6 +19,7 @@ const SETTINGS: BasemapSettings = {
   roads: true,
   buildings: true,
   militaryAndAirports: true,
+  relief: false,
   disputedDashed: true,
   grid: false,
 };
@@ -64,6 +65,8 @@ describe("<BasemapControl>", () => {
     expect(onChange).toHaveBeenLastCalledWith({ buildings: false });
     fireEvent.click(screen.getByRole("switch", { name: "Military areas and airports" }));
     expect(onChange).toHaveBeenLastCalledWith({ militaryAndAirports: false });
+    fireEvent.click(screen.getByRole("switch", { name: "Relief" }));
+    expect(onChange).toHaveBeenLastCalledWith({ relief: true });
     fireEvent.click(screen.getByRole("switch", { name: "Dashed disputed borders" }));
     expect(onChange).toHaveBeenLastCalledWith({ disputedDashed: false });
     fireEvent.click(screen.getByRole("switch", { name: "Coordinate grid" }));
@@ -75,6 +78,7 @@ describe("<BasemapControl>", () => {
     expect(screen.queryByRole("group", { name: "Label language" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Roads" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Buildings" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Relief" })).toBeNull();
     expect(screen.getByRole("switch", { name: "Coordinate grid" })).toBeInTheDocument();
     expect(screen.getByText(/adjust on the Dark and Light basemaps/)).toBeInTheDocument();
   });

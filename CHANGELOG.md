@@ -12,6 +12,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The Dark and Light basemaps highlight military areas and airports, with their runways, from zoom 10; the basemap control turns the highlight off ([#709](https://github.com/vidithq/vidit/pull/709)).
 - A coordinate grid overlay, off by default, draws latitude and longitude lines with their labels on every basemap, finer as you zoom in ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The Dark and Light basemaps draw disputed country borders dashed, and the basemap control can draw them solid ([#709](https://github.com/vidithq/vidit/pull/709)).
+- A Relief switch on the Dark and Light basemaps shades hills and mountains from open elevation data; it is off by default ([#709](https://github.com/vidithq/vidit/pull/709)).
 
 ### Changed
 
