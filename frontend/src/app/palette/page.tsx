@@ -1357,7 +1357,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse, the position dots of a carousel <HorizontalScroller> (grey except the current one). Position / ring / size / colour via className.">
+          <Item name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size / colour via className.">
             <Variant label="bare">
               <Dot />
             </Variant>
@@ -1950,7 +1950,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, on its page's Events list (<CollectionItemCard> with onSelect): the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. onSelect swaps the link for a button that moves the player to the row, and `selected` marks the row it stands on. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it. The write pages show a held item as the feed card instead (<CollectionItemCard> without onSelect), one at a time in a carousel <HorizontalScroller>, with a red Remove under it.">
+          <Item name="<EntityCard variant=compact>: a collection item" usage="One item of a collection, on its page's Events list (<CollectionItemCard> with onSelect): the same compact card with three differences the props carry. `author` is omitted, so the row drops its byline, because a collection is one analyst's own set and the page header names them once. onSelect swaps the link for a button that moves the player to the row, and `selected` marks the row it stands on. `uniformHeight={false}` drops the catalogue height floor, since every row here carries the same two lines and the floor would print a band of empty space under each of them: the row stands on its media column and the text centres against it. The write pages show a held item as the same compact row without onSelect and without its tag row: the card links to the event, one line of meta (date, coordinates, the badge), in a vertical list with a <RemoveButton> at each row's right edge.">
             <div className="w-full max-w-xl">
               <EntityCard
                 variant="compact"
@@ -2037,7 +2037,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, so a swipe moves it, focusable so the arrow keys scroll it. In the row variant, a lone item takes the full width, two items fit once the row is 32rem wide, and below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, go inert at the ends, and step on the left and right keys. The carousel variant shows one item at full width, the position (2 / 3) between the buttons, and one dot per item under the row, the current one accent; a dot shows its item. `actions` adds header controls after the buttons at any item count, and a ref's show(index) scrolls an item into view. The event page's sources and <SourcesField> are the row consumers; the collection picker's held events are the carousel consumer.">
+          <Item name="<HorizontalScroller>" usage="A row of same-width items that scrolls sideways (components/ui/HorizontalScroller.tsx): native overflow scrolling with one snap point per item, so a swipe moves it, focusable so the arrow keys scroll it. A lone item takes the full width, two items fit once the row is 32rem wide, and below that one fits and the next peeks. With more than one item, the header shows the shown range (1 to 2 of 5) and previous and next ghost icon buttons that scroll by one item, without smoothing under prefers-reduced-motion, go inert at the ends, and step on the left and right keys. `actions` adds header controls after the buttons at any item count, and a ref's show(index) scrolls an item into view. The event page's sources and <SourcesField> are its consumers.">
             <div className="w-full max-w-2xl">
               <HorizontalScroller
                 heading={<SectionEyebrow margin="none" title="Sources (3)" />}
@@ -2050,22 +2050,6 @@ export default function PalettePage() {
                 ))}
               </HorizontalScroller>
             </div>
-            <Variant label="carousel">
-              <div className="w-full max-w-md">
-                <HorizontalScroller
-                  variant="carousel"
-                  heading={<SectionEyebrow margin="none" title="Sources" />}
-                  label="Sources"
-                  previousLabel="Previous source"
-                  nextLabel="Next source"
-                  dotLabel={(index) => `Show source ${index + 1}`}
-                >
-                  {[MOCK_SOURCE, MOCK_CONTEXT_SOURCE, MOCK_SATELLITE_SOURCE].map((source, index) => (
-                    <SourceBlock key={index} source={source} index={index} alt="Strike on a depot" />
-                  ))}
-                </HorizontalScroller>
-              </div>
-            </Variant>
           </Item>
 
           <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads), the Title (named Source N title), the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput> under Links (N), one row per link with its post time, <ArchiveBox> and, on an X, Telegram or TikTok post link while the source has no file, a ghost icon button that imports the link's file through POST /uploads/from-link (a post with several files gets a <Select> under the slot to pick one), Add a link under them, then <SourceImageryCheck> on a satellite or aircraft source), then More details (<Disclosure>, open when a field inside holds a value): Captured (<DateTimeInput>, UTC), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and Graphic content (<Switch> with its ?, locked on a flagged stored source). Each label's ? sits beside its <label>, never inside it. The section has no card of its own: its Sources (N) <SectionEyebrow> header row sits on the page like the event page's, and a missing file's red line sits in that row, so no editor moves down. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width with its file beside its title, level and kind once the card is 42rem wide (like <DetailCard leadBeside>), the links and More details under both, and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap. `variant` site-image is a site's satellite image (SiteImageEditor): no level or kind (fixed to context and satellite), a required Captured under the title, and the caller's `extra` (the note) in place of More details.">

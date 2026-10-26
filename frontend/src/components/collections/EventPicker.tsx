@@ -1,19 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { X } from "lucide-react";
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
 
 import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
 import { StatusBadge } from "@/components/event/StatusBadge";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/ui/EmptyState";
-import {
-  HorizontalScroller,
-  type HorizontalScrollerHandle,
-} from "@/components/ui/HorizontalScroller";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { errorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -47,15 +42,15 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  * The events a collection is being written to hold, and the search that adds to
  * them. Both the create and the edit page use it.
  *
- * **Two cards.** *Events in this collection* is what the collection holds if
- * saved now (the rows the page opened on, a `?event=` arrival, and everything
- * added since), in the collection page's order, as a carousel
- * `<HorizontalScroller>` of large `<CollectionItemCard>` blocks, each with its
- * own **Remove**. *Add events* is the way in: a `<Combobox>` that lists at most
- * `PICKER_ROW_LIMIT` rows, the analyst's most recent eligible events, or the
- * first matches once something is typed. A held row leaves the list, a pick
- * moves the carousel to it, and the list stays open for the next pick. Neither
- * card writes anything; the page's submit does.
+ * **Two cards.** *Add events* comes first, the way in: a `<Combobox>` that
+ * lists at most `PICKER_ROW_LIMIT` rows, the analyst's most recent eligible
+ * events, or the first matches once something is typed. *Events in this
+ * collection* follows: what the collection holds if saved now (the rows the
+ * page opened on, a `?event=` arrival, and everything added since), in the
+ * collection page's order, as a vertical list of compact `<CollectionItemCard>`
+ * rows, each with a `<RemoveButton>` at its right edge. A held row leaves the
+ * add list, a pick scrolls its new row into view, and the add list stays open
+ * for the next pick. Neither card writes anything; the page's submit does.
  *
  * **Two sources, one row.** With nothing typed, the add card reads the
  * analyst's catalogue through `GET /events` (`view=located`, `author=`, the two
@@ -93,9 +88,6 @@ export function EventPicker({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const typed = query.trim();
-  const scroller = useRef<HorizontalScrollerHandle>(null);
-  // The row the carousel shows once `events` changes: the pick, or a removed row's neighbour.
-  const reveal = useRef<string | null>(null);
 
   const buildPath = useCallback(
     (cursor: string | null) => pickerBrowsePath(username, cursor),
@@ -151,21 +143,20 @@ export function EventPicker({
     (matched ? matched.total - matched.rows.filter((row) => heldIds.has(row.id)).length : 0);
   const matchedLoading = !!matched?.walk.loading && held.length === 0;
 
-  useEffect(() => {
-    const id = reveal.current;
-    reveal.current = null;
-    if (!id) return;
-    const index = held.findIndex((e) => e.id === id);
-    if (index >= 0) scroller.current?.show(index);
-  }, [held]);
+  // The row a pick added, scrolled into view once it renders, so the pick shows wherever the
+  // list puts it.
+  const added = useRef<string | null>(null);
+  const revealAdded = (id: string) => (el: HTMLLIElement | null) => {
+    if (!el || added.current !== id) return;
+    added.current = null;
+    el.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  };
 
   const add = (event: PickableEvent) => {
-    reveal.current = event.id;
+    added.current = event.id;
     onAdd(event);
   };
-  const remove = (index: number) => {
-    reveal.current = (held[index + 1] ?? held[index - 1])?.id ?? null;
-    const { id } = held[index];
+  const remove = ({ id }: PickableEvent) => {
     if (heldIds.has(id)) onRemove(id);
     else matched?.onRemove(id);
   };
@@ -218,48 +209,6 @@ export function EventPicker({
   return (
     <>
       <Card as="section">
-        {held.length > 0 ? (
-          <HorizontalScroller
-            ref={scroller}
-            variant="carousel"
-            heading={heldHeading}
-            label="Events in this collection"
-            previousLabel="Previous event"
-            nextLabel="Next event"
-            dotLabel={(index) => `Show event ${index + 1}`}
-          >
-            {held.map((row, index) => (
-              <div key={row.id} className="space-y-2">
-                <CollectionItemCard item={row} />
-                <div className="flex justify-end">
-                  <Button
-                    variant="dangerGhost"
-                    onClick={() => remove(index)}
-                    aria-label={`Remove ${row.title} from this collection`}
-                  >
-                    <X size={13} />
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </HorizontalScroller>
-        ) : (
-          <>
-            {heldHeading}
-            {matchedLoading ? (
-              <p className="text-sm text-neutral-500">Loading the geolocations you selected…</p>
-            ) : (
-              <EmptyState variant="plain" lead="Nothing on this collection yet.">
-                Add your own geolocations from the search below.
-              </EmptyState>
-            )}
-          </>
-        )}
-        {matched && <LoadMoreRow walk={matched.walk} />}
-      </Card>
-
-      <Card as="section">
         <div className="space-y-1">
           <SectionHeading title="Add events" />
           <p className="text-xs text-neutral-500">
@@ -291,6 +240,32 @@ export function EventPicker({
           onPick={add}
           status={status}
         />
+      </Card>
+
+      <Card as="section">
+        {heldHeading}
+        {held.length > 0 ? (
+          <ul className="space-y-2" aria-label="Events in this collection">
+            {held.map((row) => (
+              <li key={row.id} ref={revealAdded(row.id)} className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <CollectionItemCard item={row} />
+                </div>
+                <RemoveButton
+                  label={`Remove ${row.title} from this collection`}
+                  onClick={() => remove(row)}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : matchedLoading ? (
+          <p className="text-sm text-neutral-500">Loading the geolocations you selected…</p>
+        ) : (
+          <EmptyState variant="plain" lead="Nothing on this collection yet.">
+            Add your own geolocations from the search above.
+          </EmptyState>
+        )}
+        {matched && <LoadMoreRow walk={matched.walk} />}
       </Card>
     </>
   );
