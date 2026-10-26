@@ -344,6 +344,11 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/conflicts.ts::CONFLICT_OTHER_NAME` | the `Other` conflict row the baseline migration seeds (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | the conflict picker stops offering the escape value |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
 | `lib/collections.ts::BULK_ADD_MAX_EVENTS` (the search page's Select all) | `schemas/collection.MAX_CREATE_EVENTS` | search offers a Select all the bulk add refuses (`too_many_events`), or hides one it accepts |
+| `lib/sites.ts::SITE_NAME_MAX_LEN`, `SITE_IMAGE_NOTE_MAX_LEN`, `siteImageMissing` | `models/event.TITLE_MAX_LENGTH`, `schemas/site.IMAGE_NOTE_MAX_LENGTH`, `schemas/site.SiteImageCreate` (a capture time not in the future, a link) | the site forms accept a value the API refuses |
+| `lib/sites.ts::contourOn` | `services/sites.zones_at` (the latest contour whose image was captured on or before the day, the later contour breaking a tie) | the site page shows a zone for a date that the map and the API read differently |
+| `lib/sites.ts::imageFromEventSource` | `services/sites._event_file` (a `satellite` source with a file, not flagged graphic) and `schemas/site.SiteImageCreate` (a capture time) | the link dialog offers to file an event image the API refuses (`source_media_not_found`) |
+| `lib/sites.ts::SITE_MARGIN_KM` | the `margin_m` default of `routers/events/sites` | the link dialog names a distance the suggestions do not use |
+| `components/sites/EventSitesBlock.tsx` link gate on `geolocated` | `event_filters.site_linkable_events` | the event page offers a link the API refuses (409) |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
 | `lib/og.ts::MOSAIC_MAX_TILES` | `collections.COVER_TILES` | a share card draws more tiles than the server sends |
 | `components/event/useEventActions.tsx` and `components/geolocations/edit/EventEditForm.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel or the edit form's byline offers an invitation the API refuses (409) |
@@ -385,7 +390,7 @@ Every table, column, constraint and API field follows these rules. The API field
 | Repeated table name | A column does not repeat its table name | `media.kind`, not `media.media_type` |
 | Discriminator | Name it `kind`, never `type` | `media.kind`, `notifications.kind` |
 | Post | Write "post", never "tweet" | `event_detections.from_post_id` |
-| Event source | `source` is reserved for event sources | `sources`, `source_links`, `source_tags`, `media.source_id` |
+| Source | `source` is reserved for a row of `sources`: an event's evidence or a site image | `sources`, `source_links`, `source_tags`, `media.source_id`, `site_contours.source_id` |
 | X handle | `x_handle`, with a prefix when the table holds another handle | `users.x_handle`, `bot_mentions.author_x_handle` |
 | Leading underscore | A column or field name never starts with one | `token_hash` |
 | Creation stamp | Every entity table has `created_at`. A join table has none. | `tags.created_at`, `conflicts.created_at` |

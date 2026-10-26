@@ -6,7 +6,6 @@ routers), the projection helpers, :func:`resolve_live_event` and
 """
 
 import uuid
-from datetime import datetime
 from typing import Annotated, NoReturn
 
 from fastapi import HTTPException
@@ -24,15 +23,9 @@ from app.schemas.event import (
     GeolocatorInviteCreate,
 )
 from app.schemas.media import MediaRead
-from app.schemas.source import (
-    ArchivedLinkRead,
-    CoordsRead,
-    SourceCreate,
-    SourceLinkRead,
-    SourceRead,
-    SourceWarning,
-)
+from app.schemas.source import CoordsRead, SourceCreate
 from app.services.event_filters import visible_events
+from app.services.events.sources import build_source_read
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.geolocator_credit import (
     GEOLOCATOR_CREDIT_ERROR_STATUS,
@@ -40,11 +33,10 @@ from app.services.geolocator_credit import (
     GeolocatorCreditError,
     live_geolocators,
 )
-from app.services.imagery import LinkCheck, source_warnings
-from app.services.source_archive import SnapshotRejected, provider_of
+from app.services.source_archive import SnapshotRejected
 from app.services.thumbnails import pick_thumbnail
 from app.services.uploads import UPLOAD_ERROR_STATUS
-from app.services.versions import VersionLimitError, point_shape
+from app.services.versions import VersionLimitError
 
 # Every ``SnapshotRejected`` code is a 400; the code says which check failed.
 # Shared by every write form with a snapshot field.
@@ -250,44 +242,6 @@ def build_version_read(row: EventVersion) -> EventVersionRead:
         snapshot=row.snapshot,
         redacted=row.redacted_at is not None,
     )
-
-
-def build_source_read(source: Source) -> SourceRead:
-    """One source's wire shape; the caller loads its links, tags and media (``SOURCE_LOAD``)."""
-    point = point_shape(source.capture_position)
-    links: list[SourceLinkRead] = []
-    for link in source.links:
-        provider = provider_of(link.snapshot_url) if link.snapshot_url else None
-        archived = (
-            ArchivedLinkRead(url=link.snapshot_url, provider=provider, archived_at=link.archived_at)
-            if link.snapshot_url and provider is not None and link.archived_at is not None
-            else None
-        )
-        links.append(SourceLinkRead(url=link.url, posted_at=link.posted_at, archived=archived))
-    return SourceRead(
-        id=source.id,
-        title=source.title,
-        level=source.level,
-        kind=source.kind,
-        captured_at=source.captured_at,
-        capture_position=CoordsRead(**point) if point is not None else None,
-        is_graphic=source.is_graphic,
-        links=links,
-        tags=source.tags,
-        media=source.media,
-        warnings=warning_reads(
-            source.kind,
-            source.captured_at,
-            [LinkCheck(link.url, archived=link.snapshot_url is not None) for link in source.links],
-        ),
-    )
-
-
-def warning_reads(
-    kind: str, captured_at: datetime | None, links: list[LinkCheck]
-) -> list[SourceWarning]:
-    """The imagery warnings of a source, stored or as the form holds it."""
-    return [SourceWarning.model_validate(w) for w in source_warnings(kind, captured_at, links)]
 
 
 def build_event_read(

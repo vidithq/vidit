@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { TAP_STEP } from "./Button";
-import { ACCENT_SURFACE } from "./styles";
+import { ACCENT_SURFACE, WARNING_CALLOUT } from "./styles";
 
 // The one pill for the status / tag / chip family: one rounded-full shape, the
 // colour picked by `tone`. A static `<span>` by default; with `onClick` it is an
@@ -12,7 +12,7 @@ import { ACCENT_SURFACE } from "./styles";
 //   secondary  accent outline, no fill: a softer marked state
 //   neutral    default / tag / closed / inactive
 //   danger     a revoked / error state
-export type PillTone = "accent" | "secondary" | "neutral" | "danger";
+export type PillTone = "accent" | "secondary" | "neutral" | "danger" | "warning";
 
 // `max-w-full wrap-anywhere`: a pill never outgrows its box. `shrink-0` alone
 // would let a long single word (a tag name in a 150px card column at 320px) run
@@ -30,6 +30,7 @@ const PILL_TONE: Record<PillTone, string> = {
   secondary: "text-orange-400 border border-orange-500/40",
   neutral: "bg-neutral-800 text-neutral-400 border border-neutral-700",
   danger: "bg-red-500/10 text-red-300 border border-red-500/30",
+  warning: WARNING_CALLOUT,
 };
 
 interface PillProps {

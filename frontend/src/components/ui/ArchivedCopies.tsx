@@ -319,12 +319,12 @@ function SavePageDoor({
  * parseable host falls back to a literal.
  */
 export function linkDescription(
-  sourceIndex: number,
+  source: number | string,
   hostname: string,
   linkIndex: number,
   linkCount: number
 ): string {
-  const parts = [sourceName(sourceIndex).toLowerCase()];
+  const parts = [typeof source === "string" ? source : sourceName(source).toLowerCase()];
   if (linkCount > 1) parts.push(`link ${linkIndex + 1}`);
   parts.push(hostname.trim() || "this link");
   return parts.join(", ");

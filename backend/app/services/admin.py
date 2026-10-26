@@ -20,6 +20,7 @@ from app.models.event import (
 )
 from app.models.invite_code import InviteCode
 from app.models.media import Media
+from app.models.site import Site
 from app.models.source import EVIDENCE_LEVELS, Source, SourceLink
 from app.models.upload import Upload
 from app.models.user import User
@@ -40,6 +41,7 @@ from app.services.evidence_intake import (
     sweep_unreferenced,
 )
 from app.services.pagination import keyset_before
+from app.services.sites import owned_site_objects
 from app.services.storage import avatar_key_of, sweep_keys
 from app.services.uploads import upload_object
 from app.services.users import x_handle_holder
@@ -83,6 +85,12 @@ class CollectionNotFoundError(AdminError):
     """No collection carries that id."""
 
     code = "collection_not_found"
+
+
+class SiteNotFoundError(AdminError):
+    """No site carries that id."""
+
+    code = "site_not_found"
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
@@ -438,6 +446,28 @@ def soft_delete_geolocation(
     return geo
 
 
+def _move_takedown(
+    db: Session,
+    *,
+    row: Collection | Site,
+    hidden: bool,
+    actor_id: uuid.UUID,
+    target: dict[str, str],
+) -> None:
+    """Stamp or clear one row's ``hidden_at`` and file the ``<table>_hidden`` or
+    ``<table>_restored`` audit row. No commit. A row already in that state files nothing."""
+    if hidden == (row.hidden_at is not None):
+        return
+    row.hidden_at = datetime.now(UTC) if hidden else None
+    noun = "collection" if isinstance(row, Collection) else "site"
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action=f"{noun}_hidden" if hidden else f"{noun}_restored",
+        target=target,
+    )
+
+
 def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
     """Stamp one collection's takedown and file the audit row. No commit.
 
@@ -447,13 +477,11 @@ def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.U
 
     Idempotent: an already withheld collection keeps its timestamp and files no second audit row.
     """
-    if collection.hidden_at is not None:
-        return
-    collection.hidden_at = datetime.now(UTC)
-    log_admin_event(
+    _move_takedown(
         db,
+        row=collection,
+        hidden=True,
         actor_id=actor_id,
-        action="collection_hidden",
         target={"collection_id": str(collection.id), "title": collection.title},
     )
 
@@ -466,15 +494,46 @@ def restore_collection(db: Session, *, collection: Collection, actor_id: uuid.UU
 
     Idempotent: a collection that is not withheld files no audit row.
     """
-    if collection.hidden_at is None:
-        return
-    collection.hidden_at = None
-    log_admin_event(
+    _move_takedown(
         db,
+        row=collection,
+        hidden=False,
         actor_id=actor_id,
-        action="collection_restored",
         target={"collection_id": str(collection.id), "title": collection.title},
     )
+
+
+def move_site_takedown(db: Session, *, site: Site, hidden: bool, actor_id: uuid.UUID) -> None:
+    """Withhold one site from every read but an admin's, or restore it, and file the audit row
+    (``site_hidden`` or ``site_restored``). No commit; idempotent.
+
+    Shared by :func:`set_site_moderation` and :func:`services.reports.resolve_report`. The
+    events linked to the site are untouched.
+    """
+    _move_takedown(
+        db,
+        row=site,
+        hidden=hidden,
+        actor_id=actor_id,
+        target={"site_id": str(site.id), "name": site.name},
+    )
+
+
+def set_site_moderation(
+    db: Session, *, actor_id: uuid.UUID, site_id: uuid.UUID, hidden: bool
+) -> Site:
+    """Move one site's takedown either way, by id, under the site row lock.
+
+    The site-shaped counterpart of :func:`set_collection_moderation`. Raises
+    :class:`SiteNotFoundError` (404) for an unknown id.
+    """
+    site = db.query(Site).filter(Site.id == site_id).populate_existing().with_for_update().first()
+    if site is None:
+        raise SiteNotFoundError("Site not found")
+    move_site_takedown(db, site=site, hidden=hidden, actor_id=actor_id)
+    db.commit()
+    db.refresh(site)
+    return site
 
 
 def set_collection_moderation(
@@ -715,16 +774,19 @@ def hard_delete_user(
        earliest of them (:func:`services.geolocator_credit.hand_over_owned_events`), with an
        ``ownership_transferred`` notification. A handed-over event keeps its media, versions
        and files, the erased user's uploads included.
-    2. Capture S3 keys of the events left (media of all roles), plus the account's avatar: the
-       cascade would drop those rows before we could read them.
+    2. Capture S3 keys of the events left (media of all roles), of the images of the account's
+       sites, plus the account's avatar: the cascade would drop those rows before we could
+       read them.
     3. Delete each event left manually: ``owner_id`` carries no ``ON DELETE CASCADE``. Each
        ``db.delete`` cascades to that row's media, contributor rows and tags.
     4. Hand the org manager role of each organization they were the last live org manager of
        to its earliest-joined live member
        (:func:`services.organizations.hand_over_manager_roles`), in the same transaction as
        step 1. Delete the analyst's own approvals; those they placed for an organization stay
-       the organization's, with ``reviewer_id`` set to NULL. Delete the user. ``password_reset_tokens``, their collections (and memberships), their
-       invitations and their contributor rows on other people's events cascade-drop;
+       the organization's, with ``reviewer_id`` set to NULL. Delete the user.
+       ``password_reset_tokens``, their collections (and memberships), their sites (with their
+       images, contours and links), their invitations and their contributor rows on other
+       people's events cascade-drop;
        ``audit_log.actor_id`` and ``invite_codes.used_by_id`` flip to NULL (migration
        f1a3b5c7d9e0), as does ``invite_codes.created_by_id``, so invite-code rows outlive the
        user as audit trail.
@@ -742,15 +804,16 @@ def hard_delete_user(
     # null ``owner_id`` on the rows it no longer owns.
     db.flush()
 
-    # 2. Capture every file the deleted events name, the account's staged uploads, and its
-    # profile picture (personal data on the same erasure request, referenced by nothing else
-    # once the row is gone).
+    # 2. Capture every file the deleted events name, the account's staged uploads, the images
+    # of its sites (the owner cascade drops their rows), and its profile picture (personal data
+    # on the same erasure request, referenced by nothing else once the row is gone).
     objects: list[StoredObject] = []
     for geo in geolocations:
         objects.extend(event_objects(db, geo))
     objects.extend(
         upload_object(upload) for upload in db.query(Upload).filter(Upload.uploader_id == user.id)
     )
+    objects.extend(owned_site_objects(db, user.id))
     avatar_key = avatar_key_of(user.avatar_url)
 
     target = {

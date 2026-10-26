@@ -1,5 +1,6 @@
-"""An event's sources: the write a form's ``sources`` list drives, the publish floor, and the
-comparable form the no-change check reads.
+"""Sources: the write an event form's ``sources`` list drives, the publish floor, the
+comparable form the no-change check reads, a source filed outside an event write
+(:func:`file_source`, a site image), and the wire shape of a stored source.
 
 A write posts the event's whole list (``schemas/source.SourceCreate``). :func:`plan_sources`
 checks it against the stored sources before anything is written, :func:`check_publish_floor`
@@ -34,11 +35,21 @@ from app.models.source import (
 from app.models.tag import Tag
 from app.models.upload import Upload
 from app.models.user import User
-from app.schemas.source import SourceCreate, SourceLinkCreate
+from app.schemas.source import (
+    ArchivedLinkRead,
+    CoordsRead,
+    SourceCreate,
+    SourceLinkCreate,
+    SourceLinkRead,
+    SourceRead,
+    SourceWarning,
+)
 from app.services import uploads, versions
 from app.services.evidence_intake import StoredObject, media_objects
+from app.services.imagery import LinkCheck, source_warnings
 from app.services.sanitize import safe_link_href
 from app.services.source_archive import _normalised_target, same_snapshot, validate_snapshot
+from app.services.source_archive import provider_of as snapshot_provider
 
 from .coordinates import _optional_point
 from .errors import (
@@ -83,7 +94,7 @@ class PlannedSource:
         )
 
 
-def _clean_links(spec: SourceCreate) -> list[SourceLinkCreate]:
+def _clean_links(links: list[SourceLinkCreate]) -> list[SourceLinkCreate]:
     """Strip each URL, drop blanks and repeats, check each snapshot; at least one link left.
 
     Raises :class:`InvalidSourceUrlError` for a URL that is not an ``http(s)`` link,
@@ -92,7 +103,7 @@ def _clean_links(spec: SourceCreate) -> list[SourceLinkCreate]:
     """
     cleaned: list[SourceLinkCreate] = []
     seen: set[str] = set()
-    for link in spec.links:
+    for link in links:
         url = link.url.strip()
         if not url or url in seen:
             continue
@@ -157,7 +168,7 @@ def plan_sources(
         planned.append(
             PlannedSource(
                 spec=spec,
-                links=_clean_links(spec),
+                links=_clean_links(spec.links),
                 tags=[tags_by_id[t] for t in dict.fromkeys(spec.tag_ids) if t in tags_by_id],
                 capture_position=_optional_point(
                     position.lat if position else None,
@@ -292,24 +303,56 @@ def apply_sources(db: Session, geo: Event, planned: list[PlannedSource]) -> list
             source.is_graphic = p.is_graphic
             source.links = links_by_source[index]
             source.tags = p.tags
-            if p.upload is not None:
-                source.media = Media(
-                    storage_url=uploads.storage_url_of(p.upload),
-                    kind=p.upload.kind,
-                    sha256=p.upload.sha256,
-                    original_filename=p.upload.original_filename,
-                )
-                db.delete(p.upload)
-            elif p.copy_of is not None:
-                source.media = Media(
-                    storage_url=p.copy_of.storage_url,
-                    kind=p.copy_of.kind,
-                    sha256=p.copy_of.sha256,
-                    original_filename=p.copy_of.original_filename,
-                )
+            _attach_file(db, source, upload=p.upload, copy_of=p.copy_of)
     db.flush()
     db.expire(geo, ["sources"])
     return removed
+
+
+def _attach_file(
+    db: Session, source: Source, *, upload: Upload | None, copy_of: Media | None
+) -> None:
+    """Give ``source`` its file: a taken upload, whose staged row goes, or a new row on the
+    stored object of ``copy_of``."""
+    if upload is not None:
+        source.media = Media(
+            storage_url=uploads.storage_url_of(upload),
+            kind=upload.kind,
+            sha256=upload.sha256,
+            original_filename=upload.original_filename,
+        )
+        db.delete(upload)
+    elif copy_of is not None:
+        source.media = Media(
+            storage_url=copy_of.storage_url,
+            kind=copy_of.kind,
+            sha256=copy_of.sha256,
+            original_filename=copy_of.original_filename,
+        )
+
+
+def file_source(
+    db: Session,
+    *,
+    source: Source,
+    links: list[SourceLinkCreate],
+    uploader: User,
+    upload_id: uuid.UUID | None,
+    copy_of: Media | None,
+) -> Source:
+    """Stage a new source outside an event write, such as a site image: its links and its file.
+
+    Raises the link errors of :func:`_clean_links` and the upload errors. Staged, not
+    committed.
+    """
+    cleaned = _clean_links(links)
+    staged = uploads.take_uploads(
+        db, uploader=uploader, upload_ids=[upload_id] if upload_id else []
+    )
+    source.links = _link_rows(source, cleaned)
+    _attach_file(db, source, upload=staged.get(upload_id) if upload_id else None, copy_of=copy_of)
+    db.add(source)
+    return source
 
 
 def _instant(value: datetime | None) -> str | None:
@@ -377,3 +420,41 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
             }
         entries.append(json.dumps(value, sort_keys=True, default=str))
     return sorted(entries)
+
+
+def build_source_read(source: Source) -> SourceRead:
+    """One source's wire shape; the caller loads its links, tags and media (``SOURCE_LOAD``)."""
+    point = versions.point_shape(source.capture_position)
+    links: list[SourceLinkRead] = []
+    for link in source.links:
+        provider = snapshot_provider(link.snapshot_url) if link.snapshot_url else None
+        archived = (
+            ArchivedLinkRead(url=link.snapshot_url, provider=provider, archived_at=link.archived_at)
+            if link.snapshot_url and provider is not None and link.archived_at is not None
+            else None
+        )
+        links.append(SourceLinkRead(url=link.url, posted_at=link.posted_at, archived=archived))
+    return SourceRead(
+        id=source.id,
+        title=source.title,
+        level=source.level,
+        kind=source.kind,
+        captured_at=source.captured_at,
+        capture_position=CoordsRead(**point) if point is not None else None,
+        is_graphic=source.is_graphic,
+        links=links,
+        tags=source.tags,
+        media=source.media,
+        warnings=warning_reads(
+            source.kind,
+            source.captured_at,
+            [LinkCheck(link.url, archived=link.snapshot_url is not None) for link in source.links],
+        ),
+    )
+
+
+def warning_reads(
+    kind: str, captured_at: datetime | None, links: list[LinkCheck]
+) -> list[SourceWarning]:
+    """The imagery warnings of a source, stored or as the form holds it."""
+    return [SourceWarning.model_validate(w) for w in source_warnings(kind, captured_at, links)]

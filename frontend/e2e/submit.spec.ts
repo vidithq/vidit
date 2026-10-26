@@ -343,16 +343,20 @@ test.describe("submit", () => {
           box.getByRole("link", { name: "View on Maps" }),
           box.getByRole("button", { name: "Copy coordinates" }),
         ];
-        const card = (await box.boundingBox())!;
-        const boxes = [];
-        for (const item of items) boxes.push((await item.boundingBox())!);
-        const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
-        for (let i = 1; i < boxes.length; i++) {
-          expect(Math.abs(middle(boxes[i]) - middle(boxes[0])), `item ${i + 1} on the fields' line`).toBeLessThan(1);
-          expect(boxes[i].x, `item ${i + 1} after item ${i}`).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
-        }
-        expect(boxes[0].x).toBeGreaterThanOrEqual(card.x);
-        expect(boxes[3].x + boxes[3].width).toBeLessThanOrEqual(card.x + card.width + 0.5);
+        // The form still settles while it loads, and each box is a separate read, so the
+        // geometry is retried until one pass reads a settled layout.
+        await expect(async () => {
+          const card = (await box.boundingBox())!;
+          const boxes = [];
+          for (const item of items) boxes.push((await item.boundingBox())!);
+          const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
+          for (let i = 1; i < boxes.length; i++) {
+            expect(Math.abs(middle(boxes[i]) - middle(boxes[0])), `item ${i + 1} on the fields' line`).toBeLessThan(1);
+            expect(boxes[i].x, `item ${i + 1} after item ${i}`).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
+          }
+          expect(boxes[0].x).toBeGreaterThanOrEqual(card.x);
+          expect(boxes[3].x + boxes[3].width).toBeLessThanOrEqual(card.x + card.width + 0.5);
+        }).toPass({ timeout: 5_000 });
         // No visible label: the fields carry only their accessible names.
         await expect(box.getByText("Latitude", { exact: true })).toHaveCount(0);
         if (page.viewportSize()!.width >= 375) {

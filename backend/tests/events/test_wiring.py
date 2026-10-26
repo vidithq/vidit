@@ -16,6 +16,7 @@ from app.routers.events import (
     item,
     read,
     routers,
+    sites,
     write,
 )
 from tests.events._helpers import WORLD_BBOX, client
@@ -33,6 +34,7 @@ def test_router_mount_order_is_pinned():
         geolocators.router,
         approvals.router,
         approval_requests.router,
+        sites.router,
         item.router,
     )
     assert routers[-1] is item.router

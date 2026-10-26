@@ -22,6 +22,7 @@ import {
   MessageCircle,
   Save,
   Search as SearchIcon,
+  SquarePen,
   Swords,
   Upload,
   X,
@@ -721,7 +722,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its kind and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
+          <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger | warning, mirroring the <Button> tones (secondary is the accent outline, no fill); warning is the `WARNING_CALLOUT` paint, for a site link effect of damage beside the danger tone of a destruction. A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its kind and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">static</span>
@@ -731,6 +732,7 @@ export default function PalettePage() {
                 <Pill tone="secondary">secondary</Pill>
                 <Pill tone="neutral">neutral</Pill>
                 <Pill tone="danger">danger</Pill>
+                <Pill tone="warning">warning</Pill>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-neutral-600 self-center w-12">keyed</span>
@@ -1691,7 +1693,7 @@ export default function PalettePage() {
             </Card>
           </Item>
 
-          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file), `leadBeside` to put that slot left of the rows (3:2, LEAD_BESIDE_SPLIT, which a lone source editor shares) once the card is 42rem wide, falling back to the slot on top when narrower, and a `label` that makes it a named region. <DetailRow> takes `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Capture position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
+          <Item name="<DetailCard> + <DetailRow> + <DetailPills>" usage="Label / value rows on the event and request detail pages and on each source block. <DetailCard> takes an optional `lead` slot above the rows (a source's file), `leadBeside` to put that slot left of the rows (3:2, LEAD_BESIDE_SPLIT, which a lone source editor shares) once the card is 42rem wide, falling back to the slot on top when narrower, a `header` row above everything (a source block's SourceHeader: a site image's name and its map control), and a `label` that makes it a named region. <DetailRow> takes `wrapLabel`, for a value that holds one line at its full width: the label wraps instead when the row runs short (a source's Capture position). <DetailPills> is a row value made of pills (conflicts, tags), wrapping flush right.">
             <div className="w-full max-w-md space-y-4">
               <DetailCard>
                 <DetailRow label="Status" concept="status">
@@ -1886,6 +1888,28 @@ export default function PalettePage() {
             </div>
           </Item>
 
+          <Item name="<EntityCard variant=compact>: linked event" usage="A site page's Linked events: the effect pill as the badge, `place` adds where the event lies against the zone to the meta line, and `actions` holds the event author's controls (change the effect, unlink) above the stretched link.">
+            <div className="w-full max-w-xl">
+              <EntityCard
+                variant="compact"
+                detailHref="/events/demo"
+                title={MOCK_CARD_GEO.title}
+                badge={<Pill tone="danger">Destruction</Pill>}
+                author={MOCK_CARD_GEO.owner}
+                date={MOCK_CARD_GEO.occurred_date}
+                place="3.3 km outside the zone"
+                actions={
+                  <>
+                    <Button icon variant="ghost" aria-label="Change the effect">
+                      <SquarePen size={14} />
+                    </Button>
+                    <RemoveButton label="Unlink from the site" />
+                  </>
+                }
+              />
+            </div>
+          </Item>
+
           <Item name="<EntityCard variant=compact>: request" usage="/requests + search results. On /requests, `age` adds how long the request has been open to the meta line, counted from requested_at.">
             <div className="w-full max-w-xl">
               <EntityCard
@@ -1976,7 +2000,7 @@ export default function PalettePage() {
             <EventShellPreview />
           </Item>
 
-          <Item name="<EventDetailBody> / eventPageSlots" usage="An event's read-only fields, one field set for two surfaces. eventPageSlots fills EventShell's body on the event, version and request pages: the source blocks then the proof in the main column, the location slot (eventLocation, the map and its Coordinates row) then the Details card in the side column. <EventDetailBody> is the map panel's body: one column, the source blocks, the Details rows, then the proof.">
+          <Item name="<EventDetailBody> / eventPageSlots" usage="An event's read-only fields, one field set for two surfaces. eventPageSlots fills EventShell's body on the event, version and request pages: the source blocks then the proof in the main column, the location slot (eventLocation, the map and its Coordinates row) then the Details card in the side column. <EventLocation> takes the map as a prop, more rows under the Coordinates row, a coordinatesConcept and footer lines: the site page fills it with the site map, Zone on, Contour and the map legend (SiteLocation), and heads it and its Details card (SiteDetails) with EventSection, EventLayout's own section heading, under the site's ? concepts. <EventDetailBody> is the map panel's body: one column, the source blocks, the Details rows, then the proof.">
             <div className="w-full space-y-4">
               <Variant label="eventPageSlots, in EventLayout">
                 <EventLayout {...eventPageSlots(MOCK_DETAIL)} />
@@ -1989,7 +2013,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s in the order of the editor's fields: Title, Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its UTC date and time (the date alone at exactly midnight UTC) or Date unknown under it), Captured, Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel) and Tags as <DetailPills>. A row with no value drops out, Title included. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <SourcesRow> on the event page (eventPageSlots), a lone source taking the whole row as one wide block, and a vertical stack under Sources in the map panel (<EventDetailBody>). <SourcesRow> is the one sources row of the page and every form: a <HorizontalScroller> under a Sources (N) eyebrow, its header holding the arrows from two sources and the caller's actions (a form's Add a source), invalid turning the eyebrow red and note printing why in the header row.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s in the order of the editor's fields: Title, Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its UTC date and time (the date alone at exactly midnight UTC) or Date unknown under it), Captured, Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel) and Tags as <DetailPills>. A row with no value drops out, Title included. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <SourcesRow> on the event page (eventPageSlots), a lone source taking the whole row as one wide block, and a vertical stack under Sources in the map panel (<EventDetailBody>). <SourcesRow> is the one sources row of the page and every form: a <HorizontalScroller> under a Sources (N) eyebrow, its header holding the arrows from two sources and the caller's actions (a form's Add a source), invalid turning the eyebrow red and note printing why in the header row; its `names` retitle it, Images (N) on a site page. <SourceBlocks> takes the same `names` and an `extras` function that gives each block its name, rows after the source's own, actions and className: a site page's imagery history (siteImageExtras) adds the provider, the note, who filed it, the contour and the map control. A block with `actions` heads its card with SourceHeader, the name and controls row a <SourceEditor> shares.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
             </div>
@@ -2035,7 +2059,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads), the Title (named Source N title), the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput> under Links (N), one row per link with its post time, <ArchiveBox> and, on an X, Telegram or TikTok post link while the source has no file, a ghost icon button that imports the link's file through POST /uploads/from-link (a post with several files gets a <Select> under the slot to pick one), Add a link under them, then <SourceImageryCheck> on a satellite or aircraft source), then More details (<Disclosure>, open when a field inside holds a value): Captured (<DateTimeInput>, UTC), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and Graphic content (<Switch> with its ?, locked on a flagged stored source). Each label's ? sits beside its <label>, never inside it. The section has no card of its own: its Sources (N) <SectionEyebrow> header row sits on the page like the event page's, and a missing file's red line sits in that row, so no editor moves down. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width with its file beside its title, level and kind once the card is 42rem wide (like <DetailCard leadBeside>), the links and More details under both, and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap.">
+          <Item name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads), the Title (named Source N title), the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput> under Links (N), one row per link with its post time, <ArchiveBox> and, on an X, Telegram or TikTok post link while the source has no file, a ghost icon button that imports the link's file through POST /uploads/from-link (a post with several files gets a <Select> under the slot to pick one), Add a link under them, then <SourceImageryCheck> on a satellite or aircraft source), then More details (<Disclosure>, open when a field inside holds a value): Captured (<DateTimeInput>, UTC), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and Graphic content (<Switch> with its ?, locked on a flagged stored source). Each label's ? sits beside its <label>, never inside it. The section has no card of its own: its Sources (N) <SectionEyebrow> header row sits on the page like the event page's, and a missing file's red line sits in that row, so no editor moves down. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width with its file beside its title, level and kind once the card is 42rem wide (like <DetailCard leadBeside>), the links and More details under both, and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap. `variant` site-image is a site's satellite image (SiteImageEditor): no level or kind (fixed to context and satellite), a required Captured under the title, and the caller's `extra` (the note) in place of More details.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}

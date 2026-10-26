@@ -205,6 +205,7 @@ def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_us
         "report_id": str(report.id),
         "event_id": str(event.id),
         "collection_id": None,
+        "site_id": None,
         "resolution": "marked_graphic",
     }
     assert _audit(db, admin_user, "event_marked_graphic").target == {"event_id": str(event.id)}
@@ -357,6 +358,7 @@ def test_orphaned_report_can_still_be_dismissed(db, admin_user, event):
         "report_id": str(report.id),
         "event_id": None,
         "collection_id": None,
+        "site_id": None,
         "resolution": "dismissed",
     }
 
@@ -504,6 +506,7 @@ def test_resolve_hidden_withholds_the_collection(db, admin_user, collection):
         "report_id": str(report.id),
         "event_id": None,
         "collection_id": str(collection.id),
+        "site_id": None,
         "resolution": "hidden",
     }
 
