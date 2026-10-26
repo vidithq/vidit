@@ -286,6 +286,7 @@ export function CollectionDetailsForm({
           events={events}
           onAdd={addEvent}
           onRemove={removeEvent}
+          hideEmpty={!!selection}
         />
       </form>
     </PageShell>

@@ -71,6 +71,7 @@ export function EventPicker({
   events,
   onAdd,
   onRemove,
+  hideEmpty = false,
 }: {
   /** Whose events the add card lists: the signed-in analyst (a collection
    *  holds its owner's own work only). */
@@ -78,6 +79,9 @@ export function EventPicker({
   events: PickableEvent[];
   onAdd: (event: PickableEvent) => void;
   onRemove: (eventId: string) => void;
+  /** Drops the held card while it is empty: a search selection the save adds already says what
+   *  the collection opens with. */
+  hideEmpty?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -194,42 +198,47 @@ export function EventPicker({
 
   return (
     <>
-      <Card as="section">
-        {held.length > 0 ? (
-          <HorizontalScroller
-            ref={scroller}
-            variant="carousel"
-            heading={heldHeading}
-            label="Events in this collection"
-            previousLabel="Previous event"
-            nextLabel="Next event"
-            dotLabel={(index) => `Show event ${index + 1}`}
-          >
-            {held.map((row, index) => (
-              <div key={row.id} className="space-y-2">
-                <CollectionItemCard item={row} />
-                <div className="flex justify-end">
-                  <Button
-                    variant="dangerGhost"
-                    onClick={() => remove(index)}
-                    aria-label={`Remove ${row.title} from this collection`}
-                  >
-                    <X size={13} />
-                    Remove
-                  </Button>
+      {(held.length > 0 || !hideEmpty) && (
+        <Card as="section">
+          {held.length > 0 ? (
+            <HorizontalScroller
+              ref={scroller}
+              variant="carousel"
+              heading={heldHeading}
+              label="Events in this collection"
+              previousLabel="Previous event"
+              nextLabel="Next event"
+              dotLabel={(index) => `Show event ${index + 1}`}
+            >
+              {held.map((row, index) => (
+                <div key={row.id} className="space-y-2">
+                  <CollectionItemCard item={row} />
+                  <div className="flex justify-end">
+                    <Button
+                      variant="dangerGhost"
+                      onClick={() => remove(index)}
+                      aria-label={`Remove ${row.title} from this collection`}
+                    >
+                      <X size={13} />
+                      Remove
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </HorizontalScroller>
-        ) : (
-          <>
-            {heldHeading}
-            <EmptyState variant="plain" lead="Nothing on this collection yet.">
-              Add your own geolocations from the search below.
-            </EmptyState>
-          </>
-        )}
-      </Card>
+              ))}
+            </HorizontalScroller>
+          ) : (
+            <>
+              {heldHeading}
+              <EmptyState
+                variant="plain"
+                lead="Nothing on this collection yet."
+              >
+                Add your own geolocations from the search below.
+              </EmptyState>
+            </>
+          )}
+        </Card>
+      )}
 
       <Card as="section">
         <div className="space-y-1">

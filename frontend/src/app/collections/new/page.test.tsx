@@ -294,6 +294,8 @@ describe("NewCollectionPage with a search selection", () => {
     render(<NewCollectionPage />);
 
     expect(screen.getByText("2 geolocations will be added.")).toBeInTheDocument();
+    // No empty "Events in this collection" card contradicting the selection.
+    expect(screen.queryByText("Nothing on this collection yet.")).not.toBeInTheDocument();
     await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
 
