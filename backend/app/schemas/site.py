@@ -28,6 +28,10 @@ from app.schemas.user import AuthorRef
 IMAGE_NOTE_MAX_LENGTH = 500
 # Vertices across every ring of one zone; a hand-drawn site needs far fewer.
 MAX_ZONE_VERTICES = 1000
+# A zone covers a site, not a region: its geography area stays under this cap.
+MAX_ZONE_AREA_KM2 = 10_000
+# A longitude span of 180 degrees or more would let a zone wrap the antimeridian.
+MAX_ZONE_LNG_SPAN_DEG = 180
 
 SiteName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=TITLE_MAX_LENGTH)

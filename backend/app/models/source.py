@@ -166,6 +166,8 @@ class Source(Base):
             "site_id IS NOT NULL OR (author_id IS NULL AND note IS NULL)",
             name="ck_sources_site_fields",
         ),
+        # Serves the ON DELETE SET NULL of an account erasure; only site images set it.
+        Index("ix_sources_author_id", "author_id", postgresql_where=text("author_id IS NOT NULL")),
     )
 
 

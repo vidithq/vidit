@@ -107,6 +107,12 @@ def upgrade() -> None:
         ondelete="SET NULL",
     )
     op.create_index("ix_sources_site_id", "sources", ["site_id"])
+    op.create_index(
+        "ix_sources_author_id",
+        "sources",
+        ["author_id"],
+        postgresql_where=sa.text("author_id IS NOT NULL"),
+    )
     op.create_check_constraint(
         "ck_sources_one_owner", "sources", "num_nonnulls(event_id, site_id) = 1"
     )
@@ -214,6 +220,7 @@ def downgrade() -> None:
     op.drop_constraint("ck_sources_site_fields", "sources", type_="check")
     op.drop_constraint("ck_sources_site_image", "sources", type_="check")
     op.drop_constraint("ck_sources_one_owner", "sources", type_="check")
+    op.drop_index("ix_sources_author_id", table_name="sources")
     op.drop_index("ix_sources_site_id", table_name="sources")
     op.drop_constraint("fk_sources_author_id", "sources", type_="foreignkey")
     op.drop_constraint("fk_sources_site_id", "sources", type_="foreignkey")

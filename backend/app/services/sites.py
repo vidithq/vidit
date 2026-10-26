@@ -52,6 +52,8 @@ from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.schemas.event import CoordsRead
 from app.schemas.site import (
+    MAX_ZONE_AREA_KM2,
+    MAX_ZONE_LNG_SPAN_DEG,
     EventSiteLinkRead,
     LatestLinkEffect,
     SiteContourCreate,
@@ -121,6 +123,18 @@ class InvalidZoneError(SiteError):
     code = "invalid_zone"
 
 
+class ZoneTooLargeError(SiteError):
+    """The zone covers more than ``MAX_ZONE_AREA_KM2``."""
+
+    code = "zone_too_large"
+
+
+class ZoneTooWideError(SiteError):
+    """The zone spans ``MAX_ZONE_LNG_SPAN_DEG`` degrees of longitude or more."""
+
+    code = "zone_too_wide"
+
+
 class EventNotLinkableError(SiteError):
     """The event is not one a site shows (:func:`site_linkable_events`)."""
 
@@ -145,6 +159,8 @@ SITE_ERROR_STATUS: dict[str, int] = {
     "not_site_owner": 403,
     "not_event_owner": 403,
     "invalid_zone": 400,
+    "zone_too_large": 400,
+    "zone_too_wide": 400,
     "event_not_linkable": 409,
     "site_image_not_found": 400,
     "imagery_not_reopenable": 400,
@@ -176,9 +192,9 @@ def _actor(user: User | None) -> AuthorRef | None:
     return AuthorRef.model_validate(user) if user is not None and user.deleted_at is None else None
 
 
-def zone_shape(zone: ZonePolygon) -> Any:
-    """The stored geometry for a zone, after the event coordinate bounds on every vertex and a
-    validity check."""
+def zone_shape(db: Session, zone: ZonePolygon) -> Any:
+    """The stored geometry for a zone, after the event coordinate bounds on every vertex, a
+    validity check and the two size caps (longitude span, then geography area)."""
     try:
         for ring in zone.coordinates:
             for lng, lat in ring:
@@ -190,7 +206,16 @@ def zone_shape(zone: ZonePolygon) -> Any:
         raise InvalidZoneError(f"The zone is not a valid polygon: {explain_validity(polygon)}")
     if polygon.area == 0:
         raise InvalidZoneError("The zone has no area")
-    return from_shape(polygon, srid=4326)
+    min_lng, _, max_lng, _ = polygon.bounds
+    if max_lng - min_lng >= MAX_ZONE_LNG_SPAN_DEG:
+        raise ZoneTooWideError(
+            f"The zone must span less than {MAX_ZONE_LNG_SPAN_DEG} degrees of longitude"
+        )
+    geometry = from_shape(polygon, srid=4326)
+    area_m2 = db.scalar(select(func.ST_Area(cast(geometry, Geography)))) or 0
+    if area_m2 > MAX_ZONE_AREA_KM2 * 1_000_000:
+        raise ZoneTooLargeError(f"The zone must cover at most {MAX_ZONE_AREA_KM2:,} km²")
+    return geometry
 
 
 def _geojson(raw: str) -> ZonePolygon:
@@ -537,7 +562,7 @@ def find_overlaps(db: Session, zone: ZonePolygon) -> list[SiteOverlapRead]:
 
     Each share is an intersection area over one zone's area, on the spheroid.
     """
-    geometry = zone_shape(zone)
+    geometry = zone_shape(db, zone)
     current = zones_at(None)
     intersection = cast(func.ST_Intersection(current.c.zone, geometry), Geography)
     overlap_area = func.ST_Area(intersection)
@@ -657,7 +682,7 @@ def create_site(
                 site_id=site.id,
                 source_id=image.id,
                 author_id=owner.id,
-                zone=zone_shape(body.contour),
+                zone=zone_shape(db, body.contour),
             )
         )
         db.commit()
@@ -692,7 +717,7 @@ def change_contour(
 ) -> SiteContourRead:
     """Draw a new contour of ``site``, citing one of its images. The owner only."""
     _require_site_owner(site, user)
-    geometry = zone_shape(body.zone)
+    geometry = zone_shape(db, body.zone)
     cited = db.query(exists().where(Source.id == body.image_id, Source.site_id == site.id)).scalar()
     if not cited:
         raise SiteImageNotFoundError("The contour must cite an image of this site")

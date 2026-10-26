@@ -2292,6 +2292,7 @@ A site is a named area of interest that analysts monitor through dated satellite
 
 - **Shape (422):** a ring holds at least 4 positions and ends on its first position, and a zone holds at most 1000 positions across all its rings.
 - **Content (400 `invalid_zone`):** a position outside the event coordinate bounds, a self-crossing polygon, or a polygon without area.
+- **Size (400 `zone_too_wide`, `zone_too_large`):** a zone spans less than 180 degrees of longitude and covers at most 10,000 km², measured on the spheroid. The caps keep a zone from wrapping the antimeridian or covering a continent. The longitude span is checked first.
 
 **Image fields.** A site image is a [source](#sources) of kind `satellite` and level `context` that states no effect. Every write that files one takes `SiteImageCreate`:
 
@@ -2402,7 +2403,7 @@ Create a site, its first image and the contour that image shows, in one transact
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_zone`; `imagery_not_reopenable`; the link codes of a source (`source_link_required`, `invalid_source_url`, `too_many_source_links`), a [snapshot](#archived-copies) code, an upload code (`upload_not_found`, `upload_expired`) or `source_media_not_found` |
+| 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large`; `imagery_not_reopenable`; the link codes of a source (`source_link_required`, `invalid_source_url`, `too_many_source_links`), a [snapshot](#archived-copies) code, an upload code (`upload_not_found`, `upload_expired`) or `source_media_not_found` |
 | 422 | `name` empty or over 255 characters; an unknown `kind`; a malformed zone; `captured_at` in the future; both `upload_id` and `media_id` |
 
 ---
@@ -2434,7 +2435,7 @@ Each share is the area of the intersection over the area of one zone, computed o
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_zone` |
+| 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large` |
 | 422 | A malformed zone |
 
 ---
@@ -2670,7 +2671,7 @@ The zone holds from the image's capture date, not from the day you draw it. A re
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_zone`; `site_image_not_found`: `image_id` is not an image of this site |
+| 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large`; `site_image_not_found`: `image_id` is not an image of this site |
 | 403 | `not_site_owner` |
 | 404 | `site_not_found` |
 | 422 | A malformed zone or `image_id` |

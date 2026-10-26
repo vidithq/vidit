@@ -944,6 +944,7 @@ The `kind` and `level` value domains have one home, the `SourceKind` and `Source
 **Indexes:**
 - `ix_sources_event_id` on `(event_id)`. Serves "this event's sources" and the cascade.
 - `ix_sources_site_id` on `(site_id)`. Serves a site's imagery history and the cascade.
+- `ix_sources_author_id` on `(author_id)` `WHERE author_id IS NOT NULL`. Serves the `ON DELETE SET NULL` of an account erasure; only site images set `author_id`, so the index skips every event source.
 - `ix_sources_search_fts`: GIN index on `to_tsvector('simple', coalesce(title, ''))`. Backs the source-title leg of event search ([`GET /search`](api.md#get-search)), on the same `simple` configuration as `ix_events_search_fts`.
 
 **The order is derived, not stored.** An event's sources read by level (`direct`, then `indirect`, then `context`), then by `captured_at` with unknown last, then by `created_at` and `id` (`models/source.source_order`). There is no position column, so no write reorders a list by hand.

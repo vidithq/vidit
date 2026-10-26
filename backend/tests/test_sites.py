@@ -220,6 +220,32 @@ def test_create_site_with_its_first_image_and_contour(users):
     assert body["latest_link_effect"] is None
 
 
+def test_a_zone_over_the_size_caps_is_refused_wherever_a_contour_is_accepted(users):
+    owner = users()
+    # Half a side of 0.5 degrees is about 12,000 km2; 0.44 is about 9,400 km2.
+    too_large = _square(0.5, lng=LNG + 0.9)
+    too_wide = {
+        "type": "Polygon",
+        "coordinates": [[[-90, LAT], [90, LAT], [90, LAT + 0.001], [-90, LAT + 0.001], [-90, LAT]]],
+    }
+    just_under = _square(0.44, lng=LNG + 0.9)
+
+    site = _create_site(owner, _square(0.01, lng=LNG + 0.9))
+    image_id = site["images"][0]["id"]
+    headers = login_as(client, owner)
+    for zone, code in ((too_large, "zone_too_large"), (too_wide, "zone_too_wide")):
+        assert _code(_post_site(owner, zone)) == code
+        contour = _contour(owner, site["id"], zone, image_id)
+        assert contour.status_code == 400
+        assert _code(contour) == code
+        overlaps = client.post(f"{SITES}/overlaps", json={"zone": zone}, headers=headers)
+        assert overlaps.status_code == 400
+        assert _code(overlaps) == code
+
+    assert _contour(owner, site["id"], just_under, image_id).status_code == 201
+    assert _post_site(owner, just_under, name="Wide yard").status_code == 201
+
+
 @pytest.mark.parametrize(
     ("change", "status", "code"),
     [
