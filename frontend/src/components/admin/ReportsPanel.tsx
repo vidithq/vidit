@@ -10,6 +10,7 @@ import {
   type ContentReportResolution,
 } from "@/lib/admin";
 import { collectionHref } from "@/lib/collections";
+import { siteHref } from "@/lib/sites";
 import { REPORT_REASON_LABELS, type ContentReport } from "@/lib/events";
 import { formatInstant } from "@/lib/format";
 import { useCursorList } from "@/hooks/useCursorList";
@@ -30,14 +31,16 @@ import { eventHref } from "@/lib/routes";
  * API owns the order). Resolved rows stay, so the queue doubles as the record of what was reported
  * and decided.
  *
- * A report names an event or a collection. An event row links out by id; a collection row prints
- * the title and owner it came back with, since a collection is a name, not a recognisable id.
+ * A report names an event, a collection or a site. An event row links out by id; a collection or
+ * site row prints the name and owner it came back with, since those are names, not recognisable
+ * ids.
  *
  * Each open row carries the verdicts its target can take. `hidden` withholds the target from every
  * public read, so it opens a `ConfirmDialog`, as on the event actions panel. `Mark graphic` is
- * event-only (the flag is an event column): a collection row doesn't offer it and the API answers
- * 409 `report_verdict_not_applicable`. Both are recoverable, the event through the event actions
- * panel beside this one and the collection through the admin takedown.
+ * event-only (the flag is an event column): a collection or site row doesn't offer it and the API
+ * answers 409 `report_verdict_not_applicable`. Each is recoverable: the event through the event
+ * actions panel beside this one, the collection through the admin takedown, and the site through
+ * **Restore** on its page.
  *
  * A report whose target was since deleted survives the deletion: the row says the target is gone
  * instead of linking, and offers Dismiss alone (every other verdict gets 409
@@ -82,10 +85,11 @@ function ReportRow({
   const busy = resolveMutation.loading;
   // Which kind of row this is. A report names one target, so at most one is set; neither once the target was deleted.
   const collection = report.collection;
+  const site = report.site ?? null;
   const isEvent = report.event_id !== null;
-  const targetGone = !isEvent && collection === null;
+  const targetGone = !isEvent && collection === null && site === null;
   const ownerDeleted = Boolean(collection?.deleted_at);
-  const noun = isEvent ? "event" : "collection";
+  const noun = isEvent ? "event" : site ? "site" : "collection";
 
   return (
     <li className={`${LIST_TILE} space-y-2`}>
@@ -111,6 +115,14 @@ function ReportRow({
               {collection.title}
             </Link>
             <AuthorByline author={collection.owner} size="xs" />
+          </>
+        )}
+        {site && (
+          <>
+            <Link href={siteHref(site.id)} className={TEXT_LINK}>
+              {site.name}
+            </Link>
+            <AuthorByline author={site.owner} size="xs" />
           </>
         )}
         {ownerDeleted && (
@@ -213,7 +225,7 @@ export function ReportsPanel() {
       <header>
         <SectionEyebrow title="Content reports" margin="none" />
         <p className="text-xs text-neutral-500 mt-0.5">
-          Anyone can report an event or a collection, signed in or not. Open
+          Anyone can report an event, a collection or a site, signed in or not. Open
           reports come first. A report is resolved once: mark the event graphic,
           hide the reported item from every public read, or dismiss the report.
           Nothing here is deleted, so the queue records what was reported and

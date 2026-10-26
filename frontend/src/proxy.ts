@@ -35,6 +35,8 @@ const PUBLIC_PREFIXES = [
   // A collection reads anonymously on its owner's public profile, like the events it holds.
   "/collections",
   "/events",
+  // A site reads anonymously, like the events linked to it; `/sites/new` asks for a session itself.
+  "/sites",
   "/requests",
   "/profile",
   // An organization's page reads anonymously, like an analyst's profile.

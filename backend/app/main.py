@@ -30,6 +30,7 @@ from app.routers import (
     notifications,
     organizations,
     search,
+    sites,
     social,
     sources,
     tags,
@@ -247,6 +248,7 @@ app.include_router(conflicts.router, prefix="/api/v1/conflicts", tags=["conflict
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
 app.include_router(organizations.router, prefix="/api/v1/organizations", tags=["organizations"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
+app.include_router(sites.router, prefix="/api/v1/sites", tags=["sites"])
 app.include_router(social.router, prefix="/api/v1", tags=["social"])
 app.include_router(sources.router, prefix="/api/v1/sources", tags=["sources"])
 app.include_router(tags.router, prefix="/api/v1/tags", tags=["tags"])

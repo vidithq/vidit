@@ -5,13 +5,13 @@ from fastapi import APIRouter, Depends, Request
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import warning_reads
 from app.schemas.source import (
     ImageryProviderRead,
     SourceCheck,
     SourceCheckRead,
     SourceLinkCheckRead,
 )
+from app.services.events.sources import warning_reads
 from app.services.imagery import LinkCheck, provider_of
 
 router = APIRouter()

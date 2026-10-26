@@ -15,12 +15,15 @@ import type { Concept } from "@/lib/fieldHelp";
 export const LEAD_BESIDE_SPLIT = "@2xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]";
 
 export function DetailCard({
+  header,
   lead,
   leadBeside = false,
   label,
   children,
   className = "",
 }: {
+  /** A full-width row heading the card, above `lead` (a site image's date and its map toggle). */
+  header?: ReactNode;
   /** A full-width slot above the rows, such as a source's file. */
   lead?: ReactNode;
   /** Puts `lead` left of the rows (3:2) once the card is 42rem wide; narrower, it stays on top. */
@@ -31,10 +34,12 @@ export function DetailCard({
   className?: string;
 }) {
   const Root = label ? "section" : "div";
+  const head = header && <div className="border-b border-neutral-800 px-4 py-3">{header}</div>;
   if (lead && leadBeside) {
     // The card is the container, so the split follows the column it sits in, not the viewport.
     return (
       <Root aria-label={label} className={cn(CARD_FRAME, "@container", className)}>
+        {head}
         <div className={cn("grid grid-cols-1", LEAD_BESIDE_SPLIT)}>
           <div className="border-b border-neutral-800 px-4 py-3 @2xl:border-r @2xl:border-b-0">
             {lead}
@@ -46,6 +51,7 @@ export function DetailCard({
   }
   return (
     <Root aria-label={label} className={cn(CARD_FRAME, "divide-y divide-neutral-800", className)}>
+      {header && <div className="px-4 py-3">{header}</div>}
       {lead && <div className="px-4 py-3">{lead}</div>}
       {children}
     </Root>

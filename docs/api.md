@@ -130,6 +130,20 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/collections/{id}/events` | 🌐 | Its items, oldest event first (cursor-paged) |
 | PUT | `/collections/{id}/events/{event_id}` | 🔒 | Put one of your events on it (idempotent) |
 | DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
+| **Sites** | | | |
+| GET | `/sites` | 🌐 | The sites whose zone valid on a date meets a bounding box |
+| POST | `/sites` | 🔒 | Create a site with its first image and contour; answers with the sites its zone overlaps |
+| POST | `/sites/overlaps` | 🔒 | List the sites whose current zone shares area with a drawn zone |
+| POST | `/sites/{id}/report` | 🌐 | Report a site for moderation (anonymous allowed) |
+| GET | `/sites/{id}` | 🌐 | One site: current zone, last image, images, contours, linked events |
+| PATCH | `/sites/{id}` | 🔒 | Rename or retype your site; the superseded record is kept |
+| GET | `/sites/{id}/history` | 🌐 | The site's history feed, ordered by date on the ground |
+| POST | `/sites/{id}/images` | 🔒 | File a dated satellite image in a site's imagery history |
+| POST | `/sites/{id}/contours` | 🔒 | Draw a new contour of your site, citing one of its images |
+| GET | `/events/{id}/site-links` | 🌐 | The sites an event is linked to |
+| POST | `/events/{id}/site-links` | 🔒 | Link your published event to a site, or change the effect of its link (idempotent) |
+| DELETE | `/events/{id}/site-links/{site_id}` | 🔒 | Unlink your event from a site (idempotent) |
+| GET | `/events/{id}/site-suggestions` | 🔒 | Sites your event may link to, nearest first or by name |
 | **Search** | | | |
 | GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users / organizations |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
@@ -196,10 +210,11 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/collections/{id}/moderation` | 🛡️ | Withhold a collection from public view, or restore it (moves `hidden_at`) |
 | DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (the takedown alias of the PATCH above) |
+| PATCH | `/admin/sites/{id}/moderation` | 🛡️ | Withhold a site from public view, or restore it (moves `hidden_at`) |
 | PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
 | PATCH | `/admin/users/{id}/invite-minting` | 🛡️ | Turn minting invite codes from Settings on or off for one analyst |
 | DELETE | `/admin/approvals/{approval_id}` | 🛡️ | Delete one approval; its reviewer or organization can approve that version again |
-| GET | `/admin/reports` | 🛡️ | The moderation queue: event and collection reports, open ones first |
+| GET | `/admin/reports` | 🛡️ | The moderation queue: event, collection and site reports, open ones first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST | `/admin/events/{id}/versions/{version_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
@@ -259,6 +274,13 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
 | `POST /collections/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
+| **Sites** | |
+| `GET /sites`, `POST /sites/overlaps` | 60/min |
+| `GET /sites/{id}`, `GET /sites/{id}/history` | 120/min |
+| `POST /sites`, `PATCH /sites/{id}`, `POST /sites/{id}/images`, `POST /sites/{id}/contours` | 30/min |
+| `POST /sites/{id}/report` | 10/hour (per IP only, anonymous allowed) |
+| `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
+| `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
 | `GET /tags` | 60/min |
@@ -292,20 +314,20 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/organizations/{slug}` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` | 30/hour |
 | `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `PATCH /admin/users/{id}/invite-minting` · `DELETE /admin/events/{id}` · `DELETE /admin/approvals/{approval_id}` | 60/hour |
-| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` | 60/hour |
+| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` · `PATCH /admin/sites/{id}/moderation` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
 The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 23 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 29 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/feed`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/{id}` · `/sites/{id}/history` · `/feed`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
-- Anonymous callers are exempt and keep the per-IP limits alone. Twenty of the 23 paths answer anonymously.
+- Anonymous callers are exempt and keep the per-IP limits alone. Twenty-five of the 29 paths answer anonymously.
 - Every authenticated read absent from the list is exempt, including `GET /auth/me` and the read-only admin probes.
 - `GET /events/import-archive/{job_id}` is exempt because an import polls it. It returns one job's progress counters and no catalog rows.
 
@@ -526,7 +548,7 @@ flowchart LR
   geo -->|"`**POST /events/{id}/close**, retract`"| closed
 ```
 
-[`GET /events`](#get-events) lists one view (`requested` is the request queue, `located` the catalog) and [`GET /events/{id}`](#get-eventsid) reads any status. `DELETE /admin/events/{id}` is the only write that removes a row.
+[`GET /events`](#get-events) lists one view (`requested` is the request queue, `located` the catalog) and [`GET /events/{id}`](#get-eventsid) reads any status. `DELETE /admin/events/{id}` is the only write that removes a row. The links from a published event to the [sites](#sites) it hit live under `/events/{id}/site-links` and `/events/{id}/site-suggestions`, documented in [Sites](#sites).
 
 ### Event form fields
 
@@ -677,7 +699,7 @@ A source names one file, through `upload_id` or `media_id`, or none; both is a 4
 
 ### Imagery warnings
 
-A source of kind `satellite` or `aircraft` carries `warnings`: what keeps a reader from reopening its image at its date, checked against the [imagery providers](imagery.md). Each warning is `{code, message, url}`; `url` names the link it is about, `null` the whole source, and `message` is the sentence the form shows. A warning never blocks a write or a publication. Every other kind carries `[]`.
+A source of kind `satellite` or `aircraft` carries `warnings`: what keeps a reader from reopening its image at its date, checked against the [imagery providers](imagery.md). Each warning is `{code, message, url}`; `url` names the link it is about, `null` the whole source, and `message` is the sentence the form shows. A warning never blocks a write or a publication of an event. A site image is refused instead when no link reopens it ([`POST /sites/{id}/images`](#post-sitesidimages)). Every other kind carries `[]`.
 
 | Code | Case |
 |---|---|
@@ -1173,6 +1195,7 @@ Report an event for moderation. Anonymous allowed; a signed-in reporter is recor
   "id": "uuid",
   "event_id": "uuid",
   "collection": null,
+  "site": null,
   "reason": "graphic_not_flagged",
   "details": "Shows a body at 0:14, no graphic-content warning on the card.",
   "reporter_id": null,
@@ -1182,7 +1205,7 @@ Report an event for moderation. Anonymous allowed; a signed-in reporter is recor
 }
 ```
 
-One report names one target: `event_id` here, or `collection` from [`POST /collections/{id}/report`](#post-collectionsidreport). Both land in the same [queue](#get-adminreports).
+One report names one target: `event_id` here, `collection` from [`POST /collections/{id}/report`](#post-collectionsidreport), or `site` from [`POST /sites/{id}/report`](#post-sitesidreport). All land in the same [queue](#get-adminreports).
 
 **Errors:**
 | Code | Case |
@@ -2272,6 +2295,494 @@ Take one event off your collection. Owner only. Idempotent: an event the collect
 
 ---
 
+## Sites
+
+A site is a named area of interest that analysts monitor through dated satellite imagery, such as a base, a depot or a radar. Any signed-in analyst files images in its imagery history, its owner draws its contour from them and edits its name and kind, and event owners link their published events to it with the effect each shows. [`data-model.md`](data-model.md#sites) describes the tables behind it. Nothing about a site's state is stored: every read computes the zone, the last image and the counts from the images, the contours and the links.
+
+**Zone.** A zone is a GeoJSON `Polygon` in WGS84 with `[lng, lat]` positions, the exterior ring first, every ring closed:
+```json
+{
+  "type": "Polygon",
+  "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]]
+}
+```
+
+- **Shape (422):** a ring holds at least 4 positions and ends on its first position, and a zone holds at most 1000 positions across all its rings.
+- **Content (400 `invalid_zone`):** a position outside the event coordinate bounds, a self-crossing polygon, or a polygon without area.
+- **Size (400 `zone_too_wide`, `zone_too_large`):** a zone spans less than 180 degrees of longitude and covers at most 10,000 km², measured on the spheroid. The caps keep a zone from wrapping the antimeridian or covering a continent. The longitude span is checked first.
+
+**Image fields.** A site image is a [source](#sources) of kind `satellite` and level `context` that states no effect. Every write that files one takes `SiteImageCreate`:
+
+```json
+{
+  "title": "",
+  "captured_at": "2026-06-01T09:30:00Z",
+  "links": [
+    { "url": "https://browser.dataspace.copernicus.eu/?zoom=14&lat=47.47&lng=34.6&datasetId=S2_L2A_CDAS&layerId=1_TRUE_COLOR&fromTime=2026-06-01T00:00:00.000Z&toTime=2026-06-01T23:59:59.999Z" }
+  ],
+  "upload_id": null,
+  "media_id": null,
+  "note": "Revetments along the north apron."
+}
+```
+
+| Field | Rule |
+|---|---|
+| `title` | Optional, at most 255 characters, stripped. `""` is no title |
+| `captured_at` | Required, read as UTC: when the image was captured. A time after now is a 422 |
+| `links` | 1 to 10 links, each `{url, posted_at, snapshot_url}`, on the rules of a source's [`links`](#sources) |
+| `upload_id` | A file you staged through [`POST /uploads`](#post-uploads), consumed by the write |
+| `media_id` | The file of a `satellite` source of a published, visible event, not flagged graphic. The image takes a new file row on the same stored object. Any other id is `source_media_not_found` |
+| `note` | Optional plain text of up to 500 characters on what the image shows. A blank string reads as absent |
+
+An image names one file, through `upload_id` or `media_id`, or none; both is a 422, and so is any other field. The image must let a reader reopen it at its date: at least one link on a reopenable [imagery provider](imagery.md), or on an unlisted host with an archived copy. Otherwise the write is refused with `imagery_not_reopenable`. A filed image carries the [imagery warnings](#imagery-warnings) of an event's satellite source.
+
+**Site kinds.** `kind` is one of `airbase`, `military_base`, `depot`, `port`, `air_defence_position`, `artillery_position`, `radar`, `fortification`, `unknown` or `other`. `name` is 1 to 255 characters after stripping whitespace.
+
+**Link effects.** The effect a linked event shows at the site is `damage`, `destruction`, `activity` (activity observed, such as a column leaving or a launch) or `other`.
+
+**Rules.**
+
+- **Who writes:** any signed-in analyst files an image. Only the site's owner edits its name and kind and draws a contour (403 `not_site_owner`). Only an event's owner links or unlinks the event (403 `not_event_owner`).
+- **Zone selection:** the zone valid on a date is the contour whose image has the latest `captured_at` on or before that date, the later contour breaking a tie. The current zone is the one valid now. A site has no zone before the capture day of its earliest contour's image.
+- **Append-only:** an image and a contour are never edited. An edit to the record files the superseded one. A link is never deleted: an unlink stamps the link, and an effect change closes the live link and opens a new one.
+- **What a site shows of an event:** a linked event counts only while it is `geolocated` and neither soft-deleted nor withheld. The linked event list and `latest_link_effect` both use this one predicate. An event that closes or is taken down leaves them with no write to its link.
+- **Visibility:** a withheld site, or one whose owner is soft-deleted, answers 404 `site_not_found` on every endpoint and leaves the map, the event's site links, the suggestions and the overlap check. An admin also reads a withheld site on `GET /sites/{id}` and `GET /sites/{id}/history`.
+
+### `GET /sites` 🌐
+
+The sites whose zone valid on a date meets a bounding box, for the map. Newest site first, capped at 1000 sites. Past the cap the oldest sites are absent from the response with nothing marking the cut.
+
+**Query params:**
+
+| Param | Rule |
+|---|---|
+| `bbox` | Required, `south,west,north,east`. Latitudes within [-90, 90], longitudes within [-180, 180], `south` at most `north`, `west` at most `east`. A box crossing the antimeridian is rejected: send the full longitude range |
+| `as_of` | `YYYY-MM-DD`, default today (UTC). A site is listed with the zone valid on this date and is absent when it has none |
+
+**Response 200:** an array of `SiteList`, the state fields every site read carries:
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Saky airbase",
+    "kind": "airbase",
+    "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+    "centroid": { "lat": 47.475, "lng": 34.6 },
+    "contour_id": "uuid",
+    "last_image": {
+      "id": "uuid",
+      "captured_at": "2026-06-01T09:30:00Z",
+      "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" }
+    },
+    "latest_link_effect": { "effect": "damage", "occurred_date": "2026-07-09", "event_id": "uuid" },
+    "owner_id": "uuid"
+  }
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `zone`, `centroid`, `contour_id` | The zone valid on `as_of`, its centroid and its contour |
+| `last_image` | The image with the latest `captured_at` on or before `as_of`, and the provider its links open. `provider` is `null` when no link opens a listed provider |
+| `latest_link_effect` | The `effect` of the linked event with the latest `occurred_date` on or before `as_of`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries such a date |
+| `owner_id` | The id of the site's owner |
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | `bbox` missing or malformed, or `as_of` not a date. Both answer with a plain-string `detail` |
+
+---
+
+### `POST /sites` 🔒
+
+Create a site, its first image and the contour that image shows, in one transaction. The creator owns the site.
+
+**Body:**
+```json
+{
+  "name": "Saky airbase",
+  "kind": "airbase",
+  "contour": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+  "image": { "captured_at": "2026-06-01T09:30:00Z", "links": [{ "url": "https://browser.dataspace.copernicus.eu/?…" }] }
+}
+```
+
+`image` takes the [image fields](#sites).
+
+**Response 201:** a [`SiteRead`](#get-sitesid) plus `overlapping_sites`, the overlap check of [`POST /sites/overlaps`](#post-sitesoverlaps) run on the new zone before the write. The check warns about a possible duplicate and never blocks the create.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large`; `imagery_not_reopenable`; the link codes of a source (`source_link_required`, `invalid_source_url`, `too_many_source_links`), a [snapshot](#archived-copies) code, an upload code (`upload_not_found`, `upload_expired`) or `source_media_not_found` |
+| 422 | `name` empty or over 255 characters; an unknown `kind`; a malformed zone; `captured_at` in the future; both `upload_id` and `media_id` |
+
+---
+
+### `POST /sites/overlaps` 🔒
+
+The overlap check: the visible sites whose current zone shares area with a zone you drew. Call it before [`POST /sites`](#post-sites) to show a duplicate warning.
+
+**Body:**
+```json
+{ "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] } }
+```
+
+**Response 200:** an array of `SiteOverlapRead`, the larger `share_of_new_zone` first, capped at 20:
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Saky airbase",
+    "kind": "airbase",
+    "share_of_new_zone": 0.82,
+    "share_of_existing_zone": 0.4
+  }
+]
+```
+
+Each share is the area of the intersection over the area of one zone, computed on the spheroid, from 0 to 1. `share_of_new_zone` is relative to the zone you sent and `share_of_existing_zone` to the site's current zone. A zone that only touches another along an edge shares no area and is absent.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large` |
+| 422 | A malformed zone |
+
+---
+
+### `POST /sites/{id}/report` 🌐
+
+Report a site for moderation. Same body, `reason` values and anonymous rule as [`POST /events/{id}/report`](#post-eventsidreport).
+
+**Response 201:** a [`ContentReportRead`](#post-eventsidreport) with `event_id` and `collection` `null` and `site` set:
+```json
+{
+  "site": {
+    "id": "uuid",
+    "name": "Saky airbase",
+    "owner": { "id": "uuid", "username": "analyst", "avatar_url": null }
+  }
+}
+```
+
+The report lands in the [`GET /admin/reports`](#get-adminreports) queue. A site takes the verdicts `hidden` and `dismissed`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `site_not_found`: unknown id, already withheld, or owned by a soft-deleted account. An admin gets it too |
+
+---
+
+### `GET /sites/{id}` 🌐
+
+One site: its current state, every image and contour, and the events linked to it.
+
+**Response 200:** a `SiteRead`: the state fields of [`GET /sites`](#get-sites) read now, then the fields below.
+```json
+{
+  "id": "uuid",
+  "name": "Saky airbase",
+  "kind": "airbase",
+  "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+  "centroid": { "lat": 47.475, "lng": 34.6 },
+  "contour_id": "uuid",
+  "last_image": { "id": "uuid", "captured_at": "2026-06-01T09:30:00Z", "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" } },
+  "latest_link_effect": { "effect": "damage", "occurred_date": "2026-07-09", "event_id": "uuid" },
+  "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
+  "hidden_at": null,
+  "images": [
+    {
+      "id": "uuid",
+      "title": "",
+      "level": "context",
+      "kind": "satellite",
+      "captured_at": "2026-06-01T09:30:00Z",
+      "capture_position": null,
+      "is_graphic": false,
+      "links": [{ "url": "https://browser.dataspace.copernicus.eu/?…", "posted_at": null, "archived": null }],
+      "tags": [],
+      "media": null,
+      "warnings": [],
+      "provider": {
+        "id": "copernicus_browser",
+        "name": "Copernicus Browser",
+        "group": "accepted",
+        "credit": "Copernicus Sentinel data [year]",
+        "help": "Pick the day and the layer, then copy the full link from the address bar. It opens without an account."
+      },
+      "author": { "id": "uuid", "username": "analyst", "avatar_url": null },
+      "note": "Revetments along the north apron.",
+      "created_at": "2026-08-01T09:12:00Z"
+    }
+  ],
+  "contours": [
+    {
+      "id": "uuid",
+      "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+      "image_id": "uuid",
+      "captured_at": "2026-06-01T09:30:00Z",
+      "author": { "id": "uuid", "username": "analyst", "avatar_url": null },
+      "created_at": "2026-08-01T09:12:00Z"
+    }
+  ],
+  "linked_events": [
+    {
+      "id": "uuid",
+      "title": "Strike on the north apron",
+      "occurred_date": "2026-07-09",
+      "coords": { "lat": 47.49, "lng": 34.6 },
+      "owner": { "id": "uuid", "username": "geolocator", "avatar_url": null },
+      "is_graphic": false,
+      "media": null,
+      "effect": "damage",
+      "linked_at": "2026-08-02T10:00:00Z",
+      "inside_zone": true,
+      "distance_m": null,
+      "measured_contour_id": "uuid"
+    }
+  ],
+  "created_at": "2026-08-01T09:12:00Z",
+  "updated_at": "2026-08-01T09:12:00Z"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `owner` | The site's owner, in place of `owner_id` |
+| `hidden_at` | `null`, or the takedown time on a withheld site, which only an admin reads |
+| `images` | Every image, oldest `captured_at` first: a [`SourceRead`](#get-eventsid) plus `provider` (the [imagery provider](imagery.md) its links open, or `null`), `author`, `note` and `created_at`. `author` is `null` once that account is soft-deleted or erased |
+| `contours` | Every contour, by the `captured_at` of its image, oldest first. `image_id` names the image it cites and `captured_at` is that image's, the date the contour holds from |
+| `linked_events` | The linked events that are `geolocated` and neither soft-deleted nor withheld, oldest `occurred_date` first, an event without a date last |
+| `linked_events[].media`, `linked_events[].is_graphic` | The event's card thumbnail and graphic flag, on the rule of [`GET /events`](#get-events) |
+| `linked_events[].inside_zone` | `true` when the event's point lies in the measured zone |
+| `linked_events[].distance_m` | Metres from the event's point to the measured zone, `null` when `inside_zone` is `true` |
+| `linked_events[].measured_contour_id` | The contour whose zone the event was measured against: the one valid on the event's `occurred_date`, the earliest one when the event predates every contour, or the current one when the event has no date |
+| `linked_events[].linked_at` | When the live link opened. After an effect change it is the time of the change |
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `site_not_found`: unknown, withheld (an admin still reads it), or the owner is soft-deleted |
+
+---
+
+### `PATCH /sites/{id}` 🔒
+
+Rename or retype your site. Owner only. The record the edit supersedes is kept ([`site_versions`](data-model.md#site_versions)) and the history records a `record_edited` entry. An edit that changes nothing files nothing. A site carries at most 100 versions.
+
+**Body:** at least one of the two fields.
+```json
+{ "name": "Saky air base", "kind": "airbase" }
+```
+
+**Response 200:** the [`SiteRead`](#get-sitesid).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | `not_site_owner` |
+| 404 | `site_not_found` |
+| 409 | `version_limit`: the site carries 100 versions |
+| 422 | Neither field; `name` empty or over 255 characters; an unknown `kind` |
+
+---
+
+### `GET /sites/{id}/history` 🌐
+
+The site's history as one feed of dated facts, computed from the site's tables. No log table backs it.
+
+Each entry carries two clocks:
+
+- **`recorded_at`:** when the fact entered Vidit.
+- **`fact_date`:** when it happened on the ground. It is the capture day (UTC) of an image or of the image a contour cites, the `occurred_date` of a link entry, and `null` for `site_created`, `record_edited` or an event without a date.
+
+The feed sorts by `fact_date`, with `recorded_at` breaking ties, and places an entry whose `fact_date` is `null` on the day it was recorded. Imagery found after the fact keeps its capture date.
+
+**Response 200:** an array of `SiteHistoryEntry`:
+```json
+[
+  { "kind": "site_created", "recorded_at": "2026-08-01T09:12:00Z", "fact_date": null,
+    "actor": { "id": "uuid", "username": "analyst", "avatar_url": null },
+    "image_id": "uuid", "contour_id": "uuid", "record": { "name": "Saky airbase", "kind": "airbase" },
+    "previous_record": null, "event": null, "link_effect": null, "previous_link_effect": null },
+  { "kind": "link_effect_changed", "recorded_at": "2026-08-03T08:00:00Z", "fact_date": "2026-07-09",
+    "actor": { "id": "uuid", "username": "geolocator", "avatar_url": null },
+    "image_id": null, "contour_id": null, "record": null, "previous_record": null,
+    "event": { "id": "uuid", "title": "Strike on the north apron", "occurred_date": "2026-07-09" },
+    "link_effect": "destruction", "previous_link_effect": "damage" }
+]
+```
+
+| `kind` | Written when | Payload fields |
+|---|---|---|
+| `site_created` | The site was created | `record` (the name and kind it was created with), `image_id` and `contour_id` (the first ones) |
+| `image_filed` | An image was filed, the first one included | `image_id` |
+| `contour_changed` | The owner drew a contour after the first | `contour_id`, `image_id` (the image it cites) |
+| `record_edited` | The owner edited the name or the kind | `previous_record`, `record` |
+| `event_linked` | An event was linked | `event`, `link_effect` |
+| `event_unlinked` | A link was removed | `event`, `link_effect` (the effect of the removed link) |
+| `link_effect_changed` | A live link took a new effect | `event`, `link_effect` (the new one), `previous_link_effect` |
+
+A payload field the kind does not use is `null`. `actor` is `null` once that account is soft-deleted or erased. An effect change shows as one `link_effect_changed` entry, not as an unlink and a link. A link entry names only an event that is neither soft-deleted nor withheld, so an event leaves the feed when it is taken down. A closed event keeps its entries.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `site_not_found` |
+
+---
+
+### `POST /sites/{id}/images` 🔒
+
+File a dated satellite image in a site's imagery history. Any signed-in analyst may, not only the owner. An image is never edited afterwards, and it never moves the contour: the owner draws one from it through [`POST /sites/{id}/contours`](#post-sitesidcontours).
+
+**Body:** the [image fields](#sites).
+
+**Response 201:** a `SiteImageFiledRead`: the new image, in the shape of an `images` entry of [`GET /sites/{id}`](#get-sitesid), plus `duplicate_image_ids`.
+
+```json
+{ "id": "uuid", "kind": "satellite", "captured_at": "2026-06-01T09:30:00Z", "duplicate_image_ids": ["uuid"] }
+```
+
+`duplicate_image_ids` lists the images already filed on the site with the same provider and the same capture day (UTC). The write goes through either way. An image whose links open no listed provider is never flagged.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `imagery_not_reopenable`; the link, snapshot and upload codes of [`POST /sites`](#post-sites); `source_media_not_found` |
+| 404 | `site_not_found`: unknown, withheld (an admin gets it too), or the owner is soft-deleted |
+| 422 | A malformed field; `captured_at` in the future; both `upload_id` and `media_id` |
+
+---
+
+### `POST /sites/{id}/contours` 🔒
+
+Draw a new contour of your site. Owner only. The contour cites one of the site's images, the one that shows it, whoever filed it.
+
+**Body:**
+```json
+{
+  "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.66, 47.5], [34.66, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
+  "image_id": "uuid"
+}
+```
+
+**Response 201:** the new contour, in the shape of a `contours` entry of [`GET /sites/{id}`](#get-sitesid).
+
+The zone holds from the image's capture date, not from the day you draw it. A reader asking for an earlier date still gets the earlier zone, and a contour citing an image older than the current one does not replace the current zone.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large`; `site_image_not_found`: `image_id` is not an image of this site |
+| 403 | `not_site_owner` |
+| 404 | `site_not_found` |
+| 422 | A malformed zone or `image_id` |
+
+---
+
+### `GET /events/{id}/site-links` 🌐
+
+The sites an event is linked to now, oldest link first. A withheld site is absent. Event visibility follows [`GET /events/{id}`](#get-eventsid): a withheld event answers 404 to everyone but an admin.
+
+**Response 200:** an array of `EventSiteLinkRead`:
+```json
+[
+  {
+    "site": { "id": "uuid", "name": "Saky airbase", "kind": "airbase" },
+    "effect": "damage",
+    "linked_at": "2026-08-02T10:00:00Z"
+  }
+]
+```
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Unknown or soft-deleted event, or a withheld one for a non-admin (a plain-string `detail`) |
+
+---
+
+### `POST /events/{id}/site-links` 🔒
+
+Link your published event to a site, or change the effect of its link. Only the event's owner links, and the event must be `geolocated`. An event links to several sites, and a link holds even when the event's point lies outside the zone. The call is idempotent: it answers 200 whether it opens a link, changes one or finds the same link in force.
+
+**Body:**
+```json
+{ "site_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "effect": "damage" }
+```
+
+`effect` is one of the [link effects](#sites).
+
+**Response 200:** the live link, in the shape of a [`GET /events/{id}/site-links`](#get-eventsidsite-links) entry.
+
+- **Same effect again:** nothing is written and the link in force is returned.
+- **New effect:** the live link is closed and a new one opens with the new effect. The new link's `linked_at` equals the closed link's `unlinked_at`, which is how [the history](#get-sitesidhistory) tells an effect change from an unlink. The closed link stays.
+- **Linking again after an unlink:** a new link opens. The unlinked one stays.
+
+Four refusals, in this order: the event is unknown, soft-deleted or withheld (404); you are not the event's owner (403); the event is not published (409); the site is unknown or withheld (404).
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | `not_event_owner` |
+| 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`), or `site_not_found`: unknown site, withheld (an admin gets it too), or the owner is soft-deleted |
+| 409 | `event_not_linkable`: the event is not `geolocated` |
+| 422 | `site_id` missing or not a UUID, or `effect` not one of the four values |
+
+---
+
+### `DELETE /events/{id}/site-links/{site_id}` 🔒
+
+Remove your event's link to a site. Owner only. The link row stays with `unlinked_at` stamped, and the site's [history](#get-sitesidhistory) records an `event_unlinked` entry. Idempotent: an event with no live link to that site, or a `site_id` no site carries, returns 204 and writes nothing. The event does not need to be `geolocated`, so you can clear a link on an event that has since closed.
+
+**Response 204:** no body.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | `not_event_owner` |
+| 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`) |
+
+---
+
+### `GET /events/{id}/site-suggestions` 🔒
+
+The sites an event may link to, nearest first. Any signed-in analyst may call it. Capped at 20.
+
+**Query params:**
+
+| Param | Rule |
+|---|---|
+| `margin_m` | Metres from the event's point to a site's current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
+| `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
+
+- **Without `q`:** the visible sites whose current zone lies within `margin_m` of the event's point. An event without a point gets an empty array.
+- **With `q`:** the visible sites whose name matches, at any distance. `margin_m` is ignored.
+
+Results sort by `distance_m`, then by name. A suggestion with a `null` `distance_m` sorts last.
+
+**Response 200:** an array of `SiteSuggestionRead`:
+```json
+[
+  { "id": "uuid", "name": "Saky airbase", "kind": "airbase", "distance_m": 420.7 }
+]
+```
+
+`distance_m` is the distance in metres from the event's point to the site's current zone, 0 inside it, and `null` when the event has no point.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`) |
+| 422 | `margin_m` outside 0 to 10000, or `q` empty or over 100 characters |
+
+---
+
 ## Users
 
 ### `GET /users/{username}`
@@ -3329,6 +3840,26 @@ Withhold a collection: the alias of [`PATCH /admin/collections/{id}/moderation`]
 
 **Errors:** 404 `collection_not_found`.
 
+### `PATCH /admin/sites/{id}/moderation` 🛡️
+
+Withhold a site, or restore it, by moving `sites.hidden_at`. `hidden: true` stamps the takedown; `hidden: false` clears it. A withheld site answers 404 on every [site endpoint](#sites) for everyone but an admin, its owner included, and leaves the map, the event's site links and the suggestions. The events linked to it are untouched in both directions.
+
+Idempotent: a site already in the requested state keeps its timestamp and files no audit row. A write that takes effect is audited as `site_hidden` or `site_restored` (target `site_id`, `name`).
+
+**Request body:**
+```json
+{ "hidden": true }
+```
+
+**Response 200:**
+```json
+{ "site_id": "uuid", "name": "Saky airbase", "hidden_at": "2026-09-12T10:00:00Z" }
+```
+
+`hidden_at` is `null` when the site is live and the takedown time when it is withheld.
+
+**Errors:** 404 `site_not_found`.
+
 ---
 
 ### `PATCH /admin/users/{id}/x-handle` 🛡️
@@ -3429,19 +3960,19 @@ Make a live analyst an org manager of the organization: the way back for one lef
 
 ### `GET /admin/reports` 🛡️
 
-The moderation queue: open reports first, then newest first within each group, event and collection reports in one list. Resolved reports stay listed; a report is never deleted. Offset-paged (see [Pagination](#pagination)).
+The moderation queue: open reports first, then newest first within each group, event, collection and site reports in one list. Resolved reports stay listed; a report is never deleted. Offset-paged (see [Pagination](#pagination)).
 
 **Query params:** `page` and `per_page`, see [Pagination](#pagination).
 
 **Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-eventsidreport).
 
 - `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `audit_log`, not on the wire.
-- A row names one target. `event_id` carries the event's id. `collection` carries the collection's current title and owner, read at queue time, and `deleted_at`, the time its owner deleted it while a report was open, or `null`. Such a collection takes every verdict a live one takes.
-- Both are `null` when the target is gone (a hard-deleted event, or an erased collection). Such a report takes only `dismissed`.
+- A row names one target. `event_id` carries the event's id. `collection` carries the collection's current title and owner, read at queue time, and `deleted_at`, the time its owner deleted it while a report was open, or `null`. Such a collection takes every verdict a live one takes. `site` carries the site's current `id`, `name` and `owner`.
+- All three are `null` when the target is gone (a hard-deleted event, an erased collection, or a site erased with its owner). Such a report takes only `dismissed`.
 
 ### `POST /admin/reports/{id}/resolve` 🛡️
 
-Close one report with a verdict and apply it to the target. A report is resolved once; a second resolve is a 409. Audited as `report_resolved` (target `report_id`, `event_id`, `collection_id`, `resolution`). A verdict that changes the target also appends `event_marked_graphic`, `event_hidden` or `collection_hidden`, as the direct admin verbs do. Invalidates the points cache when the verdict hides an event.
+Close one report with a verdict and apply it to the target. A report is resolved once; a second resolve is a 409. Audited as `report_resolved` (target `report_id`, `event_id`, `collection_id`, `site_id`, `resolution`). A verdict that changes the target also appends `event_marked_graphic`, `event_hidden`, `collection_hidden` or `site_hidden`, as the direct admin verbs do. Invalidates the points cache when the verdict hides an event.
 
 On a collection [pending erasure](#delete-collectionsid), the verdict on the last open report erases the collection after applying, and appends `collection_erased` (target `collection_id`, `title`). The resolved report then carries `collection: null`.
 
@@ -3452,8 +3983,8 @@ On a collection [pending erasure](#delete-collectionsid), the verdict on the las
 
 `resolution` is one of:
 
-- `marked_graphic`: sets `is_graphic` on every source of the event. Events only, since a collection holds no footage of its own.
-- `hidden`: withholds the target, stamping `events.hidden_at` or `collections.hidden_at`.
+- `marked_graphic`: sets `is_graphic` on every source of the event. Events only, since a collection or a site holds no footage of its own.
+- `hidden`: withholds the target, stamping `events.hidden_at`, `collections.hidden_at` or `sites.hidden_at`.
 - `dismissed`: closes the report and leaves the target untouched.
 
 **Response 200:** the resolved `ContentReportRead`.
@@ -3464,7 +3995,7 @@ On a collection [pending erasure](#delete-collectionsid), the verdict on the las
 | 404 | `report_not_found`: unknown report id |
 | 409 | `report_already_resolved`: the report already carries a verdict |
 | 409 | `report_target_gone`: the target was deleted; resolve as `dismissed` instead |
-| 409 | `report_verdict_not_applicable`: `marked_graphic` against a collection report; the report stays open |
+| 409 | `report_verdict_not_applicable`: `marked_graphic` against a collection or site report; the report stays open |
 
 ### `PATCH /admin/events/{id}/moderation` 🛡️
 

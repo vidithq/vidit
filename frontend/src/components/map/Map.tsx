@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   useMemo,
+  type ReactNode,
 } from "react";
 import MapGL, {
   Source,
@@ -49,6 +50,7 @@ import {
   ringRadius,
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
+import { CLUSTER_LAYER, POINT_LAYERS, STACK_LAYER, TAP_TARGET_LAYERS } from "./layers";
 
 // CARTO basemap pair. maplibre paint can't read CSS variables, so tiles swap off the theme here.
 const BASEMAP_STYLE = {
@@ -67,13 +69,6 @@ const PREVIEW_INTENT_MS = 150;
 // The oldest entry is evicted past this size.
 const PREVIEW_CACHE_MAX = 50;
 
-// Layer ids. One registration covers both point layers.
-const CLUSTER_LAYER = "clusters";
-const STACK_LAYER = "stacks-circle";
-const POINT_LAYERS = ["points-selected", "points-circle"];
-
-// Every layer a tap can target (a query returns matches topmost first whatever the order here).
-const TAP_TARGET_LAYERS = [CLUSTER_LAYER, STACK_LAYER, ...POINT_LAYERS];
 
 // Crossfade band around the clustering ceiling, derived from CLUSTER_MAX_ZOOM.
 // Supercluster serves raw points from one integer zoom past it.
@@ -666,7 +661,7 @@ const FLY_ZOOM = FIT_MAX_ZOOM;
 const FLY_MS = 900;
 
 // Opacity of a pin in `dimmedIds`: behind its neighbours, still on the map.
-const DIMMED_OPACITY = 0.35;
+export const DIMMED_OPACITY = 0.35;
 
 interface MapProps {
   points: MapPoint[];
@@ -694,6 +689,10 @@ interface MapProps {
    * the one-finger swipe back to the page (two fingers pan, Command or Ctrl plus wheel zooms).
    * `/map` leaves it unset: there the map is the page. */
   embedded?: boolean;
+  /** Ceiling for the `fitBounds` camera, for content smaller than a region (a site's zone). */
+  fitMaxZoom?: number;
+  /** Extra sources and layers, drawn under the event pins (see `useUnderEventPins`). */
+  children?: ReactNode;
 }
 
 /** Reports the visible rectangle to the parent (`/events/points` requires a bbox): once the map
@@ -726,21 +725,37 @@ function BoundsReporter({
   return null;
 }
 
-/** Frames the camera on a bounds box. Keys on the four numbers, so an equal box doesn't re-fit. */
-function FitBoundsCamera({ bounds }: { bounds: MapBounds }) {
+/** Frames the camera on a bounds box. Keys on the four numbers, so an equal box doesn't re-fit.
+ * A resize keeps the centre and zoom, so a container that changes size after the fit (a layout
+ * settling, a window crossing a breakpoint) would cut the box: each resize frames it again while
+ * the camera still holds the fitted frame, and never after a pan, a zoom or a flight. */
+function FitBoundsCamera({ bounds, maxZoom }: { bounds: MapBounds; maxZoom: number }) {
   const { current: map } = useMap();
   const { west, south, east, north } = bounds;
 
   useEffect(() => {
     if (!map) return;
-    map.fitBounds(
-      [
-        [west, south],
-        [east, north],
-      ],
-      { padding: FIT_PADDING, maxZoom: FIT_MAX_ZOOM, duration: 0 }
-    );
-  }, [map, west, south, east, north]);
+    const camera = () => `${map.getCenter().toArray().join(",")} ${map.getZoom()}`;
+    let framed = "";
+    const fit = () => {
+      map.fitBounds(
+        [
+          [west, south],
+          [east, north],
+        ],
+        { padding: FIT_PADDING, maxZoom, duration: 0 }
+      );
+      framed = camera();
+    };
+    const refit = () => {
+      if (camera() === framed) fit();
+    };
+    fit();
+    map.on("resize", refit);
+    return () => {
+      map.off("resize", refit);
+    };
+  }, [map, west, south, east, north, maxZoom]);
 
   return null;
 }
@@ -800,6 +815,8 @@ export default function Map({
   onViewChange,
   onBoundsChange,
   embedded = false,
+  fitMaxZoom = FIT_MAX_ZOOM,
+  children,
 }: MapProps) {
   const [mounted, setMounted] = useState(false);
   // MapLibre needs WebGL2, which Tor Browser and some mobile GPUs lack; detect on mount to show a
@@ -1116,12 +1133,14 @@ export default function Map({
         onPinHover={hoverPin}
         spider={spider}
       />
-      {fitBounds && <FitBoundsCamera bounds={fitBounds} />}
+      {fitBounds && <FitBoundsCamera bounds={fitBounds} maxZoom={fitMaxZoom} />}
       <FlyToCamera target={flyTo ?? null} />
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
+      {/* Before the points source, so on a style load these layers are added first and draw under the pins. */}
+      {children}
 
       <Source
         id="points"

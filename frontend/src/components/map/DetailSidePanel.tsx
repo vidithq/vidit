@@ -28,36 +28,41 @@ const PLACEMENT: Record<DetailSidePanelPlacement, string> = {
   inline: "relative w-full sm:w-96 sm:shrink-0 sm:h-full",
 };
 
-interface DetailSidePanelProps {
-  /** The selected event's read from `useApiResource`: one prop so no caller drops the error.
-   * `data` is null while loading or after a failed load. */
-  resource: ApiResource<EventDetail>;
+interface MapOverlayPanelProps<T> {
+  /** The read from `useApiResource`: one prop so no caller drops the error. `data` is null while
+   * loading or after a failed load. */
+  resource: ApiResource<T>;
   /** Closes the panel. Absent where the panel does not float (the collection player). */
   onClose?: () => void;
-  /** Chrome pinned to the panel's top edge, above the event (the collection step header). Outlives the event under it. */
+  /** Chrome pinned to the panel's top edge, above the content (the collection step header). Outlives the content under it. */
   header?: ReactNode;
   placement?: DetailSidePanelPlacement;
+  /** The error line when the read fails with no message. */
+  errorFallback: string;
+  children: (data: T) => ReactNode;
 }
 
 /**
- * The map's detail overlay. `max-h-[calc(100dvh-4.5rem)]`, not a pinned `bottom-14`, so the panel
- * shrinks to its content yet caps and scrolls when long (4.5rem = top-4 plus 3.5rem clearance for
- * the bottom pill). `dvh` so the cap follows the iOS URL bar.
+ * The map's overlay frame, shared by the event and site panels. `max-h-[calc(100dvh-4.5rem)]`, not
+ * a pinned `bottom-14`, so the panel shrinks to its content yet caps and scrolls when long (4.5rem =
+ * top-4 plus 3.5rem clearance for the bottom pill). `dvh` so the cap follows the iOS URL bar.
  *
  * Below `sm` it is a bottom sheet: a 384px card pinned right runs off a 375px viewport. It spans
  * the width, caps at 60dvh, scrolls its own content, and covers the map's zoom control while open.
  *
  * `placement="inline"` drops the insets, sheet and cap; the height comes from the caller's block.
  * `header` sticks to the top edge inside the scroll and sits outside the loading branch, so it
- * stays on screen while the next event lands.
+ * stays on screen while the next read lands.
  */
-export function DetailSidePanel({
+export function MapOverlayPanel<T>({
   resource,
   onClose,
   header,
   placement = "overlay",
-}: DetailSidePanelProps) {
-  const { data: detail, error, loading, refetch } = resource;
+  errorFallback,
+  children,
+}: MapOverlayPanelProps<T>) {
+  const { data, error, loading, refetch } = resource;
 
   const overlaid = placement === "overlay";
 
@@ -102,7 +107,7 @@ export function DetailSidePanel({
         // `min-h-32` matches the loading box so the chrome holds still; `pr-12` only with a close button.
         <div className={cn("p-4 space-y-3 min-h-32", onClose && "pr-12")}>
           <div className={FORM_ERROR_BANNER} role="alert">
-            {error || "Couldn't load this event."}
+            {error || errorFallback}
           </div>
           <Button variant="secondary" onClick={refetch}>
             Retry
@@ -114,8 +119,30 @@ export function DetailSidePanel({
         <div className="flex items-center justify-center h-full min-h-32">
           <span className="text-neutral-500 text-sm">Loading...</span>
         </div>
-      ) : detail ? (
-        <div className="p-4 space-y-4">
+      ) : data ? (
+        <div className="p-4 space-y-4">{children(data)}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** The map's event detail overlay, on `MapOverlayPanel`. */
+export function DetailSidePanel({
+  resource,
+  onClose,
+  header,
+  placement = "overlay",
+}: Omit<MapOverlayPanelProps<EventDetail>, "errorFallback" | "children">) {
+  return (
+    <MapOverlayPanel
+      resource={resource}
+      onClose={onClose}
+      header={header}
+      placement={placement}
+      errorFallback="Couldn't load this event."
+    >
+      {(detail) => (
+        <>
           <div className="space-y-2">
             {/* `pr-6` on the heading alone: the absolute close button overlaps it, and the action row stays
                 flush below. The title is an explicit TEXT_LINK permalink; no external glyph (ArchivedCopies
@@ -136,9 +163,8 @@ export function DetailSidePanel({
           </div>
 
           <EventDetailBody geo={detail} />
-        </div>
-      ) : null}
-
-    </div>
+        </>
+      )}
+    </MapOverlayPanel>
   );
 }

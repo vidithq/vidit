@@ -46,6 +46,16 @@ redeemer  # schemas/admin.py AdminInviteCodeRead
 username_highlight  # schemas/search.py SearchUserHit
 in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
+share_of_existing_zone  # schemas/site.py SiteOverlapRead
+duplicate_image_ids  # schemas/site.py SiteImageFiledRead
+inside_zone  # schemas/site.py SiteLinkedEventRead
+measured_contour_id  # schemas/site.py SiteLinkedEventRead
+last_image  # schemas/site.py SiteState
+latest_link_effect  # schemas/site.py SiteState
+linked_events  # schemas/site.py SiteRead
+overlapping_sites  # schemas/site.py SiteCreatedRead
+previous_record  # schemas/site.py SiteHistoryEntry
+previous_link_effect  # schemas/site.py SiteHistoryEntry
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 detected_via  # schemas/event.py EventRead, read from event_detections

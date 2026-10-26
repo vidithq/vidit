@@ -298,6 +298,11 @@ def collection_link(collection_id: str) -> str:
     return app_url(f"/collections/{collection_id}")
 
 
+def site_link(site_id: str) -> str:
+    """The absolute URL of one site's page (404 for non-admins when withheld)."""
+    return app_url(f"/sites/{site_id}")
+
+
 def content_report_email(
     *,
     to: str,
@@ -312,8 +317,8 @@ def content_report_email(
 ) -> Email:
     """Tell the moderation address that a report landed, with the full report inline.
 
-    ``reporter`` is a username or ``anonymous``. ``target`` is ``event`` or
-    ``collection`` and names every line that describes the thing.
+    ``reporter`` is a username or ``anonymous``. ``target`` is ``event``,
+    ``collection`` or ``site`` and names every line that describes the thing.
     """
     label = target.capitalize()
     blocks: list[Block] = [
