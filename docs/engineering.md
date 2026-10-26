@@ -109,7 +109,7 @@ Every image is decoded and re-encoded before it is stored: [`evidence_processing
 | Framework | **Next.js 16** (App Router) |
 | UI runtime | **React 19** |
 | Language | **TypeScript** (`tsconfig` `target: ES2017`; Next's SWC downlevels at build regardless of the type-checker target). Code that needs GeoJSON types imports them from the `geojson` module, not the `GeoJSON.*` global. |
-| Interactive map | **MapLibre GL JS** (via `react-map-gl/maplibre`) + **CARTO Dark Matter** vector tiles |
+| Interactive map | **MapLibre GL JS** (via `react-map-gl/maplibre`) + **OpenFreeMap** vector tiles (OpenMapTiles schema) |
 | Rich editor (proof, collection description) | **BlockNote** (`@blocknote/react` on its Mantine UI); the stored body is sanitized HTML, read back through **html-react-parser**. See [design.md](design.md#rich-text). |
 | Styles | **Tailwind CSS 4** (CSS-first config: `@theme` block in [`frontend/src/app/globals.css`](../frontend/src/app/globals.css), no `tailwind.config.ts`) |
 | Icons | **lucide-react** |
@@ -117,7 +117,7 @@ Every image is decoded and re-encoded before it is stored: [`evidence_processing
 | Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. Layout is not testable there (jsdom has no layout engine): `npm run test:e2e` runs the Playwright suite that measures it, after `npx playwright install chromium` once. See [Narrow-viewport smoke tests](#narrow-viewport-smoke-tests). |
 | API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `MediaType`, the source kind and level) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
 
-MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and match the dark theme.
+MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports client-side clustering. The tiles come from OpenFreeMap, which needs no API key and sets no request cap. The attribution control credits OpenMapTiles and OpenStreetMap contributors.
 
 The MapLibre web worker is served from `public/`, not from the bundle. MapLibre builds the worker URL at runtime, so the bundler never emits it, and the worker imports `maplibre-gl-shared.mjs` by its unhashed name. [`next.config.mjs`](../frontend/next.config.mjs) runs [`scripts/copy-maplibre-worker.mjs`](../frontend/scripts/copy-maplibre-worker.mjs) on every `next dev`, `next build` and `next start`, which copies both files to `public/maplibre-gl/<version>/`. [`maplibreWorker.ts`](../frontend/src/components/map/maplibreWorker.ts) calls `setWorkerUrl` with that path before the first map is created. The `proxy.ts` matcher skips `/maplibre-gl/`, so a signed-out reader gets the worker and not the login page. The `loads the map worker` test in [`e2e/map.spec.ts`](../frontend/e2e/map.spec.ts) fails when the worker request does not return JavaScript.
 

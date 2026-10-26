@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#703](https://github.com/vidithq/vidit/issues/703)).
+
 ## v0.8.0, 2026-10-25
 
 ### Added

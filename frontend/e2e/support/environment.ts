@@ -29,7 +29,7 @@ export const API_BASE_URL = "http://localhost:9999/api/v1";
 export const MEDIA_ORIGIN = "http://localhost:8000";
 
 /**
- * CARTO serves the basemap style `components/map/Map.tsx` names. Mocked too,
- * so `/map` renders without reaching the network.
+ * OpenFreeMap serves the basemap style `components/map/Map.tsx` names. Mocked
+ * too, so `/map` renders without reaching the network.
  */
-export const BASEMAP_STYLE_URL_PATTERN = "https://basemaps.cartocdn.com/**";
+export const BASEMAP_STYLE_URL_PATTERN = "https://tiles.openfreemap.org/styles/**";

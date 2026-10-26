@@ -50,10 +50,11 @@ import {
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
 
-// CARTO basemap pair. maplibre paint can't read CSS variables, so tiles swap off the theme here.
+// OpenFreeMap basemap pair: no key, no request cap. maplibre paint can't read CSS variables, so
+// tiles swap off the theme here.
 const BASEMAP_STYLE = {
-  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+  dark: "https://tiles.openfreemap.org/styles/dark",
+  light: "https://tiles.openfreemap.org/styles/positron",
 } as const;
 
 // Hover ring: dot geometry and the grace margin (px) the pointer may roam before it collapses.
@@ -1171,7 +1172,7 @@ export default function Map({
           filter={clusterFilter}
           layout={{
             "text-field": "{point_count_abbreviated}",
-            "text-font": ["Montserrat Medium", "Noto Sans Regular"],
+            "text-font": ["Noto Sans Bold"],
             "text-size": [
               "step",
               ["get", "point_count"],
@@ -1262,7 +1263,7 @@ export default function Map({
           filter={stackFilter}
           layout={{
             "text-field": "{stack_count}",
-            "text-font": ["Montserrat Medium", "Noto Sans Regular"],
+            "text-font": ["Noto Sans Bold"],
             "text-size": 11,
             "text-allow-overlap": true,
             "text-ignore-placement": true,

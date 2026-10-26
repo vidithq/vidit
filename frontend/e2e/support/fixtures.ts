@@ -548,7 +548,7 @@ export const ORGANIZATION_APPROVAL_REQUESTS: OrganizationApprovalRequest[] = [
 
 /**
  * A maplibre style with nothing in it. The map still mounts, sizes itself and
- * draws the app's own point layers; only CARTO's basemap tiles are absent, and
+ * draws the app's own point layers; only the basemap tiles are absent, and
  * those are a network dependency a smoke suite should not carry.
  */
 export const EMPTY_BASEMAP_STYLE = {
