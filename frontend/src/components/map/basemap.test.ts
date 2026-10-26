@@ -33,6 +33,7 @@ type Layer = LayerSpecification & {
 
 const BASES = Object.entries(VIDIT_STYLES) as [Brightness, StyleSpecification][];
 const GLYPHS_DIR = join(process.cwd(), "public", "map-glyphs");
+const SPRITES_DIR = join(process.cwd(), "public", "map-sprites");
 
 function build(brightness: Brightness, options: Partial<BasemapOptions> = {}): Layer[] {
   return buildViditStyle(brightness, { ...DEFAULT_BASEMAP_OPTIONS, ...options }).layers as Layer[];
@@ -80,6 +81,13 @@ describe.each(BASES)("buildViditStyle on the %s style", (brightness, base) => {
     expect(stacks.size).toBeGreaterThan(0);
     for (const stack of stacks) {
       expect(existsSync(join(GLYPHS_DIR, stack, "0-255.pbf")), stack).toBe(true);
+    }
+  });
+
+  it("loads the icons from the vendored sprite", () => {
+    expect(base.sprite).toBe("/map-sprites/ofm");
+    for (const file of ["ofm.json", "ofm.png", "ofm@2x.json", "ofm@2x.png"]) {
+      expect(existsSync(join(SPRITES_DIR, file)), file).toBe(true);
     }
   });
 
@@ -322,6 +330,12 @@ describe("carryOverlays", () => {
     expect(next.sources.sites).toBe(previous.sources.sites);
     expect(next.sources.basemap).toEqual(thirdParty.sources.basemap);
     expect(next.projection).toEqual({ type: "globe" });
+  });
+
+  it("resolves the vendored sprite path against the page", () => {
+    const next = keep(undefined, VIDIT_STYLES.dark);
+    expect(next.sprite).toBe(`${window.location.origin}/map-sprites/ofm`);
+    expect(keep(undefined, thirdParty).sprite).toBeUndefined();
   });
 
   it("points every style at the Montserrat glyphs", () => {

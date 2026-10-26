@@ -8,7 +8,7 @@
       "attribution": "<a href=\"https://openfreemap.org\" target=\"_blank\">OpenFreeMap</a> <a href=\"https://openmaptiles.org\" target=\"_blank\">&copy; OpenMapTiles</a> <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\">&copy; OpenStreetMap contributors</a>"
     }
   },
-  "sprite": "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
+  "sprite": "/map-sprites/ofm",
   "glyphs": "/map-glyphs/{fontstack}/{range}.pbf",
   "layers": [
     {

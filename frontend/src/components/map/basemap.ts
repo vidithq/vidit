@@ -341,15 +341,22 @@ function withViditGlyphs(style: StyleSpecification): StyleSpecification {
   };
 }
 
-/** The `transformStyle` of a basemap swap. The app's overlays (event points, sites, a drawn zone)
- *  are its GeoJSON sources, which no basemap ships: it keeps them and their layers from the
+/** MapLibre loads a sprite only from an absolute URL, and the Vidit styles name the served one by
+ *  its path. */
+function withAbsoluteSprite(style: StyleSpecification): StyleSpecification {
+  if (typeof style.sprite !== "string" || !style.sprite.startsWith("/")) return style;
+  return { ...style, sprite: new URL(style.sprite, window.location.origin).href };
+}
+
+/** The `transformStyle` of a basemap swap. The app's overlays (event points, sites, a drawn zone,
+ *  the coordinate grid) are its GeoJSON sources, which no basemap ships: it keeps them and their layers from the
  *  outgoing style, drawn above the incoming basemap in their order, so they never leave the map,
  *  and keeps the projection, which the incoming style does not set. */
 export function carryOverlays(
   previous: StyleSpecification | undefined,
   next: StyleSpecification,
 ): StyleSpecification {
-  const style = withViditGlyphs(next);
+  const style = withViditGlyphs(withAbsoluteSprite(next));
   if (!previous) return style;
   const overlays = Object.fromEntries(
     Object.entries(previous.sources).filter(

@@ -128,6 +128,8 @@ The map's label glyphs are served from `public/map-glyphs/`, one folder per font
 
 The folder also holds the font licences, `OFL-Montserrat.txt` and `OFL-Noto.txt`. The `proxy.ts` matcher skips `/map-glyphs/`, so a signed-out reader gets the glyphs and not the login page.
 
+The basemap icons (place dots, airport and one-way markers, road shields) are served from `public/map-sprites/`: the OpenFreeMap sprite `ofm`, at 1x and 2x, as JSON and PNG. The Vidit styles name it by path (`/map-sprites/ofm`), and `carryOverlays` in [`basemap.ts`](../frontend/src/components/map/basemap.ts) resolves the path against the page, since MapLibre loads a sprite only from an absolute URL. OpenFreeMap publishes each sprite under a folder named by a hash of its content (`ofm_<hash>`) and keeps every published folder online. [`scripts/update-map-sprite.sh`](../frontend/scripts/update-map-sprite.sh) reads the current sprite URL from OpenFreeMap's published dark style, and downloads the four files when that URL differs from the one in `manifest.json`, which it then rewrites. The folder holds the icon licences in `LICENSE.md`. The `proxy.ts` matcher skips `/map-sprites/`, so a signed-out reader gets the icons and not the login page.
+
 MapLibre renders only on WebGL2, with alpha, depth and stencil buffers. A browser without that context gets a message in place of the map. Two checks in [`webgl.ts`](../frontend/src/components/map/webgl.ts) produce that message:
 
 - `supportsMaplibreWebGL` requests the same context on mount, so a browser that offers WebGL1 only, or blocks WebGL entirely, never mounts the map.

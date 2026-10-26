@@ -18,6 +18,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The map labels only countries and capitals when zoomed out, hides region borders, and shows one name per label, in Latin script ([#709](https://github.com/vidithq/vidit/pull/709)).
 - Map labels use the app font, Montserrat, served with the app ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The basemap icons are served with the app ([#709](https://github.com/vidithq/vidit/pull/709)).
 - Search loads every matching geolocation: **Load more** under the Geolocations group appends the next page, and `GET /search` pages that group with `geolocations_cursor` ([#696](https://github.com/vidithq/vidit/pull/696)).
 - Sites: map an area of interest such as a depot with its dated satellite images and contours, link your events to it with their effect, and read its history on its page; sites show on the map and can be reported ([#644](https://github.com/vidithq/vidit/pull/644)).
 - In the event form, a source link row imports the file of an X, public Telegram or TikTok post in one click, and a post with several files lets you pick one; `POST /uploads/from-link` stages it like an upload ([#697](https://github.com/vidithq/vidit/pull/697)).
