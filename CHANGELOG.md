@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- A Telegram post whose text holds a custom emoji now imports with its photo instead of the date alone ([#701](https://github.com/vidithq/vidit/pull/701)).
+
 ## v0.8.0, 2026-10-25
 
 ### Added

@@ -225,7 +225,7 @@ The host decides what gets *fetched*, never what gets *stored*: one module per t
 | Target | Chaser | Fills |
 |---|---|---|
 | An X status | Syndication ([`chase/x.py`](../backend/app/services/tweet_ingest/chase/x.py)) | The author, the post date, the media |
-| A public `t.me/<channel>/<id>` post | Its embed ([`chase/telegram.py`](../backend/app/services/tweet_ingest/chase/telegram.py)) | The post date, plus the media when the embed serves it; a sensitive post serves the date and no media |
+| A public `t.me/<channel>/<id>` post | Its embed ([`chase/telegram.py`](../backend/app/services/tweet_ingest/chase/telegram.py)) | The post date, plus the media when the embed serves it; a sensitive post serves the date and no media. The notice the embed shows a browser that cannot draw a custom emoji does not withhold the media |
 | Every other candidate | None | `source_url`, link-only |
 
 Every chase is fail-soft: a refusing upstream reads as "no footage", never as a failed import. Each chaser answers `chased`, `not_accessible`, `transient_failure` or `no_target`, and only the transient one changes what the analyst is told: `source_fetch_failed` instead of `source_footage_missing`.
