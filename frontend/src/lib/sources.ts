@@ -375,7 +375,7 @@ export function uploadSourceFile(file: File): Promise<Upload> {
 }
 
 const X_HOST_RE = /^(?:www\.)?(?:x|twitter)\.com$/i;
-const X_STATUS_RE = /(?:x|twitter)\.com\/(?:\w+\/status|i\/web\/status)\/(\d+)/i;
+const X_STATUS_PATH_RE = /^\/(?:\w+\/status|i\/web\/status)\/\d+/i;
 const TELEGRAM_HOST_RE = /^(?:www\.)?t\.me$/i;
 const TELEGRAM_POST_PATH_RE = /^\/[A-Za-z0-9_]{1,64}\/\d{1,19}$/;
 
@@ -388,7 +388,7 @@ export function isImportableLink(url: string): boolean {
   } catch {
     return false;
   }
-  if (X_HOST_RE.test(parsed.hostname)) return X_STATUS_RE.test(url);
+  if (X_HOST_RE.test(parsed.hostname)) return X_STATUS_PATH_RE.test(parsed.pathname);
   return (
     (parsed.protocol === "http:" || parsed.protocol === "https:") &&
     !parsed.username &&
