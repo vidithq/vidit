@@ -2,6 +2,19 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- `GET /events/detections/count` returns how many detections await your publish; the sidebar badge reads it in place of a page of the queue ([#695](https://github.com/vidithq/vidit/pull/695)).
+
+### Changed
+
+- Pages read the API without a CORS preflight before each request, and the API lets a browser reuse a preflight for a day ([#695](https://github.com/vidithq/vidit/pull/695)).
+- The API compresses responses at gzip level 6 and serves cached map points without compressing them again ([#695](https://github.com/vidithq/vidit/pull/695)).
+- Event pages and cards load resized images through the image optimizer in place of full-size originals, and the video player no longer loads on every page ([#695](https://github.com/vidithq/vidit/pull/695)).
+- Stored media and the map worker files carry a one-year immutable cache header, and pages open their API, media and basemap connections early. Media stored before this release keeps no cache header until an operator copies it with one ([#695](https://github.com/vidithq/vidit/pull/695)).
+
 ## v0.8.0, 2026-10-25
 
 ### Added
