@@ -59,7 +59,6 @@ export default function SitePage() {
     >
       {actions.panels}
       <PageColumns
-        stickySide
         main={
           <>
             <SourceBlocks

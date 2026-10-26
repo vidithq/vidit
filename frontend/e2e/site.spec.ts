@@ -11,8 +11,8 @@ import {
 /**
  * A site's page and its three forms, read by the signed-in analyst who owns the site.
  *
- * The narrow cases: the header holds a long name; the pinned row holds four icons and two
- * buttons; an image's source block holds a long title and a provider credit beside its file; a
+ * The narrow cases: the header holds a long name; the pinned row holds the owner's five icons; an
+ * image's source block holds a long title and a provider credit beside its file; a
  * linked event's card holds its effect and its author's controls; the Location and Details
  * blocks follow the main column, as on the event page; the contour editor
  * stacks a toolbar over a map; and the image editor holds the link list with its archive box.
@@ -48,6 +48,7 @@ test.describe("site page", () => {
     await expect(page.getByText("Zone on")).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectControlInsideViewport(page, page.getByRole("link", { name: "File an image" }));
+    await expectControlInsideViewport(page, page.getByRole("button", { name: "Link one of my events" }));
 
     await expect(page.getByText("3.3 km outside the zone")).toBeVisible();
     await expectNoHorizontalOverflow(page);
