@@ -1146,8 +1146,8 @@ export interface paths {
          *     are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
          *     ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
          *     status string, to keep the payload small. Cached in memory for 60s per
-         *     snapped bbox + filter combination (:func:`snap_bbox`), gzipped once with
-         *     the raw bytes.
+         *     snapped bbox + filter combination (:func:`snap_bbox`), gzipped once at the
+         *     miss so a hit costs no compression.
          */
         get: operations["list_points_api_v1_events_points_get"];
         put?: never;
