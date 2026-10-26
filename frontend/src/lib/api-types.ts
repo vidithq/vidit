@@ -2106,6 +2106,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uploads/from-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Upload From Link
+         * @description Stage the file of a post link, as ``POST /uploads`` stages a picked one.
+         *
+         *     Reads an X post or a public Telegram post through the ingestion chase, takes its file
+         *     ``index``, and stores it under the limits of ``POST /uploads``. Per-IP 30/minute bounds
+         *     the shared upstream budget.
+         */
+        post: operations["create_upload_from_link_api_v1_uploads_from_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me": {
         parameters: {
             query?: never;
@@ -3821,6 +3845,35 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * LinkUploadRead
+         * @description A file staged from a post link.
+         */
+        LinkUploadRead: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** Original Filename */
+            original_filename: string | null;
+            /** Post Media */
+            post_media: ("image" | "video")[];
+            /** Sha256 */
+            sha256: string;
+            /** Storage Url */
+            storage_url: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -4705,6 +4758,19 @@ export interface components {
          * @description Body of ``POST /events/import-from-tweet``.
          */
         TweetImportRequest: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * UploadFromLink
+         * @description A post link to stage a file from, for ``POST /uploads/from-link``.
+         */
+        UploadFromLink: {
+            /**
+             * Index
+             * @default 0
+             */
+            index: number;
             /** Url */
             url: string;
         };
@@ -8446,6 +8512,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_upload_from_link_api_v1_uploads_from_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadFromLink"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkUploadRead"];
                 };
             };
             /** @description Validation Error */

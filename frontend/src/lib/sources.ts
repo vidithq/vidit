@@ -11,6 +11,7 @@ export type Source = components["schemas"]["SourceRead"];
 type SourceLink = components["schemas"]["SourceLinkRead"];
 /** A staged source file (`POST /uploads`), referenced by a source's `upload_id`. */
 export type Upload = components["schemas"]["UploadRead"];
+type LinkUpload = components["schemas"]["LinkUploadRead"];
 export type SourceLevel = Source["level"];
 export type SourceKind = Source["kind"];
 /** What keeps a reader from reopening a satellite or aircraft image (`services/imagery`). */
@@ -126,13 +127,27 @@ export function sourceKindLabel(source: Pick<Source, "kind" | "media">): string 
 /** One entry of an event write's `sources` JSON field, every field posted. */
 export type SourceCreate = Required<components["schemas"]["SourceCreate"]>;
 
+/** The post a file is imported from (`POST /uploads/from-link`): its link, which of its files,
+ *  and the kind of each, empty until the post answers. */
+export interface LinkPost {
+  url: string;
+  index: number;
+  kinds: LinkUpload["post_media"];
+}
+
 /** A source file in a form. `stored` names the source's own stored file and posts `media_id`;
- *  `staged` posts `upload_id`. */
+ *  `staged` posts `upload_id`, with the post it came from when it was imported from a link.
+ *  `failed` names the picked file or the link's host. */
 export type SourceFile =
   | { state: "stored"; media: Media }
   | { state: "uploading"; file: File; token: number }
-  | { state: "staged"; upload: Upload }
-  | { state: "failed"; file: File; error: string };
+  | { state: "importing"; post: LinkPost; token: number }
+  | { state: "staged"; upload: Upload; post?: LinkPost }
+  | { state: "failed"; name: string; error: string };
+
+/** Whether a source file is still on its way to the server: the write waits for it. */
+const fileRunning = (file: SourceFile | null): boolean =>
+  file?.state === "uploading" || file?.state === "importing";
 
 /** One link row as the form holds it: input strings, plus the stored values an untouched input
  *  posts back at full precision. */
@@ -253,9 +268,9 @@ export function sourceFloor(drafts: SourceDraft[]): SourceFloorState {
   };
 }
 
-/** Whether a source file is still uploading: the write waits for it. */
+/** Whether a source file is still uploading or importing: the write waits for it. */
 export function uploadsRunning(drafts: SourceDraft[]): boolean {
-  return drafts.some((d) => d.file?.state === "uploading");
+  return drafts.some((d) => fileRunning(d.file));
 }
 
 export const UPLOADS_RUNNING_MESSAGE = "Wait for the source files to finish uploading.";
@@ -327,7 +342,7 @@ export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean
     if (!source) return true;
     const posted = sourceCreatePayload(draft);
     if (posted.media_id !== (source.media?.id ?? null) || posted.upload_id) return true;
-    if (draft.file?.state === "uploading" || draft.file?.state === "failed") return true;
+    if (fileRunning(draft.file) || draft.file?.state === "failed") return true;
     const position = source.capture_position;
     const samePosition =
       position === null
@@ -357,6 +372,15 @@ export function uploadSourceFile(file: File): Promise<Upload> {
   const fd = new FormData();
   fd.append("file", file);
   return apiFetch<Upload>("/uploads", { method: "POST", body: fd });
+}
+
+/** `POST /uploads/from-link`: stage file `index` of the post a link names, as `uploadSourceFile`
+ *  stages a picked one. The answer also holds the kind of every file the post holds. */
+export function importSourceFile(url: string, index: number): Promise<LinkUpload> {
+  return apiFetch<LinkUpload>("/uploads/from-link", {
+    method: "POST",
+    body: JSON.stringify({ url, index }),
+  });
 }
 
 /** `POST /sources/check` for an editor of an imagery kind: what the source would read once

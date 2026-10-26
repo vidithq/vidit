@@ -228,6 +228,8 @@ The host decides what gets *fetched*, never what gets *stored*: one module per t
 | A public `t.me/<channel>/<id>` post | Its embed ([`chase/telegram.py`](../backend/app/services/tweet_ingest/chase/telegram.py)) | The post date, plus the media when the embed serves it; a sensitive post serves the date and no media |
 | Every other candidate | None | `source_url`, link-only |
 
+[`POST /uploads/from-link`](api.md#post-uploadsfrom-link) runs the same dispatcher on one link an analyst names, then downloads the picked file through the same CDN fetch, so the form imports what the chase reads.
+
 Every chase is fail-soft: a refusing upstream reads as "no footage", never as a failed import. Each chaser answers `chased`, `not_accessible`, `transient_failure` or `no_target`, and only the transient one changes what the analyst is told: `source_fetch_failed` instead of `source_footage_missing`.
 
 **Retries.** Every outgoing fetch shares one schedule ([`retry.py`](../backend/app/services/tweet_ingest/retry.py)): three attempts, pausing 1 s then 3 s, never sleeping more than 6 s in total, honouring a longer `Retry-After` within that budget. Only a throttled or unreachable upstream earns a retry; a post that is gone, a restricted one and a payload that will not parse come back on the first attempt.
