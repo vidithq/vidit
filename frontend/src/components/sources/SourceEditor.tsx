@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { Download } from "lucide-react";
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { MediaManager } from "@/components/geolocations/MediaManager";
@@ -10,6 +11,7 @@ import {
   ArchiveSnapshotField,
   linkDescription,
 } from "@/components/ui/ArchivedCopies";
+import { Button } from "@/components/ui/Button";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { CharCounter } from "@/components/ui/CharCounter";
@@ -29,6 +31,7 @@ import {
   capturePositionInvalid,
   draftUrls,
   hasCapturePosition,
+  isImportableLink,
   LEVEL_LABELS,
   MAX_LINKS_PER_SOURCE,
   SOURCE_FIELDS,
@@ -39,12 +42,14 @@ import {
   SOURCE_KINDS,
   SOURCE_LEVELS,
   type LinkDraft,
+  type LinkPost,
   type SourceDraft,
   type SourceKind,
   type SourceLevel,
 } from "@/lib/sources";
 import type { Media, Tag } from "@/types";
 
+import { SourceHeader } from "./SourceBlock";
 import { SourceImageryCheck } from "./SourceImageryCheck";
 
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
@@ -53,6 +58,7 @@ const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS
 export interface SourceEditorInvalid {
   link?: boolean;
   kind?: boolean;
+  captured?: boolean;
 }
 
 /** Whether a field under **More details** holds a value. */
@@ -72,35 +78,50 @@ function holdsDetails(draft: SourceDraft): boolean {
  * under both.
  *
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
- * and `onPickFile` hands a picked file to the list, which uploads it. `actions` is the
- * header's slot for the list's controls (remove).
+ * `onPickFile` hands a picked file to the list, which uploads it, and `onImportLink` hands it a
+ * link whose post's file it imports. `actions` is the header's slot for the list's controls
+ * (remove).
+ *
+ * `variant="site-image"` is a site's satellite image: its kind and level are fixed (satellite,
+ * context), so neither shows, the capture time is required and sits under the title, and
+ * `extra` (the image's note) closes the card in place of **More details**.
  */
 export function SourceEditor({
   draft,
   index,
   update,
   onPickFile,
+  onImportLink,
   tags,
   setTags,
   invalid = {},
   actions,
   wide = false,
+  variant = "event",
+  name = sourceName(index),
+  extra,
 }: {
   draft: SourceDraft;
   /** Position in the list, for the names ("Source 2"). */
   index: number;
   update: (patch: Partial<SourceDraft>) => void;
   onPickFile: (file: File) => void;
-  /** The tag catalogue the event's Details card also reads. */
-  tags: Tag[];
-  setTags: Dispatch<SetStateAction<Tag[]>>;
+  onImportLink: (post: LinkPost) => void;
+  /** The tag catalogue the event's Details card also reads; an event source only. */
+  tags?: Tag[];
+  setTags?: Dispatch<SetStateAction<Tag[]>>;
   invalid?: SourceEditorInvalid;
   actions?: ReactNode;
   /** The editor owns the whole section (a lone source): the file sits left of the fields once
    *  the card is wide enough. */
   wide?: boolean;
+  variant?: "event" | "site-image";
+  /** The card's heading, and the root of its fields' accessible names. */
+  name?: string;
+  /** What a site image adds after its links: the note. */
+  extra?: ReactNode;
 }) {
-  const name = sourceName(index);
+  const siteImage = variant === "site-image";
   const id = (field: string) => `${draft.key}-${field}`;
   const file = draft.file;
   const hasFile = file !== null && file.state !== "failed";
@@ -119,8 +140,10 @@ export function SourceEditor({
         ? { ...file.upload, role: "source" }
         : null;
 
+  const post = file?.state === "importing" || file?.state === "staged" ? file.post : undefined;
+
   const describe = (i: number, url: string) =>
-    linkDescription(index, safeHostname(url.trim()), i, draft.links.length);
+    linkDescription(siteImage ? name.toLowerCase() : index, safeHostname(url.trim()), i, draft.links.length);
 
   const fileSlot = (
     <div className="space-y-1.5">
@@ -138,33 +161,55 @@ export function SourceEditor({
           Uploading {file.file.name}…
         </p>
       )}
+      {file?.state === "importing" && (
+        <p className="text-xs text-neutral-500" role="status">
+          Importing the file from {safeHostname(file.post.url)}…
+        </p>
+      )}
+      {post && post.kinds.length > 1 && (
+        <Select
+          aria-label={`${name} file from the post`}
+          value={post.index}
+          disabled={file?.state === "importing"}
+          onChange={(e) => onImportLink({ ...post, index: Number(e.target.value) })}
+        >
+          {post.kinds.map((kind, i) => (
+            <option key={i} value={i}>
+              File {i + 1} of {post.kinds.length} ({kind === "image" ? "photo" : kind})
+            </option>
+          ))}
+        </Select>
+      )}
       {file?.state === "failed" && (
         <p className="text-xs text-red-400" role="alert">
-          {file.file.name}: {file.error}
+          {file.name}: {file.error}
         </p>
       )}
     </div>
   );
 
-  const essentials = (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <FieldLabel
-          {...SOURCE_FIELDS.title}
-          htmlFor={id("title")}
-          trailing={<CharCounter length={draft.title.length} max={SOURCE_TITLE_MAX_LEN} />}
-        />
-        <Input
-          id={id("title")}
-          // Named apart from the event's Title field and the other editors' titles.
-          aria-label={`${name} title`}
-          value={draft.title}
-          maxLength={SOURCE_TITLE_MAX_LEN}
-          onChange={(e) => update({ title: e.target.value })}
-          placeholder="For example Drone footage of the strike"
-        />
-      </div>
+  // Required on a site image, where the zone rule reads it; optional under More details otherwise.
+  const captured = (
+    <div className="space-y-1.5">
+      <FieldLabel
+        {...SOURCE_FIELDS.captured_at}
+        concept={siteImage ? "site_image_captured" : SOURCE_FIELDS.captured_at.concept}
+        htmlFor={id("captured_at")}
+        invalid={invalid.captured}
+      />
+      <DateTimeInput
+        id={id("captured_at")}
+        type="datetime-local"
+        value={draft.capturedAt}
+        required={siteImage}
+        invalid={invalid.captured}
+        onChange={(e) => update({ capturedAt: e.target.value })}
+      />
+    </div>
+  );
 
+  const classification = (
+    <>
       <div className="space-y-1.5">
         <FieldLabel {...SOURCE_FIELDS.level} />
         <SegmentedControl<SourceLevel>
@@ -193,7 +238,87 @@ export function SourceEditor({
           ))}
         </Select>
       </div>
+    </>
+  );
+
+  const essentials = (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <FieldLabel
+          {...SOURCE_FIELDS.title}
+          htmlFor={id("title")}
+          trailing={<CharCounter length={draft.title.length} max={SOURCE_TITLE_MAX_LEN} />}
+        />
+        <Input
+          id={id("title")}
+          // Named apart from the event's Title field and the other editors' titles.
+          aria-label={`${name} title`}
+          value={draft.title}
+          maxLength={SOURCE_TITLE_MAX_LEN}
+          onChange={(e) => update({ title: e.target.value })}
+          placeholder={
+            siteImage ? "For example Sentinel-2 true colour" : "For example Drone footage of the strike"
+          }
+        />
+      </div>
+
+      {siteImage ? captured : classification}
     </div>
+  );
+
+  const details = (
+    <Disclosure
+      label="More details"
+      open={detailsOpen}
+      onToggle={() => setDetailsOpen((open) => !open)}
+    >
+      {captured}
+
+      {hasCapturePosition(draft.kind) && (
+        <div className="space-y-1.5">
+          <FieldLabel {...SOURCE_FIELDS.capture_position} />
+          <CoordinateInputs
+            idPrefix={id("capture_")}
+            required={false}
+            lat={draft.captureLat}
+            setLat={(captureLat) => update({ captureLat })}
+            lng={draft.captureLng}
+            setLng={(captureLng) => update({ captureLng })}
+            invalid={positionInvalid}
+          />
+          {positionInvalid && (
+            <p className="text-xs text-red-400">
+              Enter a latitude from {LAT_MIN} to {LAT_MAX} and a longitude from {LNG_MIN} to{" "}
+              {LNG_MAX}, or clear both. Until then the capture position is not saved.
+            </p>
+          )}
+        </div>
+      )}
+
+      {tags && setTags && (
+        <TagsField
+          tags={tags}
+          setTags={setTags}
+          selected={draft.tagIds}
+          setSelected={(tagIds) => update({ tagIds })}
+          owner={name}
+        />
+      )}
+
+      {/* A `span` label plus the switch's own name: not a labelable field. */}
+      <div className="flex items-center justify-between gap-4">
+        <FieldLabel
+          {...SOURCE_FIELDS.is_graphic}
+          trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
+        />
+        <Switch
+          on={draft.isGraphic}
+          onToggle={() => update({ isGraphic: !draft.isGraphic })}
+          disabled={draft.graphicLocked}
+          aria-label={`${name} graphic content`}
+        />
+      </div>
+    </Disclosure>
   );
 
   const rest = (
@@ -211,7 +336,9 @@ export function SourceEditor({
             itemLabel={`${name} link`}
             addText="Add a link"
             addName={`Add a link to ${name.toLowerCase()}`}
-            placeholder="https://t.me/channel/12345"
+            placeholder={
+              siteImage ? "https://browser.dataspace.copernicus.eu/?…" : "https://t.me/channel/12345"
+            }
             invalid={invalid.link}
             heading={
               <FieldLabel
@@ -247,6 +374,26 @@ export function SourceEditor({
                   />
                 ),
               },
+              ...(hasFile || !draft.links.some((link) => isImportableLink(link.url))
+                ? []
+                : [
+                    {
+                      header: "Import",
+                      width: "auto",
+                      cell: ({ index: i, row }: { index: number; row: LinkDraft }) =>
+                        isImportableLink(row.url) && (
+                          <Button
+                            icon
+                            variant="ghost"
+                            onClick={() => onImportLink({ url: row.url.trim(), index: 0, kinds: [] })}
+                            aria-label={`Import the file of ${describe(i, row.url)}`}
+                            title="Import file from link"
+                          >
+                            <Download size={14} />
+                          </Button>
+                        ),
+                    },
+                  ]),
             ]}
             expansion={({ index: i, row, update: updateLink }) => (
               <ArchiveSnapshotField
@@ -261,73 +408,13 @@ export function SourceEditor({
         <SourceImageryCheck draft={draft} name={name} />
       </div>
 
-      <Disclosure
-        label="More details"
-        open={detailsOpen}
-        onToggle={() => setDetailsOpen((open) => !open)}
-      >
-        <div className="space-y-1.5">
-          <FieldLabel {...SOURCE_FIELDS.captured_at} htmlFor={id("captured_at")} />
-          <DateTimeInput
-            id={id("captured_at")}
-            type="datetime-local"
-            value={draft.capturedAt}
-            onChange={(e) => update({ capturedAt: e.target.value })}
-          />
-        </div>
-
-        {hasCapturePosition(draft.kind) && (
-          <div className="space-y-1.5">
-            <FieldLabel {...SOURCE_FIELDS.capture_position} />
-            <CoordinateInputs
-              idPrefix={id("capture_")}
-              required={false}
-              lat={draft.captureLat}
-              setLat={(captureLat) => update({ captureLat })}
-              lng={draft.captureLng}
-              setLng={(captureLng) => update({ captureLng })}
-              invalid={positionInvalid}
-            />
-            {positionInvalid && (
-              <p className="text-xs text-red-400">
-                Enter a latitude from {LAT_MIN} to {LAT_MAX} and a longitude from {LNG_MIN} to{" "}
-                {LNG_MAX}, or clear both. Until then the capture position is not saved.
-              </p>
-            )}
-          </div>
-        )}
-
-        <TagsField
-          tags={tags}
-          setTags={setTags}
-          selected={draft.tagIds}
-          setSelected={(tagIds) => update({ tagIds })}
-          owner={name}
-        />
-
-        {/* A `span` label plus the switch's own name: not a labelable field. */}
-        <div className="flex items-center justify-between gap-4">
-          <FieldLabel
-            {...SOURCE_FIELDS.is_graphic}
-            trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
-          />
-          <Switch
-            on={draft.isGraphic}
-            onToggle={() => update({ isGraphic: !draft.isGraphic })}
-            disabled={draft.graphicLocked}
-            aria-label={`${name} graphic content`}
-          />
-        </div>
-      </Disclosure>
+      {siteImage ? extra : details}
     </div>
   );
 
   return (
     <Card as="section" aria-label={name} dense className="@container">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-neutral-200">{name}</h3>
-        <div className="flex flex-wrap items-center gap-1">{actions}</div>
-      </header>
+      <SourceHeader name={name} actions={actions} />
       {/* A lone editor reads like the event page's lone source: once the card is 42rem wide the
           file sits left of the title, level and kind, 3:2 (`DetailCard leadBeside`), and the links
           and More details take the card's width under both, so a link keeps its one-row layout;

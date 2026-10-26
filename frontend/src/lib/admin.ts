@@ -155,3 +155,14 @@ export type DetectionStats = components["schemas"]["AdminDetectionStatsRead"];
 export function getDetectionStats(): Promise<DetectionStats> {
   return apiFetch<DetectionStats>("/admin/detection-stats");
 }
+
+/** A site's takedown state after the PATCH: `hidden_at` is null once restored. */
+export type AdminSiteModeration = components["schemas"]["AdminSiteModerationRead"];
+
+/** Withhold a site from every public read, or restore it. */
+export function setSiteModeration(id: string, hidden: boolean): Promise<AdminSiteModeration> {
+  return apiFetch<AdminSiteModeration>(`/admin/sites/${encodeURIComponent(id)}/moderation`, {
+    method: "PATCH",
+    body: JSON.stringify({ hidden }),
+  });
+}

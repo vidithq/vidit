@@ -10,6 +10,7 @@ import { PageError, PageLoading } from "@/components/ui/PageShell";
 import { eventPageSlots } from "@/components/event/EventDetailBody";
 import { eventLocation } from "@/components/event/EventLocation";
 import { EventShell } from "@/components/event/EventShell";
+import { EventSitesBlock } from "@/components/sites/EventSitesBlock";
 import { useEventActions, type ActionSurface } from "@/components/event/useEventActions";
 
 /** An event's page byline, from the row: the owner, then every co-geolocator as a picture. */
@@ -20,7 +21,8 @@ export function EventByline({ event }: { event: Pick<EventDetail, "owner" | "geo
 /**
  * The read page of one row at `/events/{id}` or `/requests/{id}`: `EventShell` filled from
  * `GET /events/{id}`, the actions of `useEventActions` for the surface, the body of
- * `eventPageSlots`. A request carries no Location module, since its coordinates are a guess.
+ * `eventPageSlots`. A request carries no Location module, since its coordinates are a guess, and
+ * no Sites block.
  */
 export function EventReadPage({ surface }: { surface: ActionSurface }) {
   const params = useParams();
@@ -38,7 +40,11 @@ export function EventReadPage({ surface }: { surface: ActionSurface }) {
       byline={<EventByline event={geo} />}
       actions={actions}
       panels={panels}
-      body={eventPageSlots(geo, surface === "event" ? eventLocation(geo) : null)}
+      body={
+        surface === "event"
+          ? { ...eventPageSlots(geo, eventLocation(geo)), sites: <EventSitesBlock event={geo} /> }
+          : eventPageSlots(geo, null)
+      }
     />
   );
 }

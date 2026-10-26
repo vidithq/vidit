@@ -37,7 +37,7 @@ UtcDatetime = Annotated[datetime, AfterValidator(_as_utc)]
 # Bound on the lists a request may carry before the service counts them. The service owns the
 # product caps (``models/source.MAX_SOURCES_PER_EVENT``, ``MAX_LINKS_PER_SOURCE``) and answers
 # past them with a typed 400; this ceiling only stops an oversized payload at the parser.
-_LIST_PARSE_CEILING = 100
+LIST_PARSE_CEILING = 100
 
 
 class CoordsRead(BaseModel):
@@ -91,8 +91,8 @@ class SourceCreate(BaseModel):
     capture_position: CoordsCreate | None = None
     # Ratchets on a stored source: a posted false keeps a flagged source flagged.
     is_graphic: bool = False
-    links: list[SourceLinkCreate] = Field(default_factory=list, max_length=_LIST_PARSE_CEILING)
-    tag_ids: list[uuid.UUID] = Field(default_factory=list, max_length=_LIST_PARSE_CEILING)
+    links: list[SourceLinkCreate] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
+    tag_ids: list[uuid.UUID] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
     upload_id: uuid.UUID | None = None
     media_id: uuid.UUID | None = None
 
@@ -168,6 +168,23 @@ class UploadRead(BaseModel):
     expires_at: datetime
 
 
+class UploadFromLink(BaseModel):
+    """A post link to stage a file from, for ``POST /uploads/from-link``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: SourceUrl
+    # Which of the post's files, in post order.
+    index: int = Field(default=0, ge=0)
+
+
+class LinkUploadRead(UploadRead):
+    """A file staged from a post link."""
+
+    # The kind of every file the post holds, in post order; ``index`` picks one.
+    post_media: list[MediaKind]
+
+
 class SourceCheckLink(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -183,16 +200,21 @@ class SourceCheck(BaseModel):
     # The check covers these kinds alone.
     kind: ImageryKind
     captured_at: UtcDatetime | None = None
-    links: list[SourceCheckLink] = Field(default_factory=list, max_length=_LIST_PARSE_CEILING)
+    links: list[SourceCheckLink] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
 
 
-class ImageryProviderRead(BaseModel):
-    """One imagery provider of ``services/imagery.PROVIDERS``."""
+class ImageryProviderRef(BaseModel):
+    """An imagery provider of ``services/imagery.PROVIDERS``, by id and name."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     name: str
+
+
+class ImageryProviderRead(ImageryProviderRef):
+    """One imagery provider of ``services/imagery.PROVIDERS``."""
+
     group: ProviderGroup
     # ``""`` for a provider that cannot be reopened.
     credit: str

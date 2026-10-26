@@ -334,6 +334,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/sources.ts::SOURCE_TITLE_MAX_LEN`, `SOURCE_URL_MAX_LEN` (the source title, each URL and each archived copy; `components/ui/ArchivedCopies.tsx::isSnapshotUrl` counts a copy in UTF-8 bytes) | `models/source.SOURCE_TITLE_MAX_LENGTH`, `SOURCE_URL_MAX_LENGTH`, `source_archive.SNAPSHOT_URL_MAX_LENGTH` | server refuses typed text (422, or `snapshot_url_too_long`) |
 | `lib/sources.ts::isEvidenceLevel` | `models/source.EVIDENCE_LEVELS` | the form, the queue and the source block count a source toward the evidence floor that the server does not, or the reverse |
 | `lib/sources.ts::DOCUMENT_SOURCE_KINDS` | `models/source.DOCUMENT_SOURCE_KINDS` (`schemas/source.SourceCreate` drops a document's capture position) | the editor offers a capture position the server drops, or hides one it keeps |
+| `lib/sources.ts::isImportableLink` (the source editor's import button) | `tweet_ingest/urls.is_importable_link` (`x_status_id`, `telegram_post_url`, `tiktok_post_id`, `tiktok_short_url`) | the form offers an import the server refuses (`unsupported_link`), or hides one it reads |
 | `lib/sources.ts::SOURCE_ERROR_MESSAGES` (each sentence, and the caps it names) | the source codes of `events/errors`, the upload codes of `uploads`, `conflict_required`, `invalid_coordinates` | a refused write prints the server's message, or names the wrong cap |
 | `lib/events.ts::batchCompletionBlockers` | `events/batch._publish_detection`, `events.detection_ready_predicate` (coordinates, a `direct` or `indirect` source with a file, no source without a URL, a proof image) | queue labels a row ready that the server refuses |
 | `lib/events.ts::missingEventFields`, `missingEventRequestFields` | `events/sources.check_publish_floor`, the required `kind` of `schemas/source.SourceCreate`, `sources._clean_links` (a URL on every source), `events/rules._require_conflict`, `_require_proof_image` | the form calls a submission ready that the server refuses, or blocks one it accepts |
@@ -349,6 +350,11 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/proof.tsx::proofImageSrcs`, `proofHasImage` | `sanitize.extract_image_srcs`, `events._require_proof_image` | form calls a proof ready that the server refuses |
 | `lib/conflicts.ts::CONFLICT_OTHER_NAME` | the `Other` conflict row the baseline migration seeds (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | the conflict picker stops offering the escape value |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
+| `lib/sites.ts::SITE_NAME_MAX_LEN`, `SITE_IMAGE_NOTE_MAX_LEN`, `siteImageMissing` | `models/event.TITLE_MAX_LENGTH`, `schemas/site.IMAGE_NOTE_MAX_LENGTH`, `schemas/site.SiteImageCreate` (a capture time not in the future, a link) | the site forms accept a value the API refuses |
+| `lib/sites.ts::contourOn` | `services/sites.zones_at` (the latest contour whose image was captured on or before the day, the later contour breaking a tie) | the site page shows a zone for a date that the map and the API read differently |
+| `lib/sites.ts::imageFromEventSource` | `services/sites._event_file` (a `satellite` source with a file, not flagged graphic) and `schemas/site.SiteImageCreate` (a capture time) | the link dialog offers to file an event image the API refuses (`source_media_not_found`) |
+| `lib/sites.ts::SITE_MARGIN_KM` | the `margin_m` default of `routers/events/sites` | the link dialog names a distance the suggestions do not use |
+| `components/sites/EventSitesBlock.tsx` link gate on `geolocated` | `event_filters.site_linkable_events` | the event page offers a link the API refuses (409) |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
 | `lib/og.ts::MOSAIC_MAX_TILES` | `collections.COVER_TILES` | a share card draws more tiles than the server sends |
 | `components/event/useEventActions.tsx` and `components/geolocations/edit/EventEditForm.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel or the edit form's byline offers an invitation the API refuses (409) |
@@ -390,7 +396,7 @@ Every table, column, constraint and API field follows these rules. The API field
 | Repeated table name | A column does not repeat its table name | `media.kind`, not `media.media_type` |
 | Discriminator | Name it `kind`, never `type` | `media.kind`, `notifications.kind` |
 | Post | Write "post", never "tweet" | `event_detections.from_post_id` |
-| Event source | `source` is reserved for event sources | `sources`, `source_links`, `source_tags`, `media.source_id` |
+| Source | `source` is reserved for a row of `sources`: an event's evidence or a site image | `sources`, `source_links`, `source_tags`, `media.source_id`, `site_contours.source_id` |
 | X handle | `x_handle`, with a prefix when the table holds another handle | `users.x_handle`, `bot_mentions.author_x_handle` |
 | Leading underscore | A column or field name never starts with one | `token_hash` |
 | Creation stamp | Every entity table has `created_at`. A join table has none. | `tags.created_at`, `conflicts.created_at` |

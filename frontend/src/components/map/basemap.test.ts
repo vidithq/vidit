@@ -12,7 +12,7 @@ import {
   BASEMAP_PRESETS,
   BLANK_STYLE,
   buildViditStyle,
-  carryOverlay,
+  carryOverlays,
   DEFAULT_BASEMAP_OPTIONS,
   LOW_ZOOM,
   resolvePreset,
@@ -207,17 +207,19 @@ describe("basemap presets", () => {
   });
 });
 
-describe("carryOverlay", () => {
-  const keep = carryOverlay("points");
+describe("carryOverlays", () => {
+  const keep = carryOverlays;
   const previous: StyleSpecification = {
     version: 8,
     projection: { type: "globe" },
     sources: {
       basemap: { type: "vector", url: "https://example.org/old" },
       points: { type: "geojson", data: { type: "FeatureCollection", features: [] } },
+      sites: { type: "geojson", data: { type: "FeatureCollection", features: [] } },
     },
     layers: [
       { id: "old-land", type: "background" },
+      { id: "site-fill", type: "fill", source: "sites" },
       { id: "clusters", type: "circle", source: "points" },
       { id: "cluster-count", type: "symbol", source: "points", layout: { "text-font": ["Montserrat Medium"] } },
     ],
@@ -233,16 +235,18 @@ describe("carryOverlay", () => {
     ],
   };
 
-  it("keeps the overlay source and draws its layers above the incoming basemap", () => {
+  it("keeps the GeoJSON overlays and draws their layers above the incoming basemap", () => {
     const next = keep(previous, thirdParty);
     expect(next.layers.map((layer) => layer.id)).toEqual([
       "land",
       "city",
       "water",
+      "site-fill",
       "clusters",
       "cluster-count",
     ]);
     expect(next.sources.points).toBe(previous.sources.points);
+    expect(next.sources.sites).toBe(previous.sources.sites);
     expect(next.sources.basemap).toEqual(thirdParty.sources.basemap);
     expect(next.projection).toEqual({ type: "globe" });
   });

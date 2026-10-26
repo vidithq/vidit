@@ -21,7 +21,7 @@ import httpx
 
 from ..records import ChasedPost, ChaseResult, QuotedTweet, TelegramFootage, TweetRecord
 from ..resolve import sole_candidate
-from . import telegram, x
+from . import telegram, tiktok, x
 
 __all__ = ["apply_chase", "chase_post", "chase_thread"]
 
@@ -33,10 +33,11 @@ def chase_post(target: str, *, client: httpx.Client | None = None) -> ChaseResul
     quote). ``no_target`` hands it to the next chaser; the last answer stands.
     ``client`` is for tests (a ``MockTransport``).
     """
-    chased = x.chase(target, client=client)
-    if chased.outcome != "no_target":
-        return chased
-    return telegram.chase(target, client=client)
+    for chaser in (x.chase, telegram.chase):
+        chased = chaser(target, client=client)
+        if chased.outcome != "no_target":
+            return chased
+    return tiktok.chase(target, client=client)
 
 
 def apply_chase(record: TweetRecord, chased: ChasedPost) -> TweetRecord:

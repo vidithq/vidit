@@ -3,7 +3,13 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { apiFetch } from "@/lib/api";
-import { newSourceDraft, SOURCE_FIELDS, sourceDraftFrom, type SourceDraft } from "@/lib/sources";
+import {
+  newSourceDraft,
+  SOURCE_FIELDS,
+  sourceDraftFrom,
+  type LinkPost,
+  type SourceDraft,
+} from "@/lib/sources";
 import { source } from "@/test/eventDetail";
 import type { Tag } from "@/types";
 
@@ -30,10 +36,12 @@ function Host({
   initial,
   invalid,
   onPickFile = () => {},
+  onImportLink = () => {},
 }: {
   initial: SourceDraft;
   invalid?: SourceEditorInvalid;
   onPickFile?: (file: File) => void;
+  onImportLink?: (post: LinkPost) => void;
 }) {
   const [draft, setDraft] = useState(initial);
   const [tags, setTags] = useState<Tag[]>([{ id: "t1", name: "armor" }]);
@@ -44,6 +52,7 @@ function Host({
         index={0}
         update={(patch) => setDraft((d) => ({ ...d, ...patch }))}
         onPickFile={onPickFile}
+        onImportLink={onImportLink}
         tags={tags}
         setTags={setTags}
         invalid={invalid}
@@ -150,10 +159,37 @@ describe("SourceEditor", () => {
     unmount();
     render(
       <Host
-        initial={{ ...newSourceDraft(), file: { state: "failed", file, error: "Too large." } }}
+        initial={{ ...newSourceDraft(), file: { state: "failed", name: file.name, error: "Too large." } }}
       />
     );
     expect(screen.getByRole("alert")).toHaveTextContent("clip.mp4: Too large.");
+  });
+
+  it("offers each importable link row's file import while the source has no file", () => {
+    const onImportLink = vi.fn();
+    const url = "https://t.me/channel/12345";
+    const draft = newSourceDraft();
+    const link = (u: string) => ({ ...draft.links[0], url: u });
+    const { unmount } = render(
+      <Host
+        initial={{ ...draft, links: [link(url), link("https://example.com/article")] }}
+        onImportLink={onImportLink}
+      />
+    );
+    const imports = screen.getAllByRole("button", { name: /^Import the file of/ });
+    expect(imports).toHaveLength(1);
+    fireEvent.click(imports[0]);
+    expect(onImportLink).toHaveBeenCalledWith({ url, index: 0, kinds: [] });
+    unmount();
+
+    render(<Host initial={{ ...newSourceDraft(), file: { state: "stored", media: FILE } }} />);
+    expect(screen.queryByRole("button", { name: /^Import the file of/ })).toBeNull();
+  });
+
+  it("says a link's file is importing", () => {
+    const post = { url: "https://x.com/someone/status/1", index: 0, kinds: [] };
+    render(<Host initial={{ ...newSourceDraft(), file: { state: "importing", post, token: 1 } }} />);
+    expect(screen.getByText(/Importing the file from x\.com/)).toBeInTheDocument();
   });
 
   it("keeps the kind when the file is removed", () => {
@@ -300,5 +336,42 @@ describe("SourceEditor", () => {
     expect(screen.getByText("admin only")).toBeInTheDocument();
     // What the flag does, and who removes it, is the `?` beside it.
     expect(screen.getByRole("button", { name: "What does the graphic flag do?" })).toBeInTheDocument();
+  });
+});
+
+describe("SourceEditor as a site image", () => {
+  it("explains the required capture time, not the optional one of an event source", () => {
+    render(
+      <SourceEditor
+        draft={{ ...newSourceDraft(), kind: "satellite", level: "context" }}
+        index={0}
+        variant="site-image"
+        name="Image"
+        update={() => {}}
+        onPickFile={() => {}}
+        onImportLink={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "When was the image captured?" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "What is the capture time?" })).not.toBeInTheDocument();
+  });
+
+  it("imports the file of a post link, like an event source", () => {
+    const onImportLink = vi.fn();
+    const url = "https://x.com/someone/status/1";
+    const draft = newSourceDraft();
+    render(
+      <SourceEditor
+        draft={{ ...draft, kind: "satellite", level: "context", links: [{ ...draft.links[0], url }] }}
+        index={0}
+        variant="site-image"
+        name="Image"
+        update={() => {}}
+        onPickFile={() => {}}
+        onImportLink={onImportLink}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Import the file of/ }));
+    expect(onImportLink).toHaveBeenCalledWith({ url, index: 0, kinds: [] });
   });
 });

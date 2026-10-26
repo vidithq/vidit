@@ -1,14 +1,17 @@
 """Content reports and the takedown they resolve into.
 
-A report names one target, an event or a collection, and both walk one queue:
-a viewer files one (:func:`create_event_report`, :func:`create_collection_report`),
+A report names one target, an event, a collection or a site, and all walk one
+queue: a viewer files one (:func:`create_event_report`,
+:func:`create_collection_report`, :func:`create_site_report`),
 an admin walks the queue (:func:`list_reports`) and closes a row with a verdict
 (:func:`resolve_report`), or acts on an event directly
 (:func:`set_event_moderation`). The two admin writes share a home because they
 perform the same mutations (graphic flag, ``events.hidden_at``) and must leave
 the same audit trail. The collection takedown is
 ``services/admin.withhold_collection``, shared with
-``DELETE /admin/collections/{id}``.
+``DELETE /admin/collections/{id}``, and the site takedown
+``services/admin.move_site_takedown``, shared with
+``PATCH /admin/sites/{id}/moderation``.
 
 Errors carry stable ``code`` strings; :data:`REPORT_ERROR_STATUS` is the one
 code-to-HTTP mapping every router reads.
@@ -33,10 +36,12 @@ from app.models.content_report import (
     ContentReportResolution,
 )
 from app.models.event import Event
+from app.models.site import Site
 from app.services import email
-from app.services.admin import log_admin_event, withhold_collection
+from app.services.admin import log_admin_event, move_site_takedown, withhold_collection
 from app.services.collections import erase_if_released, visible_collections
 from app.services.event_filters import visible_events
+from app.services.sites import visible_sites
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +70,12 @@ class CollectionNotFoundError(ReportError):
     code = "collection_not_found"
 
 
+class SiteNotFoundError(ReportError):
+    """The site does not exist, is withheld, or belongs to a soft-deleted account."""
+
+    code = "site_not_found"
+
+
 class ReportNotFoundError(ReportError):
     code = "report_not_found"
 
@@ -80,7 +91,7 @@ class ReportAlreadyResolvedError(ReportError):
 
 
 class ReportTargetGoneError(ReportError):
-    """The target was deleted (both target columns are SET NULL).
+    """The target was deleted (every target column is SET NULL).
 
     Every verdict except ``dismissed`` mutates a row that no longer exists.
     """
@@ -91,8 +102,8 @@ class ReportTargetGoneError(ReportError):
 class ReportVerdictNotApplicableError(ReportError):
     """The verdict does not exist for this target kind.
 
-    ``marked_graphic`` is an event column; a collection holds no footage of
-    its own. Refused so the admin learns the report is still open.
+    ``marked_graphic`` is an event column; a collection or a site holds no
+    footage of its own. Refused so the admin learns the report is still open.
     """
 
     code = "report_verdict_not_applicable"
@@ -101,6 +112,7 @@ class ReportVerdictNotApplicableError(ReportError):
 REPORT_ERROR_STATUS: dict[str, int] = {
     "event_not_found": 404,
     "collection_not_found": 404,
+    "site_not_found": 404,
     "report_not_found": 404,
     "report_already_resolved": 409,
     "report_target_gone": 409,
@@ -149,6 +161,7 @@ class _ReportTarget(NamedTuple):
     kind: str
     event_id: uuid.UUID | None
     collection_id: uuid.UUID | None
+    site_id: uuid.UUID | None
     title: str
     link: str
 
@@ -173,6 +186,7 @@ def _file_report(
     report = ContentReport(
         event_id=target.event_id,
         collection_id=target.collection_id,
+        site_id=target.site_id,
         reason=reason,
         details=details,
         reporter_id=reporter_id,
@@ -188,7 +202,7 @@ def _file_report(
             address=address,
             report_id=report.id,
             target=target.kind,
-            target_id=str(target.event_id or target.collection_id),
+            target_id=str(target.event_id or target.collection_id or target.site_id),
             target_title=target.title,
             target_link=target.link,
             reason=report.reason,
@@ -227,6 +241,7 @@ def create_event_report(
             kind="event",
             event_id=event_id,
             collection_id=None,
+            site_id=None,
             title=visible.title,
             link=email.event_link(str(event_id)),
         ),
@@ -270,8 +285,43 @@ def create_collection_report(
             kind="collection",
             event_id=None,
             collection_id=collection_id,
+            site_id=None,
             title=visible.title,
             link=email.collection_link(str(collection_id)),
+        ),
+        reason=reason,
+        details=details,
+        reporter_id=reporter_id,
+        reporter_username=reporter_username,
+        background_tasks=background_tasks,
+    )
+
+
+def create_site_report(
+    db: Session,
+    *,
+    site_id: uuid.UUID,
+    reason: ContentReportReason,
+    details: str | None,
+    reporter_id: uuid.UUID | None,
+    reporter_username: str | None,
+    background_tasks: BackgroundTasks,
+) -> ContentReport:
+    """File one report against a readable site, on the terms of
+    :func:`create_collection_report`. An unreadable site raises :class:`SiteNotFoundError`."""
+    visible = db.query(Site.id, Site.name).filter(Site.id == site_id, *visible_sites()).first()
+    if visible is None:
+        raise SiteNotFoundError("Site not found")
+
+    return _file_report(
+        db,
+        target=_ReportTarget(
+            kind="site",
+            event_id=None,
+            collection_id=None,
+            site_id=site_id,
+            title=visible.name,
+            link=email.site_link(str(site_id)),
         ),
         reason=reason,
         details=details,
@@ -288,13 +338,16 @@ def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[Content
     never serves a row twice. ``ix_content_reports_queue`` carries these three
     expressions in this order; change both together.
 
-    The collection and its owner load eagerly to avoid two lazy round trips
-    per collection report.
+    The collection or site and its owner load eagerly to avoid two lazy round
+    trips per report.
     """
     total = db.query(func.count(ContentReport.id)).scalar() or 0
     rows = (
         db.query(ContentReport)
-        .options(joinedload(ContentReport.collection).joinedload(Collection.owner))
+        .options(
+            joinedload(ContentReport.collection).joinedload(Collection.owner),
+            joinedload(ContentReport.site).joinedload(Site.owner),
+        )
         .order_by(
             ContentReport.resolved_at.isnot(None),
             ContentReport.created_at.desc(),
@@ -355,14 +408,15 @@ def resolve_report(
 
     ``dismissed`` leaves the target untouched. ``hidden`` withholds the target
     from public reads (same stamp as ``DELETE /admin/collections/{id}``).
-    ``marked_graphic`` is event-only: a collection report raises
+    ``marked_graphic`` is event-only: a collection or site report raises
     :class:`ReportVerdictNotApplicableError` (409).
 
     Each verdict appends a ``report_resolved`` audit row, plus the matching
-    action (``event_marked_graphic``, ``event_hidden``, ``collection_hidden``)
-    when the target changed, so the trail is the same as via the admin verbs.
+    action (``event_marked_graphic``, ``event_hidden``, ``collection_hidden``,
+    ``site_hidden``) when the target changed, so the trail is the same as via
+    the admin verbs.
 
-    A report whose target was deleted (both id columns NULL) accepts
+    A report whose target was deleted (every id column NULL) accepts
     ``dismissed`` only (:class:`ReportTargetGoneError`, 409).
 
     A collection its owner deleted while reported (``collections.deleted_at``)
@@ -406,6 +460,15 @@ def resolve_report(
             .with_for_update()
             .one()
         )
+    site: Site | None = None
+    if report.site_id is not None and resolution != "dismissed":
+        site = (
+            db.query(Site)
+            .filter(Site.id == report.site_id)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )
     # ``dismissed`` touches no target, so it skips the event fetch and lock.
     if resolution != "dismissed":
         if report.event_id is not None:
@@ -423,12 +486,15 @@ def resolve_report(
                 _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
             elif resolution == "hidden":
                 hidden_changed = _set_hidden(db, event=event, actor_id=actor_id, hidden=True)
-        elif collection is not None:
+        elif collection is not None or site is not None:
             if resolution == "marked_graphic":
                 raise ReportVerdictNotApplicableError(
-                    "A collection carries no footage of its own, so it cannot be marked graphic"
+                    "Only an event carries footage, so only an event can be marked graphic"
                 )
-            withhold_collection(db, collection=collection, actor_id=actor_id)
+            if collection is not None:
+                withhold_collection(db, collection=collection, actor_id=actor_id)
+            elif site is not None:
+                move_site_takedown(db, site=site, hidden=True, actor_id=actor_id)
         else:
             raise ReportTargetGoneError(
                 "The reported item was deleted, so this report can only be dismissed"
@@ -448,6 +514,7 @@ def resolve_report(
             "collection_id": (
                 str(report.collection_id) if report.collection_id is not None else None
             ),
+            "site_id": str(report.site_id) if report.site_id is not None else None,
             "resolution": resolution,
         },
     )

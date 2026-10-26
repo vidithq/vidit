@@ -50,3 +50,7 @@ class TweetUpstreamUnreachable(TweetFetchFailed):
     Separate from :class:`TweetUpstreamBusy` so the retry policy can name the
     two retryable failures. A ``TweetFetchFailed`` subclass (``502``).
     """
+
+
+class MediaTooLarge(TweetImportError):
+    """A CDN media body ran past ``archive.MEDIA_FETCH_MAX_BYTES``: dropped, never buffered."""

@@ -31,7 +31,7 @@ export function formatMonth(period: string): string {
 }
 
 /** The UTC day of an instant, as "28 Mar 2026"; an unparsable value renders as-is. */
-function formatInstantDate(iso: string): string {
+export function formatInstantDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-GB", {

@@ -243,25 +243,28 @@ function withViditGlyphs(style: StyleSpecification): StyleSpecification {
   };
 }
 
-/** The `transformStyle` of a basemap swap. It keeps the overlay source and its layers from the
- *  outgoing style, drawn above the incoming basemap, so the event points never leave the map, and
- *  keeps the projection, which the incoming style does not set. */
-export function carryOverlay(sourceId: string) {
-  return (
-    previous: StyleSpecification | undefined,
-    next: StyleSpecification,
-  ): StyleSpecification => {
-    const style = withViditGlyphs(next);
-    const source = previous?.sources[sourceId];
-    if (!previous || !source) return style;
-    return {
-      ...style,
-      projection: previous.projection ?? style.projection,
-      sources: { ...style.sources, [sourceId]: source },
-      layers: [
-        ...style.layers,
-        ...previous.layers.filter((layer) => "source" in layer && layer.source === sourceId),
-      ],
-    };
+/** The `transformStyle` of a basemap swap. The app's overlays (event points, sites, a drawn zone)
+ *  are its GeoJSON sources, which no basemap ships: it keeps them and their layers from the
+ *  outgoing style, drawn above the incoming basemap in their order, so they never leave the map,
+ *  and keeps the projection, which the incoming style does not set. */
+export function carryOverlays(
+  previous: StyleSpecification | undefined,
+  next: StyleSpecification,
+): StyleSpecification {
+  const style = withViditGlyphs(next);
+  if (!previous) return style;
+  const overlays = Object.fromEntries(
+    Object.entries(previous.sources).filter(
+      ([id, source]) => source.type === "geojson" && !(id in style.sources),
+    ),
+  );
+  return {
+    ...style,
+    projection: previous.projection ?? style.projection,
+    sources: { ...style.sources, ...overlays },
+    layers: [
+      ...style.layers,
+      ...previous.layers.filter((layer) => "source" in layer && layer.source in overlays),
+    ],
   };
 }

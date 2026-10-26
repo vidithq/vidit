@@ -16,7 +16,13 @@ from typing import Any
 
 import httpx
 
-from .errors import TweetImportError, TweetUpstreamBusy, TweetUpstreamUnreachable
+from .errors import (
+    MediaTooLarge,
+    TweetImportError,
+    TweetNotAccessible,
+    TweetUpstreamBusy,
+    TweetUpstreamUnreachable,
+)
 from .extract import is_retweet
 from .records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
 from .retry import parse_retry_after, retrying_async
@@ -166,29 +172,30 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
     return records
 
 
-async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
-    """Fetch a chased source media from a CDN (absolute ``remote_url``).
+async def download_cdn_media(parsed: ParsedMedia) -> bytes:
+    """The bytes of a chased source media on a CDN (absolute ``remote_url``).
 
     SSRF-guarded by ``is_trusted_media_url``. Streamed under
-    ``MEDIA_FETCH_MAX_BYTES`` so a CDN lying about size cannot OOM the worker;
-    over the cap, or any fetch error, degrades to ``None`` (media-incomplete).
+    ``MEDIA_FETCH_MAX_BYTES`` so a CDN lying about size cannot OOM the worker.
     A throttled or unreachable CDN is retried (:mod:`tweet_ingest.retry`) first.
     """
     if not is_trusted_media_url(parsed.remote_url):
-        return None
+        raise TweetNotAccessible("media URL is not on a trusted CDN")
+    return await retrying_async(lambda: _read_cdn_media(parsed.remote_url), what=parsed.remote_url)
+
+
+async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
+    """:func:`download_cdn_media`, fail-soft: any failure degrades to ``None`` (media-incomplete)."""
     try:
-        media = await retrying_async(
-            lambda: _read_cdn_media(parsed.remote_url), what=parsed.remote_url
-        )
+        media = await download_cdn_media(parsed)
     except TweetImportError:
         return None
     return (media, parsed.content_type) if media else None
 
 
-async def _read_cdn_media(url: str) -> bytes | None:
-    """One streamed GET: the bytes, or ``None`` where a retry cannot help (a
-    non-throttling refusal, an over-cap body). Throttling or an unreachable CDN
-    raises, which earns the retry."""
+async def _read_cdn_media(url: str) -> bytes:
+    """One streamed GET. Only throttling or an unreachable CDN raises an error that earns
+    the retry."""
     try:
         async with (
             httpx.AsyncClient(timeout=20.0) as client,
@@ -200,12 +207,12 @@ async def _read_cdn_media(url: str) -> bytes | None:
                     retry_after=parse_retry_after(resp.headers.get("Retry-After")),
                 )
             if resp.status_code != 200:
-                return None
+                raise TweetNotAccessible(f"cdn returned {resp.status_code}")
             buffer = bytearray()
             async for chunk in resp.aiter_bytes():
                 buffer.extend(chunk)
                 if len(buffer) > MEDIA_FETCH_MAX_BYTES:
-                    return None
+                    raise MediaTooLarge(f"cdn body over {MEDIA_FETCH_MAX_BYTES} bytes")
     except httpx.HTTPError as exc:
         raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
     return bytes(buffer)

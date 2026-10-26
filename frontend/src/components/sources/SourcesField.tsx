@@ -13,6 +13,8 @@ import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import type { MissingFieldKey } from "@/lib/events";
 import {
   draftUrls,
+  fileRunning,
+  importSourceFile,
   isEvidenceLevel,
   MAX_SOURCES_PER_EVENT,
   newSourceDraft,
@@ -21,9 +23,11 @@ import {
   uploadsRunning,
   uploadSourceFile,
   UPLOADS_RUNNING_MESSAGE,
+  type LinkPost,
   type SourceDraft,
   type SourceFile,
 } from "@/lib/sources";
+import { safeHostname } from "@/lib/format";
 import type { Tag } from "@/types";
 
 let uploadToken = 0;
@@ -36,7 +40,8 @@ let uploadToken = 0;
  * mounted, so one scrolled out of view keeps its upload.
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
- * event write names it. A file picked again or removed while its upload runs drops the answer.
+ * event write names it. A file imported from a link stages the same way, through the link's post.
+ * A file picked, imported or removed while an upload runs drops that upload's answer.
  */
 export function SourcesField({
   sources,
@@ -57,27 +62,7 @@ export function SourcesField({
 }) {
   const atCap = sources.length >= MAX_SOURCES_PER_EVENT;
 
-  const update = (key: string) => (patch: Partial<SourceDraft>) =>
-    setSources((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
-
-  const settle = (key: string, token: number, file: SourceFile) =>
-    setSources((prev) =>
-      prev.map((d) =>
-        d.key === key && d.file?.state === "uploading" && d.file.token === token
-          ? { ...d, file }
-          : d
-      )
-    );
-
-  const pickFile = (key: string) => async (file: File) => {
-    const token = ++uploadToken;
-    update(key)({ file: { state: "uploading", file, token } });
-    try {
-      settle(key, token, { state: "staged", upload: await uploadSourceFile(file) });
-    } catch (err) {
-      settle(key, token, { state: "failed", file, error: uploadError(err) });
-    }
-  };
+  const { update, pickFile, importLink } = sourceDraftUpdaters(setSources);
 
   const scroller = useRef<HorizontalScrollerHandle>(null);
   // A source to show once the list renders: the one Add a source appended, the neighbour of a
@@ -137,6 +122,7 @@ export function SourcesField({
           index={index}
           update={update(draft.key)}
           onPickFile={(file) => void pickFile(draft.key)(file)}
+          onImportLink={(post) => void importLink(draft.key)(post)}
           tags={tags}
           setTags={setTags}
           invalid={sourceGaps(draft, invalidKeys)}
@@ -146,6 +132,49 @@ export function SourcesField({
       ))}
     </SourcesRow>
   );
+}
+
+/**
+ * The writers a form's source editors take: `update(key)` patches one draft, `pickFile(key)`
+ * uploads a picked file at once, on its own request, and `importLink(key)` stages the file of a
+ * link's post the same way. The answer lands on the draft only while that same request is still
+ * its file, so a file picked, imported or removed while a request runs drops the answer.
+ */
+export function sourceDraftUpdaters(setSources: Dispatch<SetStateAction<SourceDraft[]>>) {
+  const update = (key: string) => (patch: Partial<SourceDraft>) =>
+    setSources((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
+
+  const settle = (key: string, token: number, file: SourceFile) =>
+    setSources((prev) =>
+      prev.map((d) =>
+        d.key === key && fileRunning(d.file) && d.file.token === token
+          ? { ...d, file }
+          : d
+      )
+    );
+
+  const pickFile = (key: string) => async (file: File) => {
+    const token = ++uploadToken;
+    update(key)({ file: { state: "uploading", file, token } });
+    try {
+      settle(key, token, { state: "staged", upload: await uploadSourceFile(file) });
+    } catch (err) {
+      settle(key, token, { state: "failed", name: file.name, error: uploadError(err) });
+    }
+  };
+
+  const importLink = (key: string) => async (post: LinkPost) => {
+    const token = ++uploadToken;
+    update(key)({ file: { state: "importing", post, token } });
+    try {
+      const { post_media: kinds, ...upload } = await importSourceFile(post.url, post.index);
+      settle(key, token, { state: "staged", upload, post: { ...post, kinds } });
+    } catch (err) {
+      settle(key, token, { state: "failed", name: safeHostname(post.url), error: uploadError(err) });
+    }
+  };
+
+  return { update, pickFile, importLink };
 }
 
 /** An editor's red trash button: the first click arms it, the second removes the source. */
