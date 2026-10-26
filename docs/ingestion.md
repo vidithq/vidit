@@ -39,7 +39,7 @@ flowchart LR
   hop["`**acquire_thread**
   one hop: the post plus the same-author post it replies to; a bare tag climbs to the coordinate post`"]:::shared
   chase["`**chase_thread**
-  the sole source candidate: X status or Telegram embed, retries`"]:::shared
+  the sole source candidate: X status, Telegram or TikTok embed, retries`"]:::shared
   resolve["`**resolve_threads**
   pure: one Detection per coordinate, or a RequestDraft when asked, warnings and refusals`"]:::core
   persist["`**persist_detections**
@@ -226,6 +226,7 @@ The host decides what gets *fetched*, never what gets *stored*: one module per t
 |---|---|---|
 | An X status | Syndication ([`chase/x.py`](../backend/app/services/tweet_ingest/chase/x.py)) | The author, the post date, the media |
 | A public `t.me/<channel>/<id>` post | Its embed ([`chase/telegram.py`](../backend/app/services/tweet_ingest/chase/telegram.py)) | The post date, plus the media when the embed serves it; a sensitive post serves the date and no media |
+| A TikTok post (`tiktok.com/@<user>/video/<id>` or `/photo/<id>`, with or without `www.` or `m.`) or short link (`vm.tiktok.com/<code>`, `vt.tiktok.com/<code>`, `www.tiktok.com/t/<code>`) | Its embed, `www.tiktok.com/embed/v2/<id>` ([`chase/tiktok.py`](../backend/app/services/tweet_ingest/chase/tiktok.py)); a short link first costs one GET whose redirect is read, never followed, and must name a post | The post date, plus the video file, or one image per photo of a photo post; the music track is not read |
 | Every other candidate | None | `source_url`, link-only |
 
 [`POST /uploads/from-link`](api.md#post-uploadsfrom-link) runs the same dispatcher on one link an analyst names, then downloads the picked file through the same CDN fetch, so the form imports what the chase reads.
@@ -306,7 +307,7 @@ Each row is one input shape and the outcome the engine produces for it. The thre
 | Third-party X status link, a Google Earth link and a Wikipedia link (`context_links`) | 1 detection, source is the status dated off its ID, two context sources: `satellite` titled Google Earth web, then `article` |
 | Sole Copernicus Browser link (`context_link_only`) | 1 detection, source empty (`source_missing`), one `satellite` context source titled Copernicus Browser |
 | Two links, no `Source:` line | 1 detection, source empty, two mirrors |
-| Sole link off the chase vocabulary (TikTok, Instagram, an article) | 1 detection, source is the link |
+| Sole link off the chase vocabulary (Instagram, an article) | 1 detection, source is the link |
 | Sole X profile link (`x_profile_link`) | 1 detection, source empty |
 | Sole Google Maps link | 1 detection, source empty |
 | Sole link back to the analyst's own status | 1 detection, source empty |

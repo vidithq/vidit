@@ -196,7 +196,9 @@ async def stage_from_link(db: Session, *, uploader: User, url: str, index: int =
     :class:`LinkUpstreamBusyError`.
     """
     if not is_importable_link(url):
-        raise UnsupportedLinkError("Import works with an X post or a public Telegram post link.")
+        raise UnsupportedLinkError(
+            "Import works with an X post, a public Telegram post or a TikTok post link."
+        )
     now = datetime.now(UTC)
     _ensure_room(db, uploader, now)
     chased = await asyncio.to_thread(chase_post, url)

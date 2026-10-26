@@ -6,6 +6,7 @@ Offline: every upstream (syndication, the Telegram embed, the CDNs) answers thro
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator
 
 import httpx
@@ -67,6 +68,16 @@ _TELEGRAM_SENSITIVE_HTML = (
 )
 
 
+_TIKTOK_ID = "7400000000000000001"
+_TIKTOK_URL = f"https://www.tiktok.com/@someone/photo/{_TIKTOK_ID}"
+
+
+def _tiktok_embed(video_data: dict[str, object]) -> Handler:
+    state = {"source": {"data": {f"/embed/v2/{_TIKTOK_ID}": {"videoData": video_data}}}}
+    page = f'<script id="__FRONTITY_CONNECT_STATE__">{json.dumps(state)}</script>'
+    return lambda _request: httpx.Response(200, text=page)
+
+
 def _cdn(request: httpx.Request) -> httpx.Response:
     path = request.url.path
     return httpx.Response(200, content=TINY_MP4 if path.endswith(".mp4") else TINY_JPEG)
@@ -79,6 +90,8 @@ def upstream(monkeypatch) -> Iterator[dict[str, Handler]]:
         "pbs.twimg.com": _cdn,
         "video.twimg.com": _cdn,
         "cdn4.cdn-telegram.org": _cdn,
+        "v16m.tiktokcdn-eu.com": _cdn,
+        "p16-common-sign.tiktokcdn-eu.com": _cdn,
     }
     seen: list[str] = []
 
@@ -163,6 +176,39 @@ def test_the_index_picks_one_of_the_post_files(upstream, author):
     assert upstream["seen"].count("pbs.twimg.com") == 0  # type: ignore[union-attr]
 
 
+def test_a_tiktok_video_is_staged(upstream, author):
+    upstream["www.tiktok.com"] = _tiktok_embed(
+        {
+            "itemInfos": {
+                "createTime": "1772630400",
+                "video": {"urls": [f"https://v16m.tiktokcdn-eu.com/v/{_TIKTOK_ID}.mp4"]},
+            }
+        }
+    )
+    response = _import(author, f"https://www.tiktok.com/@someone/video/{_TIKTOK_ID}")
+    assert response.status_code == 201, response.text
+    assert response.json()["kind"] == "video" and response.json()["post_media"] == ["video"]
+
+
+def test_a_tiktok_photo_post_stages_the_photo_picked_by_index(upstream, author):
+    photos = [f"https://p16-common-sign.tiktokcdn-eu.com/obj/photo{n}.jpeg" for n in (1, 2, 3)]
+    upstream["www.tiktok.com"] = _tiktok_embed(
+        {
+            "itemInfos": {"createTime": 1772630400, "video": {"urls": []}},
+            "imagePostInfo": {"displayImages": [{"urlList": [url]} for url in photos]},
+        }
+    )
+    seen: list[str] = []
+    upstream["p16-common-sign.tiktokcdn-eu.com"] = lambda request: (
+        seen.append(str(request.url)) or _cdn(request)
+    )
+    response = _import(author, _TIKTOK_URL, index=2)
+    assert response.status_code == 201, response.text
+    assert response.json()["kind"] == "image"
+    assert response.json()["post_media"] == ["image", "image", "image"]
+    assert seen == [photos[2]]
+
+
 def test_an_index_past_the_post_files_is_refused(upstream, author):
     upstream["cdn.syndication.twimg.com"] = _syndication(_status_body(_PHOTO))
     response = _import(author, _STATUS_URL, index=1)
@@ -193,19 +239,25 @@ def test_an_unsupported_link_is_refused_without_a_fetch(upstream, author, url):
     assert upstream["seen"] == []
 
 
+# The frontend mirror (``lib/sources.test.ts::isImportableLink``) pins the same shapes.
 @pytest.mark.parametrize(
     "url",
     [
         "https://x.com/someone/status/1790000000000000000",
         "https://www.x.com/someone/status/1790000000000000000?s=20",
         "https://twitter.com/someone/status/1790000000000000000",
-        "https://www.twitter.com/someone/status/1790000000000000000/video/1",
         "https://x.com/i/web/status/1790000000000000000",
         "https://t.me/somechannel/12345",
         "http://www.t.me/somechannel/12345?single",
+        "https://www.tiktok.com/@someone/video/7400000000000000001",
+        "https://tiktok.com/@some.one_2/photo/7400000000000000001/",
+        "https://m.tiktok.com/@someone/photo/7400000000000000001",
+        "https://vm.tiktok.com/ZMabc123/",
+        "https://vt.tiktok.com/ZSxyz",
+        "https://www.tiktok.com/t/ZTcode9/",
     ],
 )
-def test_an_x_status_or_a_public_telegram_post_is_importable(url):
+def test_an_x_status_a_telegram_or_a_tiktok_post_is_importable(url):
     assert is_importable_link(url)
 
 
@@ -220,6 +272,12 @@ def test_an_x_status_or_a_public_telegram_post_is_importable(url):
         "https://t.me/c/1234567890/42",
         "https://t.me:8080/somechannel/12345",
         "https://user:pass@t.me/somechannel/12345",
+        "https://www.tiktok.com/@someone",
+        "https://www.tiktok.com/embed/v2/7400000000000000001",
+        "https://tiktok.com.evil.example/@someone/video/1",
+        "https://evil.tiktok.com/ZMabc123/",
+        "https://vm.tiktok.com/a/b",
+        "https://www.tiktok.com:8443/@someone/video/1",
         "not a url",
     ],
 )

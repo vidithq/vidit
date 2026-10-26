@@ -21,18 +21,16 @@ import re
 
 import httpx
 
-from ..errors import TweetImportError, TweetUpstreamBusy, TweetUpstreamUnreachable
+from ..errors import TweetImportError
 from ..records import ChasedPost, ChaseResult, ParsedMedia
-from ..retry import is_transient, parse_retry_after, retrying
+from ..retry import is_transient, retrying
 from ..urls import is_trusted_media_url, telegram_post_url
+from ._http import get_page
 
 logger = logging.getLogger(__name__)
 
 # ``mode=tme`` is the bare single-post view.
 _EMBED_QUERY = "?embed=1&mode=tme"
-
-_HTTP_TIMEOUT_S = 5.0
-_USER_AGENT = "vidit-tweet-import/1.0"
 
 # Root class of a rendered post; absent means the embed is unavailable.
 _MESSAGE_RE = re.compile(r"tgme_widget_message\b")
@@ -66,28 +64,11 @@ def _fetch_embed_html(post_url: str, *, client: httpx.Client | None) -> str | No
 def _read_embed(post_url: str, *, client: httpx.Client | None) -> str | None:
     """One GET of the embed: the HTML, ``None``, or a transient raise.
 
-    Redirects are not followed: :func:`urls.telegram_post_url` vets only the
-    first hop, so a 3xx would slip the guard and reads as "unavailable".
-    ``client`` is for tests (a ``MockTransport``).
+    A 3xx reads as "unavailable": :func:`urls.telegram_post_url` vets only the
+    first hop (:func:`_http.get_page`).
     """
-    headers = {"User-Agent": _USER_AGENT, "Accept": "text/html"}
-    target = post_url + _EMBED_QUERY
-    try:
-        if client is None:
-            with httpx.Client(timeout=_HTTP_TIMEOUT_S, follow_redirects=False) as own_client:
-                resp = own_client.get(target, headers=headers)
-        else:
-            resp = client.get(target, headers=headers)
-    except httpx.HTTPError as exc:
-        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
-    if resp.status_code == 429 or resp.status_code >= 500:
-        raise TweetUpstreamBusy(
-            f"upstream returned {resp.status_code}",
-            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
-        )
-    if resp.status_code != 200:
-        return None
-    return resp.text
+    resp = get_page(post_url + _EMBED_QUERY, client=client)
+    return resp.text if resp.status_code == 200 else None
 
 
 def _extract_media(embed_html: str) -> list[ParsedMedia]:

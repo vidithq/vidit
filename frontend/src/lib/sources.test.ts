@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "./api";
 import {
+  isImportableLink,
   capturePositionInvalid,
   firstSourceUrl,
   isEvidenceLevel,
@@ -190,5 +191,45 @@ describe("firstSourceUrl", () => {
   it("reads the first link of the first source that has one", () => {
     expect(firstSourceUrl({ sources: [source({ links: [] }), STORED] })).toBe("https://t.me/c/1");
     expect(firstSourceUrl({ sources: [] })).toBeNull();
+  });
+});
+
+describe("isImportableLink", () => {
+  // The shapes of backend tests/events/test_uploads_from_link.py, which pins the mirrored check.
+  it.each([
+    "https://x.com/someone/status/1790000000000000000",
+    "https://www.x.com/someone/status/1790000000000000000?s=20",
+    "https://twitter.com/someone/status/1790000000000000000",
+    "https://x.com/i/web/status/1790000000000000000",
+    "https://t.me/somechannel/12345",
+    "http://www.t.me/somechannel/12345?single",
+    "https://www.tiktok.com/@someone/video/7400000000000000001",
+    "https://tiktok.com/@some.one_2/photo/7400000000000000001/",
+    "https://m.tiktok.com/@someone/photo/7400000000000000001",
+    "https://vm.tiktok.com/ZMabc123/",
+    "https://vt.tiktok.com/ZSxyz",
+    "https://www.tiktok.com/t/ZTcode9/",
+  ])("reads %s", (url) => {
+    expect(isImportableLink(url)).toBe(true);
+  });
+
+  it.each([
+    "https://example.com/article",
+    "https://x.com/someone",
+    "https://web.archive.org/web/2026/https://x.com/someone/status/1",
+    "https://x.com.evil.example/someone/status/1",
+    "https://t.me/somechannel",
+    "https://t.me/c/1234567890/42",
+    "https://t.me:8080/somechannel/12345",
+    "https://user:pass@t.me/somechannel/12345",
+    "https://www.tiktok.com/@someone",
+    "https://www.tiktok.com/embed/v2/7400000000000000001",
+    "https://tiktok.com.evil.example/@someone/video/1",
+    "https://evil.tiktok.com/ZMabc123/",
+    "https://vm.tiktok.com/a/b",
+    "https://www.tiktok.com:8443/@someone/video/1",
+    "not a url",
+  ])("refuses %s", (url) => {
+    expect(isImportableLink(url)).toBe(false);
   });
 });

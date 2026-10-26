@@ -378,9 +378,15 @@ const X_HOST_RE = /^(?:www\.)?(?:x|twitter)\.com$/i;
 const X_STATUS_PATH_RE = /^\/(?:\w+\/status|i\/web\/status)\/\d+/i;
 const TELEGRAM_HOST_RE = /^(?:www\.)?t\.me$/i;
 const TELEGRAM_POST_PATH_RE = /^\/[A-Za-z0-9_]{1,64}\/\d{1,19}$/;
+const TIKTOK_HOST_RE = /^(?:www\.|m\.)?tiktok\.com$/i;
+const TIKTOK_SHORT_HOST_RE = /^v[mt]\.tiktok\.com$/i;
+const TIKTOK_POST_PATH_RE = /^\/@[A-Za-z0-9_.]{1,64}\/(?:video|photo)\/\d{1,25}\/?$/;
+const TIKTOK_SHORT_PATH_RE = /^\/[A-Za-z0-9]{1,32}\/?$/;
+const TIKTOK_T_PATH_RE = /^\/t\/[A-Za-z0-9]{1,32}\/?$/;
 
-/** Whether `POST /uploads/from-link` reads this link: an X status or a public `t.me` post.
- *  Mirrors backend `tweet_ingest/urls.is_importable_link`; change both. */
+/** Whether `POST /uploads/from-link` reads this link: an X status, a public `t.me` post, or a
+ *  TikTok post or short link. Mirrors backend `tweet_ingest/urls.is_importable_link`; change
+ *  both. */
 export function isImportableLink(url: string): boolean {
   let parsed: URL;
   try {
@@ -388,15 +394,18 @@ export function isImportableLink(url: string): boolean {
   } catch {
     return false;
   }
-  if (X_HOST_RE.test(parsed.hostname)) return X_STATUS_PATH_RE.test(parsed.pathname);
-  return (
+  const { hostname: host, pathname: path } = parsed;
+  if (X_HOST_RE.test(host)) return X_STATUS_PATH_RE.test(path);
+  const plain =
     (parsed.protocol === "http:" || parsed.protocol === "https:") &&
     !parsed.username &&
     !parsed.password &&
-    !parsed.port &&
-    TELEGRAM_HOST_RE.test(parsed.hostname) &&
-    TELEGRAM_POST_PATH_RE.test(parsed.pathname)
-  );
+    !parsed.port;
+  if (!plain) return false;
+  if (TELEGRAM_HOST_RE.test(host)) return TELEGRAM_POST_PATH_RE.test(path);
+  if (TIKTOK_SHORT_HOST_RE.test(host)) return TIKTOK_SHORT_PATH_RE.test(path);
+  if (TIKTOK_HOST_RE.test(host)) return TIKTOK_POST_PATH_RE.test(path) || TIKTOK_T_PATH_RE.test(path);
+  return false;
 }
 
 /** `POST /uploads/from-link`: stage file `index` of the post a link names, as `uploadSourceFile`

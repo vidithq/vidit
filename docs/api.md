@@ -98,7 +98,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/uploads` | 🔒 | Stage one source file for a later event write (multipart, one file) |
-| POST | `/uploads/from-link` | 🔒 | Stage the file of an X post or a public Telegram post, by its link |
+| POST | `/uploads/from-link` | 🔒 | Stage the file of an X, public Telegram or TikTok post, by its link |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
 | POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
@@ -753,7 +753,7 @@ Stage one source file before the event write that uses it: the first layer of th
 
 Stage the file of a post, by its link, instead of downloading and uploading it by hand. The server reads the post through the [chase](ingestion.md#the-chase) of the ingestion, downloads the file you pick from the post's CDN, and stages it as [`POST /uploads`](#post-uploads) stages a picked file: same limits, same metadata strip, same `uploads` row, expiry and per-account cap. A source of a later event write names the returned `id` as its `upload_id`.
 
-The server fetches only through the chasers: an X status through syndication, a public `t.me/<channel>/<id>` post through its embed, and the file from the X or Telegram CDN. Any other link is refused before any fetch.
+The server fetches only through the [chasers](ingestion.md#the-chase): an X status through syndication, a public `t.me/<channel>/<id>` post or a TikTok post through its embed, and the file from the X, Telegram or TikTok CDN. Any other link is refused before any fetch.
 
 **Request body (JSON):**
 ```json
@@ -781,7 +781,7 @@ The server fetches only through the chasers: an X status through syndication, a 
 **Errors:** those of [`POST /uploads`](#post-uploads), plus:
 | Status | Code | Case |
 |---|---|---|
-| 400 | `unsupported_link` | The link names no X post and no public Telegram post. Nothing is fetched |
+| 400 | `unsupported_link` | The link names no X post, no public Telegram post and no TikTok post or short link. Nothing is fetched |
 | 400 | `invalid_file` | The file is over the [file limits](#file-limits) |
 | 404 | `link_not_accessible` | The post or its file is gone, restricted, or unreadable without a login |
 | 404 | `link_has_no_file` | The post serves no file, or none at `index` (a sensitive Telegram post serves none) |

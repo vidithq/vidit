@@ -183,7 +183,7 @@ describe("SourceEditor", () => {
     expect(screen.queryByRole("button", { name: /^Import the file of/ })).toBeNull();
   });
 
-  it("offers the import on X and Telegram post links only", () => {
+  it("offers the import on X, Telegram and TikTok post links only", () => {
     const draft = newSourceDraft();
     const link = (url: string) => ({ ...draft.links[0], url });
     render(
@@ -194,6 +194,7 @@ describe("SourceEditor", () => {
             link("https://x.com/someone/status/1"),
             link("https://twitter.com/someone/status/2"),
             link("https://t.me/channel/3"),
+            link("https://www.tiktok.com/@someone/video/4"),
             link("https://example.com/article"),
             link(""),
           ],
@@ -205,6 +206,7 @@ describe("SourceEditor", () => {
       "Import the file of source 1, link 1, x.com",
       "Import the file of source 1, link 2, twitter.com",
       "Import the file of source 1, link 3, t.me",
+      "Import the file of source 1, link 4, tiktok.com",
     ]);
   });
 
