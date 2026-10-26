@@ -25,6 +25,8 @@ describe("basemap settings", () => {
       relief: false,
       disputedDashed: true,
       grid: false,
+      dailyImagery: false,
+      fires: false,
     });
   });
 
@@ -78,6 +80,8 @@ describe("basemap settings", () => {
       relief: false,
       disputedDashed: true,
       grid: false,
+      dailyImagery: false,
+      fires: false,
     });
   });
 

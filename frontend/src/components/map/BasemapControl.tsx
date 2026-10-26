@@ -70,6 +70,16 @@ const OVERLAY_TOGGLES: SwitchSetting[] = [
     label: "Coordinate grid",
     description: "Latitude and longitude lines, finer as you zoom in.",
   },
+  {
+    key: "dailyImagery",
+    label: "Daily satellite imagery",
+    description: "Yesterday's NASA VIIRS pass in true colour, blurred past zoom 9.",
+  },
+  {
+    key: "fires",
+    label: "Fire detections",
+    description: "Fires and heat sources NASA VIIRS detected yesterday.",
+  },
 ];
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {

@@ -15,13 +15,16 @@ import {
   BLANK_STYLE,
   buildViditStyle,
   carryOverlays,
+  aboveBasemap,
   DEFAULT_BASEMAP_OPTIONS,
+  isOverlaySource,
   LOW_ZOOM,
   resolvePreset,
   VIDIT_STYLES,
   type BasemapOptions,
   type Brightness,
 } from "./basemap";
+import { DAILY_IMAGERY_SOURCE } from "./gibs";
 
 type Layer = LayerSpecification & {
   filter?: unknown;
@@ -313,6 +316,53 @@ describe("basemap presets", () => {
   });
 });
 
+describe("aboveBasemap", () => {
+  const OWN = ["imagery", "fires"];
+  const overlays = new Set(["imagery", "fires", "grid", "sites", "clusters"]);
+  const isOverlay = (id: string) => overlays.has(id);
+  const apply = (stack: string[]) => {
+    const move = aboveBasemap(stack, OWN, isOverlay);
+    if (!move) return stack;
+    let next = [...stack];
+    for (const id of move.layers) {
+      next = next.filter((other) => other !== id);
+      const at = move.before === undefined ? next.length : next.indexOf(move.before);
+      next.splice(at, 0, id);
+    }
+    return next;
+  };
+
+  it("moves a newly added layer under the overlays already on the map", () => {
+    expect(apply(["land", "labels", "grid", "sites", "clusters", "fires"])).toEqual([
+      "land",
+      "labels",
+      "fires",
+      "grid",
+      "sites",
+      "clusters",
+    ]);
+  });
+
+  it("keeps the imagery under the fire detections, whichever came first", () => {
+    expect(apply(["land", "fires", "grid", "clusters", "imagery"])).toEqual([
+      "land",
+      "imagery",
+      "fires",
+      "grid",
+      "clusters",
+    ]);
+  });
+
+  it("asks for no move once the layers stand right above the basemap", () => {
+    expect(aboveBasemap(["land", "imagery", "fires", "grid", "clusters"], OWN, isOverlay)).toBeNull();
+    expect(aboveBasemap(["land", "labels"], OWN, isOverlay)).toBeNull();
+  });
+
+  it("puts the layers on top when no other overlay is on the map", () => {
+    expect(aboveBasemap(["imagery", "land"], OWN, isOverlay)).toEqual({ layers: ["imagery"], before: undefined });
+  });
+});
+
 describe("carryOverlays", () => {
   const keep = carryOverlays;
   const previous: StyleSpecification = {
@@ -355,6 +405,42 @@ describe("carryOverlays", () => {
     expect(next.sources.sites).toBe(previous.sources.sites);
     expect(next.sources.basemap).toEqual(thirdParty.sources.basemap);
     expect(next.projection).toEqual({ type: "globe" });
+  });
+
+  it("keeps the tiled overlays and leaves the outgoing basemap's own sources", () => {
+    const withImagery: StyleSpecification = {
+      ...previous,
+      sources: {
+        ...previous.sources,
+        opentopomap: { type: "raster", tiles: ["https://example.org/{z}/{x}/{y}.png"] },
+        "relief-dem": { type: "raster-dem", tiles: ["https://example.org/dem/{z}/{x}/{y}.png"] },
+        [DAILY_IMAGERY_SOURCE]: { type: "raster", tiles: ["https://example.org/imagery/{z}/{x}/{y}.jpg"] },
+      },
+      layers: [
+        { id: "opentopomap", type: "raster", source: "opentopomap" },
+        { id: "relief", type: "hillshade", source: "relief-dem" },
+        { id: "daily-imagery", type: "raster", source: DAILY_IMAGERY_SOURCE },
+        ...previous.layers.slice(1),
+      ],
+    };
+    const next = keep(withImagery, thirdParty);
+    expect(Object.keys(next.sources).sort()).toEqual(["basemap", DAILY_IMAGERY_SOURCE, "points", "sites"].sort());
+    expect(next.layers.map((layer) => layer.id)).toEqual([
+      "land",
+      "city",
+      "water",
+      "daily-imagery",
+      "site-fill",
+      "clusters",
+      "cluster-count",
+    ]);
+  });
+
+  it("tells an overlay source from a basemap's own", () => {
+    expect(isOverlaySource("points", "geojson")).toBe(true);
+    expect(isOverlaySource(DAILY_IMAGERY_SOURCE, "raster")).toBe(true);
+    expect(isOverlaySource("opentopomap", "raster")).toBe(false);
+    expect(isOverlaySource("openmaptiles", "vector")).toBe(false);
   });
 
   it("resolves the vendored sprite path against the page", () => {

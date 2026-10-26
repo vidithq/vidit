@@ -126,15 +126,17 @@ export const SITE_MAP_COLORS: Record<
   light: { zone: "#585858", damage: "#f59e0b", destruction: "#ef4444", halo: "#eae8e4" },
 };
 
-/** Basemap highlights, relief shading and the coordinate grid, by basemap brightness. Military
- *  areas take Tailwind lime and airports cyan: hues no marker palette above and no site zone uses,
- *  so a highlighted area never reads as an event. The grid is a neutral line, labelled over a halo
- *  of the canvas. The relief shades in translucent neutrals, so the land fills show through. */
+/** Basemap highlights, relief shading, fire detections and the coordinate grid, by basemap
+ *  brightness. Military areas take Tailwind lime, airports cyan and fire detections yellow: hues no
+ *  marker palette above and no site zone uses, so a highlighted area or a fire never reads as an
+ *  event. The grid is a neutral line, labelled over a halo of the canvas. The relief shades in
+ *  translucent neutrals, so the land fills show through. */
 export const MAP_LAYER_COLORS: Record<
   ThemeId,
   {
     military: string;
     airport: string;
+    fire: string;
     grid: string;
     gridLabel: string;
     gridHalo: string;
@@ -146,6 +148,7 @@ export const MAP_LAYER_COLORS: Record<
   dark: {
     military: "#a3e635",
     airport: "#22d3ee",
+    fire: "#facc15",
     grid: "rgba(255,255,255,0.22)",
     gridLabel: "#a3a3a3",
     gridHalo: "#0a0a0a",
@@ -156,6 +159,7 @@ export const MAP_LAYER_COLORS: Record<
   light: {
     military: "#4d7c0f",
     airport: "#0e7490",
+    fire: "#ca8a04",
     grid: "rgba(0,0,0,0.25)",
     gridLabel: "#525252",
     gridHalo: "#ffffff",

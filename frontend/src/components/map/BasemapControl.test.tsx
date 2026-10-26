@@ -22,6 +22,8 @@ const SETTINGS: BasemapSettings = {
   relief: false,
   disputedDashed: true,
   grid: false,
+  dailyImagery: false,
+  fires: false,
 };
 
 function open(settings: Partial<BasemapSettings> = {}, adjustable = true) {
@@ -71,6 +73,10 @@ describe("<BasemapControl>", () => {
     expect(onChange).toHaveBeenLastCalledWith({ disputedDashed: false });
     fireEvent.click(screen.getByRole("switch", { name: "Coordinate grid" }));
     expect(onChange).toHaveBeenLastCalledWith({ grid: true });
+    fireEvent.click(screen.getByRole("switch", { name: "Daily satellite imagery" }));
+    expect(onChange).toHaveBeenLastCalledWith({ dailyImagery: true });
+    fireEvent.click(screen.getByRole("switch", { name: "Fire detections" }));
+    expect(onChange).toHaveBeenLastCalledWith({ fires: true });
   });
 
   it("hides the label and layer settings on a third-party basemap and keeps the overlays", () => {
@@ -80,6 +86,8 @@ describe("<BasemapControl>", () => {
     expect(screen.queryByRole("switch", { name: "Buildings" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Relief" })).toBeNull();
     expect(screen.getByRole("switch", { name: "Coordinate grid" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Daily satellite imagery" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Fire detections" })).toBeInTheDocument();
     expect(screen.getByText(/adjust on the Dark and Light basemaps/)).toBeInTheDocument();
   });
 });

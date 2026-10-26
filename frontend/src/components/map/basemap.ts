@@ -9,6 +9,7 @@ import type {
 import { MAP_LAYER_COLORS } from "@/lib/palette";
 import type { ThemeId } from "@/lib/theme";
 
+import { DAILY_IMAGERY_SOURCE } from "./gibs";
 import viditDark from "./styles/vidit-dark.json";
 import viditLight from "./styles/vidit-light.json";
 
@@ -390,10 +391,32 @@ function withAbsoluteSprite(style: StyleSpecification): StyleSpecification {
   return { ...style, sprite: new URL(style.sprite, window.location.origin).href };
 }
 
-/** The `transformStyle` of a basemap swap. The app's overlays (event points, sites, a drawn zone,
- *  the coordinate grid) are its GeoJSON sources, which no basemap ships: it keeps them and their layers from the
- *  outgoing style, drawn above the incoming basemap in their order, so they never leave the map,
- *  and keeps the projection, which the incoming style does not set. */
+/** Whether a map source is one of the app's overlays rather than part of a basemap: every GeoJSON
+ *  source (event points, sites, a drawn zone, the coordinate grid, fire detections), which no
+ *  basemap ships, and the tiled overlays named here. */
+export function isOverlaySource(id: string, type: string): boolean {
+  return type === "geojson" || id === DAILY_IMAGERY_SOURCE;
+}
+
+/** Where to move the `own` layers so they draw, in their order, right above the basemap: before
+ *  the first other overlay layer, or on top (`before` undefined) when there is none. Null when
+ *  they already stand there. */
+export function aboveBasemap(
+  stack: readonly string[],
+  own: readonly string[],
+  isOverlayLayer: (id: string) => boolean,
+): { layers: string[]; before: string | undefined } | null {
+  const layers = own.filter((id) => stack.includes(id));
+  const rest = stack.filter((id) => !layers.includes(id));
+  const before = rest.find(isOverlayLayer);
+  const at = before === undefined ? rest.length : rest.indexOf(before);
+  const wanted = [...rest.slice(0, at), ...layers, ...rest.slice(at)];
+  return wanted.every((id, i) => stack[i] === id) ? null : { layers, before };
+}
+
+/** The `transformStyle` of a basemap swap. It keeps the overlay sources (`isOverlaySource`) and
+ *  their layers from the outgoing style, drawn above the incoming basemap in their order, so they
+ *  never leave the map, and keeps the projection, which the incoming style does not set. */
 export function carryOverlays(
   previous: StyleSpecification | undefined,
   next: StyleSpecification,
@@ -402,7 +425,7 @@ export function carryOverlays(
   if (!previous) return style;
   const overlays = Object.fromEntries(
     Object.entries(previous.sources).filter(
-      ([id, source]) => source.type === "geojson" && !(id in style.sources),
+      ([id, source]) => isOverlaySource(id, source.type) && !(id in style.sources),
     ),
   );
   return {

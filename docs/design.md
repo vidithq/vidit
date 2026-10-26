@@ -175,6 +175,35 @@ Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../fron
 
 ## Map
 
+The map draws one basemap at the bottom and the app's overlays above it, in a fixed order. A basemap swap replaces the bottom group only.
+
+```mermaid
+flowchart BT
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`the basemap: one preset's style, replaced on a swap`"]:::spec
+    l2["`an overlay: the reader's switch, kept across a swap by **carryOverlays**`"]:::shared
+    l3["`the event pins, always on top`"]:::core
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  subgraph stack [Draw order, bottom to top]
+    direction BT
+    basemap["`**BASEMAP_PRESETS**
+    Dark and Light (built by **buildViditStyle**, with the relief), Streets, Terrain`"]:::spec
+    imagery["`**SatelliteOverlays**
+    daily imagery, then fire detections, placed by **aboveBasemap**`"]:::shared
+    grid["`**CoordinateGrid**`"]:::shared
+    sites["`**SiteLayers**, a drawn zone`"]:::shared
+    pins["`**Map.tsx** event points, clusters and stacks`"]:::core
+    basemap --> imagery --> grid --> sites --> pins
+  end
+```
+
 - **Style:** the Vidit dark and light styles in [`components/map/styles/`](../frontend/src/components/map/styles), forked from the OpenFreeMap dark and Positron styles, on OpenFreeMap's OpenMapTiles vector tiles. The folder's `LICENSE` carries the upstream licence. The light theme swaps in the light style (see [Theme](#theme)).
 - **Fewer labels at low zoom.** [`basemap.ts`](../frontend/src/components/map/basemap.ts) builds the drawn style from the fork, so event points stay readable. At the default Sparse density, below zoom 5 (`LOW_ZOOM`), where the reader sees a continent or the globe, the map labels countries and national capitals only, and draws no road and no other label. Cities label from zoom 5, regions and towns from 7, villages from 10, and smaller places and minor roads from 12. Region borders (admin levels 3 to 6) stay hidden at every zoom, and country borders stay drawn.
 - **One name per label.** By default a label shows its Latin name (`name:latin`), or its local name when it has no Latin one.
@@ -199,7 +228,10 @@ Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../fron
 
   A disputed border is a country border (`admin_level` 2) that the OpenMapTiles `boundary` layer marks `disputed=1`. Each style draws it in its own `boundary_disputed` layer (`vidit:role` `disputed-border`), and its country border layers leave it out, so a settled border stays solid. The dark style keeps the maritime borders it draws for countries, and the light style leaves maritime borders out, as the upstream styles do. A local name in a script MapLibre cannot draw (`is-supported-script`) shows its Latin form. On Streets and Terrain the panel shows a line saying the settings adjust on Dark and Light, in place of the settings.
 - **Coordinate grid.** The panel's **Overlays** heading shows on every preset and holds the **Coordinate grid** switch, off by default and kept with the other settings. [`<CoordinateGrid>`](../frontend/src/components/map/CoordinateGrid.tsx) draws a latitude and longitude graticule from a GeoJSON source of its own. `graticule` in [`graticule.ts`](../frontend/src/components/map/graticule.ts) builds it in the browser each time the map comes to rest, over the visible bounds and as much again on each side. The interval steps with the zoom (`gridStep`, from 30° on the globe down to 0.001°), so lines stand about 100 px apart, and a view that would hold more than 120 lines takes a coarser step. Each line carries a vertex at every crossing, so it follows the curve of the globe, and a label such as `45°N` or `0.5°W` placed along it in Montserrat Regular. The grid draws under the event pins (`useUnderEventPins`) and above the basemap, in the neutral colours of `MAP_LAYER_COLORS` for the preset's brightness.
-- **Style swaps.** The map mounts on a blank style, and `BasemapStyle` in `Map.tsx` applies the chosen one. A later swap, a preset or a setting change, goes through MapLibre's style diff, so a setting applies at runtime as `setLayoutProperty`, `setPaintProperty`, `setFilter` and `setLayerZoomRange` calls. The diff runs with a `transformStyle` (`carryOverlays`) that keeps the app's GeoJSON sources (the event points, sites, a drawn zone, the coordinate grid) and their layers above the incoming basemap, and points every style, a third-party one included, at the Montserrat glyphs.
+- **Daily satellite imagery and fire detections.** The **Overlays** heading also holds two switches, both off by default, that draw NASA GIBS data of the day before, in UTC (`gibsDate` in [`gibs.ts`](../frontend/src/components/map/gibs.ts)), since GIBS can still miss part of the current day's pass. The date is read once, when the map mounts. [`<SatelliteOverlays>`](../frontend/src/components/map/SatelliteOverlays.tsx) draws both, directly above the basemap and under the coordinate grid, the sites and the event pins:
+  - **Daily satellite imagery** is the VIIRS (Suomi NPP) corrected reflectance in true colour: one global mosaic a day at about 250 m, so clouds hide what lies under them. GIBS serves it to zoom 9, and MapLibre enlarges that level beyond. The layer draws at 55% opacity, so the basemap's labels and borders stay readable through it.
+  - **Fire detections** are the VIIRS 375 m thermal anomalies of the day: one point per 375 m pixel that read hotter than its surroundings, from fires, flares, volcanoes and other heat sources. Each point is a small circle in the `fire` colour of `MAP_LAYER_COLORS`: Tailwind yellow, the `400` stop on a dark basemap and the `600` stop on a light one, a hue no accent palette, site zone or highlight uses. The circles grow from 1.5 px at zoom 2 to 6 px at zoom 14, under the larger event pins.
+- **Style swaps.** The map mounts on a blank style, and `BasemapStyle` in `Map.tsx` applies the chosen one. A later swap, a preset or a setting change, goes through MapLibre's style diff, so a setting applies at runtime as `setLayoutProperty`, `setPaintProperty`, `setFilter` and `setLayerZoomRange` calls. The diff runs with a `transformStyle` (`carryOverlays`) that keeps the overlay sources and their layers above the incoming basemap, and points every style, a third-party one included, at the Montserrat glyphs. An overlay source (`isOverlaySource` in `basemap.ts`) is any GeoJSON source (the event points, sites, a drawn zone, the coordinate grid, the fire detections), which no basemap ships, or the daily imagery's tile source, named there. A basemap's own sources, the relief's elevation source included, leave with it.
 - **Renderer:** MapLibre GL JS (vector tiles) with globe projection. The zoom floor is 1.8 (`MIN_ZOOM` in [`Map.tsx`](../frontend/src/components/map/Map.tsx)), the lowest level that keeps the globe fully visible without shrinking it away.
 - **One map stack.** Every map on the site is the same [`<Map>`](../frontend/src/components/map/Map.tsx): the full-screen canvas, the single pin on an event page, the coverage map a profile opens its work with ([`<ProfileMap>`](../frontend/src/components/profile/ProfileMap.tsx)), and the same map stepped beside the detail panel on a collection page (see [Collections](#collections)). A set with no mappable point renders no card at all, since an empty world map says less than no map and both surfaces carry a list that says the rest. A page whose view comes from its own content passes `fitBounds` (a `MapBounds`, from `pointsBounds` in [`bounds.ts`](../frontend/src/components/map/bounds.ts)) instead of `center` / `zoom`. MapLibre solves the camera against the real container, capped at zoom 9, so a lone point lands on a regional read rather than a street-level one. A resize keeps the camera, so the map solves it again on each resize until the reader pans, zooms or the map flies: a container that settles after the first fit keeps the whole box in frame. `pointsBounds` encloses longitude on the shorter arc (the complement of the widest empty gap), so work on either side of the antimeridian frames tight instead of as a world view. A box across the seam comes back unwrapped, with `east` past 180. `MapBounds` is the one bounds shape, for framing and requests alike. The `?bbox=` wire format has one home, [`lib/viewport.ts`](../frontend/src/lib/viewport.ts): its `toBboxParam` rounds outward and widens an unwrapped crossing box to the full longitude range, which is what `parse_bbox` accepts. Every map lays its zoom buttons and its attribution in one row along its bottom-left edge (`globals.css`), so the attribution never sits over the content of a small embedded map.
 - Map labels (cities, regions) are a discreet light grey.

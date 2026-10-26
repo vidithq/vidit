@@ -11,9 +11,11 @@ import {
   type LabelLanguage,
 } from "./basemap";
 
-/** What the map draws over any preset, each from a GeoJSON source of its own. */
+/** What the map draws over any preset, each from a source of its own. */
 export interface OverlayOptions {
   grid: boolean;
+  dailyImagery: boolean;
+  fires: boolean;
 }
 
 export interface BasemapSettings extends BasemapOptions, OverlayOptions {
@@ -24,6 +26,8 @@ const DEFAULT_BASEMAP_SETTINGS: BasemapSettings = {
   preset: "auto",
   ...DEFAULT_BASEMAP_OPTIONS,
   grid: false,
+  dailyImagery: false,
+  fires: false,
 };
 
 const KEY = "vidit:basemap";
@@ -44,6 +48,8 @@ const FIELDS: { [K in keyof BasemapSettings]: readonly BasemapSettings[K][] } = 
   relief: BOOLEAN,
   disputedDashed: BOOLEAN,
   grid: BOOLEAN,
+  dailyImagery: BOOLEAN,
+  fires: BOOLEAN,
 };
 
 /** A stored value read field by field: a missing or invalid field takes its default. */

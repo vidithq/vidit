@@ -55,6 +55,7 @@ import { CLUSTER_LAYER, POINT_LAYERS, STACK_LAYER, TAP_TARGET_LAYERS } from "./l
 import { BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
 import { BasemapControl } from "./BasemapControl";
 import { CoordinateGrid } from "./CoordinateGrid";
+import { SatelliteOverlays } from "./SatelliteOverlays";
 import { useBasemapSettings } from "./basemapSettings";
 
 const POINTS_SOURCE = "points";
@@ -1168,6 +1169,9 @@ export default function Map({
       />
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
+      {(basemap.dailyImagery || basemap.fires) && (
+        <SatelliteOverlays imagery={basemap.dailyImagery} fires={basemap.fires} brightness={brightness} />
+      )}
       {basemap.grid && <CoordinateGrid brightness={brightness} />}
       {/* Before the points source, so on a style load these layers are added first and draw under the pins. */}
       {children}
