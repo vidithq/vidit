@@ -21,6 +21,7 @@ from app.models.source import (
     SOURCE_TITLE_MAX_LENGTH,
     SOURCE_URL_MAX_LENGTH,
 )
+from app.schemas.collection import MAX_CREATE_EVENTS
 from app.schemas.event import CLOSE_REASON_MAX_LENGTH, VERSION_NOTE_MAX_LENGTH
 from app.schemas.report import DETAILS_MAX_LENGTH
 from app.services.event_filters import STATUSES
@@ -76,6 +77,7 @@ def _strings(path: str, name: str) -> list[str]:
         ("lib/events.ts", "REPORT_DETAILS_MAX_LEN", DETAILS_MAX_LENGTH),
         ("lib/events.ts", "CLOSE_REASON_MAX_LEN", CLOSE_REASON_MAX_LENGTH),
         ("lib/geolocatorCredit.ts", "MAX_EVENT_GEOLOCATORS", MAX_EVENT_GEOLOCATORS),
+        ("lib/collections.ts", "BULK_ADD_MAX_EVENTS", MAX_CREATE_EVENTS),
     ],
 )
 def test_numeric_caps_match(path: str, name: str, backend: int) -> None:

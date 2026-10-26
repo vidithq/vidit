@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ColumnElement, func, literal_column, or_, text
+from sqlalchemy import ColumnElement, false, func, literal_column, or_, text
+from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.elements import ColumnClause
 
@@ -42,6 +43,7 @@ from app.services.collections import (
 )
 from app.services.event_filters import (
     EventFilters,
+    collectable_events,
     credited_to,
     owner_username_matches,
     visible_events,
@@ -232,6 +234,31 @@ def search_geolocations(
             }
         )
     return out, total
+
+
+def collectable_matches(db: Session, *, query: str, filters: EventFilters, user: User) -> SAQuery:
+    """``Event.id`` of each of ``user``'s events the Geolocations group lists for ``query`` and
+    ``filters`` that a collection can hold. Unordered and unlimited, so the set does not depend
+    on how many hits a page has loaded.
+
+    The group's matching (:func:`search_geolocations`: the ``located`` view, its two criteria,
+    :func:`_event_match` on a non-empty ``query``), narrowed to the events credited to ``user``
+    (``services/event_filters.credited_to``) and to
+    ``services/event_filters.collectable_events``. An empty ``query`` with no active filter
+    matches nothing, as in :func:`search_all`.
+    """
+    q = query.strip()
+    stmt = filters.apply(db.query(Event.id), view="located").filter(
+        Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
+        Event.coords.isnot(None),
+        credited_to([user.id]),
+        collectable_events(),
+    )
+    if q:
+        return stmt.filter(_event_match(q, func.plainto_tsquery(_TS_CONFIG, q)))
+    if not filters.active:
+        return stmt.filter(false())
+    return stmt
 
 
 def search_requests(

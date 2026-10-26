@@ -4,7 +4,7 @@ import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
 import { EVENT_TITLE_MAX_LEN, eventListPath, type ContentReport } from "./events";
 import { countLabel, formatDate } from "./format";
-import { search } from "./search";
+import { eventFilterFields, search, type EventFilterParams } from "./search";
 import type {
   EventDetail,
   EventListItem,
@@ -259,6 +259,48 @@ export function addEventToCollection(
     `/collections/${encodeURIComponent(collectionId)}/events/${encodeURIComponent(eventId)}`,
     { method: "PUT" },
   );
+}
+
+export type BulkAddResult = components["schemas"]["CollectionBulkAddResult"];
+
+/** Events one bulk add (or one create) may shelve; past it the server answers 422
+ *  `too_many_events`. Mirrors `schemas/collection.MAX_CREATE_EVENTS`; change both. */
+export const BULK_ADD_MAX_EVENTS = 500;
+
+/** One search as the server resolves it: the query and the search page's filters. */
+export type SearchMatchParams = { q: string } & EventFilterParams;
+
+function searchMatchBody({ q, ...filters }: SearchMatchParams) {
+  return { q, filters: eventFilterFields(filters) };
+}
+
+/** `POST /collections/{id}/events`: many events in one write, by id or by the search that
+ *  lists them. Idempotent; at most 500 events, else a 422 `too_many_events`. */
+export function addEventsToCollection(
+  collectionId: string,
+  target: { eventIds: string[] } | { match: SearchMatchParams },
+): Promise<BulkAddResult> {
+  const body =
+    "eventIds" in target
+      ? { event_ids: target.eventIds }
+      : { match: searchMatchBody(target.match) };
+  return apiFetch<BulkAddResult>(
+    `/collections/${encodeURIComponent(collectionId)}/events`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+/** How many of the caller's events `match` lists in the Geolocations group that a collection
+ *  can hold: the set `addEventsToCollection` shelves for the same match. */
+export async function countCollectableMatches(
+  match: SearchMatchParams,
+  signal?: AbortSignal,
+): Promise<number> {
+  const res = await apiFetch<components["schemas"]["CollectableCount"]>(
+    "/collections/collectable-count",
+    { method: "POST", body: JSON.stringify(searchMatchBody(match)), signal },
+  );
+  return res.total;
 }
 
 /** Idempotent; never re-checks the event's state, so a membership whose event has since

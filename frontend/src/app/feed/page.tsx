@@ -27,6 +27,7 @@ import {
   type EventFilterValues,
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
+import { FilterRail } from "@/components/filters/FilterRail";
 import { cardTags } from "@/lib/cardTags";
 import { appendEventFilterParams } from "@/lib/search";
 import { creditProps } from "@/lib/geolocatorCredit";
@@ -294,7 +295,15 @@ export default function FeedPage() {
   return (
     <PageShell
       title="Feed"
-      rail={renderPanel(filters, setFilters)}
+      rail={
+        <FilterRail
+          pills={pills}
+          onClearAll={() => setFilters(EMPTY_FEED_FILTERS)}
+          sections={FEED_SECTIONS}
+        >
+          {renderPanel(filters, setFilters)}
+        </FilterRail>
+      }
       railLabel="Filters"
       narrowRail="hidden"
       controls={

@@ -11,6 +11,7 @@ import {
   BookOpen,
   Bot,
   Camera,
+  Check,
   ChevronDown,
   Copy,
   Download,
@@ -86,6 +87,7 @@ import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
+import { ActionRow } from "@/components/ui/ActionRow";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { SwatchPicker } from "@/components/ui/SwatchPicker";
@@ -696,6 +698,27 @@ export default function PalettePage() {
 
           <Item name="<ChoiceRow>" usage="A pick-one preference row, the <ToggleRow> shape for a setting with a few named choices: the label at reading size over a line saying what the setting does, and a <SegmentedControl> named by the label. Beside the text from sm up; below sm the bar drops under it and takes the full column. `className` carries the caller's own divider and spacing. Settings and the organization page both render Accept approval requests from through it.">
             <PaletteChoiceRow />
+          </Item>
+
+          <Item name="<ActionRow>" usage="A row that offers one action on a named thing, the sibling of <ToggleRow> and <ChoiceRow>: the label at reading size over a muted line, and the caller's action at the right edge. The row itself does nothing on a click, so only the action acts, and the action names its target in its aria-label. The action slot also takes the static state that replaces a control once it has acted. The search page's bulk Add to collection lists the owner's collections through it: an Add button, then an accent Added pill with a check.">
+            <div className="w-full max-w-md divide-y divide-neutral-800">
+              <ActionRow
+                label="Kupiansk rail corridor"
+                description="12 events"
+                className="py-2.5"
+                action={<Button variant="secondary">Add</Button>}
+              />
+              <ActionRow
+                label="Dam breach"
+                description="44 events"
+                className="py-2.5"
+                action={
+                  <Pill tone="accent" icon={<Check size={11} />}>
+                    Added
+                  </Pill>
+                }
+              />
+            </div>
           </Item>
 
           <Item name="<Pill>" usage="One pill for the whole family (status, tag, filter, badge) at one size. `tone` = accent | secondary | neutral | danger, mirroring the <Button> tones (secondary is the accent outline, no fill). A static <span> by default; pass `onClick` and it becomes an interactive chip (a <button> that brightens on hover), the caller driving the tone off its active state. `label` makes a key/value pill, the key muted before the value (`Conflict: Russo-Ukrainian war`), for a field whose name the value alone does not carry; lib/cardTags.ts keys a card's conflicts; a source block keys its kind and drops an Unknown value. className merges via cn (caller wins on a conflicting utility); keep it to orthogonal extras, the size stays one.">
@@ -1757,7 +1780,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the organization page, whose rail opens top right with an invited viewer's answer), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, for a rail that acts on the column) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen). No rail: one full-width column.">
+          <Item name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter rail of the feed, the Requests board and search. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the organization page, whose rail opens top right with an invited viewer's answer), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, for a rail that acts on the column) or leaves the page (narrow=&quot;hidden&quot;, where FilterBar's Filters (N) button opens the same panel full screen; from lg up FilterRail puts the active-filter pills at the rail's head). No rail: one full-width column.">
             <div className="w-full space-y-4">
               <Variant label="rail beside the column">
                 <PageWithRail
@@ -2067,7 +2090,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell, the profile and organization edit modes and the collection forms); PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell, the profile and organization edit modes, the collection forms and the search page&apos;s Add to collection); <code>stickyActionsIdle</code> keeps their room but hides them (invisible, inert, no surface) for actions that come and go with a page state, so the header never moves when they return; PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell alone, see its entry); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>

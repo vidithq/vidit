@@ -18,13 +18,19 @@ from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_event_list
 from app.schemas.collection import (
+    CollectableCount,
+    CollectionBulkAdd,
+    CollectionBulkAddResult,
+    CollectionBulkAddSkipped,
     CollectionCreate,
     CollectionRead,
     CollectionUpdate,
+    SearchMatch,
 )
 from app.schemas.event import EventList
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import collections as collections_service
+from app.services import collections_bulk
 from app.services import reports as reports_service
 from app.services.pagination import (
     MAX_PAGE_SIZE,
@@ -80,6 +86,21 @@ def create_collection(
 
 
 # Ahead of the ``/{collection_id}`` reads (see ``routers/events/item.py``).
+@router.post("/collectable-count", response_model=CollectableCount)
+@limiter.limit("60/minute")
+def count_collectable_matches(
+    request: Request,
+    body: SearchMatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CollectableCount:
+    """Count your events a search lists in its Geolocations group that a collection can hold.
+
+    The set ``POST /collections/{id}/events`` shelves for the same ``match``.
+    """
+    return CollectableCount(total=collections_bulk.count_matches(db, match=body, user=current_user))
+
+
 @router.post(
     "/{collection_id}/report",
     response_model=ContentReportRead,
@@ -208,6 +229,41 @@ def list_collection_events(
         lambda r: encode_chronological_cursor(*collections_service.cursor_values(r[0])),
     )
     return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
+
+
+@router.post("/{collection_id}/events", response_model=CollectionBulkAddResult)
+@limiter.limit("10/minute")
+def add_events_to_collection(
+    request: Request,
+    collection_id: uuid.UUID,
+    body: CollectionBulkAdd,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CollectionBulkAddResult:
+    """Put many of your events on one of your collections, by id or by search, in one write.
+
+    Idempotent: an event already on it is skipped and counted, as is one whose
+    state a collection does not show. 403 for someone else's collection or event,
+    422 ``too_many_events`` past 500 events.
+    """
+    collection = _resolve(db, collection_id, current_user)
+    try:
+        outcome = collections_bulk.add_events(
+            db,
+            collection=collection,
+            user=current_user,
+            event_ids=body.event_ids,
+            match=body.match,
+        )
+    except collections_service.CollectionError as exc:
+        _raise_collection_error(exc)
+    return CollectionBulkAddResult(
+        added=outcome.added,
+        skipped=CollectionBulkAddSkipped(
+            already_in_collection=outcome.already_in_collection,
+            not_collectable=outcome.not_collectable,
+        ),
+    )
 
 
 @router.put("/{collection_id}/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)

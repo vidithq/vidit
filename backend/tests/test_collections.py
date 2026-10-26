@@ -32,6 +32,7 @@ from app.models.tag import Tag, event_tags
 from app.models.user import User
 from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.services import collections as collections_service
+from app.services import collections_bulk
 from app.services.auth import hash_password
 from app.services.sanitize import html_from_text
 from tests._fixtures import collection_description, fake_sha256
@@ -1680,3 +1681,187 @@ def test_hard_deleting_the_owner_drops_the_collections_and_their_memberships(
         db.query(CollectionEvent).filter(CollectionEvent.collection_id == collection_id).count()
         == 0
     )
+
+
+def _members(db, collection: Collection) -> set[uuid.UUID]:
+    db.expire_all()
+    return {
+        event_id
+        for (event_id,) in db.query(CollectionEvent.event_id).filter(
+            CollectionEvent.collection_id == collection.id
+        )
+    }
+
+
+def _titled(db, event: Event, title: str) -> Event:
+    event.title = title
+    db.commit()
+    return event
+
+
+def _bulk(collection: Collection, body: dict, user: User):
+    return client.post(
+        f"/api/v1/collections/{collection.id}/events", json=body, headers=login_as(client, user)
+    )
+
+
+def test_bulk_add_by_ids_adds_and_counts_what_it_skips(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    fresh = [_make_event(db, cleanup, owner=owner) for _ in range(2)]
+    present = _make_event(db, cleanup, owner=owner)
+    _add(db, collection, present)
+    request = _make_event(db, cleanup, owner=owner, status=STATUS_REQUESTED)
+
+    ids = [str(e.id) for e in (*fresh, present, request)]
+    response = _bulk(collection, {"event_ids": [*ids, ids[0]]}, owner)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "added": 2,
+        "skipped": {"already_in_collection": 1, "not_collectable": 1},
+    }
+    assert _members(db, collection) == {fresh[0].id, fresh[1].id, present.id}
+
+
+def test_bulk_add_is_idempotent(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    events = [_make_event(db, cleanup, owner=owner) for _ in range(3)]
+    body = {"event_ids": [str(e.id) for e in events]}
+
+    assert _bulk(collection, body, owner).json()["added"] == 3
+    again = _bulk(collection, body, owner).json()
+
+    assert again == {"added": 0, "skipped": {"already_in_collection": 3, "not_collectable": 0}}
+    assert len(_members(db, collection)) == 3
+
+
+def test_bulk_add_by_match_shelves_the_callers_matching_events(db, cleanup, owner, stranger):
+    """A match resolves server-side: the caller's collectable Geolocations hits, nothing else."""
+    token = f"bulk{uuid.uuid4().hex[:10]}"
+    collection = _make_collection(db, cleanup, owner=owner)
+    mine = [
+        _titled(db, _make_event(db, cleanup, owner=owner), f"Strike near {token}"),
+        _titled(db, _make_event(db, cleanup, owner=owner), f"Convoy at {token}"),
+        _titled(
+            db, _make_event(db, cleanup, owner=owner, status=STATUS_DETECTED), f"{token} depot"
+        ),
+    ]
+    _titled(db, _make_event(db, cleanup, owner=owner), "Unrelated title")
+    _titled(db, _make_event(db, cleanup, owner=owner, status=STATUS_REQUESTED), f"{token} ask")
+    _titled(db, _make_event(db, cleanup, owner=stranger), f"Their {token}")
+    match = {"q": token, "filters": {}}
+
+    count = client.post(
+        "/api/v1/collections/collectable-count", json=match, headers=login_as(client, owner)
+    )
+    assert count.status_code == 200
+    assert count.json() == {"total": 3}
+
+    response = _bulk(collection, {"match": match}, owner)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "added": 3,
+        "skipped": {"already_in_collection": 0, "not_collectable": 0},
+    }
+    assert _members(db, collection) == {e.id for e in mine}
+
+
+def test_bulk_add_by_match_reads_the_search_filters(db, cleanup, owner):
+    token = f"bulk{uuid.uuid4().hex[:10]}"
+    collection = _make_collection(db, cleanup, owner=owner)
+    _titled(db, _make_event(db, cleanup, owner=owner), f"Strike near {token}")
+    detected = _titled(
+        db, _make_event(db, cleanup, owner=owner, status=STATUS_DETECTED), f"{token} depot"
+    )
+
+    response = _bulk(
+        collection, {"match": {"q": token, "filters": {"status": ["detected"]}}}, owner
+    )
+
+    assert response.json()["added"] == 1
+    assert _members(db, collection) == {detected.id}
+
+
+def test_bulk_add_by_an_empty_match_adds_nothing(db, cleanup, owner):
+    """No query and no filter is no search, as on ``GET /search``."""
+    collection = _make_collection(db, cleanup, owner=owner)
+    _make_event(db, cleanup, owner=owner)
+
+    response = _bulk(collection, {"match": {}}, owner)
+
+    assert response.json()["added"] == 0
+    assert _members(db, collection) == set()
+
+
+def test_bulk_add_refuses_a_filter_value_outside_its_domain(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    for filters in ({"status": ["bogus"]}, {"author": "a%b"}, {"occurred_date_from": "nope"}):
+        response = _bulk(collection, {"match": {"q": "x", "filters": filters}}, owner)
+        assert response.status_code == 422, filters
+
+
+@pytest.mark.parametrize("body", [{}, {"event_ids": [], "match": {"q": "x"}}])
+def test_bulk_add_takes_exactly_one_mode(db, cleanup, owner, body):
+    collection = _make_collection(db, cleanup, owner=owner)
+    assert _bulk(collection, body, owner).status_code == 422
+
+
+def test_bulk_add_caps_the_ids(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+    ids = [str(uuid.uuid4()) for _ in range(MAX_CREATE_EVENTS + 1)]
+
+    response = _bulk(collection, {"event_ids": ids}, owner)
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "too_many_events"
+
+
+def test_bulk_add_caps_a_match(db, cleanup, owner, monkeypatch):
+    monkeypatch.setattr(collections_bulk, "MAX_CREATE_EVENTS", 1)
+    token = f"bulk{uuid.uuid4().hex[:10]}"
+    collection = _make_collection(db, cleanup, owner=owner)
+    for _ in range(2):
+        _titled(db, _make_event(db, cleanup, owner=owner), f"Strike near {token}")
+
+    response = _bulk(collection, {"match": {"q": token}}, owner)
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "too_many_events"
+    assert _members(db, collection) == set()
+
+
+def test_bulk_add_to_someone_elses_collection_is_403(db, cleanup, owner, stranger):
+    collection = _make_collection(db, cleanup, owner=owner)
+    theirs = _make_event(db, cleanup, owner=stranger)
+
+    response = _bulk(collection, {"event_ids": [str(theirs.id)]}, stranger)
+
+    assert response.status_code == 403
+    assert _members(db, collection) == set()
+
+
+def test_bulk_add_with_a_foreign_event_is_403_and_writes_nothing(db, cleanup, owner, stranger):
+    collection = _make_collection(db, cleanup, owner=owner)
+    mine = _make_event(db, cleanup, owner=owner)
+    theirs = _make_event(db, cleanup, owner=stranger)
+
+    response = _bulk(collection, {"event_ids": [str(mine.id), str(theirs.id)]}, owner)
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "not_credited"
+    assert _members(db, collection) == set()
+
+
+def test_bulk_add_with_an_unknown_event_is_404(db, cleanup, owner):
+    collection = _make_collection(db, cleanup, owner=owner)
+
+    response = _bulk(collection, {"event_ids": [str(uuid.uuid4())]}, owner)
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "event_not_found"
+
+
+def test_collectable_count_requires_auth():
+    client.cookies.clear()
+    assert client.post("/api/v1/collections/collectable-count", json={"q": "x"}).status_code == 401

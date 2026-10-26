@@ -8,6 +8,7 @@ directly: they are the input boundary for query parameters. Date parsing lives h
 """
 
 import math
+import re
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, fields
@@ -586,6 +587,23 @@ class EventFilters:
     @property
     def active(self) -> bool:
         return any(getattr(self, f.name) for f in fields(self))
+
+    def validate(self) -> None:
+        """422 on a value outside its domain, as the query-parameter boundary refuses it.
+
+        For a filter set that arrives as a JSON body (``schemas/collection.SearchMatch``), where no
+        ``Query(pattern=...)`` guards the three names. Dates are parsed later, in
+        :func:`apply_filters`, which refuses a malformed one the same way.
+        """
+        validate_media_types(self.media)
+        validate_status_filter(self.status)
+        validate_source_filters(self.source_kind, self.level)
+        for field in ("author", "approved_by", "approved_by_org"):
+            value = getattr(self, field)
+            if value is not None and not re.fullmatch(AUTHOR_FILTER_PATTERN, value):
+                raise HTTPException(
+                    status_code=422, detail=f"{field} must match {AUTHOR_FILTER_PATTERN}"
+                )
 
     @property
     def active_beyond_author(self) -> bool:

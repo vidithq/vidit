@@ -342,6 +342,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/proof.tsx::proofImageSrcs`, `proofHasImage` | `sanitize.extract_image_srcs`, `events._require_proof_image` | form calls a proof ready that the server refuses |
 | `lib/conflicts.ts::CONFLICT_OTHER_NAME` | the `Other` conflict row the baseline migration seeds (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | the conflict picker stops offering the escape value |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
+| `lib/collections.ts::BULK_ADD_MAX_EVENTS` (the search page's Select all) | `schemas/collection.MAX_CREATE_EVENTS` | search offers a Select all the bulk add refuses (`too_many_events`), or hides one it accepts |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
 | `lib/og.ts::MOSAIC_MAX_TILES` | `collections.COVER_TILES` | a share card draws more tiles than the server sends |
 | `components/event/useEventActions.tsx` and `components/geolocations/edit/EventEditForm.tsx` credit controls on `geolocated` rows only | `geolocator_credit._require_published` | the Geolocators panel or the edit form's byline offers an invitation the API refuses (409) |
