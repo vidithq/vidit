@@ -350,7 +350,7 @@ function searchMatchBody({ q, ...filters }: SearchMatchParams) {
   return { q, filters: eventFilterFields(filters) };
 }
 
-/** Rows a page of a match's events holds on the create page, one **Load more** at a time. */
+/** Rows a page of a match's events holds on the create page, one **Show more** at a time. */
 const MATCH_PAGE_SIZE = 20;
 
 /** One page of the caller's collectable events a match names, newest first:

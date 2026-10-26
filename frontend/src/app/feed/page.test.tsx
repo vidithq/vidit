@@ -93,7 +93,7 @@ beforeEach(() => {
 });
 
 /** Observers by the node they watch: card media observes too, so a test fires the one watching
- *  the Load more row. */
+ *  the Show more row. */
 function stubObservers(): Map<Element, IntersectionObserverCallback> {
   const watchers = new Map<Element, IntersectionObserverCallback>();
   vi.stubGlobal(
@@ -114,9 +114,9 @@ function stubObservers(): Map<Element, IntersectionObserverCallback> {
 }
 
 function scrollToFoot(watchers: Map<Element, IntersectionObserverCallback>) {
-  const row = screen.getByRole("button", { name: "Load more" }).parentElement!;
+  const row = screen.getByRole("button", { name: "Show more" }).parentElement!;
   const report = watchers.get(row);
-  expect(report, "nothing observes the Load more row").toBeDefined();
+  expect(report, "nothing observes the Show more row").toBeDefined();
   report!([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
 }
 

@@ -2,12 +2,12 @@ import Link from "next/link";
 
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { Card } from "@/components/ui/Card";
+import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { submitHref } from "@/lib/routes";
-import { buttonClasses } from "@/components/ui/Button";
 import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
 import type { components } from "@/lib/api-types";
@@ -53,14 +53,10 @@ export function RecentSubmissions({
           // Mirrors backend `event_filters.published_events()`: `status=geolocated` makes the expansion serve the
           // same work as the block above (search's located group otherwise widens to machine detections). In the
           // panel's own vocabulary, so it lands as a removable chip. Same builder as the Insights tiles.
-          <Link
+          <ShowMoreLink
             href={profileSearchHref(profile.username, { status: "geolocated" })}
-            className={buttonClasses("secondary", {
-              className: "shrink-0 whitespace-nowrap",
-            })}
-          >
-            Show more
-          </Link>
+            className="shrink-0"
+          />
         )}
       </div>
 

@@ -182,7 +182,7 @@ describe("the search page's Collections group", () => {
 });
 
 describe("the search page's Geolocations group", () => {
-  const loadMore = () => screen.queryByRole("button", { name: "Load more" });
+  const loadMore = () => screen.queryByRole("button", { name: "Show more" });
 
   it("appends the next page from the cursor, with the request that minted it", async () => {
     searchParams = new URLSearchParams("conflict=Yemen&author=ana");
@@ -225,7 +225,7 @@ describe("the search page's Geolocations group", () => {
     expect(loadMore()).not.toBeInTheDocument();
   });
 
-  it("offers no Load more when the first page holds every match", async () => {
+  it("offers no Show more when the first page holds every match", async () => {
     search.mockResolvedValue(
       response({ geolocations: [eventHit()], total: { ...NO_TOTALS, geolocations: 1 } }),
     );
@@ -245,7 +245,7 @@ describe("the search page's Geolocations group", () => {
 
     render(<SearchPage />);
 
-    fireEvent.click((await screen.findByRole("button", { name: "Load more" })));
+    fireEvent.click((await screen.findByRole("button", { name: "Show more" })));
 
     expect(await screen.findByText("API error 500")).toBeInTheDocument();
     expect(screen.getByText("Kakhovka spillway")).toBeInTheDocument();
@@ -529,7 +529,7 @@ describe("the Geolocations selection", () => {
     expect(screen.getByText("1 selected")).toBeInTheDocument();
   });
 
-  it("makes a row from Load more selectable, and Select all covers it", async () => {
+  it("makes a row from Show more selectable, and Select all covers it", async () => {
     search.mockReset();
     search
       .mockResolvedValueOnce(
@@ -548,7 +548,7 @@ describe("the Geolocations selection", () => {
       );
     countCollectableMatches.mockResolvedValue(2);
     render(<SearchPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select Mukalla port" }));
     expect(screen.getByText("1 selected")).toBeInTheDocument();

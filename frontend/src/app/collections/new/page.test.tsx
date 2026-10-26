@@ -374,7 +374,7 @@ describe("NewCollectionPage with a search selection", () => {
     expect(screen.getByText("Dam breach")).toBeInTheDocument();
     expect(screen.getByText("44 events, ordered by event date, earliest first.")).toBeInTheDocument();
     expect(screen.getByText("The collection opens with 44 geolocations.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(loadMore).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Dam breach from this collection" }));

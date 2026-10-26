@@ -34,14 +34,14 @@ beforeEach(() => {
 });
 
 describe("<ReportsPanel>", () => {
-  it("walks the offset pages with Load more", async () => {
+  it("walks the offset pages with Show more", async () => {
     api.apiFetchPage
       .mockResolvedValueOnce(page(["r1"], 1, 21))
       .mockResolvedValueOnce(page(["r2"], 2, 21));
     render(<ReportsPanel />);
 
     expect(await screen.findByText("Report r1")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
     expect(await screen.findByText("Report r2")).toBeInTheDocument();
     expect(screen.getByText("Report r1")).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe("<ReportsPanel>", () => {
       "/admin/reports?page=1&per_page=20",
       "/admin/reports?page=2&per_page=20",
     ]);
-    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
   it("hides the event only from the confirm dialog", async () => {

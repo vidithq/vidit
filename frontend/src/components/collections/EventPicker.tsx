@@ -81,7 +81,7 @@ export function EventPicker({
   onAdd: (event: PickableEvent) => void;
   onRemove: (eventId: string) => void;
   /** A search match the save adds besides `events`, loaded a page at a time into the held card:
-   *  the rows so far, how many the match holds (less the removed), the walk behind **Load more**,
+   *  the rows so far, how many the match holds (less the removed), the walk behind **Show more**,
    *  and the removal of one matched row. */
   matched?: {
     rows: PickableEvent[];

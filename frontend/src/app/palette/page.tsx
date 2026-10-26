@@ -93,7 +93,7 @@ import { ToggleRow } from "@/components/ui/ToggleRow";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { SwatchPicker } from "@/components/ui/SwatchPicker";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
+import { LoadMoreRow, ShowMoreLink } from "@/components/ui/LoadMoreRow";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { AvatarStack } from "@/components/ui/AvatarStack";
@@ -1822,7 +1822,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LoadMoreRow>" usage="The one foot of a paged list (requests, feed, version history, invite codes, the admin reports queue, the search page's Geolocations group, and the detections queue, whose pages are numbered): Load more while a next page exists, a spinner while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click.">
+          <Item name="<LoadMoreRow> / <ShowMoreLink>" usage="The one Show more control, a secondary button with one label wherever a list has more. <LoadMoreRow> is the foot of a paged list that grows in place (requests, feed, version history, notifications, an organization's approvals, the admin reports queue and onboarding, the search page's Geolocations group, the create page's matched geolocations, and the detections queue, whose pages are numbered): Show more while a next page exists, a spinner with Loading… while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click. <ShowMoreLink href> is the same control as a link, for a preview whose whole list lives on another page: the profile's geolocations, open requests and collections, each opening its list in search.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
@@ -1834,6 +1834,11 @@ export default function PalettePage() {
                 <LoadMoreRow
                   walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: "API error 500" }}
                 />
+              </Variant>
+              <Variant label="link (ShowMoreLink)">
+                <div className="flex justify-center">
+                  <ShowMoreLink href="/search?type=event&author=ana" />
+                </div>
               </Variant>
             </div>
           </Item>

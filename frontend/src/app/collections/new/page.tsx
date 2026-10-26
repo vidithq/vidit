@@ -38,7 +38,7 @@ import { eventHref, profileHref } from "@/lib/routes";
  * handoff and seed the held card, removable like any pick, and ride the
  * create; the page reads no event for them. A search match fills the held card
  * a page at a time (`POST /collections/collectable-events`, the set the bulk add
- * shelves) behind **Load more**; a removed match joins `exclude_event_ids`, and
+ * shelves) behind **Show more**; a removed match joins `exclude_event_ids`, and
  * the match is added once the collection exists (`POST /collections/{id}/events`),
  * the server applying the cap and the ownership rule. A missing or stale token
  * opens the plain form.
