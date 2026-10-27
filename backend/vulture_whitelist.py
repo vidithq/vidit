@@ -55,8 +55,6 @@ last_image  # schemas/site.py SiteState
 latest_link_effect  # schemas/site.py SiteState
 linked_events  # schemas/site.py SiteRead
 overlapping_sites  # schemas/site.py SiteCreatedRead
-previous_record  # schemas/site.py SiteHistoryEntry
-previous_link_effect  # schemas/site.py SiteHistoryEntry
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 detected_via  # schemas/event.py EventRead, read from event_detections

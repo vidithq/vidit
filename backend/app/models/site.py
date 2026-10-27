@@ -34,8 +34,9 @@ class Site(Base):
 
     The zone is not a column: each contour is a ``site_contours`` row citing a site image (a
     ``sources`` row with ``site_id`` set), and every read derives the zone and the last image
-    (``services/sites``). ``name`` and ``kind`` are versioned in
-    ``site_versions``. ``owner_id`` cascades like ``Collection.owner_id``.
+    (``services/sites``). The live state is this row, the images not removed and their live
+    contours; each write that changes it files the state it supersedes in ``site_versions``.
+    ``owner_id`` cascades like ``Collection.owner_id``.
     """
 
     __tablename__ = "sites"
@@ -72,10 +73,12 @@ class Site(Base):
 
 
 class SiteVersion(Base):
-    """One superseded state of a site's record, filed by the owner's edit.
+    """One superseded state of a site, filed by the write that replaced it.
 
     Append-only, like ``EventVersion``: ``version_no`` is the version this row holds, and the
-    live row is ``sites.version_no``.
+    live state is ``sites.version_no``. The snapshot names its images and contours by id, and
+    neither row is ever deleted while the site stands: a removed image keeps its row with
+    ``removed_at`` set, and a replaced contour keeps its row with ``superseded_at`` set.
     """
 
     __tablename__ = "site_versions"
@@ -88,7 +91,7 @@ class SiteVersion(Base):
     edited_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    # ``{"name": ..., "kind": ...}`` as they stood before the edit.
+    # ``schemas/site.SiteSnapshot``: the name, the kind, and each image with its contour.
     snapshot = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -104,8 +107,10 @@ class SiteVersion(Base):
 class SiteContour(Base):
     """One zone the site's owner drew, citing the site image that shows it.
 
-    Append-only. The zone valid on a date is the contour whose image has the latest
-    ``captured_at`` on or before it (``services/sites.zones_at``).
+    Never edited: a redraw stamps ``superseded_at`` on the live row and inserts a new one. A live
+    image carries at most one live contour (``uq_site_contours_live_source``). The zone valid on
+    a date is the live contour whose image has the latest ``captured_at`` on or before it
+    (``services/sites.zones_at``).
     """
 
     __tablename__ = "site_contours"
@@ -127,23 +132,28 @@ class SiteContour(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
+    # NULL while the contour is in the live state; set by the write that redrew or dropped it.
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     author = relationship("User")
 
     __table_args__ = (
         Index("ix_site_contours_site_id", "site_id"),
         Index("ix_site_contours_source_id", "source_id"),
+        Index(
+            "uq_site_contours_live_source",
+            "source_id",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
     )
 
 
 class EventSiteLink(Base):
-    """One period during which an event was linked to a site, with what it showed there.
+    """One event linked to a site, with what it shows there.
 
-    Append-only history: unlinking stamps ``unlinked_at``, and changing the effect stamps
-    ``unlinked_at`` on the live row and inserts a new one with ``linked_at`` equal to it, in one
-    transaction (``services/sites.link_event``). The partial unique index allows one live row
-    per event and site. ``linked_by_id`` and ``unlinked_by_id`` record the event owner at the
-    time, since ownership can move.
+    Live state only, with no history: an effect change rewrites ``effect`` and an unlink deletes
+    the row (``services/sites``). One row per event and site.
     """
 
     __tablename__ = "event_site_links"
@@ -162,27 +172,11 @@ class EventSiteLink(Base):
         server_default=func.now(),
         nullable=False,
     )
-    linked_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    unlinked_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
 
     event = relationship("Event")
-    linked_by = relationship("User", foreign_keys=[linked_by_id])
-    unlinked_by = relationship("User", foreign_keys=[unlinked_by_id])
 
     __table_args__ = (
         literal_check("effect", LinkEffect, "ck_event_site_links_effect_valid"),
-        Index(
-            "uq_event_site_links_live",
-            "event_id",
-            "site_id",
-            unique=True,
-            postgresql_where=text("unlinked_at IS NULL"),
-        ),
+        UniqueConstraint("event_id", "site_id", name="uq_event_site_links_event_site"),
         Index("ix_event_site_links_site_id", "site_id"),
-        Index("ix_event_site_links_event_id", "event_id"),
     )

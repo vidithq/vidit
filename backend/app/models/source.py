@@ -87,7 +87,7 @@ class Source(Base):
     :data:`MAX_SOURCES_PER_EVENT` sources and none is the main one. The order is derived
     (:func:`source_order`). An event's source is versioned with its event
     (``services/versions.build_snapshot``): an edit to it is an edit to the event. A site's
-    source is never edited.
+    source is never edited, and its removal only stamps ``removed_at``.
     """
 
     __tablename__ = "sources"
@@ -105,6 +105,8 @@ class Source(Base):
     )
     # A site image's plain-text note; the API caps it at ``schemas/site.IMAGE_NOTE_MAX_LENGTH``.
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A site image's removal from the live state; the row stays for the versions that name it.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # ``""`` is no title.
     title: Mapped[str] = mapped_column(
         String(SOURCE_TITLE_MAX_LENGTH), nullable=False, default="", server_default=text("''")
@@ -163,7 +165,7 @@ class Source(Base):
             name="ck_sources_site_image",
         ),
         CheckConstraint(
-            "site_id IS NOT NULL OR (author_id IS NULL AND note IS NULL)",
+            "site_id IS NOT NULL OR (author_id IS NULL AND note IS NULL AND removed_at IS NULL)",
             name="ck_sources_site_fields",
         ),
         # Serves the ON DELETE SET NULL of an account erasure; only site images set it.
