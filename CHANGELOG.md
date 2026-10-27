@@ -34,6 +34,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Sites: map an area of interest such as a depot with its dated satellite images and contours, link your events to it with their effect, and read its history on its page; sites show on the map and can be reported ([#644](https://github.com/vidithq/vidit/pull/644)).
 - In the event form, a source link row imports the file of an X, public Telegram or TikTok post in one click, and a post with several files lets you pick one; `POST /uploads/from-link` stages it like an upload ([#697](https://github.com/vidithq/vidit/pull/697)).
 - Sites work like events: each source filed or removed and each owner edit saves a version you browse in the history, the owner edits name, kind, sources, contours and links on one page, and Submit offers Site and Collection tiles ([#718](https://github.com/vidithq/vidit/pull/718)).
+- In the event form, the fold under each source that holds the capture time, capture position, tags and graphic flag reads Capture details instead of More details ([#741](https://github.com/vidithq/vidit/pull/741)).
 
 ### Fixed
 
