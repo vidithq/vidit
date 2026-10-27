@@ -95,12 +95,12 @@
       "route": "/submit",
       "session": "signed-in",
       "viewport": { "width": 1440, "height": 900 },
-      "clip": { "x": 96, "y": 24, "width": 928, "height": 220 },
+      "clip": { "x": 96, "y": 24, "width": 1248, "height": 700 },
       "dpr": 1,
       "alt": "The Submit page, signed in, with its three ways in numbered",
       "markers": [
-        { "target": "role=group[name=\"Submission mode\"]", "place": "left", "label": "The chooser: pick how you bring work in." },
-        { "target": "role=group[name=\"Submission mode\"] >> role=link[name=/^Single event/]", "place": "top-left", "label": "Single event: a geolocation or a request you fill in yourself." },
+        { "target": "role=group[name=\"Submission mode\"]", "place": "right", "label": "The chooser: pick how you bring work in." },
+        { "target": "role=group[name=\"Submission mode\"] >> role=link[name=/^Geolocation/]", "place": "top-left", "label": "Geolocation: one event you fill in yourself." },
         { "target": "role=group[name=\"Submission mode\"] >> role=link[name=/^From an X post/]", "place": "top-left", "label": "From an X post: read one of your own posts." },
         { "target": "role=group[name=\"Submission mode\"] >> role=link[name=/^Bulk import/]", "place": "top-left", "label": "Bulk import: upload your X archive." }
       ]
