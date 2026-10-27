@@ -20,16 +20,23 @@ test.describe("requests", () => {
     await expectNarrowViewportLayout(page, post);
   });
 
-  // The page's action sits top right, beside the title, and the sort alone under it.
-  test("puts Post request top right, above the sort", async ({ page }) => {
+  // The page's action is in the title's action cluster, above the sort: under the title on a
+  // phone, beside it on a wide screen.
+  test("puts Post request in the title's actions, above the sort", async ({ page }) => {
     await mockApi(page);
     await page.goto("/requests");
 
-    const post = (await page.getByRole("link", { name: "Post request" }).boundingBox())!;
-    const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
-    const sort = (await page.getByRole("group", { name: "Sort requests" }).boundingBox())!;
-    expect(post.x, "Post request sits right of the title's start").toBeGreaterThan(title.x);
+    const link = page.getByRole("link", { name: "Post request" });
+    const heading = page.getByRole("heading", { level: 1 });
+    const sortGroup = page.getByRole("group", { name: "Sort requests" });
+    const post = (await link.boundingBox())!;
+    const sort = (await sortGroup.boundingBox())!;
     expect(post.y + post.height, "Post request sits above the sort").toBeLessThanOrEqual(sort.y);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const [wide, title] = [(await link.boundingBox())!, (await heading.boundingBox())!];
+    expect(wide.x, "Post request sits right of the title").toBeGreaterThan(title.x + title.width);
+    expect(Math.abs(wide.y + wide.height / 2 - (title.y + title.height / 2))).toBeLessThan(12);
   });
 
   // Geolocate shares the actions row with Share and Report, on one line at a phone's width.
