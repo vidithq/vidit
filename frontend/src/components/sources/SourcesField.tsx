@@ -18,12 +18,15 @@ import {
   isEvidenceLevel,
   MAX_SOURCES_PER_EVENT,
   newSourceDraft,
+  proofImagesFor,
   sourceName,
+  stageProofImage,
   uploadError,
   uploadsRunning,
   uploadSourceFile,
   UPLOADS_RUNNING_MESSAGE,
   type LinkPost,
+  type ProofImages,
   type SourceDraft,
   type SourceFile,
   type Upload,
@@ -43,8 +46,9 @@ let uploadToken = 0;
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
  * event write names it. A GIF stages one file per frame: the first fills the editor that picked
  * it, and each further frame opens a source after it. A file imported from a link stages the same
- * way, through the link's post. A file picked, imported or removed while an upload runs drops that
- * upload's answer.
+ * way, through the link's post. On a form that edits a stored event, an empty direct or indirect
+ * editor can take a copy of one of its `proofImages` while no such source holds a file. A file
+ * picked, imported, copied or removed while an upload runs drops that upload's answer.
  */
 export function SourcesField({
   sources,
@@ -54,6 +58,7 @@ export function SourcesField({
   suggestedTags,
   invalidKeys,
   attempt = 0,
+  proofImages,
 }: {
   sources: SourceDraft[];
   setSources: Dispatch<SetStateAction<SourceDraft[]>>;
@@ -64,10 +69,12 @@ export function SourcesField({
   invalidKeys: ReadonlySet<MissingFieldKey>;
   /** `useIncompleteForm`'s attempt count: each new one shows the first source with a gap. */
   attempt?: number;
+  /** The stored proof images of the edited event, which an empty slot can take a copy of. */
+  proofImages?: ProofImages;
 }) {
   const atCap = sources.length >= MAX_SOURCES_PER_EVENT;
 
-  const { update, pickFile, importLink } = sourceDraftUpdaters(setSources);
+  const { update, pickFile, importLink, copyProofImage } = sourceDraftUpdaters(setSources);
 
   const scroller = useRef<HorizontalScrollerHandle>(null);
   // A source to show once the list renders: the one Add a source appended, the neighbour of a
@@ -128,6 +135,10 @@ export function SourcesField({
           update={update(draft.key)}
           onPickFile={(file) => void pickFile(draft.key)(file)}
           onImportLink={(post) => void importLink(draft.key)(post)}
+          proofImages={proofImagesFor(draft, sources, proofImages)}
+          onCopyProofImage={(url) =>
+            proofImages && void copyProofImage(draft.key, proofImages.eventId)(url)
+          }
           tags={tags}
           setTags={setTags}
           suggestedTags={suggestedTags}
@@ -142,8 +153,8 @@ export function SourcesField({
 
 /**
  * The writers a form's source editors take: `update(key)` patches one draft, `pickFile(key)`
- * uploads a picked file at once, on its own request, and `importLink(key)` stages the file of a
- * link's post the same way. The answer lands on the draft only while that same request is still
+ * uploads a picked file at once, on its own request, `importLink(key)` stages the file of a
+ * link's post the same way, and `copyProofImage(key, eventId)` a copy of a stored proof image. The answer lands on the draft only while that same request is still
  * its file, so a file picked, imported or removed while a request runs drops the answer. The
  * frames of a GIF past the first land as new drafts (`placeUploads`), within `maxSources`.
  */
@@ -187,7 +198,18 @@ export function sourceDraftUpdaters(
     }
   };
 
-  return { update, pickFile, importLink };
+  const copyProofImage = (key: string, eventId: string) => async (url: string) => {
+    const token = ++uploadToken;
+    update(key)({ file: { state: "copying", proof: url, token } });
+    try {
+      const upload = await stageProofImage(eventId, url);
+      settle(key, token, { state: "staged", upload, proof: url });
+    } catch (err) {
+      settle(key, token, { state: "failed", name: "Proof image", error: uploadError(err) });
+    }
+  };
+
+  return { update, pickFile, importLink, copyProofImage };
 }
 
 /** The drafts once a pick's staged files land: the first fills the draft that picked it, and each

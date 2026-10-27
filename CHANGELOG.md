@@ -18,6 +18,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - An instance can serve the basemap tiles, icons and relief from its own S3-compatible bucket: the backend's `update-map` command copies them there on a schedule, and `NEXT_PUBLIC_MAP_ASSETS_URL` points the map at them ([#709](https://github.com/vidithq/vidit/pull/709)).
 - You can attach a GIF as a source file or a proof image: each of its frames is stored as a PNG image of its own, up to 6 frames; a longer GIF is refused with a request for a video or fewer frames ([#744](https://github.com/vidithq/vidit/pull/744)).
 - The tag field of the event and source forms suggests your most used tags, or the platform's, in one line of one-click chips under the search; `GET /tags/suggested` lists them ([#725](https://github.com/vidithq/vidit/pull/742)).
+- When a detection's proof holds the footage its source lacks, the edit form copies that proof image into the empty source file slot in one click; `POST /uploads/from-proof` stages the copy ([#746](https://github.com/vidithq/vidit/pull/746)).
 
 ### Changed
 

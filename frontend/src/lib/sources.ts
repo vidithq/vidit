@@ -136,20 +136,22 @@ export interface LinkPost {
 }
 
 /** A source file in a form. `stored` names the source's own stored file and posts `media_id`;
- *  `staged` posts `upload_id`, with the post it came from when it was imported from a link.
- *  `failed` names the picked file or the link's host. */
+ *  `staged` posts `upload_id`, with the post it came from when it was imported from a link, or
+ *  the URL of the proof image it was copied from. `failed` names the picked file, the link's
+ *  host or the proof image. */
 export type SourceFile =
   | { state: "stored"; media: Media }
   | { state: "uploading"; file: File; token: number }
   | { state: "importing"; post: LinkPost; token: number }
-  | { state: "staged"; upload: Upload; post?: LinkPost }
+  | { state: "copying"; proof: string; token: number }
+  | { state: "staged"; upload: Upload; post?: LinkPost; proof?: string }
   | { state: "failed"; name: string; error: string };
 
 /** Whether a source file is still on its way to the server: the write waits for it. */
 export const fileRunning = (
   file: SourceFile | null
 ): file is Extract<SourceFile, { token: number }> =>
-  file?.state === "uploading" || file?.state === "importing";
+  file?.state === "uploading" || file?.state === "importing" || file?.state === "copying";
 
 /** One link row as the form holds it: input strings, plus the stored values an untouched input
  *  posts back at full precision. */
@@ -413,6 +415,34 @@ export function importSourceFile(url: string, index: number): Promise<LinkUpload
   return apiFetch<LinkUpload>("/uploads/from-link", {
     method: "POST",
     body: JSON.stringify({ url, index }),
+  });
+}
+
+/** The stored proof images of the event a form edits: its id and their URLs, in proof order. */
+export interface ProofImages {
+  eventId: string;
+  urls: string[];
+}
+
+/** The proof images an editor offers for its slot: while no direct or indirect source holds a
+ *  file, on a direct or indirect editor, and on the editor holding a copied one, to pick
+ *  another. */
+export function proofImagesFor(
+  draft: SourceDraft,
+  drafts: SourceDraft[],
+  proofImages: ProofImages | undefined
+): string[] {
+  if (!proofImages) return [];
+  const copied = draft.file?.state === "copying" || (draft.file?.state === "staged" && !!draft.file.proof);
+  const gap = isEvidenceLevel(draft.level) && !sourceFloor(drafts).hasEvidenceFile;
+  return copied || gap ? proofImages.urls : [];
+}
+
+/** `POST /uploads/from-proof`: stage a copy of a stored proof image as a source file. */
+export function stageProofImage(eventId: string, url: string): Promise<Upload> {
+  return apiFetch<Upload>("/uploads/from-proof", {
+    method: "POST",
+    body: JSON.stringify({ event_id: eventId, url }),
   });
 }
 

@@ -8,6 +8,7 @@ import {
   isEvidenceLevel,
   SOURCE_LEVELS,
   newSourceDraft,
+  proofImagesFor,
   sourceCreatePayload,
   sourceDraftFrom,
   sourceFloor,
@@ -142,6 +143,26 @@ describe("sourceFloor", () => {
       { ...newSourceDraft(), links: [], file: { state: "stored", media: FILE } },
     ]);
     expect(floor).toEqual({ hasEvidenceFile: true, missingLink: true, missingKind: true });
+  });
+});
+
+describe("proofImagesFor", () => {
+  const proof = { eventId: "e1", urls: ["https://cdn/proof/a.jpg", "https://cdn/proof/b.jpg"] };
+
+  it("offers the proof images to an empty direct or indirect source while none holds a file", () => {
+    const empty = newSourceDraft();
+    expect(proofImagesFor(empty, [empty], proof)).toEqual(proof.urls);
+    expect(proofImagesFor({ ...empty, level: "context" }, [empty], proof)).toEqual([]);
+    expect(proofImagesFor(empty, [empty], undefined)).toEqual([]);
+  });
+
+  it("stops offering them once a direct or indirect source holds a file, except to the copy", () => {
+    const filed = { ...newSourceDraft(), file: { state: "stored", media: FILE } } as SourceDraft;
+    const empty = newSourceDraft();
+    expect(proofImagesFor(empty, [filed, empty], proof)).toEqual([]);
+    const upload = { id: "u1", kind: "image", sha256: "0", original_filename: null, storage_url: "https://cdn/u1", expires_at: "2099-01-01T00:00:00Z" } as const;
+    const copy = { ...newSourceDraft(), file: { state: "staged", upload, proof: proof.urls[1] } } as SourceDraft;
+    expect(proofImagesFor(copy, [copy], proof)).toEqual(proof.urls);
   });
 });
 

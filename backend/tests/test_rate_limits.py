@@ -567,6 +567,14 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"json": {"url": "https://example.com/probe"}},
     ),
+    # An unknown event's image is refused before any storage read.
+    _Case(
+        "post",
+        "/api/v1/uploads/from-proof",
+        30,
+        "user",
+        {"json": {"event_id": str(_MISSING_ID), "url": "https://example.com/probe.jpg"}},
+    ),
     _Case("post", "/api/v1/sources/check", 120, "user", {"json": {"kind": "satellite"}}),
     _Case("patch", ME, 30, "user", {"json": {"bio": "probe"}}),
     # The PUT probe is `text/plain`: rejected before any storage write.

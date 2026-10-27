@@ -184,6 +184,16 @@ class UploadFromLink(BaseModel):
     index: int = Field(default=0, ge=0)
 
 
+class UploadFromProof(BaseModel):
+    """A proof image to stage a copy of as a source file, for ``POST /uploads/from-proof``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: uuid.UUID
+    # The image's ``src`` in the event's proof body: its stored URL.
+    url: SourceUrl
+
+
 class LinkUploadRead(UploadRead):
     """A file staged from a post link."""
 

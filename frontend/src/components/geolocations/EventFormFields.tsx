@@ -21,6 +21,7 @@ import { SourcesField } from "@/components/sources/SourcesField";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { cleanNumber } from "@/lib/coordinates";
 import { hhmm } from "@/lib/format";
+import { storedProofImages } from "@/lib/proof";
 import {
   missingEventFields,
   missingEventRequestFields,
@@ -303,6 +304,9 @@ function eventFormSlots(
           suggestedTags={form.taxonomy.suggestedTags}
           invalidKeys={invalidKeys}
           attempt={form.validationAttempt}
+          proofImages={
+            row ? { eventId: row.id, urls: storedProofImages(form.proof, row.proof) } : undefined
+          }
         />
       ),
       // The image floor binds at the publish; a request may stay imageless.

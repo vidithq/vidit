@@ -184,6 +184,13 @@ export function proofImageSrcs(html: string | null): string[] {
   return srcs;
 }
 
+/** The images of the form's body `html` that the stored body `stored` already holds, in order,
+ *  once each: the stored proof images the form still shows. */
+export function storedProofImages(html: string | null, stored: string | null): string[] {
+  const kept = new Set(proofImageSrcs(stored));
+  return [...new Set(proofImageSrcs(html))].filter((src) => kept.has(src));
+}
+
 /** True when the proof carries at least one image: a geolocation's proof is a source ↔
  *  satellite cross-reference, and text alone can't be audited. The server enforces it in
  *  `events._require_proof_image` over the same srcs. */

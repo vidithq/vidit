@@ -3,15 +3,17 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MissingFieldKey } from "@/lib/events";
-import type { SourceDraft } from "@/lib/sources";
+import type { ProofImages, SourceDraft } from "@/lib/sources";
 
 const upload = vi.hoisted(() => vi.fn());
 const importFile = vi.hoisted(() => vi.fn());
+const copyProof = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/sources", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/sources")>()),
   uploadSourceFile: upload,
   importSourceFile: importFile,
+  stageProofImage: copyProof,
 }));
 
 import { newSourceDraft } from "@/lib/sources";
@@ -24,10 +26,12 @@ function Host({
   initial,
   invalidKeys = new Set(),
   attempt = 0,
+  proofImages,
 }: {
   initial: SourceDraft[];
   invalidKeys?: Set<MissingFieldKey>;
   attempt?: number;
+  proofImages?: ProofImages;
 }) {
   const [sources, setSources] = useState(initial);
   const [tags, setTags] = useState([{ id: "t1", name: "armor" }]);
@@ -42,6 +46,7 @@ function Host({
       setTags={setTags}
       invalidKeys={invalidKeys}
       attempt={attempt}
+      proofImages={proofImages}
     />
   );
 }
@@ -64,6 +69,7 @@ function inRow(el: HTMLElement): HTMLElement | null {
 describe("SourcesField", () => {
   beforeEach(() => {
     upload.mockReset();
+    copyProof.mockReset();
     scrolledTo.mockReset();
     vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(function (this: HTMLElement) {
       const row = inRow(this);
@@ -235,6 +241,69 @@ describe("SourcesField", () => {
     render(<Host initial={[withUrl("https://t.me/channel/12345")]} />);
     fireEvent.click(screen.getByRole("button", { name: /^Import the file of source 1/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("t.me: The post serves no file.");
+  });
+
+  const PROOF = { eventId: "e1", urls: ["https://cdn/proof/a.jpg", "https://cdn/proof/b.jpg"] };
+  const useProof = (n: number) =>
+    screen.queryByRole("button", { name: `Use a proof image as the file of source ${n}` });
+
+  it("copies a proof image into an empty source, then copies the one picked", async () => {
+    const staged = (id: string) => ({
+      id,
+      kind: "image",
+      sha256: "0",
+      original_filename: "footage.jpg",
+      storage_url: `https://cdn/uploads/${id}.jpg`,
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    copyProof.mockResolvedValueOnce(staged("u1")).mockResolvedValueOnce(staged("u2"));
+    render(<Host initial={[withUrl("https://example.com/a")]} proofImages={PROOF} />);
+    fireEvent.click(useProof(1)!);
+
+    expect(copyProof).toHaveBeenCalledWith("e1", PROOF.urls[0]);
+    expect(seen.current[0].file?.state).toBe("copying");
+    expect(screen.getByRole("status")).toHaveTextContent("Copying proof image 1 of 2…");
+    expect(sourcesBlockWrite(seen.current)).toBe("Wait for the source files to finish uploading.");
+    await waitFor(() => expect(seen.current[0].file?.state).toBe("staged"));
+    expect(useProof(1)).toBeNull();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Source 1 proof image" }), {
+      target: { value: "1" },
+    });
+    expect(copyProof).toHaveBeenLastCalledWith("e1", PROOF.urls[1]);
+    await waitFor(() => {
+      const file = seen.current[0].file;
+      expect(file?.state === "staged" && file.upload.id).toBe("u2");
+    });
+  });
+
+  it("offers a proof image only while no direct or indirect source holds a file", () => {
+    const filed: SourceDraft = {
+      ...withUrl("https://example.com/a"),
+      file: {
+        state: "stored",
+        media: { id: "m1", role: "source", kind: "image", sha256: "0", storage_url: "https://cdn/m1.jpg" },
+      },
+    };
+    const context: SourceDraft = { ...withUrl("https://example.com/c"), level: "context" };
+    const { unmount } = render(
+      <Host initial={[filed, withUrl("https://example.com/b")]} proofImages={PROOF} />
+    );
+    expect(useProof(2)).toBeNull();
+    unmount();
+
+    render(<Host initial={[context, withUrl("https://example.com/b")]} proofImages={PROOF} />);
+    expect(useProof(1)).toBeNull();
+    expect(useProof(2)).not.toBeNull();
+  });
+
+  it("prints a proof image refusal under the file slot", async () => {
+    copyProof.mockRejectedValue(new Error("This image is not a stored proof image."));
+    render(<Host initial={[withUrl("https://example.com/a")]} proofImages={PROOF} />);
+    fireEvent.click(useProof(1)!);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Proof image: This image is not a stored proof image."
+    );
   });
 
   it("flags the section when no direct or indirect source carries a file", () => {
