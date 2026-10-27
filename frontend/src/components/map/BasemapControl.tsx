@@ -34,7 +34,7 @@ const PRESET_ROWS: { label: string; options: SegmentedControlOption<BasemapPrese
     options: [
       { value: "streets", label: "Streets" },
       { value: "terrain", label: "Terrain" },
-      { value: "satellite", label: "Satellite" },
+      { value: "satellite", label: "Satellite 2016" },
     ],
   },
 ];
@@ -57,42 +57,21 @@ type SwitchKey = {
 interface SwitchSetting {
   key: SwitchKey;
   label: string;
-  description: string;
 }
 
 const LAYER_TOGGLES: SwitchSetting[] = [
-  { key: "regionBorders", label: "Region borders", description: "Borders between a country's regions." },
-  { key: "roads", label: "Roads", description: "Roads, railways and their names." },
-  { key: "buildings", label: "Buildings", description: "Building footprints, from zoom 13." },
-  {
-    key: "militaryAndAirports",
-    label: "Military areas and airports",
-    description: "Outlined in colour, from zoom 10.",
-  },
-  { key: "relief", label: "Relief", description: "Hills and mountains shaded from elevation data." },
-  {
-    key: "disputedDashed",
-    label: "Dashed disputed borders",
-    description: "Off draws a disputed border solid, like a settled one.",
-  },
+  { key: "regionBorders", label: "Region borders" },
+  { key: "roads", label: "Roads" },
+  { key: "buildings", label: "Buildings" },
+  { key: "militaryAndAirports", label: "Military areas and airports" },
+  { key: "relief", label: "Relief" },
+  { key: "disputedDashed", label: "Dashed disputed borders" },
 ];
 
 const OVERLAY_TOGGLES: SwitchSetting[] = [
-  {
-    key: "grid",
-    label: "Coordinate grid",
-    description: "Latitude and longitude lines, finer as you zoom in.",
-  },
-  {
-    key: "dailyImagery",
-    label: "Daily satellite imagery",
-    description: "Yesterday's NASA VIIRS pass in true colour, blurred past zoom 9.",
-  },
-  {
-    key: "fires",
-    label: "Fire detections",
-    description: "Fires and heat sources NASA VIIRS detected yesterday.",
-  },
+  { key: "grid", label: "Coordinate grid" },
+  { key: "dailyImagery", label: "Daily satellite imagery" },
+  { key: "fires", label: "Fire detections" },
 ];
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
@@ -137,7 +116,7 @@ export function BasemapControl({
       <ToggleRow
         key={toggle.key}
         label={toggle.label}
-        description={toggle.description}
+        variant="setting"
         on={settings[toggle.key]}
         onToggle={() => onChange({ [toggle.key]: !settings[toggle.key] })}
       />
@@ -162,8 +141,8 @@ export function BasemapControl({
       />
       {open && (
         <PopoverPanel id={panelId} label="Basemap" anchorRef={triggerRef} onClose={close} wide>
-          {/* Scrolls on a short viewport, where every setting cannot fit above the button. */}
-          <div className="max-h-[calc(100dvh-5rem)] space-y-2 overflow-y-auto">
+          {/* Stops short of the map's top-left filter overlay and scrolls when the settings do not fit. */}
+          <div className="max-h-[calc(100dvh-12rem)] space-y-2 overflow-y-auto">
             <div className="space-y-1.5">
               <p className={FORM_LABEL}>Basemap</p>
               {PRESET_ROWS.map((row) => (
@@ -176,23 +155,18 @@ export function BasemapControl({
                   fullWidth
                 />
               ))}
-              <p className="text-xs text-neutral-500">
-                Auto follows the theme. Satellite is a cloud-free mosaic of 2016.
-              </p>
             </div>
             {adjustable ? (
               <>
                 <SettingsGroup title="Labels">
                   <ChoiceRow
                     label="Label language"
-                    description="Local writes each place in its own script."
                     options={LANGUAGE_OPTIONS}
                     value={settings.language}
                     onChange={(language) => onChange({ language })}
                   />
                   <ChoiceRow
                     label="Label density"
-                    description="Sparse names only countries and capitals when zoomed out."
                     options={DENSITY_OPTIONS}
                     value={settings.density}
                     onChange={(density) => onChange({ density })}
