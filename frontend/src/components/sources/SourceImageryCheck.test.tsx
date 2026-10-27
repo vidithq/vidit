@@ -100,6 +100,16 @@ describe("SourceImageryCheck", () => {
     ]);
   });
 
+  it("drops the missing capture date warning where the form requires the field", async () => {
+    render(
+      <SourceImageryCheck draft={draft({ kind: "satellite" })} name="Source 1" captureRequired />
+    );
+    await settle();
+    const list = screen.getByRole("list", { name: "Warnings of Source 1" });
+    expect(within(list).queryByText("Give the capture date.")).toBeNull();
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+  });
+
   it("runs no check for another kind", async () => {
     const { container } = render(
       <SourceImageryCheck draft={draft({ kind: "drone" })} name="Source 1" />

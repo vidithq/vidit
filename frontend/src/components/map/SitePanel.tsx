@@ -10,10 +10,10 @@ import { buttonClasses } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { SiteKindPill } from "@/components/sites/SiteBadges";
-import { LastImageValue, LatestEffectValue } from "@/components/sites/SiteFacts";
+import { LastSourceValue, LatestEffectValue } from "@/components/sites/SiteFacts";
 import { MapOverlayPanel } from "./DetailSidePanel";
 
-/** The compact panel a site opens on the map: what it is, when it was last imaged, the latest
+/** The compact panel a site opens on the map: what it is, when it was last captured, the latest
  *  effect a linked event shows, and the way to its page. */
 export function SitePanel({
   resource,
@@ -38,15 +38,15 @@ export function SitePanel({
             </div>
           </div>
           <div className="space-y-2 text-sm">
-            <DetailRow compact label="Last image" concept="site_last_image">
-              <LastImageValue site={site} />
+            <DetailRow compact label="Last source" concept="site_last_source">
+              <LastSourceValue site={site} />
             </DetailRow>
             {site.latest_link_effect && (
               <DetailRow compact label="Latest effect" align="center">
                 <LatestEffectValue effect={site.latest_link_effect} />
               </DetailRow>
             )}
-            <DetailRow compact label="Images" value={site.images.length} />
+            <DetailRow compact label="Sources" value={site.sources.length} />
             <DetailRow compact label="Linked events" value={site.linked_events.length} />
             <DetailRow compact label="Owner">
               <AuthorByline author={site.owner} size="xs" avatar />

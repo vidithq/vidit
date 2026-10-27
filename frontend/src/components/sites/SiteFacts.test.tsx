@@ -9,7 +9,7 @@ const SITE = {
   name: "Depot",
   kind: "depot",
   owner: { id: "u1", username: "mira", avatar_url: null },
-  last_image: {
+  last_source: {
     id: "i1",
     captured_at: "2026-09-07T10:30:00Z",
     provider: { id: "copernicus_browser", name: "Copernicus Browser" },
@@ -26,9 +26,9 @@ const rowLabels = () =>
   );
 
 describe("SiteDetails", () => {
-  it("reads the owner, the kind, the last image, the latest effect and the creation", () => {
+  it("reads the owner, the kind, the last source, the latest effect and the creation", () => {
     render(<SiteDetails site={SITE} />);
-    expect(rowLabels()).toEqual(["Owner", "Kind", "Last image", "Latest effect", "Created"]);
+    expect(rowLabels()).toEqual(["Owner", "Kind", "Last source", "Latest effect", "Created"]);
     expect(screen.getByText("7 Sept 2026, Copernicus Browser")).toBeInTheDocument();
   });
 
@@ -38,6 +38,6 @@ describe("SiteDetails", () => {
         site={{ ...SITE, latest_link_effect: null, hidden_at: "2026-10-02T08:00:00Z" }}
       />,
     );
-    expect(rowLabels()).toEqual(["Owner", "Kind", "Last image", "Created", "Withheld"]);
+    expect(rowLabels()).toEqual(["Owner", "Kind", "Last source", "Created", "Withheld"]);
   });
 });

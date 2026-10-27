@@ -25,6 +25,7 @@ import type {
 import type { FieldName } from "./fieldHelp";
 import { withCursor } from "./pagination";
 import { eventHref } from "./routes";
+import { sameSet, versionSteps, type VersionedRecord, type VersionEntry } from "./versions";
 
 /** A required field a create/edit form is still missing; `key` drives the in-form highlight. */
 export type MissingFieldKey =
@@ -255,12 +256,6 @@ export function hasPublishedRecord(
   );
 }
 
-/** Version number of a `vN` segment, or `null` (other shapes, so the route 404s). */
-export function parseVersionSegment(segment: string): number | null {
-  if (!/^v(0|[1-9][0-9]*)$/.test(segment)) return null;
-  return Number(segment.slice(1));
-}
-
 /** The oldest version the event's history holds: 0 when it has a version 0 (the request or the
  *  detection it was published from), else 1. */
 export function firstVersion(geo: Pick<EventDetail, "version_zero">): number {
@@ -434,16 +429,9 @@ const sameCoords = (
   b: EventDetail["coords"]
 ): boolean => (a === null || b === null ? a === b : a.lat === b.lat && a.lng === b.lng);
 
-const sameList = (a: readonly string[], b: readonly string[]): boolean =>
-  a.length === b.length && a.every((value, index) => value === b[index]);
-
 /** Same time to the minute: the API serves `HH:MM:SS`, the time input holds `HH:MM`. */
 const sameTime = (a: string | null, b: string | null): boolean =>
   (a === null ? null : hhmm(a)) === (b === null ? null : hhmm(b));
-
-/** Same members in any order (the API serves tags and conflicts unordered). */
-const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
-  sameList([...a].sort(), [...b].sort());
 
 /** Each source as a comparable value, archived copies left out. The file compares by its stored
  *  object, so a copied file reads the same as the one it copies. */
@@ -550,24 +538,7 @@ export function hasVersionChanges(
 export const nothingChangedMessage = (versionNo: number): string =>
   `Nothing changed since version ${versionNo}.`;
 
-export interface EventVersionEntry {
-  /** Which version this is. `0` is the request or the detection the event was published from,
-   *  `1` the record as it was published. */
-  number: number;
-  /** True for the live row, the one `/events/{id}` serves. */
-  current: boolean;
-  /** The event at this version, or `null` when redacted. */
-  view: EventDetail | null;
-  /** Who produced this version and when; `null` when the carrying row could not be read. */
-  editor: EventDetail["owner"] | null;
-  createdAt: string | null;
-  /** That editor's own words about the edit, `null` when they left none. */
-  note: string | null;
-  redacted: boolean;
-  /** Fields changed against the previous version; `null` when not comparable (the first
-   *  version, or a redacted side). */
-  changed: string[] | null;
-}
+export type EventVersionEntry = VersionEntry<EventDetail>;
 
 /** Rows one version is assembled from. `own` is its content (absent for the live row);
  *  `producedBy` is the row numbered one lower, since the API files an edit's byline on the
@@ -619,37 +590,35 @@ export function eventVersion(
   };
 }
 
-/** Versions newest first. While `hasMore`, the oldest loaded row is authorship for the
- *  version above it, so it is held back until the completing page arrives: no version
- *  number appears without an editor. */
+/** Versions newest first, on the walk of `versionSteps`. */
 export function eventVersions(
   current: EventDetail,
   rows: EventVersion[],
   hasMore = false
 ): EventVersionEntry[] {
-  const byNumber = new Map(rows.map((row) => [row.version_no, row]));
-  // `+ 1`: while paging, the lowest loaded row is only authorship for the version above, so
-  // stop one above it. A finished walk reaches the first version.
   const first = firstVersion(current);
-  const oldest = hasMore && rows.length > 0 ? Math.min(...byNumber.keys()) + 1 : first;
+  return versionSteps(current.version_no, first, rows, hasMore).map(({ number, own, below }) =>
+    eventVersion(current, number, {
+      own,
+      producedBy: below,
+      // Diff base only; the content is the same snapshot.
+      previous: number > first ? eventVersion(current, number - 1, { own: below }).view : null,
+    })
+  );
+}
 
-  // Diff base only; the content is the same snapshot.
-  const viewOf = (number: number): EventDetail | null =>
-    eventVersion(current, number, { own: byNumber.get(number) }).view;
-
-  const entries: EventVersionEntry[] = [];
-  for (let number = current.version_no; number >= oldest; number--) {
-    const own = byNumber.get(number);
-    if (number !== current.version_no && own === undefined) break;
-    entries.push(
-      eventVersion(current, number, {
-        own,
-        producedBy: byNumber.get(number - 1),
-        previous: number > first ? viewOf(number - 1) : null,
-      })
-    );
-  }
-  return entries;
+/** The event as the version selector, the history rows and the banner address it. */
+export function eventVersioned(
+  geo: Pick<EventDetail, "id" | "version_no" | "version_zero">
+): VersionedRecord {
+  return {
+    latest: geo.version_no,
+    first: firstVersion(geo),
+    label: (number) => versionLabel(geo, number),
+    href: (number) =>
+      number === geo.version_no ? eventHref(geo.id) : eventVersionHref(geo.id, number),
+    historyHref: eventHistoryHref(geo.id),
+  };
 }
 
 /** `POST /events` (multipart); returns the new id. */

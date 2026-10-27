@@ -189,7 +189,8 @@ _READ_LIMITS = [
     ("/api/v1/users/no-such-user/organizations", 120),
     (f"/api/v1/sites?bbox={WORLD_BBOX}", 60),
     (f"/api/v1/sites/{uuid.UUID(int=0)}", 120),
-    (f"/api/v1/sites/{uuid.UUID(int=0)}/history", 120),
+    (f"/api/v1/sites/{uuid.UUID(int=0)}/versions", 120),
+    (f"/api/v1/sites/{uuid.UUID(int=0)}/versions/1", 120),
     (f"/api/v1/events/{uuid.UUID(int=0)}/site-links", 120),
     (_ORG, 120),
     (f"{_ORG}/members", 120),
@@ -248,7 +249,8 @@ _QUOTA_ROUTES = [
     "/api/v1/collections/{collection_id}/events",
     "/api/v1/sites",
     "/api/v1/sites/{site_id}",
-    "/api/v1/sites/{site_id}/history",
+    "/api/v1/sites/{site_id}/versions",
+    "/api/v1/sites/{site_id}/versions/{version_no}",
     "/api/v1/events/{geolocation_id}/site-links",
     "/api/v1/events/{geolocation_id}/site-suggestions",
     "/api/v1/feed",
@@ -384,7 +386,7 @@ _PROBE_ZONE = {
     "type": "Polygon",
     "coordinates": [[[-150.0, -60.0], [-149.99, -60.0], [-149.99, -59.99], [-150.0, -60.0]]],
 }
-_PROBE_IMAGE = {
+_PROBE_SOURCE = {
     "captured_at": "2025-01-01T00:00:00Z",
     "links": [{"url": "https://earthexplorer.usgs.gov/scene/metadata/full/landsat/probe/"}],
 }
@@ -392,7 +394,7 @@ _PROBE_SITE = {
     "name": "rate limit probe",
     "kind": "other",
     "contour": _PROBE_ZONE,
-    "image": _PROBE_IMAGE,
+    "source": _PROBE_SOURCE,
 }
 
 # A well-formed browser subscription; every probe upserts the one row.
@@ -617,15 +619,15 @@ _DOCUMENTED_LIMITS = [
     # The site create stores a row per request; the other probes 404 after the limiter.
     _Case("post", "/api/v1/sites", 30, "user", {"json": _PROBE_SITE}),
     _Case("post", "/api/v1/sites/overlaps", 60, "user", {"json": {"zone": _PROBE_ZONE}}),
-    _Case("post", f"/api/v1/sites/{_MISSING_ID}/images", 30, "user", {"json": _PROBE_IMAGE}),
+    _Case("post", f"/api/v1/sites/{_MISSING_ID}/sources", 30, "user", {"json": _PROBE_SOURCE}),
+    _Case("delete", f"/api/v1/sites/{_MISSING_ID}/sources/{_MISSING_ID}", 30),
     _Case(
         "post",
-        f"/api/v1/sites/{_MISSING_ID}/contours",
+        f"/api/v1/sites/{_MISSING_ID}/versions",
         30,
         "user",
-        {"json": {"zone": _PROBE_ZONE, "image_id": str(_MISSING_ID)}},
+        {"json": {"version_no": 1, "name": "probe", "kind": "depot"}},
     ),
-    _Case("patch", f"/api/v1/sites/{_MISSING_ID}", 30, "user", {"json": {"name": "probe"}}),
     _Case("post", f"/api/v1/sites/{_MISSING_ID}/report", 10, "anon", {"json": {"reason": "other"}}),
     _Case(
         "post",

@@ -5,12 +5,8 @@ import { notFound, useParams, useRouter } from "next/navigation";
 
 import type { EventDetail, EventVersion } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
-import {
-  eventVersionPath,
-  eventVersion,
-  firstVersion,
-  parseVersionSegment,
-} from "@/lib/events";
+import { eventVersionPath, eventVersion, eventVersioned, firstVersion } from "@/lib/events";
+import { parseVersionSegment } from "@/lib/versions";
 import { skipBackRecord } from "@/lib/navigation";
 import { VersionApprovals } from "@/components/event/Approvals";
 import { eventPageSlots } from "@/components/event/EventDetailBody";
@@ -83,7 +79,7 @@ export default function EventVersionPage() {
         />
       }
       actions={{
-        pinned: <VersionSelector event={geo} selected={number} />,
+        pinned: <VersionSelector record={eventVersioned(geo)} selected={number} />,
         // Version 0 was never published, so nothing approves it.
         below: number > 0 ? <VersionApprovals event={geo} versionNo={number} /> : null,
       }}

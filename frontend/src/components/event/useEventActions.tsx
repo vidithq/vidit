@@ -10,7 +10,7 @@ import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
-import { hasPublishedRecord } from "@/lib/events";
+import { eventVersioned, hasPublishedRecord } from "@/lib/events";
 import { creditedAuthors, removeGeolocator } from "@/lib/geolocatorCredit";
 import { eventEditHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
@@ -120,7 +120,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
 
   const controls = [
     tiers.history && hasPublishedRecord(event) && (
-      <VersionSelector key="versions" event={event} selected={event.version_no} />
+      <VersionSelector key="versions" record={eventVersioned(event)} selected={event.version_no} />
     ),
     canEdit && (
       // A published record is corrected by adding a version, a request is overwritten: the

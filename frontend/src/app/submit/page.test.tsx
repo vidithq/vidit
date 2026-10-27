@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // jsdom cannot mount the map canvas (WebGL); it and the proof editor (its own test) keep a marker.
@@ -9,9 +9,12 @@ vi.mock("@/components/editor/ProofEditor", () => ({
   default: () => <div data-testid="proof-editor" />,
 }));
 
+/** The page's query: the single-event form unless a test opens the chooser. */
+let query = "mode=single";
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-  useSearchParams: () => new URLSearchParams("mode=single"),
+  useSearchParams: () => new URLSearchParams(query),
 }));
 
 vi.mock("@/hooks/useRequireAuth", () => ({
@@ -47,13 +50,16 @@ vi.mock("@/lib/events", async (importOriginal) => ({
   createEventRequest: vi.fn(),
 }));
 
+import { newCollectionHref } from "@/lib/collections";
 import { createEvent, createEventRequest } from "@/lib/events";
+import { NEW_SITE_HREF } from "@/lib/sites";
 
 import SubmitPage from "./page";
 
 const announced = () => screen.queryByText(/^Fill in the required fields/);
 
 beforeEach(() => {
+  query = "mode=single";
   conflictsLoaded = true;
   vi.mocked(createEvent).mockReset();
   vi.mocked(createEventRequest).mockReset();
@@ -90,5 +96,22 @@ describe("the submit form's gate", () => {
     fireEvent.click(screen.getByRole("button", { name: "Publish request" }));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(announced()).toHaveTextContent("Title");
+  });
+});
+
+describe("the submit chooser", () => {
+  it("links the three paths, then the site and collection create pages", () => {
+    query = "";
+    render(<SubmitPage />);
+
+    const tiles = within(screen.getByRole("group", { name: "Submission mode" })).getAllByRole("link");
+    expect(tiles.map((tile) => [tile.querySelector("h3")?.textContent, tile.getAttribute("href")])).toEqual([
+      ["Single event", "/submit?mode=single"],
+      ["From an X post", "/submit?mode=xpost"],
+      ["Bulk import", "/submit?mode=bulk"],
+      ["Site", NEW_SITE_HREF],
+      ["Collection", newCollectionHref()],
+    ]);
+    expect(screen.queryByText(/create a site/)).toBeNull();
   });
 });

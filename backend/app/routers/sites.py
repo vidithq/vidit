@@ -1,5 +1,5 @@
-"""The ``/sites`` endpoints: named areas of interest, their imagery history and contours, and
-the events linked to them.
+"""The ``/sites`` endpoints: named areas of interest, their sources and contours, their
+versions, and the events linked to them.
 
 Rules live in ``services/sites``; this module resolves the row, hands the verb its
 arguments and maps a typed service error to its status.
@@ -9,7 +9,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import NoReturn
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
@@ -21,25 +21,30 @@ from app.routers._errors import raise_typed_error
 from app.routers.events._common import ARCHIVE_ERROR_STATUS
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.schemas.site import (
-    SiteContourCreate,
-    SiteContourRead,
     SiteCreate,
     SiteCreatedRead,
-    SiteHistoryEntry,
-    SiteImageCreate,
-    SiteImageFiledRead,
     SiteList,
     SiteOverlapCheck,
     SiteOverlapRead,
     SiteRead,
-    SiteUpdate,
+    SiteSourceCreate,
+    SiteSourceFiledRead,
+    SiteVersionCreate,
+    SiteVersionList,
+    SiteVersionRead,
 )
 from app.services import reports as reports_service
 from app.services import sites as sites_service
 from app.services.event_filters import parse_bbox, parse_optional_iso_date
 from app.services.evidence_intake import EvidenceIntakeError
+from app.services.pagination import (
+    decode_ordinal_cursor,
+    encode_ordinal_cursor,
+    page_size,
+    paged,
+)
 from app.services.source_archive import SnapshotRejected
-from app.services.versions import VersionLimitError
+from app.services.versions import HISTORY_PAGE_SIZE, VersionLimitError
 
 router = APIRouter()
 
@@ -85,7 +90,7 @@ def create_site(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SiteCreatedRead:
-    """Create a site with its first image and the contour that image shows.
+    """Create a site with its first source, the contour that source shows and your linked events.
 
     ``overlapping_sites`` lists the visible sites whose current zone shares area with the new
     one, as a duplicate warning; it never blocks the create.
@@ -155,82 +160,121 @@ def get_site(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> SiteRead:
-    """One site: current zone and last image, images, contours and visible linked events.
+    """One site: current zone and last source, sources, contours and visible linked events.
     A withheld site is a 404 for everyone but an admin."""
     return sites_service.build_site_read(db, _resolve(db, site_id, current_user))
 
 
-@router.patch("/{site_id}", response_model=SiteRead)
+@router.post("/{site_id}/versions", response_model=SiteRead)
 @limiter.limit("30/minute")
-def edit_site(
+def save_site_version(
     request: Request,
     site_id: uuid.UUID,
-    body: SiteUpdate,
+    body: SiteVersionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SiteRead:
-    """Change your site's name or kind; the superseded record is kept. Owner only."""
+    """Edit your site in one transaction: name, kind, added and removed sources, contour changes
+    and your linked events. Owner only.
+
+    A change to the record, the sources or a contour files the superseded state as one version;
+    a change to your links alone files none. 409 ``version_mismatch`` when ``version_no`` names
+    a version the site has moved past, 409 ``nothing_changed`` when nothing changes.
+    """
     site = _resolve(db, site_id, None)
     try:
-        site = sites_service.edit_site(db, site=site, user=current_user, body=body)
+        site = sites_service.save_version(db, site=site, user=current_user, body=body)
     except _WRITE_ERRORS as exc:
         _raise_site_error(exc)
     return sites_service.build_site_read(db, site)
 
 
-@router.get("/{site_id}/history", response_model=list[SiteHistoryEntry])
+@router.get("/{site_id}/versions", response_model=SiteVersionList)
 @authenticated_read_quota
 @limiter.limit("120/minute")
-def get_site_history(
+def list_site_versions(
     request: Request,
+    response: Response,
     site_id: uuid.UUID,
+    limit: int = Query(HISTORY_PAGE_SIZE, ge=1),
+    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
-) -> list[SiteHistoryEntry]:
-    """The site's history: creation, record edits, images, contours, and every link, unlink and
-    effect change, ordered by when each fact happened on the ground."""
+) -> SiteVersionList:
+    """The site's superseded versions, newest first. The live state is not listed.
+
+    Paged like ``GET /events/{id}/versions``; ``total`` is the whole history.
+    """
     site = _resolve(db, site_id, current_user)
-    return sites_service.site_history(db, site=site)
+    size = page_size(limit)
+    window = sites_service.list_versions(
+        db,
+        site.id,
+        limit=size,
+        cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
+    )
+    rows = paged(request, response, window, size, lambda r: encode_ordinal_cursor(r.version_no))
+    return SiteVersionList(
+        items=sites_service.build_version_reads(db, rows),
+        total=sites_service.count_versions(db, site.id),
+    )
+
+
+@router.get("/{site_id}/versions/{version_no}", response_model=SiteVersionRead)
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def get_site_version(
+    request: Request,
+    site_id: uuid.UUID,
+    version_no: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user_optional),
+) -> SiteVersionRead:
+    """One superseded version of a site, by its number. The live number answers 404."""
+    site = _resolve(db, site_id, current_user)
+    try:
+        row = sites_service.get_version(db, site_id=site.id, version_no=version_no)
+    except sites_service.SiteError as exc:
+        _raise_site_error(exc)
+    (read,) = sites_service.build_version_reads(db, [row])
+    return read
 
 
 @router.post(
-    "/{site_id}/images",
-    response_model=SiteImageFiledRead,
+    "/{site_id}/sources",
+    response_model=SiteSourceFiledRead,
     status_code=status.HTTP_201_CREATED,
 )
 @limiter.limit("30/minute")
-def file_image(
+def file_site_source(
     request: Request,
     site_id: uuid.UUID,
-    body: SiteImageCreate,
+    body: SiteSourceCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> SiteImageFiledRead:
-    """File a dated satellite image in a site's imagery history. Any signed-in analyst; an
-    image is never edited."""
+) -> SiteSourceFiledRead:
+    """File a dated satellite source on a site, filing a version. Any signed-in analyst; a site
+    source is never edited."""
     site = _resolve(db, site_id, None)
     try:
-        return sites_service.file_image(db, site=site, author=current_user, body=body)
+        return sites_service.file_site_source(db, site=site, author=current_user, body=body)
     except _WRITE_ERRORS as exc:
         _raise_site_error(exc)
 
 
-@router.post(
-    "/{site_id}/contours",
-    response_model=SiteContourRead,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.delete("/{site_id}/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
-def change_contour(
+def remove_site_source(
     request: Request,
     site_id: uuid.UUID,
-    body: SiteContourCreate,
+    source_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> SiteContourRead:
-    """Draw a new contour of your site, citing one of its images. Owner only."""
+) -> None:
+    """Remove a source you filed from the site, filing a version. 409 ``source_carries_contour``
+    while the source carries a contour."""
     site = _resolve(db, site_id, None)
     try:
-        return sites_service.change_contour(db, site=site, user=current_user, body=body)
-    except sites_service.SiteError as exc:
+        sites_service.remove_site_source(db, site=site, user=current_user, source_id=source_id)
+    except _WRITE_ERRORS as exc:
         _raise_site_error(exc)

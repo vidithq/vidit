@@ -1,6 +1,6 @@
 """Sources: the write an event form's ``sources`` list drives, the publish floor, the
 comparable form the no-change check reads, a source filed outside an event write
-(:func:`file_source`, a site image), and the wire shape of a stored source.
+(:func:`file_source`, a site source), and the wire shape of a stored source.
 
 A write posts the event's whole list (``schemas/source.SourceCreate``). :func:`plan_sources`
 checks it against the stored sources before anything is written, :func:`check_publish_floor`
@@ -340,7 +340,7 @@ def file_source(
     upload_id: uuid.UUID | None,
     copy_of: Media | None,
 ) -> Source:
-    """Stage a new source outside an event write, such as a site image: its links and its file.
+    """Stage a new source outside an event write, such as a site source: its links and its file.
 
     Raises the link errors of :func:`_clean_links` and the upload errors. Staged, not
     committed.

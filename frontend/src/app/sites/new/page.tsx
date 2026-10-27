@@ -5,14 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MapPinPlus, TriangleAlert } from "lucide-react";
 
-import { Card } from "@/components/ui/Card";
-import { CharCounter } from "@/components/ui/CharCounter";
-import { FieldLabel } from "@/components/ui/FieldLabel";
-import { Input, Select } from "@/components/ui/Input";
-import { PageColumns, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { META_LINE, TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
-import { SiteImageEditor, SiteWriteActions, useSiteImageDraft } from "@/components/sites/SiteImageEditor";
+import { EventSection } from "@/components/event/EventLayout";
+import { EventShell } from "@/components/event/EventShell";
+import { SourcesRow } from "@/components/sources/SourcesRow";
+import { PageColumns, PageLoading } from "@/components/ui/PageShell";
+import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
+import { SiteKindCard, SiteNameField } from "@/components/sites/SiteFormFields";
+import { SiteSourceEditor, SiteWriteActions, useSiteSourceDraft } from "@/components/sites/SiteSourceEditor";
+import { SiteLinksField, linkPayload, type DraftLink } from "@/components/sites/SiteLinksField";
 import { ZoneEditor, useDrawHistory } from "@/components/sites/ZoneEditor";
 import { useSitesInView } from "@/components/sites/useSitesInView";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -23,15 +23,13 @@ import { cn } from "@/lib/cn";
 import { EMPTY_DRAW, drawReady, zoneFromVertices } from "@/lib/siteZone";
 import {
   SITE_KIND_LABELS,
-  SITE_KINDS,
-  SITE_NAME_MAX_LEN,
   checkOverlaps,
   createSite,
   siteHref,
   type SiteKind,
   type SiteOverlap,
 } from "@/lib/sites";
-import { sourceWriteError } from "@/lib/sources";
+import { sourceName, sourceWriteError } from "@/lib/sources";
 
 /** Probe for duplicates once the drawing rests. */
 const OVERLAP_DEBOUNCE_MS = 500;
@@ -77,10 +75,12 @@ function OverlapWarning({ overlaps }: { overlaps: SiteOverlap[] }) {
 }
 
 /**
- * Creates a site: the contour drawn on the map, a name and a kind, and the first dated image the
- * contour is drawn from. The page reads like an event form: the writes pinned top right, the
- * contour and the image in the main column, the site's name and kind in the side column. A
- * contour that shares area with an existing site raises a warning naming both shares.
+ * Creates a site, on the site page's frame: the name typed in the page title like an event form's
+ * Title, the write pinned top right, the Sources section with the first source then the Linked
+ * events block with the creator's events in the main column, then the side column's Location
+ * section, the contour drawn on the map, and its Details section, the kind. Below `lg` the side
+ * column follows the main column, the site page's order. A contour that shares area with an
+ * existing site raises a warning naming both shares. One `POST /sites` writes it all.
  */
 export default function NewSitePage() {
   const router = useRouter();
@@ -89,7 +89,8 @@ export default function NewSitePage() {
   const history = useDrawHistory(EMPTY_DRAW);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<SiteKind | "">("");
-  const image = useSiteImageDraft();
+  const [links, setLinks] = useState<DraftLink[]>([]);
+  const source = useSiteSourceDraft();
   const [overlaps, setOverlaps] = useState<SiteOverlap[]>([]);
   const [attempt, setAttempt] = useState(0);
   const [sites, onBoundsChange] = useSitesInView();
@@ -114,10 +115,10 @@ export default function NewSitePage() {
   );
 
   const missing = [
+    ...source.missing,
     ...(zone ? [] : ["A closed contour"]),
     ...(name.trim() ? [] : ["Name"]),
     ...(kind ? [] : ["Kind"]),
-    ...image.missing,
   ];
   const flagged = attempt > 0;
 
@@ -127,7 +128,8 @@ export default function NewSitePage() {
         name: name.trim(),
         kind: kind as SiteKind,
         contour: zone!,
-        image: image.payload(),
+        source: source.payload(),
+        event_links: linkPayload(links),
       }),
     {
       fallback: "The site was not created. Try again.",
@@ -139,8 +141,8 @@ export default function NewSitePage() {
   const submit = () => {
     setAttempt((n) => n + 1);
     if (missing.length > 0) return;
-    if (image.held) {
-      create.setError(image.held);
+    if (source.held) {
+      create.setError(source.held);
       return;
     }
     void create.run();
@@ -149,90 +151,70 @@ export default function NewSitePage() {
   if (loading || !user) return <PageLoading />;
 
   return (
-    <PageShell
-      back
-      backFallback="/map"
+    <EventShell
       title="New site"
-      subtitle="Draw the contour over the first image, name the site and file that image."
-      headerSide={null}
-      stickyActions={
-        <SiteWriteActions
-          label="Create the site"
-          busyLabel="Creating…"
-          icon={<MapPinPlus size={14} />}
-          missing={missing}
-          attempt={attempt}
-          busy={create.loading}
-          error={create.error}
-          onWrite={submit}
+      titleField={<SiteNameField value={name} onChange={setName} invalid={flagged && !name.trim()} />}
+      byline="File the first source, draw the contour it shows and name the site."
+      backFallback="/map"
+      actions={{
+        pinned: (
+          <SiteWriteActions
+            label="Create the site"
+            busyLabel="Creating…"
+            icon={<MapPinPlus size={14} />}
+            missing={missing}
+            attempt={attempt}
+            busy={create.loading}
+            error={create.error}
+            onWrite={submit}
+          />
+        ),
+      }}
+      panels={
+        <PageColumns
+          main={
+            <>
+              <SourcesRow count={1} invalid={flagged && source.missing.length > 0}>
+                <SiteSourceEditor state={source} flagged={flagged} name={sourceName(0)} />
+              </SourcesRow>
+              <SiteLinksField links={links} onChange={setLinks} author={user} />
+            </>
+          }
+          side={
+            <>
+              <EventSection
+                name="location"
+                concept="site_location"
+                besideScroller
+                slot={{
+                  invalid: flagged && !zone,
+                  content: (
+                    <div className="space-y-3">
+                      <ZoneEditor
+                        label="Contour"
+                        history={history}
+                        sites={sites}
+                        center={{ lat: viewState.latitude, lng: viewState.longitude, zoom: viewState.zoom }}
+                        onBoundsChange={onBoundsChange}
+                        invalid={flagged && !zone}
+                      />
+                      <OverlapWarning overlaps={overlaps} />
+                    </div>
+                  ),
+                }}
+              />
+              <EventSection
+                name="details"
+                concept="site_details"
+                slot={{
+                  invalid: flagged && !kind,
+                  content: <SiteKindCard value={kind} onChange={setKind} invalid={flagged && !kind} />,
+                }}
+              />
+            </>
+          }
         />
       }
-    >
-      <PageColumns
-        main={
-          <>
-            <section className="space-y-3">
-              <SectionEyebrow title="Contour" concept="site_zone" besideScroller margin="none" />
-              <ZoneEditor
-                label="Contour"
-                history={history}
-                sites={sites}
-                center={{ lat: viewState.latitude, lng: viewState.longitude, zoom: viewState.zoom }}
-                onBoundsChange={onBoundsChange}
-                invalid={flagged && !zone}
-              />
-              <OverlapWarning overlaps={overlaps} />
-            </section>
-            <section>
-              <SectionEyebrow title="First image" concept="site_image" besideScroller />
-              <SiteImageEditor state={image} flagged={flagged} name="First image" />
-            </section>
-          </>
-        }
-        side={
-          <section>
-            <SectionEyebrow title="Site" besideScroller />
-            <Card dense>
-              <div className="space-y-1.5">
-                <FieldLabel
-                  label="Name"
-                  htmlFor="site-name"
-                  invalid={flagged && !name.trim()}
-                  trailing={<CharCounter length={name.length} max={SITE_NAME_MAX_LEN} />}
-                />
-                <Input
-                  id="site-name"
-                  value={name}
-                  maxLength={SITE_NAME_MAX_LEN}
-                  invalid={flagged && !name.trim()}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="For example Northern fuel depot"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel label="Kind" concept="site_kind" htmlFor="site-kind" invalid={flagged && !kind} />
-                <Select
-                  id="site-kind"
-                  value={kind}
-                  required
-                  invalid={flagged && !kind}
-                  onChange={(e) => setKind(e.target.value as SiteKind | "")}
-                >
-                  <option value="">Pick a kind</option>
-                  {SITE_KINDS.map((value) => (
-                    <option key={value} value={value}>
-                      {SITE_KIND_LABELS[value]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <p className={META_LINE}>
-                You own the site: only you rename it and redraw its contour.
-              </p>
-            </Card>
-          </section>
-        }
-      />
-    </PageShell>
+    />
   );
 }

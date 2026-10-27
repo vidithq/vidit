@@ -6,12 +6,10 @@ import { useParams } from "next/navigation";
 import type { EventDetail, EventVersion, EventVersionList } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCursorList } from "@/hooks/useCursorList";
-import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { eventVersionsPath, eventVersions, firstVersion } from "@/lib/events";
 import { EventVersionRow } from "@/components/event/EventVersionRow";
+import { VersionHistory } from "@/components/event/VersionHistory";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
-import { countLabel } from "@/lib/format";
 
 /** The history read answers an envelope; module-level because `useCursorList` keys fetches on this function's identity. */
 const versionRows = (page: EventVersionList): EventVersion[] => page.items;
@@ -34,38 +32,18 @@ export default function EventHistoryPage() {
     [eventId]
   );
   const walk = useCursorList<EventVersion, EventVersionList>(buildPath, versionRows);
-  const { items: rows, loading, hasMore } = walk;
-  // A failed later page shows in the load-more row; only a failed first page leaves no rows.
-  const historyError = rows.length === 0 ? walk.error : null;
 
   if (error) return <PageError message={error} />;
   if (!geo) return <PageLoading />;
 
-  const versions = eventVersions(geo, rows, hasMore);
-
   return (
     // Plain-text title: the *Current* row already links to the event.
     <PageShell back title="Version history" subtitle={geo.title}>
-      {historyError && <div className={FORM_ERROR_BANNER}>{historyError}</div>}
-
-      {loading ? (
-        <p className="text-sm text-neutral-500">Loading versions…</p>
-      ) : (
-        <>
-          <p className="text-[11px] text-neutral-500">
-            <span className="text-neutral-300 font-medium">
-              {countLabel(geo.version_no - firstVersion(geo) + 1, "version")}
-            </span>{" "}
-            · newest first
-          </p>
-          <div className="space-y-2">
-            {versions.map((version) => (
-              <EventVersionRow key={version.number} event={geo} version={version} />
-            ))}
-          </div>
-          <LoadMoreRow walk={walk} />
-        </>
-      )}
+      <VersionHistory walk={walk} count={geo.version_no - firstVersion(geo) + 1}>
+        {eventVersions(geo, walk.items, walk.hasMore).map((version) => (
+          <EventVersionRow key={version.number} event={geo} version={version} />
+        ))}
+      </VersionHistory>
     </PageShell>
   );
 }

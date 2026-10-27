@@ -34,7 +34,7 @@ import { SourceWarnings } from "./SourceWarnings";
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
- * rows once the card is wide enough. A site's image adds its own rows as `children` and its map
+ * rows once the card is wide enough. A site's source adds its own rows as `children` and its map
  * control as `actions`, which head the card under its name like a source editor's.
  */
 export function SourceBlock({
@@ -101,7 +101,7 @@ export function SourceBlock({
 }
 
 /** A source card's header: its name, then its controls at the right end. A source editor and a
- *  site's image block share it. */
+ *  site's source block share it. */
 export function SourceHeader({ name, actions }: { name: string; actions?: ReactNode }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-2">
@@ -204,7 +204,7 @@ function CapturedRow({ source, compact }: { source: Source; compact: boolean }) 
   );
 }
 
-/** What a caller adds to one block of `SourceBlocks`: a site image's name, rows and map control. */
+/** What a caller adds to one block of `SourceBlocks`: a site source's name, rows and map control. */
 export type SourceBlockExtras = Pick<
   Parameters<typeof SourceBlock>[0],
   "name" | "actions" | "className" | "children"
@@ -213,7 +213,7 @@ export type SourceBlockExtras = Pick<
 /**
  * An event's sources in the order the API serves them: a `SourcesRow` on the page, a lone source
  * taking the whole row as a `wide` block; a vertical stack under a **Sources** eyebrow in the map
- * panel. A site page passes its images with each block's `extras`.
+ * panel. A site page passes its sources with each block's `extras`.
  */
 export function SourceBlocks<S extends Source>({
   sources,

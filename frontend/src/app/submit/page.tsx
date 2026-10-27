@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useEffect, useRef, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { createEvent, createEventRequest } from "@/lib/events";
@@ -9,9 +8,9 @@ import { draftUrls } from "@/lib/sources";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
 import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
-import { MapPin } from "lucide-react";
+import { MapPin, MapPinPlus } from "lucide-react";
 import { IconTile } from "@/components/ui/IconTile";
-import { TEXT_LINK } from "@/components/ui/styles";
+import { CollectionIcon, newCollectionHref } from "@/lib/collections";
 import { NEW_SITE_HREF } from "@/lib/sites";
 import { EventFormShell, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
@@ -28,12 +27,14 @@ import { DuplicateProbe } from "@/components/geolocations/fields/DuplicateProbe"
 import { IMPORT_GLYPH } from "@/lib/importEntries";
 import { eventHref, requestHref, submitHref, type SubmitMode } from "@/lib/routes";
 
+type ChooserTile = { icon: ReactNode; title: string; note: string };
+
 // Three entry paths, differing only in where the work starts: `single` is one event by hand,
 // `xpost` reads one of your own X posts into a detection you review, `bulk` backfills an
 // archive. There is no geolocation-vs-request pick: the two publish actions unlock from the
 // content (a placed coordinate plus evidence publishes a geolocation, bare footage posts a
 // request).
-const MODES: { mode: SubmitMode; icon: ReactNode; title: string; note: string }[] = [
+const MODES: (ChooserTile & { mode: SubmitMode })[] = [
   {
     mode: "single",
     icon: <MapPin size={13} strokeWidth={1.8} />,
@@ -52,6 +53,27 @@ const MODES: { mode: SubmitMode; icon: ReactNode; title: string; note: string }[
     title: "Bulk import",
     note: "Upload your X archive. Each geolocation in your posts becomes a detection to review.",
   },
+];
+
+// The chooser's last tiles open a create page of their own, not a path of this one.
+const CREATE_LINKS: (ChooserTile & { href: string })[] = [
+  {
+    href: NEW_SITE_HREF,
+    icon: <MapPinPlus size={13} strokeWidth={1.8} />,
+    title: "Site",
+    note: "Follow a place through dated satellite imagery.",
+  },
+  {
+    href: newCollectionHref(),
+    icon: <CollectionIcon size={13} strokeWidth={1.8} />,
+    title: "Collection",
+    note: "Gather events into a curated list you can share.",
+  },
+];
+
+const CHOOSER_TILES = [
+  ...MODES.map(({ mode, ...tile }) => ({ ...tile, href: submitHref(mode) })),
+  ...CREATE_LINKS,
 ];
 
 /** The path the query names: `mode`, or the archive on-ramp from the legacy `?import=1` (the
@@ -167,20 +189,11 @@ function SubmitForm() {
   return (
     <PageShell title="Submit" back={mode !== null} onBack={backToChooser}>
       {mode === null && (
-        <>
-          <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-3">
-            {MODES.map(({ mode, icon, title, note }) => (
-              <IconTile key={mode} href={submitHref(mode)} icon={icon} title={title} note={note} />
-            ))}
-          </div>
-          <p className="text-sm text-neutral-400">
-            To follow a place through dated satellite imagery,{" "}
-            <Link href={NEW_SITE_HREF} className={TEXT_LINK}>
-              create a site
-            </Link>
-            .
-          </p>
-        </>
+        <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {CHOOSER_TILES.map(({ href, icon, title, note }) => (
+            <IconTile key={href} href={href} icon={icon} title={title} note={note} />
+          ))}
+        </div>
       )}
 
       {mode === "xpost" && <ImportPostPanel />}

@@ -189,12 +189,12 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Publish geolocation" }));
   });
 
-  test("opens on a chooser of three cards that fits a narrow column", async ({ page }) => {
+  test("opens on a chooser of five cards that fits a narrow column", async ({ page }) => {
     await page.goto("/submit");
 
     const modes = page.getByRole("group", { name: "Submission mode" });
     const cards = modes.getByRole("link");
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(5);
     await expectNarrowViewportLayout(page, cards.last());
     await expect(page.getByRole("button", { name: "Publish geolocation" })).toBeHidden();
 
@@ -207,7 +207,7 @@ test.describe("submit", () => {
     await expect(publish).toBeVisible();
     await page.goBack();
     await expect(page).toHaveURL(/\/submit$/);
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(5);
 
     // The back arrow returns to the chooser: back through the history from a path the chooser
     // opened, and straight to it from a path opened by its address.
@@ -215,7 +215,7 @@ test.describe("submit", () => {
     await expect(page).toHaveURL(/\/submit\?mode=bulk$/);
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/submit$/);
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(5);
     await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
     // That Back was a step through the history, so Forward reopens the path.
     await page.goForward();
@@ -224,7 +224,7 @@ test.describe("submit", () => {
     await page.goto("/submit?mode=bulk");
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/submit$/);
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(5);
     await expect(page.getByRole("link", { name: "Other ways to submit" })).toHaveCount(0);
   });
 

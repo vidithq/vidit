@@ -1,28 +1,34 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
+import { withCursor } from "./pagination";
 import { sourceCreatePayload, draftUrls, newSourceDraft, type SourceDraft } from "./sources";
+import { sameSet, versionSteps, type VersionedRecord, type VersionEntry } from "./versions";
 
 export type Site = components["schemas"]["SiteRead"];
 export type SiteCreated = components["schemas"]["SiteCreatedRead"];
 export type SiteListItem = components["schemas"]["SiteList"];
-export type SiteImage = components["schemas"]["SiteImageRead"];
-export type SiteImageFiled = components["schemas"]["SiteImageFiledRead"];
-export type SiteImageCreate = components["schemas"]["SiteImageCreate"];
+export type SiteSource = components["schemas"]["SiteSourceRead"];
+export type SiteSourceFiled = components["schemas"]["SiteSourceFiledRead"];
+export type SiteSourceCreate = components["schemas"]["SiteSourceCreate"];
 export type SiteContour = components["schemas"]["SiteContourRead"];
 export type SiteLinkedEvent = components["schemas"]["SiteLinkedEventRead"];
 export type SiteOverlap = components["schemas"]["SiteOverlapRead"];
 export type SiteSuggestion = components["schemas"]["SiteSuggestionRead"];
 export type EventSiteLink = components["schemas"]["EventSiteLinkRead"];
 export type Zone = components["schemas"]["ZonePolygon"];
-export type SiteHistoryEntry = components["schemas"]["SiteHistoryEntry"];
+export type SiteVersion = components["schemas"]["SiteVersionRead"];
+export type SiteVersionList = components["schemas"]["SiteVersionList"];
+export type SiteVersionCreate = components["schemas"]["SiteVersionCreate"];
+export type SiteEventLinkCreate = components["schemas"]["SiteEventLinkCreate"];
+export type SiteVersionEntry = VersionEntry<Site>;
 
 export type SiteKind = Site["kind"];
 export type LinkEffect = EventSiteLink["effect"];
 
 /** Mirrors backend `models/event.TITLE_MAX_LENGTH`, the cap on a site name; change both. */
 export const SITE_NAME_MAX_LEN = 255;
-/** Mirrors backend `schemas/site.IMAGE_NOTE_MAX_LENGTH`; change both. */
-export const SITE_IMAGE_NOTE_MAX_LEN = 500;
+/** Mirrors backend `schemas/site.SITE_SOURCE_NOTE_MAX_LENGTH`; change both. */
+export const SITE_SOURCE_NOTE_MAX_LEN = 500;
 /** Mirrors the `margin_m` default (2000 m) of backend `routers/events/sites`; change both. */
 export const SITE_MARGIN_KM = 2;
 
@@ -58,14 +64,23 @@ export function siteHref(id: string): string {
 
 export const NEW_SITE_HREF = "/sites/new";
 
-export function siteFileImageHref(id: string): string {
-  return `${siteHref(id)}/images/new`;
+export function siteFileSourceHref(id: string): string {
+  return `${siteHref(id)}/sources/new`;
 }
 
-/** The owner's contour editor, starting from `imageId` when given. */
-export function siteContourHref(id: string, imageId?: string): string {
-  const base = `${siteHref(id)}/contour`;
-  return imageId ? `${base}?image=${encodeURIComponent(imageId)}` : base;
+/** The owner's edit page, its Location block on `sourceId` when given. */
+export function siteEditHref(id: string, sourceId?: string): string {
+  const base = `${siteHref(id)}/edit`;
+  return sourceId ? `${base}?source=${encodeURIComponent(sourceId)}` : base;
+}
+
+/** Past versions only; the current one keeps `/sites/{id}`. */
+export function siteVersionHref(id: string, versionNo: number): string {
+  return `${siteHref(id)}/v${versionNo}`;
+}
+
+export function siteHistoryHref(id: string): string {
+  return `${siteHref(id)}/history`;
 }
 
 export function sitesPath(bbox: string, asOf: string | null): string {
@@ -78,8 +93,13 @@ export function sitePath(id: string): string {
   return `/sites/${encodeURIComponent(id)}`;
 }
 
-export function siteHistoryPath(id: string): string {
-  return `${sitePath(id)}/history`;
+/** Cursor is the previous page's `Link: rel="next"` value, `null` for the first. */
+export function siteVersionsPath(id: string, cursor: string | null): string {
+  return withCursor(`${sitePath(id)}/versions`, cursor);
+}
+
+export function siteVersionPath(id: string, versionNo: number): string {
+  return `${sitePath(id)}/versions/${versionNo}`;
 }
 
 export function eventSiteLinksPath(eventId: string): string {
@@ -96,11 +116,9 @@ export function createSite(body: components["schemas"]["SiteCreate"]): Promise<S
   return apiFetch<SiteCreated>("/sites", { method: "POST", body: JSON.stringify(body) });
 }
 
-export function updateSite(
-  id: string,
-  body: components["schemas"]["SiteUpdate"],
-): Promise<Site> {
-  return apiFetch<Site>(sitePath(id), { method: "PATCH", body: JSON.stringify(body) });
+/** `POST /sites/{id}/versions`: the owner's edit in one transaction, filing one version. */
+export function saveSiteVersion(id: string, body: SiteVersionCreate): Promise<Site> {
+  return apiFetch<Site>(`${sitePath(id)}/versions`, { method: "POST", body: JSON.stringify(body) });
 }
 
 export function checkOverlaps(zone: Zone, signal?: AbortSignal): Promise<SiteOverlap[]> {
@@ -111,17 +129,17 @@ export function checkOverlaps(zone: Zone, signal?: AbortSignal): Promise<SiteOve
   });
 }
 
-export function fileSiteImage(siteId: string, body: SiteImageCreate): Promise<SiteImageFiled> {
-  return apiFetch<SiteImageFiled>(`${sitePath(siteId)}/images`, {
+export function fileSiteSource(siteId: string, body: SiteSourceCreate): Promise<SiteSourceFiled> {
+  return apiFetch<SiteSourceFiled>(`${sitePath(siteId)}/sources`, {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-export function drawSiteContour(siteId: string, zone: Zone, imageId: string): Promise<SiteContour> {
-  return apiFetch<SiteContour>(`${sitePath(siteId)}/contours`, {
-    method: "POST",
-    body: JSON.stringify({ zone, image_id: imageId }),
+/** Removes a source its filer filed; refused while it carries a contour. Files a version. */
+export function removeSiteSource(siteId: string, sourceId: string): Promise<void> {
+  return apiFetch<void>(`${sitePath(siteId)}/sources/${encodeURIComponent(sourceId)}`, {
+    method: "DELETE",
   });
 }
 
@@ -132,7 +150,7 @@ export function reportSite(
   return apiFetch(`${sitePath(id)}/report`, { method: "POST", body: JSON.stringify(body) });
 }
 
-/** Idempotent: the same effect again writes nothing, a new one replaces the live link. */
+/** Idempotent: the same effect again writes nothing, a new one rewrites the link. */
 export function linkEventToSite(
   eventId: string,
   siteId: string,
@@ -173,12 +191,12 @@ export function formatDistance(metres: number): string {
   return `${(metres / 1000).toFixed(1)} km`;
 }
 
-/** Whether the viewer owns the site: the one reader who renames it and draws its contour. */
+/** Whether the viewer owns the site: the one reader who edits it. */
 export function ownsSite(site: Pick<Site, "owner">, viewerId: string | null | undefined): boolean {
   return !!viewerId && site.owner.id === viewerId;
 }
 
-// The order the zone rule reads contours in: the image's capture time, the later contour
+// The order the zone rule reads contours in: the source's capture time, the later contour
 // breaking a tie.
 function contourKey(contour: SiteContour): string {
   return `${contour.captured_at} ${contour.created_at}`;
@@ -188,7 +206,7 @@ function contourOrder(contours: SiteContour[]): SiteContour[] {
   return [...contours].sort((a, b) => contourKey(a).localeCompare(contourKey(b)));
 }
 
-/** The contour valid on a day (`YYYY-MM-DD`): the latest one whose image was captured on or
+/** The contour valid on a day (`YYYY-MM-DD`): the latest one whose source was captured on or
  *  before it. Null before the first contour's capture day. Mirrors backend
  *  `services/sites.zones_at`; change both. */
 export function contourOn(contours: SiteContour[], day: string): SiteContour | null {
@@ -206,15 +224,15 @@ export function contourBefore(contours: SiteContour[], contour: SiteContour): Si
   return index > 0 ? ordered[index - 1] : null;
 }
 
-/** The contour the owner drew from an image, the latest when they drew several. */
-export function contourFromImage(contours: SiteContour[], imageId: string): SiteContour | null {
-  return contourOrder(contours).filter((c) => c.image_id === imageId).at(-1) ?? null;
+/** The contour a source carries. */
+export function contourOfSource(contours: SiteContour[], sourceId: string): SiteContour | null {
+  return contourOrder(contours).filter((c) => c.source_id === sourceId).at(-1) ?? null;
 }
 
-/** The images newest first by capture time. */
-export function sortImages(images: SiteImage[]): SiteImage[] {
-  const key = (image: SiteImage) => image.captured_at ?? image.created_at;
-  return [...images].sort((a, b) => key(b).localeCompare(key(a)));
+/** The sources newest first by capture time. */
+export function sortSources(sources: SiteSource[]): SiteSource[] {
+  const key = (source: SiteSource) => source.captured_at ?? source.created_at;
+  return [...sources].sort((a, b) => key(b).localeCompare(key(a)));
 }
 
 /** The linked events newest first by event date. An undated event sits on the day it was
@@ -224,9 +242,9 @@ export function sortLinkedEvents(events: SiteLinkedEvent[]): SiteLinkedEvent[] {
   return [...events].sort((a, b) => key(b).localeCompare(key(a)));
 }
 
-/** The image the page opens on: the latest capture, whose zone is the one valid now. */
-export function latestImage(images: SiteImage[]): SiteImage | null {
-  return sortImages(images)[0] ?? null;
+/** The source the page opens on: the latest capture, whose zone is the one valid now. */
+export function latestSource(sources: SiteSource[]): SiteSource | null {
+  return sortSources(sources)[0] ?? null;
 }
 
 /** The zone effect a site's map paints: damage or destruction from the latest linked event;
@@ -238,24 +256,24 @@ export function zoneEmphasis(
   return effect === "damage" || effect === "destruction" ? effect : null;
 }
 
-/** An image editor as the site forms start it: a satellite source, one blank link. */
-export function newSiteImageDraft(): SourceDraft {
+/** A source editor as the site forms start it: a satellite source, one blank link. */
+export function newSiteSourceDraft(): SourceDraft {
   return { ...newSourceDraft(), level: "context", kind: "satellite" };
 }
 
-/** The labels of what the image still lacks before the API takes it, in the editor's order.
- *  Mirrors backend `schemas/site.SiteImageCreate`; change both. */
-export function siteImageMissing(draft: SourceDraft, note: string, today: string): string[] {
+/** The labels of what the source still lacks before the API takes it, in the editor's order.
+ *  Mirrors backend `schemas/site.SiteSourceCreate`; change both. */
+export function siteSourceMissing(draft: SourceDraft, note: string, today: string): string[] {
   const missing: string[] = [];
   if (!draft.capturedAt) missing.push("Capture date");
   else if (draft.capturedAt.slice(0, 10) > today) missing.push("A capture date that is not in the future");
   if (draftUrls(draft).length === 0) missing.push("A link");
-  if (note.length > SITE_IMAGE_NOTE_MAX_LEN) missing.push(`A note of at most ${SITE_IMAGE_NOTE_MAX_LEN} characters`);
+  if (note.length > SITE_SOURCE_NOTE_MAX_LEN) missing.push(`A note of at most ${SITE_SOURCE_NOTE_MAX_LEN} characters`);
   return missing;
 }
 
-/** The image fields of a site write, from the editor and the note. A blank note is absent. */
-export function siteImagePayload(draft: SourceDraft, note: string): SiteImageCreate {
+/** The source fields of a site write, from the editor and the note. A blank note is absent. */
+export function siteSourcePayload(draft: SourceDraft, note: string): SiteSourceCreate {
   const { title, captured_at, links, upload_id, media_id } = sourceCreatePayload(draft);
   return {
     title,
@@ -267,17 +285,17 @@ export function siteImagePayload(draft: SourceDraft, note: string): SiteImageCre
   };
 }
 
-/** The site image a satellite source of an event becomes, its file shared: the offer the link
+/** The site source a satellite source of an event becomes, its file shared: the offer the link
  *  dialog makes. Null when the source cannot be filed (no file, no capture time, or flagged
  *  graphic). Mirrors backend `services/sites._event_file`; change both. */
-export function imageFromEventSource(source: {
+export function siteSourceFromEventSource(source: {
   title: string;
   kind: string;
   captured_at: string | null;
   is_graphic: boolean;
   media: { id: string } | null;
   links: { url: string; archived: { url: string } | null }[];
-}): SiteImageCreate | null {
+}): SiteSourceCreate | null {
   if (source.kind !== "satellite" || source.is_graphic || !source.media || !source.captured_at) {
     return null;
   }
@@ -288,4 +306,98 @@ export function imageFromEventSource(source: {
     media_id: source.media.id,
     note: null,
   };
+}
+
+/** The site as the version selector, the history rows and the banner address it. */
+export function siteVersioned(site: Pick<Site, "id" | "version_no">): VersionedRecord {
+  return {
+    latest: site.version_no,
+    first: 1,
+    label: (number) => `v${number}`,
+    href: (number) =>
+      number === site.version_no ? siteHref(site.id) : siteVersionHref(site.id, number),
+    historyHref: siteHistoryHref(site.id),
+  };
+}
+
+/** One filed version as the site shape the site page renders. Links have no history, so a
+ *  version shows none. */
+export function siteVersionView(current: Site, row: SiteVersion): Site {
+  return {
+    ...current,
+    version_no: row.version_no,
+    name: row.name,
+    kind: row.kind,
+    zone: row.zone,
+    centroid: row.centroid,
+    contour_id: row.contour_id,
+    last_source: row.last_source,
+    sources: row.sources,
+    contours: row.contours,
+    linked_events: [],
+    latest_link_effect: null,
+  };
+}
+
+/** One label per versioned part of a site, in changed-list order. */
+const SITE_VERSION_FIELD_LABELS = {
+  name: "Name",
+  kind: "Kind",
+  sources: "Sources",
+  contours: "Contour",
+} as const;
+
+/** Labels of the versioned parts that differ between a version and the one before it: sources
+ *  and contours compare by id, as sets, since neither is ever edited. */
+export function siteChangedFields(version: Site, previous: Site): string[] {
+  const ids = (rows: readonly { id: string }[]) => rows.map((row) => row.id);
+  const differs: Record<keyof typeof SITE_VERSION_FIELD_LABELS, boolean> = {
+    name: version.name !== previous.name,
+    kind: version.kind !== previous.kind,
+    sources: !sameSet(ids(version.sources), ids(previous.sources)),
+    contours: !sameSet(ids(version.contours), ids(previous.contours)),
+  };
+  return (Object.keys(SITE_VERSION_FIELD_LABELS) as (keyof typeof differs)[])
+    .filter((field) => differs[field])
+    .map((field) => SITE_VERSION_FIELD_LABELS[field]);
+}
+
+/** One version, described by the write that produced it: content from row `n`, authorship from
+ *  row `n - 1`. Version 1 has no producing row and takes the owner and the creation date. */
+export function siteVersion(
+  current: Site,
+  number: number,
+  {
+    own,
+    producedBy,
+    previous = null,
+  }: { own?: SiteVersion; producedBy?: SiteVersion; previous?: Site | null } = {},
+): SiteVersionEntry {
+  const view = number === current.version_no ? current : own ? siteVersionView(current, own) : null;
+  const first = number === 1;
+  return {
+    number,
+    current: number === current.version_no,
+    view,
+    editor: producedBy ? producedBy.edited_by : first ? current.owner : null,
+    createdAt: producedBy ? producedBy.created_at : first ? current.created_at : null,
+    note: null,
+    redacted: false,
+    changed: view && previous ? siteChangedFields(view, previous) : null,
+  };
+}
+
+/** Versions newest first, on the walk of `versionSteps`. */
+export function siteVersions(
+  current: Site,
+  rows: SiteVersion[],
+  hasMore = false,
+): SiteVersionEntry[] {
+  return versionSteps(current.version_no, 1, rows, hasMore).map(({ number, own, below }) =>
+    siteVersion(current, number, {
+      own,
+      producedBy: below,
+      previous: below ? siteVersionView(current, below) : null,
+    }),
+  );
 }

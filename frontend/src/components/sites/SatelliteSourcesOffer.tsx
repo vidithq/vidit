@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { errorMessage } from "@/lib/api";
 import { formatInstant } from "@/lib/format";
-import { fileSiteImage, imageFromEventSource } from "@/lib/sites";
+import { fileSiteSource, siteSourceFromEventSource } from "@/lib/sites";
 import { sourceName, type Source } from "@/lib/sources";
 
 /** The event's satellite sources, each with its position in the event for its name. */
@@ -16,12 +16,12 @@ function satelliteSources(sources: Source[]) {
 }
 
 /**
- * The link dialog's offer to file an event's satellite images in the site's imagery history
- * too, one switch per satellite source, all off at first. A source without a file or a capture
- * time, or flagged graphic, cannot be filed, so its switch reads why and refuses. Renders nothing for an event with
- * no satellite source. The caller holds the picks and files them with `fileOffered`.
+ * The link dialog's offer to file an event's satellite sources on the site too, one switch per
+ * satellite source, all off at first. A source without a file or a capture time, or flagged
+ * graphic, cannot be filed, so its switch reads why and refuses. Renders nothing for an event
+ * with no satellite source. The caller holds the picks and files them with `fileOffered`.
  */
-export function SatelliteImagesOffer({
+export function SatelliteSourcesOffer({
   sources,
   picked,
   onToggle,
@@ -34,20 +34,20 @@ export function SatelliteImagesOffer({
   if (offered.length === 0) return null;
   return (
     <fieldset className="space-y-2 border-t border-neutral-800 pt-3">
-      <legend className="sr-only">File the event&apos;s satellite images</legend>
+      <legend className="sr-only">File the event&apos;s satellite sources on the site</legend>
       {offered.map(({ source, index }) => {
-        const fileable = imageFromEventSource(source) !== null;
-        const what = source.title || "Satellite image";
+        const fileable = siteSourceFromEventSource(source) !== null;
+        const what = source.title || "Satellite source";
         return (
           <ToggleRow
             key={source.id}
-            label={`Also file ${sourceName(index).toLowerCase()} in the imagery history`}
+            label={`Also file ${sourceName(index).toLowerCase()} on the site`}
             description={
               fileable
                 ? `${what}, captured ${formatInstant(source.captured_at)}`
                 : source.is_graphic
-                  ? `${what}: a source flagged graphic cannot be filed as a site image.`
-                  : `${what}: a site image needs a file and a capture time, and this source lacks one.`
+                  ? `${what}: a source flagged graphic cannot be filed on a site.`
+                  : `${what}: a site source needs a file and a capture time, and this source lacks one.`
             }
             on={fileable && picked.has(source.id)}
             disabled={!fileable}
@@ -59,7 +59,7 @@ export function SatelliteImagesOffer({
   );
 }
 
-/** The picks of a `SatelliteImagesOffer`, cleared when the event changes. */
+/** The picks of a `SatelliteSourcesOffer`, cleared when the event changes. */
 export function useSatelliteOffer() {
   const [picked, setPicked] = useState<{ eventId: string | null; ids: Set<string> }>({
     eventId: null,
@@ -80,10 +80,10 @@ export function useSatelliteOffer() {
  *  stops there: the link itself is already made. */
 export async function fileOffered(siteId: string, sources: Source[], picked: ReadonlySet<string>) {
   for (const { source, index } of satelliteSources(sources)) {
-    const image = imageFromEventSource(source);
-    if (!image || !picked.has(source.id)) continue;
+    const body = siteSourceFromEventSource(source);
+    if (!body || !picked.has(source.id)) continue;
     try {
-      await fileSiteImage(siteId, image);
+      await fileSiteSource(siteId, body);
     } catch (err) {
       throw new Error(
         `The link is made, but ${sourceName(index).toLowerCase()} was not filed: ${errorMessage(err, "the request failed")}`,

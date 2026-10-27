@@ -29,7 +29,7 @@ import {
 import type { EventDetail } from "@/types";
 import { CHANGE_EFFECT_COPY, LinkDialog, type LinkCandidate } from "./LinkDialog";
 import { LinkEffectPill } from "./SiteBadges";
-import { SatelliteImagesOffer, fileOffered, useSatelliteOffer } from "./SatelliteImagesOffer";
+import { SatelliteSourcesOffer, fileOffered, useSatelliteOffer } from "./SatelliteSourcesOffer";
 
 function suggestionCandidate(s: SiteSuggestion): LinkCandidate {
   const where =
@@ -155,7 +155,7 @@ export function EventSitesBlock({ event }: { event: EventDetail }) {
             dialog.edit
               ? undefined
               : () => (
-                  <SatelliteImagesOffer
+                  <SatelliteSourcesOffer
                     sources={event.sources}
                     picked={offer.forEvent(event.id)}
                     onToggle={(id) => offer.toggle(event.id, id)}

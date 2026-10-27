@@ -36,7 +36,7 @@ interface LinkSuggestions {
 /** The dialog's words when it changes a live link's effect, from either page. */
 export const CHANGE_EFFECT_COPY = {
   title: "Change the effect",
-  intro: "The link keeps its history: the site's page records the effect it had and the new one.",
+  intro: "Say what the event shows at the site now. The link keeps no record of its earlier effect.",
 };
 
 /**
@@ -44,7 +44,7 @@ export const CHANGE_EFFECT_COPY = {
  * site from the event page, or one of their events from a site page. The suggestions, when the
  * caller has some (the sites near the event), show as chips, any other pick comes from the search, and the pick shows as an accent chip a
  * click removes. The effect has no default: the analyst says what the event shows. `extra`
- * renders under the effect once a pick is made (the offer to file the event's satellite images).
+ * renders under the effect once a pick is made (the offer to file the event's satellite sources).
  */
 export function LinkDialog({
   title,

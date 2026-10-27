@@ -1,7 +1,7 @@
-"""Sites: create with the first image and contour, the imagery history (any analyst files, the
-provider check refuses an image no reader can reopen, a repeat is flagged), the owner-only
-contour and record edits, the zone valid on a date, event links, suggestions, moderation, and
-the history by date on the ground."""
+"""Sites: create with the first source, contour and linked events, the site sources (any
+analyst files, the provider check refuses a source no reader can reopen, a repeat is flagged),
+the owner's versioned edit, source removal by its filer, the versions, the zone valid on a date,
+event links, suggestions and moderation."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models.event import STATUS_CLOSED, STATUS_GEOLOCATED, Event
 from app.models.media import Media
-from app.models.site import EventSiteLink, Site, SiteVersion
+from app.models.site import EventSiteLink, Site, SiteContour, SiteVersion
 from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services.auth import hash_password
@@ -56,7 +56,7 @@ def _square(half: float, *, lng: float = LNG, lat: float = LAT) -> dict:
     return {"type": "Polygon", "coordinates": [ring]}
 
 
-def _image(captured: str = "2025-01-01", url: str = COPERNICUS, **extra) -> dict:
+def _source(captured: str = "2025-01-01", url: str = COPERNICUS, **extra) -> dict:
     return {"captured_at": f"{captured}T10:00:00Z", "links": [{"url": url}], **extra}
 
 
@@ -128,39 +128,54 @@ def _event(
     return event
 
 
-def _post_site(user: User, zone: dict, *, name: str = "Site Alpha", **image) -> object:
+def _post_site(user: User, zone: dict, *, name: str = "Site Alpha", **source) -> object:
     return client.post(
         SITES,
-        json={"name": name, "kind": "airbase", "contour": zone, "image": _image(**image)},
+        json={"name": name, "kind": "airbase", "contour": zone, "source": _source(**source)},
         headers=login_as(client, user),
     )
 
 
-def _create_site(user: User, zone: dict, *, name: str = "Site Alpha", **image) -> dict:
-    response = _post_site(user, zone, name=name, **image)
+def _create_site(user: User, zone: dict, *, name: str = "Site Alpha", **source) -> dict:
+    response = _post_site(user, zone, name=name, **source)
     assert response.status_code == 201, response.text
     return response.json()
 
 
 def _file(user: User, site_id: str, body: dict):
-    return client.post(f"{SITES}/{site_id}/images", json=body, headers=login_as(client, user))
+    return client.post(f"{SITES}/{site_id}/sources", json=body, headers=login_as(client, user))
 
 
-def _contour(user: User, site_id: str, zone: dict, image_id: str):
-    return client.post(
-        f"{SITES}/{site_id}/contours",
-        json={"zone": zone, "image_id": image_id},
-        headers=login_as(client, user),
-    )
+def _save(user: User, site_id: str, **changes):
+    """``POST /sites/{id}/versions`` on the live version, the record unchanged unless given."""
+    live = _read(site_id)
+    body = {"version_no": live["version_no"], "name": live["name"], "kind": live["kind"], **changes}
+    return client.post(f"{SITES}/{site_id}/versions", json=body, headers=login_as(client, user))
+
+
+def _contour(user: User, site_id: str, zone: dict | None, source_id: str):
+    return _save(user, site_id, contours=[{"source_id": source_id, "zone": zone}])
+
+
+def _drawn(response, source_id: str) -> dict:
+    """The live contour the saved site carries on ``source_id``."""
+    assert response.status_code == 200, response.text
+    (contour,) = [c for c in response.json()["contours"] if c["source_id"] == source_id]
+    return contour
 
 
 def _grow(owner: User, site_id: str, zone: dict, captured: str) -> dict:
-    """File an image captured on ``captured`` and draw ``zone`` from it."""
-    filed = _file(owner, site_id, _image(captured))
+    """File a source captured on ``captured`` and draw ``zone`` from it."""
+    filed = _file(owner, site_id, _source(captured))
     assert filed.status_code == 201, filed.text
-    drawn = _contour(owner, site_id, zone, filed.json()["id"])
-    assert drawn.status_code == 201, drawn.text
-    return drawn.json()
+    return _drawn(_contour(owner, site_id, zone, filed.json()["id"]), filed.json()["id"])
+
+
+def _versions(site_id: str) -> list[dict]:
+    client.cookies.clear()
+    response = client.get(f"{SITES}/{site_id}/versions")
+    assert response.status_code == 200, response.text
+    return response.json()["items"]
 
 
 def _link(user: User, event: Event, site_id: str, effect: str = "damage"):
@@ -189,28 +204,29 @@ def _code(response) -> str:
     return response.json()["detail"]["code"]
 
 
-def test_create_site_with_its_first_image_and_contour(users):
+def test_create_site_with_its_first_source_and_contour(users):
     owner = users()
     body = _create_site(owner, _square(0.01), note="  Runway visible.  ", title="Pass 1")
 
     assert (body["name"], body["kind"]) == ("Site Alpha", "airbase")
     assert body["owner"]["id"] == str(owner.id)
+    assert body["version_no"] == 1
     assert body["hidden_at"] is None
     assert body["overlapping_sites"] == []
     assert body["centroid"] == pytest.approx({"lat": LAT, "lng": LNG})
-    (image,) = body["images"]
-    assert (image["kind"], image["level"], image["title"]) == ("satellite", "context", "Pass 1")
-    assert image["author"]["id"] == str(owner.id)
-    assert image["note"] == "Runway visible."
-    assert image["provider"]["id"] == "copernicus_browser"
-    assert image["warnings"] == []
-    assert image["links"][0]["url"] == COPERNICUS
+    (source,) = body["sources"]
+    assert (source["kind"], source["level"], source["title"]) == ("satellite", "context", "Pass 1")
+    assert source["author"]["id"] == str(owner.id)
+    assert source["note"] == "Runway visible."
+    assert source["provider"]["id"] == "copernicus_browser"
+    assert source["warnings"] == []
+    assert source["links"][0]["url"] == COPERNICUS
     (contour,) = body["contours"]
-    assert contour["image_id"] == image["id"]
+    assert contour["source_id"] == source["id"]
     assert contour["id"] == body["contour_id"]
     assert contour["zone"]["coordinates"][0][0] == pytest.approx([LNG - 0.01, LAT - 0.01])
-    assert body["last_image"] == {
-        "id": image["id"],
+    assert body["last_source"] == {
+        "id": source["id"],
         "captured_at": "2025-01-01T10:00:00Z",
         "provider": {"id": "copernicus_browser", "name": "Copernicus Browser"},
     }
@@ -228,18 +244,18 @@ def test_a_zone_over_the_size_caps_is_refused_wherever_a_contour_is_accepted(use
     just_under = _square(0.44, lng=LNG + 0.9)
 
     site = _create_site(owner, _square(0.01, lng=LNG + 0.9))
-    image_id = site["images"][0]["id"]
+    source_id = site["sources"][0]["id"]
     headers = login_as(client, owner)
     for zone, code in ((too_large, "zone_too_large"), (too_wide, "zone_too_wide")):
         assert _code(_post_site(owner, zone)) == code
-        contour = _contour(owner, site["id"], zone, image_id)
+        contour = _contour(owner, site["id"], zone, source_id)
         assert contour.status_code == 400
         assert _code(contour) == code
         overlaps = client.post(f"{SITES}/overlaps", json={"zone": zone}, headers=headers)
         assert overlaps.status_code == 400
         assert _code(overlaps) == code
 
-    assert _contour(owner, site["id"], just_under, image_id).status_code == 201
+    assert _contour(owner, site["id"], just_under, source_id).status_code == 200
     assert _post_site(owner, just_under, name="Wide yard").status_code == 201
 
 
@@ -263,15 +279,19 @@ def test_a_zone_over_the_size_caps_is_refused_wherever_a_contour_is_accepted(use
         ),
         ({"kind": "bunker"}, 422, None),
         ({"name": "   "}, 422, None),
-        ({"image": _image("2999-01-01")}, 422, None),
+        ({"source": _source("2999-01-01")}, 422, None),
         (
-            {"image": {"captured_at": "2025-01-01T00:00:00Z", "links": []}},
+            {"source": {"captured_at": "2025-01-01T00:00:00Z", "links": []}},
             400,
             "source_link_required",
         ),
-        ({"image": _image(url=GOOGLE_MAPS)}, 400, "imagery_not_reopenable"),
-        ({"image": _image(url="https://imagery.example/pass.png")}, 400, "imagery_not_reopenable"),
-        ({"image": _image(url="https://goo.gl/abc")}, 400, "imagery_not_reopenable"),
+        ({"source": _source(url=GOOGLE_MAPS)}, 400, "imagery_not_reopenable"),
+        (
+            {"source": _source(url="https://imagery.example/pass.png")},
+            400,
+            "imagery_not_reopenable",
+        ),
+        ({"source": _source(url="https://goo.gl/abc")}, 400, "imagery_not_reopenable"),
     ],
     ids=[
         "self-crossing",
@@ -285,11 +305,11 @@ def test_a_zone_over_the_size_caps_is_refused_wherever_a_contour_is_accepted(use
         "short-link",
     ],
 )
-def test_create_refuses_an_invalid_site_or_an_image_no_reader_can_reopen(
+def test_create_refuses_an_invalid_site_or_a_source_no_reader_can_reopen(
     db, users, change, status, code
 ):
     owner = users()
-    body = {"name": "Bad", "kind": "depot", "contour": _square(0.01), "image": _image(), **change}
+    body = {"name": "Bad", "kind": "depot", "contour": _square(0.01), "source": _source(), **change}
     response = client.post(SITES, json=body, headers=login_as(client, owner))
     assert response.status_code == status, response.text
     if code is not None:
@@ -308,7 +328,7 @@ def test_an_unlisted_publication_with_an_archived_copy_is_accepted(users):
             "name": "Archived",
             "kind": "unknown",
             "contour": _square(0.01, lat=LAT + 0.7),
-            "image": {
+            "source": {
                 "captured_at": "2025-01-01T00:00:00Z",
                 "links": [{"url": url, "snapshot_url": snapshot}],
             },
@@ -316,10 +336,10 @@ def test_an_unlisted_publication_with_an_archived_copy_is_accepted(users):
         headers=login_as(client, owner),
     )
     assert response.status_code == 201, response.text
-    (image,) = response.json()["images"]
-    assert image["provider"] is None
-    assert image["links"][0]["archived"]["provider"] == "wayback"
-    assert response.json()["last_image"]["provider"] is None
+    (source,) = response.json()["sources"]
+    assert source["provider"] is None
+    assert source["links"][0]["archived"]["provider"] == "wayback"
+    assert response.json()["last_source"]["provider"] is None
 
 
 def test_overlap_check_reports_both_shares(users):
@@ -341,38 +361,38 @@ def test_overlap_check_reports_both_shares(users):
     assert existing["id"] in {row["id"] for row in created["overlapping_sites"]}
 
 
-def test_any_analyst_files_an_image_and_a_repeat_is_flagged(users):
+def test_any_analyst_files_a_source_and_a_repeat_is_flagged(users):
     owner, analyst = users(), users()
     site = _create_site(owner, _square(0.01, lng=LNG - 0.6), captured="2025-01-01")
 
-    repeat = _file(analyst, site["id"], _image("2025-01-01", note="Same pass, closer crop"))
+    repeat = _file(analyst, site["id"], _source("2025-01-01", note="Same pass, closer crop"))
     assert repeat.status_code == 201, repeat.text
     body = repeat.json()
     assert body["author"]["id"] == str(analyst.id)
-    assert body["duplicate_image_ids"] == [site["images"][0]["id"]]
+    assert body["duplicate_source_ids"] == [site["sources"][0]["id"]]
 
-    other_provider = _file(analyst, site["id"], _image("2025-01-01", url=WAYBACK))
-    assert other_provider.json()["duplicate_image_ids"] == []
-    other_day = _file(analyst, site["id"], _image("2025-01-02"))
-    assert other_day.json()["duplicate_image_ids"] == []
+    other_provider = _file(analyst, site["id"], _source("2025-01-01", url=WAYBACK))
+    assert other_provider.json()["duplicate_source_ids"] == []
+    other_day = _file(analyst, site["id"], _source("2025-01-02"))
+    assert other_day.json()["duplicate_source_ids"] == []
 
     read = _read(site["id"])
-    assert len(read["images"]) == 4
-    # Images never move the contour.
+    assert len(read["sources"]) == 4
+    # Sources never move the contour.
     assert [c["id"] for c in read["contours"]] == [site["contour_id"]]
 
-    unknown = _file(analyst, str(uuid.uuid4()), _image())
+    unknown = _file(analyst, str(uuid.uuid4()), _source())
     assert unknown.status_code == 404
     assert _code(unknown) == "site_not_found"
-    refused = _file(analyst, site["id"], _image(url=GOOGLE_MAPS))
+    refused = _file(analyst, site["id"], _source(url=GOOGLE_MAPS))
     assert _code(refused) == "imagery_not_reopenable"
 
 
-def test_an_image_takes_a_staged_upload_or_the_file_of_a_published_event(db, users):
+def test_a_source_takes_a_staged_upload_or_the_file_of_a_published_event(db, users):
     owner = users()
     site = _create_site(owner, _square(0.01, lat=LAT - 0.7))
     upload_id = stage_file(owner)
-    staged = _file(owner, site["id"], _image(upload_id=upload_id))
+    staged = _file(owner, site["id"], _source(upload_id=upload_id))
     assert staged.status_code == 201, staged.text
     assert staged.json()["media"]["role"] == "source"
 
@@ -392,29 +412,29 @@ def test_an_image_takes_a_staged_upload_or_the_file_of_a_published_event(db, use
         )
     )
     db.commit()
-    copied = _file(owner, site["id"], _image(media_id=str(media.id)))
+    copied = _file(owner, site["id"], _source(media_id=str(media.id)))
     assert copied.status_code == 201, copied.text
     assert copied.json()["media"]["storage_url"] == media.storage_url
     assert copied.json()["media"]["id"] != str(media.id)
 
-    missing = _file(owner, site["id"], _image(media_id=str(uuid.uuid4())))
+    missing = _file(owner, site["id"], _source(media_id=str(uuid.uuid4())))
     assert _code(missing) == "source_media_not_found"
-    both = _file(owner, site["id"], _image(media_id=str(media.id), upload_id=str(uuid.uuid4())))
+    both = _file(owner, site["id"], _source(media_id=str(media.id), upload_id=str(uuid.uuid4())))
     assert both.status_code == 422
 
 
-def test_only_the_owner_changes_the_contour_citing_an_image_of_the_site(users):
+def test_only_the_owner_redraws_a_contour_on_a_live_source_of_the_site(users):
     owner, analyst = users(), users()
     site = _create_site(owner, _square(0.01, lng=LNG + 0.9))
     other = _create_site(analyst, _square(0.01, lng=LNG - 0.9))
-    filed = _file(analyst, site["id"], _image("2025-02-01")).json()
+    filed = _file(analyst, site["id"], _source("2025-02-01")).json()
 
     refused = _contour(analyst, site["id"], _square(0.02, lng=LNG + 0.9), filed["id"])
     assert refused.status_code == 403
     assert _code(refused) == "not_site_owner"
-    foreign = _contour(owner, site["id"], _square(0.02, lng=LNG + 0.9), other["images"][0]["id"])
-    assert foreign.status_code == 400
-    assert _code(foreign) == "site_image_not_found"
+    foreign = _contour(owner, site["id"], _square(0.02, lng=LNG + 0.9), other["sources"][0]["id"])
+    assert foreign.status_code == 404
+    assert _code(foreign) == "site_source_not_found"
     invalid = _contour(
         owner,
         site["id"],
@@ -423,16 +443,23 @@ def test_only_the_owner_changes_the_contour_citing_an_image_of_the_site(users):
     )
     assert _code(invalid) == "invalid_zone"
 
-    # The owner may draw from an image another analyst filed.
-    drawn = _contour(owner, site["id"], _square(0.02, lng=LNG + 0.9), filed["id"])
-    assert drawn.status_code == 201, drawn.text
-    assert drawn.json()["image_id"] == filed["id"]
-    assert drawn.json()["author"]["id"] == str(owner.id)
-    assert drawn.json()["captured_at"] == "2025-02-01T10:00:00Z"
-    assert _read(site["id"])["contour_id"] == drawn.json()["id"]
+    # The owner may draw on a source another analyst filed.
+    drawn = _drawn(
+        _contour(owner, site["id"], _square(0.02, lng=LNG + 0.9), filed["id"]), filed["id"]
+    )
+    assert drawn["author"]["id"] == str(owner.id)
+    assert drawn["captured_at"] == "2025-02-01T10:00:00Z"
+    assert _read(site["id"])["contour_id"] == drawn["id"]
+
+    # A redraw on the same source replaces its contour; the earlier one leaves the live state.
+    redrawn = _drawn(
+        _contour(owner, site["id"], _square(0.03, lng=LNG + 0.9), filed["id"]), filed["id"]
+    )
+    assert redrawn["id"] != drawn["id"]
+    assert len(_read(site["id"])["contours"]) == 2
 
 
-def test_the_zone_valid_on_a_date_is_the_contour_of_the_latest_image_on_or_before_it(users):
+def test_the_zone_valid_on_a_date_is_the_contour_of_the_latest_source_on_or_before_it(users):
     owner = users()
     site = _create_site(owner, _square(0.01), captured="2025-01-01")
     grown = _grow(owner, site["id"], _square(0.05), "2025-06-01")
@@ -445,10 +472,10 @@ def test_the_zone_valid_on_a_date_is_the_contour_of_the_latest_image_on_or_befor
     after = _on_map(site["id"], "2025-07-01")
     assert early is not None and before is not None and after is not None
     assert early["contour_id"] == older["id"]
-    assert early["last_image"]["captured_at"] == "2024-06-01T10:00:00Z"
+    assert early["last_source"]["captured_at"] == "2024-06-01T10:00:00Z"
     assert before["contour_id"] == site["contour_id"]
     assert before["zone"]["coordinates"][0][0] == pytest.approx([LNG - 0.01, LAT - 0.01])
-    assert before["last_image"]["captured_at"] == "2025-01-01T10:00:00Z"
+    assert before["last_source"]["captured_at"] == "2025-01-01T10:00:00Z"
     assert after["contour_id"] == grown["id"]
     assert after["zone"]["coordinates"][0][0] == pytest.approx([LNG - 0.05, LAT - 0.05])
     assert _read(site["id"])["contour_id"] == grown["id"]
@@ -459,42 +486,146 @@ def test_the_zone_valid_on_a_date_is_the_contour_of_the_latest_image_on_or_befor
     assert _on_map(site["id"], "2025-07-01", edge) is not None
 
 
-def test_only_the_owner_edits_the_record_and_each_edit_is_versioned(db, users):
+def test_the_owner_saves_one_version_and_the_version_is_read_in_full(db, users):
     owner, analyst = users(), users()
     site = _create_site(owner, _square(0.01, lat=LAT + 0.2), name="Depot North")
-    path = f"{SITES}/{site['id']}"
+    path = f"{SITES}/{site['id']}/versions"
+    first_source = site["sources"][0]["id"]
 
-    refused = client.patch(path, json={"name": "Mine"}, headers=login_as(client, analyst))
+    refused = _save(analyst, site["id"], name="Mine")
     assert refused.status_code == 403
     assert _code(refused) == "not_site_owner"
-    assert client.patch(path, json={}, headers=login_as(client, owner)).status_code == 422
-
-    edited = client.patch(
-        path, json={"name": "  Depot South ", "kind": "depot"}, headers=login_as(client, owner)
+    unchanged = _save(owner, site["id"])
+    assert unchanged.status_code == 409
+    assert _code(unchanged) == "nothing_changed"
+    stale = client.post(
+        path,
+        json={"version_no": 7, "name": "Depot South", "kind": "depot"},
+        headers=login_as(client, owner),
     )
-    assert edited.status_code == 200, edited.text
-    assert (edited.json()["name"], edited.json()["kind"]) == ("Depot South", "depot")
-    same = client.patch(path, json={"name": "Depot South"}, headers=login_as(client, owner))
-    assert same.status_code == 200
+    assert stale.status_code == 409
+    assert _code(stale) == "version_mismatch"
+    assert _save(owner, site["id"], contours=[{"zone": None}]).status_code == 422
+
+    # One save: the record, a new source and a contour drawn on it.
+    saved = _save(
+        owner,
+        site["id"],
+        name="  Depot South ",
+        kind="depot",
+        added_sources=[_source("2025-06-01", note="After the fire")],
+        contours=[{"added_source": 0, "zone": _square(0.02, lat=LAT + 0.2)}],
+    )
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert (body["name"], body["kind"], body["version_no"]) == ("Depot South", "depot", 2)
+    added = next(source for source in body["sources"] if source["id"] != first_source)
+    assert added["note"] == "After the fire"
+    assert added["author"]["id"] == str(owner.id)
+    assert body["contour_id"] == _drawn(saved, added["id"])["id"]
+    assert len(body["contours"]) == 2
 
     db.expire_all()
     (version,) = db.query(SiteVersion).filter(SiteVersion.site_id == site["id"]).all()
     assert version.version_no == 1
-    assert version.snapshot == {"name": "Depot North", "kind": "airbase"}
     assert version.edited_by_id == owner.id
-    assert db.query(Site.version_no).filter(Site.id == site["id"]).scalar() == 2
+    assert version.snapshot == {
+        "name": "Depot North",
+        "kind": "airbase",
+        "sources": [{"id": first_source, "contour_id": site["contour_id"]}],
+    }
 
-    client.cookies.clear()
-    history = client.get(f"{path}/history").json()
-    (created,) = [entry for entry in history if entry["kind"] == "site_created"]
-    last = history[-1]
-    assert created["kind"] == "site_created"
-    assert created["record"] == {"name": "Depot North", "kind": "airbase"}
-    assert last["kind"] == "record_edited"
-    assert last["previous_record"] == {"name": "Depot North", "kind": "airbase"}
-    assert last["record"] == {"name": "Depot South", "kind": "depot"}
-    assert last["actor"]["id"] == str(owner.id)
-    assert last["fact_date"] is None
+    (v1,) = _versions(site["id"])
+    assert (v1["version_no"], v1["name"], v1["kind"]) == (1, "Depot North", "airbase")
+    assert v1["edited_by"]["id"] == str(owner.id)
+    assert [source["id"] for source in v1["sources"]] == [first_source]
+    assert [contour["id"] for contour in v1["contours"]] == [site["contour_id"]]
+    assert v1["contour_id"] == site["contour_id"]
+    assert v1["centroid"] == pytest.approx({"lat": LAT + 0.2, "lng": LNG})
+    assert v1["last_source"]["id"] == first_source
+    one = client.get(f"{path}/1")
+    assert one.status_code == 200
+    assert one.json() == v1
+    for missing in (2, 0, 99):
+        response = client.get(f"{path}/{missing}")
+        assert response.status_code == 404
+        assert _code(response) == "site_version_not_found"
+
+
+def test_every_write_to_the_state_files_a_version_and_a_link_files_none(db, users):
+    owner, analyst = users(), users()
+    site = _create_site(owner, _square(0.01, lng=LNG - 0.2))
+    filed = _file(analyst, site["id"], _source("2025-03-01"))
+    assert filed.status_code == 201
+    _contour(owner, site["id"], _square(0.02, lng=LNG - 0.2), filed.json()["id"])
+    assert _link(owner, _event(db, owner, lng=LNG - 0.2), site["id"]).status_code == 200
+
+    assert _read(site["id"])["version_no"] == 3
+    v2, v1 = _versions(site["id"])
+    assert (v2["version_no"], v2["edited_by"]["id"]) == (2, str(owner.id))
+    assert (v1["version_no"], v1["edited_by"]["id"]) == (1, str(analyst.id))
+    assert len(v1["sources"]) == 1
+    assert len(v2["sources"]) == 2
+    assert len(v2["contours"]) == 1
+
+    db.query(Site).filter(Site.id == site["id"]).update({"version_no": 100})
+    db.commit()
+    capped = _file(analyst, site["id"], _source("2025-04-01"))
+    assert capped.status_code == 409
+    assert _code(capped) == "version_limit"
+
+
+def test_only_the_filer_removes_a_source_once_it_carries_no_contour(db, users):
+    owner, analyst = users(), users()
+    site = _create_site(owner, _square(0.01, lat=LAT - 0.3))
+    first = site["sources"][0]["id"]
+    theirs = _file(analyst, site["id"], _source("2025-02-01")).json()["id"]
+    mine = _file(owner, site["id"], _source("2025-03-01")).json()["id"]
+
+    def remove(user: User, source_id: str):
+        return client.delete(
+            f"{SITES}/{site['id']}/sources/{source_id}", headers=login_as(client, user)
+        )
+
+    refused = remove(owner, theirs)
+    assert refused.status_code == 403
+    assert _code(refused) == "not_source_author"
+    carries = remove(owner, first)
+    assert carries.status_code == 409
+    assert _code(carries) == "source_carries_contour"
+    assert _code(remove(owner, str(uuid.uuid4()))) == "site_source_not_found"
+    assert remove(analyst, theirs).status_code == 204
+    assert _code(remove(analyst, theirs)) == "site_source_not_found"
+
+    live = _read(site["id"])
+    assert theirs not in {source["id"] for source in live["sources"]}
+    removed_in = next(v for v in _versions(site["id"]) if v["version_no"] == live["version_no"] - 1)
+    assert theirs in {source["id"] for source in removed_in["sources"]}
+    db.expire_all()
+    assert db.query(Source).filter(Source.id == theirs).one().removed_at is not None
+
+    # The owner moves the contour off the first source and removes it in one save.
+    dropped = _save(owner, site["id"], contours=[{"source_id": first, "zone": None}])
+    assert _code(dropped) == "site_contour_required"
+    kept = _save(owner, site["id"], removed_source_ids=[first])
+    assert _code(kept) == "source_carries_contour"
+    moved = _save(
+        owner,
+        site["id"],
+        removed_source_ids=[first],
+        contours=[
+            {"source_id": first, "zone": None},
+            {"source_id": mine, "zone": _square(0.01, lat=LAT - 0.3)},
+        ],
+    )
+    assert moved.status_code == 200, moved.text
+    assert [source["id"] for source in moved.json()["sources"]] == [mine]
+    assert [contour["source_id"] for contour in moved.json()["contours"]] == [mine]
+    db.expire_all()
+    superseded = db.query(SiteContour).filter(SiteContour.id == site["contour_id"]).one()
+    assert superseded.superseded_at is not None
+    v1 = client.get(f"{SITES}/{site['id']}/versions/1").json()
+    assert [contour["id"] for contour in v1["contours"]] == [site["contour_id"]]
 
 
 def _link_rows(db, event: Event) -> list[EventSiteLink]:
@@ -505,6 +636,52 @@ def _link_rows(db, event: Event) -> list[EventSiteLink]:
         .order_by(EventSiteLink.linked_at)
         .all()
     )
+
+
+def test_the_owner_links_their_events_on_create_and_on_save(db, users):
+    owner, stranger = users(), users()
+    lat = LAT + 0.35
+    mine, other = _event(db, owner, lat=lat), _event(db, owner, lat=lat)
+    theirs = _event(db, stranger, lat=lat)
+    body = {
+        "name": "Linked",
+        "kind": "port",
+        "contour": _square(0.01, lat=lat),
+        "source": _source(),
+    }
+    headers = login_as(client, owner)
+
+    foreign = client.post(
+        SITES,
+        json={**body, "event_links": [{"event_id": str(theirs.id), "effect": "damage"}]},
+        headers=headers,
+    )
+    assert _code(foreign) == "not_event_owner"
+    created = client.post(
+        SITES,
+        json={**body, "event_links": [{"event_id": str(mine.id), "effect": "damage"}]},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    site = created.json()
+    assert [(e["id"], e["effect"]) for e in site["linked_events"]] == [(str(mine.id), "damage")]
+    assert _link(stranger, theirs, site["id"], "activity").status_code == 200
+
+    saved = _save(
+        owner,
+        site["id"],
+        event_links=[{"event_id": str(other.id), "effect": "destruction"}],
+    )
+    assert saved.status_code == 200, saved.text
+    # Links file no version, and the stranger's link stays.
+    assert saved.json()["version_no"] == 1
+    assert {(e["id"], e["effect"]) for e in saved.json()["linked_events"]} == {
+        (str(other.id), "destruction"),
+        (str(theirs.id), "activity"),
+    }
+    assert _code(
+        _save(owner, site["id"], event_links=[{"event_id": str(other.id), "effect": "destruction"}])
+    ) == ("nothing_changed")
 
 
 def test_only_the_event_owner_links_and_unlinks(db, users):
@@ -528,37 +705,24 @@ def test_only_the_event_owner_links_and_unlinks(db, users):
     assert client.delete(path, headers=login_as(client, owner)).status_code == 204
     assert client.get(f"/api/v1/events/{event.id}/site-links").json() == []
 
-    (row,) = _link_rows(db, event)
-    assert row.unlinked_at is not None
-    assert (row.linked_by_id, row.unlinked_by_id) == (owner.id, owner.id)
+    assert _link_rows(db, event) == []
     body = _read(site["id"])
     assert body["linked_events"] == []
     assert body["latest_link_effect"] is None
 
 
-def test_an_effect_change_keeps_the_superseded_link(db, users):
+def test_an_effect_change_rewrites_the_link(db, users):
     owner = users()
     site = _create_site(owner, _square(0.01))
     event = _event(db, owner)
-    _link(owner, event, site["id"], "damage")
+    first = _link(owner, event, site["id"], "damage").json()
     changed = _link(owner, event, site["id"], "destruction")
     assert changed.json()["effect"] == "destruction"
+    assert changed.json()["linked_at"] == first["linked_at"]
 
-    old, new = _link_rows(db, event)
-    assert (old.effect, new.effect) == ("damage", "destruction")
-    assert old.unlinked_at == new.linked_at
-    assert new.unlinked_at is None
-    links = client.get(f"/api/v1/events/{event.id}/site-links").json()
-    assert [link["effect"] for link in links] == ["destruction"]
-
-    history = client.get(f"{SITES}/{site['id']}/history").json()
-    kinds = [entry["kind"] for entry in history]
-    assert kinds.count("event_linked") == 1
-    assert "event_unlinked" not in kinds
-    (change,) = [entry for entry in history if entry["kind"] == "link_effect_changed"]
-    assert (change["previous_link_effect"], change["link_effect"]) == ("damage", "destruction")
-    assert change["event"]["id"] == str(event.id)
-    assert change["actor"]["id"] == str(owner.id)
+    (row,) = _link_rows(db, event)
+    assert row.effect == "destruction"
+    assert _read(site["id"])["version_no"] == 1
 
 
 def test_link_refuses_an_unpublished_event_or_an_unknown_site(db, users):
@@ -726,7 +890,7 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
 
     client.cookies.clear()
     assert client.get(f"{SITES}/{site['id']}").status_code == 404
-    assert client.get(f"{SITES}/{site['id']}/history").status_code == 404
+    assert client.get(f"{SITES}/{site['id']}/versions").status_code == 404
     assert _on_map(site["id"], "2025-12-31") is None
     assert client.get(f"/api/v1/events/{event.id}/site-links").json() == []
     assert client.post(f"{SITES}/{site['id']}/report", json={"reason": "other"}).status_code == 404
@@ -735,7 +899,7 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
         f"/api/v1/events/{event.id}/site-suggestions", params={"q": site["name"]}, headers=headers
     ).json()
     assert suggestions == []
-    assert _file(owner, site["id"], _image()).status_code == 404
+    assert _file(owner, site["id"], _source()).status_code == 404
     assert _code(_link(owner, _event(db, owner, lat=lat), site["id"])) == "site_not_found"
 
     as_admin = client.get(f"{SITES}/{site['id']}", headers=login_as(client, admin))
@@ -759,43 +923,10 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
     assert _code(unknown) == "site_not_found"
 
 
-def test_history_orders_by_the_date_on_the_ground(db, users):
-    owner, analyst = users(), users()
-    site = _create_site(owner, _square(0.01), captured="2025-05-01")
-    old_imagery = _file(analyst, site["id"], _image("2024-01-01"))
-    assert old_imagery.status_code == 201
-    contour = _contour(owner, site["id"], _square(0.02), old_imagery.json()["id"])
-    assert contour.status_code == 201
-    event = _event(db, owner, occurred_date=date(2024, 6, 1))
-    _link(owner, event, site["id"], "damage")
-    client.delete(
-        f"/api/v1/events/{event.id}/site-links/{site['id']}", headers=login_as(client, owner)
-    )
-
-    client.cookies.clear()
-    response = client.get(f"{SITES}/{site['id']}/history")
-    assert response.status_code == 200
-    # Record-only entries sit on the day they were recorded.
-    assert [(entry["kind"], entry["fact_date"]) for entry in response.json()] == [
-        ("image_filed", "2024-01-01"),
-        ("contour_changed", "2024-01-01"),
-        ("event_linked", "2024-06-01"),
-        ("event_unlinked", "2024-06-01"),
-        ("image_filed", "2025-05-01"),
-        ("site_created", None),
-    ]
-    entries = response.json()
-    created = next(entry for entry in entries if entry["kind"] == "site_created")
-    assert created["contour_id"] == site["contour_id"]
-    assert created["image_id"] == site["images"][0]["id"]
-    filed = next(entry for entry in entries if entry["fact_date"] == "2024-01-01")
-    assert filed["actor"]["id"] == str(analyst.id)
-
-
-def test_erasing_the_owner_takes_the_site_and_sweeps_its_image_files(db, users, monkeypatch):
+def test_erasing_the_owner_takes_the_site_and_sweeps_its_source_files(db, users, monkeypatch):
     owner, admin = users(), users(is_admin=True)
     site = _create_site(owner, _square(0.01, lat=LAT - 0.55), upload_id=stage_file(owner))
-    stored = site["images"][0]["media"]["storage_url"]
+    stored = site["sources"][0]["media"]["storage_url"]
     swept: list = []
     monkeypatch.setattr(
         "app.services.admin.sweep_unreferenced",

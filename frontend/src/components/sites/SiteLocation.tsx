@@ -15,33 +15,33 @@ import {
   utcDay,
   zoneEmphasis,
   type Site,
-  type SiteImage,
+  type SiteSource,
 } from "@/lib/sites";
 
 const SiteMap = dynamic(() => import("@/components/map/SiteMap"), { ssr: false });
 
 /**
  * The site's Location block: the event page's `EventLocation` filled with the site map. It shows
- * the zone valid on the capture day of the image picked in the imagery history, the contour
+ * the zone valid on the capture day of the source picked among the site's sources, the contour
  * before it dashed, and the linked events. With no contour yet on that day, the first contour
  * shows dashed and the Contour row says so. The coordinates are the current zone's centroid.
  */
 export function SiteLocation({
   site,
-  image,
+  source,
   ref,
 }: {
   site: Site;
-  image: SiteImage | null;
+  source: SiteSource | null;
   ref?: Ref<HTMLDivElement>;
 }) {
   const router = useRouter();
-  const day = image?.captured_at ? utcDay(image.captured_at) : null;
+  const day = source?.captured_at ? utcDay(source.captured_at) : null;
   const contour = day ? contourOn(site.contours, day) : null;
   const first = site.contours[0] ?? null;
   const previous = contour ? contourBefore(site.contours, contour) : null;
   const reference = contour ? previous : first;
-  const source = contour && site.images.find((i) => i.id === contour.image_id);
+  const drawnOn = contour && site.sources.find((s) => s.id === contour.source_id);
   const legend = [
     reference &&
       `Dashed: ${contour ? "the contour before it" : "the first contour"}, from ${formatInstantDate(reference.captured_at)}`,
@@ -80,14 +80,14 @@ export function SiteLocation({
       }
       rows={
         <>
-          <DetailRow label="Zone on" value={day ? formatInstantDate(day) : "No image yet"} />
+          <DetailRow label="Zone on" value={day ? formatInstantDate(day) : "No source yet"} />
           <DetailRow
             label="Contour"
             concept="site_zone"
             value={
               contour
-                ? `${zoneAreaKm2(zoneVertices(contour.zone)).toFixed(2)} km², from the image of ${formatInstantDate(
-                    source?.captured_at ?? contour.captured_at,
+                ? `${zoneAreaKm2(zoneVertices(contour.zone)).toFixed(2)} km², from the source of ${formatInstantDate(
+                    drawnOn?.captured_at ?? contour.captured_at,
                   )}`
                 : "None drawn yet on this date"
             }
