@@ -268,7 +268,7 @@ describe("the filter panel on the Collections scope", () => {
 
     expect(await screen.findByText("Nova Kakhovka dam")).toBeInTheDocument();
     expect(toggle("Author")).toBeInTheDocument();
-    for (const title of ["Status", "Source media", "Event date", "Added", "Tags"]) {
+    for (const title of ["Status", "Status, conflict, tags", "Dates", "Source", "People"]) {
       expect(toggle(title)).not.toBeInTheDocument();
     }
   });
@@ -364,12 +364,12 @@ describe("the search page's filter rail", () => {
     render(<SearchPage />);
     expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "Filters" })).toContainElement(
-      screen.getByRole("button", { name: "Toggle Event date" }),
+      screen.getByRole("button", { name: "Toggle Dates" }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     const dialog = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Event date" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Dates" }));
     fireEvent.change(within(dialog).getByLabelText("Event date from"), {
       target: { value: "2026-06-01" },
     });
@@ -423,7 +423,7 @@ describe("the approval filters on the search page", () => {
 
     render(<SearchPage />);
     const rail = await screen.findByRole("complementary", { name: "Filters" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Approvals" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle People" }));
     fireEvent.click(within(rail).getByRole("button", { name: "Approved only" }));
 
     await waitFor(() =>
