@@ -94,6 +94,7 @@ export function SourceEditor({
   onImportLink,
   tags,
   setTags,
+  suggestedTags,
   invalid = {},
   actions,
   wide = false,
@@ -110,6 +111,7 @@ export function SourceEditor({
   /** The tag catalogue the event's Details card also reads; an event source only. */
   tags?: Tag[];
   setTags?: Dispatch<SetStateAction<Tag[]>>;
+  suggestedTags?: Tag[];
   invalid?: SourceEditorInvalid;
   actions?: ReactNode;
   /** The editor owns the whole section (a lone source): the file sits left of the fields once
@@ -299,6 +301,7 @@ export function SourceEditor({
         <TagsField
           tags={tags}
           setTags={setTags}
+          suggested={suggestedTags}
           selected={draft.tagIds}
           setSelected={(tagIds) => update({ tagIds })}
           owner={name}

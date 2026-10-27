@@ -51,9 +51,11 @@ const CONFLICTS: Conflict[] = [
 function Host({
   conflicts = CONFLICTS,
   initialTags = [],
+  suggestedTags,
 }: {
   conflicts?: Conflict[];
   initialTags?: Tag[];
+  suggestedTags?: Tag[];
 }) {
   const [tags, setTags] = useState<Tag[]>(initialTags);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -62,6 +64,7 @@ function Host({
     <TagPicker
       tags={tags}
       setTags={setTags}
+      suggestedTags={suggestedTags}
       selectedTagIds={selectedTagIds}
       setSelectedTagIds={setSelectedTagIds}
       conflicts={conflicts}
@@ -256,5 +259,44 @@ describe("TagPicker tags", () => {
     await waitFor(() =>
       expect(screen.queryByText("That tag already exists.")).not.toBeInTheDocument()
     );
+  });
+});
+
+describe("TagPicker suggested tags", () => {
+  const suggestions = () => screen.queryByRole("group", { name: "Suggested tags" });
+
+  it("adds a suggestion in one click and drops it from the row", () => {
+    render(<Host initialTags={TAGS} suggestedTags={[TAGS[2], TAGS[0]]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add drone" }));
+
+    expect(screen.getByRole("button", { name: "Remove drone" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add drone" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add armor" })).toBeInTheDocument();
+  });
+
+  it("shows a picked suggestion again once it is removed", () => {
+    render(<Host initialTags={TAGS} suggestedTags={[TAGS[2]]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add drone" }));
+    expect(suggestions()).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove drone" }));
+    expect(screen.getByRole("button", { name: "Add drone" })).toBeInTheDocument();
+  });
+
+  it("picks a suggestion the catalogue has not loaded yet", () => {
+    render(<Host suggestedTags={[{ id: "t7", name: "convoy" }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add convoy" }));
+    expect(screen.getByRole("button", { name: "Remove convoy" })).toBeInTheDocument();
+  });
+
+  it("shows at most eight suggestions", () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ id: `s${i}`, name: `tag${i}` }));
+    render(<Host initialTags={many} suggestedTags={many} />);
+    expect(screen.getAllByRole("button", { name: /^Add tag/ })).toHaveLength(8);
+  });
+
+  it("draws no row without suggestions", () => {
+    render(<Host initialTags={TAGS} />);
+    expect(suggestions()).not.toBeInTheDocument();
   });
 });

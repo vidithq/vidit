@@ -153,6 +153,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List the tags on live events or their sources |
+| GET | `/tags/suggested` | 🔒 | Your most used tags, then the platform's, for the tag fields of the forms |
 | POST | `/tags` | 🔒 | Create a tag, or get the one already named so |
 | **Conflicts** | | | |
 | GET | `/conflicts` | 🌐 | List the conflict referential (`?used=true` narrows to conflicts on live events) |
@@ -289,7 +290,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
-| `GET /tags` | 60/min |
+| `GET /tags`, `GET /tags/suggested` | 60/min |
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
 | **Users / Feed** | |
@@ -2070,6 +2071,25 @@ List the tags on at least one **live** event (not deleted, not withheld) or on o
 [
   { "id": "uuid", "name": "airstrike" },
   { "id": "uuid", "name": "power grid" }
+]
+```
+
+---
+
+### `GET /tags/suggested` 🔒
+
+List up to 16 tags for the tag fields of the event and source forms to offer in one click. Takes no query params.
+
+- Your tags come first, ranked by their uses. A use is a live event you own, or a source of one, that carries the tag.
+- The platform's most used live tags fill the rest of the list, ranked by their uses on every live event and its sources.
+- Ties rank by name.
+- Every tag in the list is a live tag, as in [`GET /tags`](#get-tags). A tag used only on a deleted or withheld event is left out.
+
+**Response 200:** an array of `TagRead`, most used first.
+```json
+[
+  { "id": "uuid", "name": "airstrike" },
+  { "id": "uuid", "name": "drone" }
 ]
 ```
 

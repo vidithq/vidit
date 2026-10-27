@@ -2416,6 +2416,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tags/suggested": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Suggested Tags
+         * @description Return the tags a form offers in one click: your most used tags, then the platform's.
+         *
+         *     Ranked by uses on live events you own and their sources, then filled with the most used
+         *     live tags. The list never holds an orphan tag.
+         */
+        get: operations["list_suggested_tags_api_v1_tags_suggested_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/uploads": {
         parameters: {
             query?: never;
@@ -10198,6 +10221,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_suggested_tags_api_v1_tags_suggested_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagRead"][];
                 };
             };
             /** @description Validation Error */

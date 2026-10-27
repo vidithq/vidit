@@ -15,6 +15,7 @@ const baseProps = {
     blockedMessage: null,
     tags: [],
     setTags: () => {},
+    suggestedTags: [],
     reloadConflicts: () => {},
     conflictsError: null,
   },
