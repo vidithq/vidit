@@ -16,6 +16,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A Satellite basemap draws the cloud-free Sentinel-2 mosaic of 2016 by EOX ([#709](https://github.com/vidithq/vidit/pull/709)).
 - Two map overlays, off by default, show NASA data of the day before on every basemap: true-colour satellite imagery and fire detections ([#709](https://github.com/vidithq/vidit/pull/709)).
 - An instance can serve the basemap tiles, icons and relief from its own S3-compatible bucket: the backend's `update-map` command copies them there on a schedule, and `NEXT_PUBLIC_MAP_ASSETS_URL` points the map at them ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The tag field of the event and source forms suggests your most used tags, or the platform's, in one line of one-click chips under the search; `GET /tags/suggested` lists them ([#725](https://github.com/vidithq/vidit/pull/742)).
 
 ### Changed
 
@@ -26,13 +27,14 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - In search, you can check your own geolocations, or select every match, and add them to one of your collections at once or open a new collection with them, up to 500 events; `POST /collections/{id}/events` takes event ids or a search ([#702](https://github.com/vidithq/vidit/pull/702)).
 
 - The map's Sites switch moves into the filter panel as its first section; while sites show, the Filters button counts them and a Sites pill turns them off ([#720](https://github.com/vidithq/vidit/pull/720)).
+- The map filter panel no longer carries a New site link: you create a site from Submit ([#740](https://github.com/vidithq/vidit/pull/740)).
 - Search, feed and requests show the active filters at the top of the filter panel on a wide screen, and search puts the result count at the head of the list ([#702](https://github.com/vidithq/vidit/pull/702)).
 - The feed's Kind filter offers Detections as a third chip beside Geolocations and Requests, in place of the Show detections switch; no chip still lists all three ([#702](https://github.com/vidithq/vidit/pull/702)).
 - Search loads every matching geolocation: **Load more** under the Geolocations group appends the next page, and `GET /search` pages that group with `geolocations_cursor` ([#696](https://github.com/vidithq/vidit/pull/696)).
 - Sites: map an area of interest such as a depot with its dated satellite images and contours, link your events to it with their effect, and read its history on its page; sites show on the map and can be reported ([#644](https://github.com/vidithq/vidit/pull/644)).
 - In the event form, a source link row imports the file of an X, public Telegram or TikTok post in one click, and a post with several files lets you pick one; `POST /uploads/from-link` stages it like an upload ([#697](https://github.com/vidithq/vidit/pull/697)).
 - Sites work like events: each source filed or removed and each owner edit saves a version you browse in the history, the owner edits name, kind, sources, contours and links on one page, and Submit offers Site and Collection tiles ([#718](https://github.com/vidithq/vidit/pull/718)).
-- The profile's source origin counts a platform's aliases as one host: `twitter.com` links count under `x.com`, `youtu.be` under `youtube.com`, and `telegram.me` under `t.me` ([#726](https://github.com/vidithq/vidit/pull/743)).
+- The profile's source origin counts a platform's aliases as one host: `twitter.com` links count under `x.com`, `youtu.be` under `youtube.com`, and `telegram.me` under `t.me` ([#743](https://github.com/vidithq/vidit/pull/743)).
 
 ### Fixed
 

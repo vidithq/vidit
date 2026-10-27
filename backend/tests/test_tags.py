@@ -270,3 +270,117 @@ def test_list_tags_drops_a_source_tag_when_its_event_is_soft_deleted(authed_user
         db.delete(geo)
         db.delete(tag)
         db.commit()
+
+
+def _live_event(owner: User, tags: list[Tag], source_tags: list[Tag] = (), **fields) -> Event:
+    geo = Event(
+        owner_id=owner.id,
+        title="t",
+        coords=from_shape(Point(0, 0), srid=4326),
+        occurred_date=date(2026, 1, 1),
+        created_at=datetime.now(UTC),
+        geolocated_at=datetime.now(UTC),
+        tags=tags,
+        **fields,
+    )
+    if source_tags:
+        geo.sources = [
+            Source(
+                level="direct",
+                kind="unknown",
+                links=[SourceLink(url="https://example.com")],
+                tags=list(source_tags),
+            )
+        ]
+    return geo
+
+
+@pytest.fixture
+def other_user(db):
+    user = User(
+        username=f"tagother-{uuid.uuid4().hex[:8]}",
+        email=f"{uuid.uuid4().hex}@example.test",
+        password_hash=hash_password("pw"),
+    )
+    db.add(user)
+    db.commit()
+    yield user
+    db.delete(user)
+    db.commit()
+
+
+@pytest.fixture
+def seed(db):
+    """Commits fresh tags and the events that use them, and deletes both after the test."""
+    made: list[Tag | Event] = []
+
+    def tags(*prefixes: str) -> list[Tag]:
+        rows = [Tag(name=f"{p}-{uuid.uuid4().hex[:8]}") for p in prefixes]
+        db.add_all(rows)
+        db.commit()
+        made.extend(rows)
+        return rows
+
+    def event(owner: User, tags: list[Tag], source_tags: list[Tag] = (), **fields) -> None:
+        row = _live_event(owner, tags, source_tags, **fields)
+        db.add(row)
+        db.commit()
+        made.append(row)
+
+    yield tags, event
+    for row in reversed(made):
+        db.delete(row)
+    db.commit()
+
+
+def _suggested(headers) -> list[str]:
+    response = client.get("/api/v1/tags/suggested", headers=headers)
+    assert response.status_code == 200
+    return [row["name"] for row in response.json()]
+
+
+def test_suggested_tags_rank_your_own_uses_first(authed_user, other_user, seed):
+    """Your tags come first, by your uses on events and their sources, before the platform's
+    most used tag, however often others use it."""
+    user, headers = authed_user
+    tags, event = seed
+    mine_twice, mine_once, popular = tags("mine2", "mine1", "popular")
+    event(user, [mine_once], source_tags=[mine_twice])
+    event(user, [mine_twice])
+    for _ in range(3):
+        event(other_user, [popular])
+
+    names = _suggested(headers)
+    assert names[:2] == [mine_twice.name, mine_once.name]
+    assert popular.name in names
+
+
+def test_suggested_tags_fall_back_to_the_platform(authed_user, other_user, seed):
+    """With no tag of your own, the list is the platform's most used live tags."""
+    _, headers = authed_user
+    tags, event = seed
+    more, fewer = tags("more", "fewer")
+    for _ in range(3):
+        event(other_user, [more])
+    event(other_user, [fewer])
+
+    names = _suggested(headers)
+    assert names.index(more.name) < names.index(fewer.name)
+
+
+def test_suggested_tags_skip_orphans_and_deleted_events(authed_user, seed):
+    """A tag on no live event, or only on your soft-deleted one, is never suggested."""
+    user, headers = authed_user
+    tags, event = seed
+    orphan, on_deleted, live = tags("orphan", "deleted", "live")
+    event(user, [on_deleted], deleted_at=datetime.now(UTC))
+    event(user, [live])
+
+    names = _suggested(headers)
+    assert names[0] == live.name
+    assert orphan.name not in names
+    assert on_deleted.name not in names
+
+
+def test_suggested_tags_require_auth():
+    assert client.get("/api/v1/tags/suggested").status_code in {401, 403}

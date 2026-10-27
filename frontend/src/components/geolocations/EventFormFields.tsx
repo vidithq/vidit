@@ -300,6 +300,7 @@ function eventFormSlots(
           setSources={form.setSources}
           tags={form.taxonomy.tags}
           setTags={form.taxonomy.setTags}
+          suggestedTags={form.taxonomy.suggestedTags}
           invalidKeys={invalidKeys}
           attempt={form.validationAttempt}
         />

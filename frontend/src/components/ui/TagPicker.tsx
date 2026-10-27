@@ -14,12 +14,16 @@ import { EVENT_FIELDS } from "@/lib/events";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
 const TAG_NAME_MAX_LEN = 100;
+// Few enough that the row stays one line on a wide form; the row clips the rest.
+const SUGGESTED_TAGS_SHOWN = 8;
 
 interface TagPickerProps {
   /** Live tags (referenced by at least one event or source) plus the ones created here: the
    *  chips and the create-new dedup list. */
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
+  /** `GET /tags/suggested`: the tags the field offers in one click. */
+  suggestedTags?: Tag[];
   selectedTagIds: string[];
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
   /** `GET /conflicts` (~800 rows), filtered client-side. */
@@ -37,6 +41,7 @@ interface TagPickerProps {
 export function TagPicker({
   tags,
   setTags,
+  suggestedTags,
   selectedTagIds,
   setSelectedTagIds,
   conflicts,
@@ -58,6 +63,7 @@ export function TagPicker({
       <TagsField
         tags={tags}
         setTags={setTags}
+        suggested={suggestedTags}
         selected={selectedTagIds}
         setSelected={setSelectedTagIds}
       />
@@ -70,12 +76,14 @@ export function TagPicker({
 export function TagsField({
   tags,
   setTags,
+  suggested,
   selected,
   setSelected,
   owner,
 }: {
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
+  suggested?: Tag[];
   selected: string[];
   setSelected: (next: string[]) => void;
   owner?: string;
@@ -86,6 +94,7 @@ export function TagsField({
       <TagChips
         tags={tags}
         setTags={setTags}
+        suggested={suggested}
         selected={selected}
         setSelected={setSelected}
         owner={owner}
@@ -141,18 +150,31 @@ type TagChipsProps = {
   /** Names whose tags these are ("Source 2"), so several pickers on one page read apart. */
   owner?: string;
 } & (
-  | { filter?: false; setTags: Dispatch<SetStateAction<Tag[]>> }
-  /** Picks by name from the catalogue it is given, with no Create row. */
-  | { filter: true; setTags?: never }
+  | {
+      filter?: false;
+      setTags: Dispatch<SetStateAction<Tag[]>>;
+      /** Offered as one line of one-click chips under the search, the picked ones left out. */
+      suggested?: Tag[];
+    }
+  /** Picks by name from the catalogue it is given, with no Create row and no suggestions. */
+  | { filter: true; setTags?: never; suggested?: never }
 );
 
 /**
  * The tags picked from the one catalogue that serves events and sources: the picks as removable
  * chips over a combobox that suggests the other tags matching the typed text and, on a form, when
- * no tag bears that exact name, offers to create it. The event's Details card, each source editor
- * and the event filter panel render it.
+ * no tag bears that exact name, offers to create it. On a form, one line of suggested tags follows
+ * the search. The event's Details card, each source editor and the event filter panel render it.
  */
-export function TagChips({ tags, selected, setSelected, owner, filter, setTags }: TagChipsProps) {
+export function TagChips({
+  tags,
+  selected,
+  setSelected,
+  owner,
+  filter,
+  setTags,
+  suggested = [],
+}: TagChipsProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const name = query.trim();
@@ -161,6 +183,12 @@ export function TagChips({ tags, selected, setSelected, owner, filter, setTags }
   const select = (tag: Tag) => {
     if (!selected.includes(key(tag))) setSelected([...selected, key(tag)]);
     setQuery("");
+  };
+
+  // A suggestion may not be in the catalogue yet: `/tags` and `/tags/suggested` load apart.
+  const adopt = (tag: Tag) => {
+    setTags?.((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
+    select(tag);
   };
 
   // A 409 (name exists, case-sensitive) shows a non-blocking message; the existing tag may be
@@ -179,10 +207,7 @@ export function TagChips({ tags, selected, setSelected, owner, filter, setTags }
         if (e instanceof ApiError) return e.message;
         return "Could not create tag.";
       },
-      onSuccess: (created) => {
-        setTags?.((prev) => (prev.some((t) => t.id === created.id) ? prev : [...prev, created]));
-        select(created);
-      },
+      onSuccess: adopt,
     }
   );
 
@@ -200,6 +225,9 @@ export function TagChips({ tags, selected, setSelected, owner, filter, setTags }
     ...(canCreate ? [{ create: name }] : []),
   ];
   const label = owner ? `${owner} tags` : "Tags";
+  const offered = suggested
+    .filter((t) => !selected.includes(t.id))
+    .slice(0, SUGGESTED_TAGS_SHOWN);
 
   return (
     <div className="space-y-2">
@@ -248,6 +276,20 @@ export function TagChips({ tags, selected, setSelected, owner, filter, setTags }
         }
       />
       {create.error && <p className="text-xs text-red-400">{create.error}</p>}
+      {offered.length > 0 && (
+        <div
+          role="group"
+          aria-label={owner ? `Suggested tags for ${owner}` : "Suggested tags"}
+          className="flex gap-2 overflow-hidden whitespace-nowrap"
+        >
+          {offered.map((tag) => (
+            <Pill key={tag.id} onClick={() => adopt(tag)} icon={<Plus size={12} aria-hidden />}>
+              <span className="sr-only">Add {tag.name}</span>
+              <span aria-hidden>{tag.name}</span>
+            </Pill>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
