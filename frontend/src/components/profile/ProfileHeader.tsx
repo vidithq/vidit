@@ -1,19 +1,24 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
-import { Pencil } from "lucide-react";
+import Link from "next/link";
+import { FolderPlus, LogOut, Pencil } from "lucide-react";
 
+import { useAuth } from "@/contexts/AuthContext";
+import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
+import { newCollectionHref } from "@/lib/collections";
 import { countLabel, formatDate } from "@/lib/format";
 import { splitLinks } from "@/lib/outbound";
 import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClasses } from "@/components/ui/Button";
 import { FileManager } from "@/components/ui/FileManager";
 import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
-import { TEXT_LINK } from "@/components/ui/styles";
+import { ARMED_RING, TEXT_LINK } from "@/components/ui/styles";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { LinkedAccountsLine } from "./LinkedAccounts";
 import { ProfileOrganizations } from "./ProfileOrganizations";
@@ -118,26 +123,28 @@ export function IdentityLines({ bio: rawBio, segments }: { bio: string | null; s
   );
 }
 
-/** The header action cluster: the icon row (linked accounts, then Edit profile when `canEdit`),
- * and `children` (Follow on someone else's profile). The marks sit right of the title, where pages
- * keep controls that act on their subject: ghost icon buttons throughout, Edit profile included.
- * `gap-1.5` matches the event page's action cluster; the cluster's `gap-2` separates the row from
- * the far-right button. It wraps and right-aligns, so on a phone marks and button break onto
- * separate lines. Edit mode renders `ProfileEditActions` in its place. */
+/** The header action cluster: the icon row (linked accounts, then Edit profile when `canEdit`,
+ * then `icons`), and `children` (Follow on someone else's profile). The marks sit right of the
+ * title, where pages keep controls that act on their subject: ghost icon buttons throughout, Edit
+ * profile included. `gap-1.5` matches the event page's action cluster; the cluster's `gap-2`
+ * separates the row from the far-right button. It wraps and right-aligns, so on a phone marks and
+ * button break onto separate lines. Edit mode renders `ProfileEditActions` in its place. */
 export function ProfileActions({
   links,
   canEdit,
   edit,
+  icons,
   children,
 }: {
   links: ExternalLinks;
   canEdit: boolean;
   edit: ProfileEditState;
+  icons?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         <LinkedAccountsLine links={links} />
         {canEdit && (
           <Button
@@ -150,9 +157,45 @@ export function ProfileActions({
             <Pencil size={14} />
           </Button>
         )}
+        {icons}
       </div>
       {children}
     </div>
+  );
+}
+
+/** The own profile's controls after Edit profile: **New collection**, then **Sign out**, which
+ * arms on a first click and signs out on the second. Signing out re-renders the anonymous
+ * profile, with no redirect. */
+export function OwnProfileActions() {
+  const { logout } = useAuth();
+  const { armed, trigger, controlRef } = useConfirmAction(() => logout(), {
+    timeoutMs: ARM_MS,
+    dismissOnOutside: true,
+  });
+  return (
+    <>
+      <Tooltip label="New collection">
+        <Link
+          href={newCollectionHref()}
+          className={buttonClasses("ghost", { icon: true })}
+          aria-label="New collection"
+        >
+          <FolderPlus size={14} />
+        </Link>
+      </Tooltip>
+      <Button
+        ref={controlRef}
+        icon
+        variant="ghost"
+        className={armed ? ARMED_RING : ""}
+        onClick={trigger}
+        // The name says which click this is (an icon button has no text to swap).
+        aria-label={armed ? "Confirm sign out" : "Sign out"}
+      >
+        <LogOut size={14} />
+      </Button>
+    </>
   );
 }
 

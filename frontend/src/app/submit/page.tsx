@@ -1,17 +1,14 @@
 "use client";
 
-import { Suspense, useEffect, useRef, type ReactNode } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { createEvent, createEventRequest } from "@/lib/events";
 import { draftUrls } from "@/lib/sources";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
-import { MapPin, MapPinPlus } from "lucide-react";
-import { IconTile } from "@/components/ui/IconTile";
-import { CollectionIcon, newCollectionHref } from "@/lib/collections";
-import { NEW_SITE_HREF } from "@/lib/sites";
+import { ImportPostPanel, type ImportShell } from "@/components/geolocations/ImportPostPanel";
+import { SubmitChooser } from "@/components/geolocations/SubmitChooser";
 import { EventFormShell, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
   PUBLISHING_LABEL,
@@ -24,62 +21,19 @@ import {
 import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
 import { useDraftGeolocatorsByline } from "@/components/event/useGeolocatorsByline";
 import { DuplicateProbe } from "@/components/geolocations/fields/DuplicateProbe";
-import { IMPORT_GLYPH } from "@/lib/importEntries";
 import { eventHref, requestHref, submitHref, type SubmitMode } from "@/lib/routes";
 
-type ChooserTile = { icon: ReactNode; title: string; note: string };
-
-// Three entry paths, differing only in where the work starts: `single` is one event by hand,
+// The page's paths, differing only in where the work starts: `single` is one event by hand,
 // `xpost` reads one of your own X posts into a detection you review, `bulk` backfills an
-// archive. There is no geolocation-vs-request pick: the two publish actions unlock from the
-// content (a placed coordinate plus evidence publishes a geolocation, bare footage posts a
-// request).
-const MODES: (ChooserTile & { mode: SubmitMode })[] = [
-  {
-    mode: "single",
-    icon: <MapPin size={13} strokeWidth={1.8} />,
-    title: "Single event",
-    note: "Geolocate one event, or ask the community to geolocate it.",
-  },
-  {
-    mode: "xpost",
-    icon: IMPORT_GLYPH.paste,
-    title: "From an X post",
-    note: "Paste a link to one of your own posts. It becomes a detection you review.",
-  },
-  {
-    mode: "bulk",
-    icon: IMPORT_GLYPH.archive,
-    title: "Bulk import",
-    note: "Upload your X archive. Each geolocation in your posts becomes a detection to review.",
-  },
-];
-
-// The chooser's last tiles open a create page of their own, not a path of this one.
-const CREATE_LINKS: (ChooserTile & { href: string })[] = [
-  {
-    href: NEW_SITE_HREF,
-    icon: <MapPinPlus size={13} strokeWidth={1.8} />,
-    title: "Site",
-    note: "Follow a place through dated satellite imagery.",
-  },
-  {
-    href: newCollectionHref(),
-    icon: <CollectionIcon size={13} strokeWidth={1.8} />,
-    title: "Collection",
-    note: "Gather events into a curated list you can share.",
-  },
-];
-
-const CHOOSER_TILES = [
-  ...MODES.map(({ mode, ...tile }) => ({ ...tile, href: submitHref(mode) })),
-  ...CREATE_LINKS,
-];
+// archive. `single` serves both a geolocation and a request: the two publish actions unlock
+// from the content (a placed coordinate plus evidence publishes a geolocation, bare footage
+// posts a request).
+const MODES: readonly SubmitMode[] = ["single", "xpost", "bulk"];
 
 /** The path the query names: `mode`, or the archive on-ramp from the legacy `?import=1` (the
  *  onboarding and /import target). `null` is the chooser. */
 function modeFrom(params: URLSearchParams): SubmitMode | null {
-  const mode = MODES.find((m) => m.mode === params.get("mode"))?.mode;
+  const mode = MODES.find((m) => m === params.get("mode"));
   if (mode) return mode;
   return params.get("import") === "1" ? "bulk" : null;
 }
@@ -184,21 +138,19 @@ function SubmitForm() {
     );
   }
 
-  // Both import entries take the chooser's shell: each writes detections server side and leaves
-  // through the review queue.
+  // Both import entries take the chooser's shell, their submit pinned like the form's publishes:
+  // each writes detections server side and leaves through the review queue.
+  const importShell: ImportShell = ({ actions, body }) => (
+    <PageShell title="Submit" back onBack={backToChooser} stickyActions={actions}>
+      {body}
+    </PageShell>
+  );
+  if (mode === "xpost") return <ImportPostPanel shell={importShell} />;
+  if (mode === "bulk") return <ImportArchivePanel username={user.username} shell={importShell} />;
+
   return (
-    <PageShell title="Submit" back={mode !== null} onBack={backToChooser}>
-      {mode === null && (
-        <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CHOOSER_TILES.map(({ href, icon, title, note }) => (
-            <IconTile key={href} href={href} icon={icon} title={title} note={note} />
-          ))}
-        </div>
-      )}
-
-      {mode === "xpost" && <ImportPostPanel />}
-
-      {mode === "bulk" && <ImportArchivePanel username={user.username} />}
+    <PageShell title="Submit" column="wide">
+      <SubmitChooser />
     </PageShell>
   );
 }

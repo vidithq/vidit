@@ -14,6 +14,8 @@ import { CARD_FRAME } from "@/components/ui/Card";
 import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { FORM_LABEL } from "@/components/ui/form-styles";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { META_LINE } from "@/components/ui/styles";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { AccountPicker, accountName, analystAccount } from "@/components/ui/AccountPicker";
 import {
@@ -34,11 +36,13 @@ import {
 
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
- * feed: one component owns the section list (the surface's lead sections, Status, Conflict, Source
- * kind, Level, Media, Location guess, the surface's date sections, Tags, Author, Approvals), so a vocabulary
- * change lands on all four. Surfaces differ in their injected sections (`leadSections`,
- * `dateSections`) and in `sections`, the subset they offer (the search page's Collections group is
- * narrowed by `author` alone, and only the board offers Location guess).
+ * feed: one component owns the grouping, so a vocabulary change lands on all four. Three groups
+ * under a light label: the surface's `lead` group, Event (a "Status, conflict, tags" row, a Dates
+ * row of the surface's `dateSections`, Location guess) and Source and people (a Source row of
+ * Source kind, Level and Media, a People row of Author and Approvals). Sections that share a row
+ * show as fields under one collapsible header; a row left with one section shows it as its own row.
+ * Surfaces differ in `lead`, `dateSections` and `sections`, the subset they offer (the search
+ * page's Collections group is narrowed by `author` alone, and only the board offers Location guess).
  *
  * State stays surface-owned: this component takes one `values` object and emits patches.
  * `buildActiveFilterPills` derives the matching pill entries from the same shape so the
@@ -85,7 +89,7 @@ export type EventFilterSectionName =
   | "author"
   | "approval";
 
-/** The default stack in render order. `location_guess` is opt-in: only `GET /events` serves it. */
+/** The default set. `location_guess` is opt-in: only `GET /events` serves it. */
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
   "status",
   "conflict",
@@ -115,13 +119,20 @@ export const EMPTY_DATE_WINDOWS: DateWindows = {
 export const eventWindowActive = (w: DateWindows) => !!(w.eventFrom || w.eventTo);
 export const addedWindowActive = (w: DateWindows) => !!(w.addedFrom || w.addedTo);
 
-/** A surface-specific section (the date controls) rendered in the accordion at its canonical position. */
+/** One filter: its own row, or one field of a merged row. A surface passes its own (the date
+ * controls, the lead group) in the same shape. */
 interface InjectedSection {
   title: string;
   concept?: Concept;
   summary: string;
   active: boolean;
   children: ReactNode;
+}
+
+/** A surface's own group, above the shared ones: one row per section. */
+interface LeadGroup {
+  title: string;
+  sections: InjectedSection[];
 }
 
 // Location-guess options: a request carrying a guessed point, or a blind one.
@@ -304,7 +315,7 @@ export function EventFilterSections({
   conflicts,
   values,
   onPatch,
-  leadSections = [],
+  lead,
   dateSections = [],
   sections = ALL_FILTER_SECTIONS,
 }: {
@@ -314,8 +325,9 @@ export function EventFilterSections({
   conflicts: Conflict[];
   values: EventFilterValues;
   onPatch: EventFilterPatch;
-  /** Surface-specific sections above the shared stack (the feed's Kind, the map's Sites). */
-  leadSections?: InjectedSection[];
+  /** Surface-specific group above the shared ones (the map's Layers, the feed's Activity). */
+  lead?: LeadGroup;
+  /** The surface's date windows, merged into the Event group's Dates row. */
   dateSections?: InjectedSection[];
   /** Which sections this surface offers (default: all). A surface scoped to a view a section can't
    * narrow leaves it out rather than offer a control that can only empty the result. */
@@ -323,32 +335,13 @@ export function EventFilterSections({
 }) {
   const offers = (name: EventFilterSectionName) => sections.includes(name);
   const approvedById = useId();
+  const groupId = useId();
   // The server's author filter is an exact match, so a typed fragment becomes a handle through
   // the typeahead; an ineligible draft is not committed, instead of 422ing.
   const commitAuthor = (name: string) => {
     if (AUTHOR_FILTER_RE.test(name)) onPatch({ author: name });
   };
   const author = values.author.trim();
-
-  // Accordion open-state lives here so a re-render never resets it. Every section starts collapsed
-  // except one holding an active value, so the reader sees what is applied.
-  const isActive: Record<string, boolean> = {
-    Status: values.statuses.length > 0,
-    Conflict: values.conflicts.length > 0,
-    "Source kind": values.sourceKinds.length > 0,
-    Level: values.levels.length > 0,
-    Media: values.mediaTypes.length > 0,
-    "Location guess": values.locationGuess.length > 0,
-    Tags: values.tags.length > 0,
-    Author: !!values.author.trim(),
-    Approvals: values.approved || !!values.approvedBy,
-    ...Object.fromEntries(
-      [...leadSections, ...dateSections].map((s) => [s.title, s.active])
-    ),
-  };
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>(isActive);
-  const toggleSection = (title: string) =>
-    setOpenSections((s) => ({ ...s, [title]: !s[title] }));
 
   const toggleIn = (key: keyof EventFilterValues, name: string) => {
     const bucket = values[key] as string[];
@@ -358,213 +351,256 @@ export function EventFilterSections({
   };
 
   const sortedTags = [...tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name));
+  const when = (offered: boolean, section: InjectedSection) => (offered ? [section] : []);
 
-  const renderInjected = (section: InjectedSection) => (
-    <FilterSection
-      key={section.title}
-      title={section.title}
-      concept={section.concept}
-      summary={section.summary}
-      active={isActive[section.title]}
-      open={!!openSections[section.title]}
-      onToggle={() => toggleSection(section.title)}
-    >
-      {section.children}
-    </FilterSection>
+  const allGroups: FilterGroup[] = [
+    ...(lead ? [{ title: lead.title, rows: lead.sections.map((s) => ({ key: s.title, fields: [s] })) }] : []),
+    {
+      title: "Event",
+      rows: [
+        {
+          key: "event",
+          fields: [
+            ...when(offers("status"), {
+              title: "Status",
+              concept: "status",
+              summary: chipSummary(values.statuses.map(statusLabel)),
+              active: values.statuses.length > 0,
+              children: (
+                <ChipBucket
+                  options={STATUS_FILTER_OPTIONS.map(([value, label]) => ({ id: value, name: value, label }))}
+                  selected={values.statuses}
+                  onToggle={(n) => toggleIn("statuses", n)}
+                />
+              ),
+            }),
+            ...when(offers("conflict") && conflicts.length > 0, {
+              title: "Conflict",
+              concept: "conflict",
+              summary: chipSummary(values.conflicts),
+              active: values.conflicts.length > 0,
+              children: (
+                <ConflictChips
+                  filter
+                  conflicts={conflicts}
+                  selected={values.conflicts}
+                  setSelected={(next) => onPatch({ conflicts: next })}
+                />
+              ),
+            }),
+            ...when(offers("tags") && tags.length > 0, {
+              title: "Tags",
+              summary: chipSummary(values.tags),
+              active: values.tags.length > 0,
+              children: (
+                <TagChips
+                  filter
+                  tags={sortedTags}
+                  selected={values.tags}
+                  setSelected={(next) => onPatch({ tags: next })}
+                />
+              ),
+            }),
+          ],
+        },
+        { key: "dates", title: "Dates", fields: dateSections },
+        {
+          key: "location",
+          fields: when(offers("location_guess"), {
+            title: "Location guess",
+            summary: chipSummary(values.locationGuess.map(locationGuessLabel)),
+            active: values.locationGuess.length > 0,
+            children: (
+              <ChipBucket
+                options={LOCATION_GUESS_OPTIONS.map(([value, label]) => ({ id: value, name: value, label }))}
+                selected={values.locationGuess}
+                onToggle={(n) => toggleIn("locationGuess", n)}
+              />
+            ),
+          }),
+        },
+      ],
+    },
+    {
+      title: "Source and people",
+      rows: [
+        {
+          key: "source",
+          title: "Source",
+          fields: [
+            ...when(offers("source_kind"), {
+              title: "Source kind",
+              concept: "source_kind",
+              summary: chipSummary(values.sourceKinds.map(sourceKindLabel)),
+              active: values.sourceKinds.length > 0,
+              children: (
+                <ChipBucket
+                  options={SOURCE_KIND_OPTIONS}
+                  selected={values.sourceKinds}
+                  onToggle={(n) => toggleIn("sourceKinds", n)}
+                />
+              ),
+            }),
+            ...when(offers("level"), {
+              title: "Level",
+              concept: "source_level",
+              summary: chipSummary(values.levels.map(levelLabel)),
+              active: values.levels.length > 0,
+              children: (
+                <ChipBucket options={LEVEL_OPTIONS} selected={values.levels} onToggle={(n) => toggleIn("levels", n)} />
+              ),
+            }),
+            ...when(offers("media"), {
+              title: "Media",
+              summary: chipSummary(values.mediaTypes.map(capitalize)),
+              active: values.mediaTypes.length > 0,
+              children: (
+                <ChipBucket
+                  options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
+                  selected={values.mediaTypes}
+                  onToggle={(n) => toggleIn("mediaTypes", n)}
+                />
+              ),
+            }),
+          ],
+        },
+        {
+          key: "people",
+          title: "People",
+          fields: [
+            ...when(offers("author"), {
+              title: "Author",
+              summary: author || "Any",
+              active: !!author,
+              children: (
+                <AccountPicker
+                  search={suggestAuthors}
+                  minQueryLength={2}
+                  selected={author ? analystAccount({ username: author }) : null}
+                  onSelect={(account) => commitAuthor(accountName(account))}
+                  onSubmitText={commitAuthor}
+                  onClear={() => onPatch({ author: "" })}
+                  placeholder="Type a username…"
+                  aria-label="Author username"
+                  emptyText="No analyst matches"
+                />
+              ),
+            }),
+            ...when(offers("approval"), {
+              title: "Approvals",
+              concept: "approval_filter",
+              summary: values.approvedBy
+                ? accountName(values.approvedBy)
+                : values.approved
+                  ? "Approved"
+                  : "Any",
+              active: values.approved || !!values.approvedBy,
+              children: (
+                <div className="space-y-2">
+                  <ChipBucket
+                    options={[{ id: APPROVED_ONLY, name: APPROVED_ONLY, label: "Approved only" }]}
+                    selected={values.approved ? [APPROVED_ONLY] : []}
+                    onToggle={() => onPatch({ approved: !values.approved })}
+                  />
+                  <label htmlFor={approvedById} className={FORM_LABEL}>
+                    Approved by
+                  </label>
+                  <AccountPicker
+                    id={approvedById}
+                    search={suggestApprovers}
+                    minQueryLength={2}
+                    selected={values.approvedBy}
+                    onSelect={(account) => onPatch({ approvedBy: account })}
+                    onSubmitText={(name) => {
+                      if (AUTHOR_FILTER_RE.test(name)) {
+                        onPatch({ approvedBy: analystAccount({ username: name }) });
+                      }
+                    }}
+                    onClear={() => onPatch({ approvedBy: null })}
+                    placeholder="Type an analyst or organization…"
+                    emptyText="No analyst or organization matches"
+                  />
+                </div>
+              ),
+            }),
+          ],
+        },
+      ],
+    },
+  ];
+  const groups = allGroups
+    .map((g) => ({ ...g, rows: g.rows.filter((r) => r.fields.length > 0) }))
+    .filter((g) => g.rows.length > 0);
+
+  // Open state lives here, keyed by row, so a re-render never resets it and a scope change that
+  // renames a merged row keeps it. Every row starts collapsed except one holding an active value,
+  // so the reader sees what is applied.
+  const [openRows, setOpenRows] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(groups.flatMap((g) => g.rows).map((r) => [r.key, r.fields.some((f) => f.active)]))
   );
+  const toggleRow = (key: string) => setOpenRows((o) => ({ ...o, [key]: !o[key] }));
+
+  const renderRow = (row: FilterRow) => {
+    const [only] = row.fields;
+    const merged = row.fields.length > 1;
+    const active = row.fields.filter((f) => f.active);
+    return (
+      <FilterSection
+        key={row.key}
+        title={merged ? rowTitle(row) : only.title}
+        concept={merged ? undefined : only.concept}
+        summary={merged ? active.map((f) => f.summary).join(", ") || "Any" : only.summary}
+        active={active.length > 0}
+        open={!!openRows[row.key]}
+        onToggle={() => toggleRow(row.key)}
+      >
+        {merged ? (
+          <div className="space-y-3">
+            {row.fields.map((f) => (
+              <div key={f.title} className="space-y-1.5">
+                <FieldLabel label={f.title} concept={f.concept} />
+                {f.children}
+              </div>
+            ))}
+          </div>
+        ) : (
+          only.children
+        )}
+      </FilterSection>
+    );
+  };
 
   return (
     <div className={`${CARD_FRAME} px-3`}>
-      {leadSections.map(renderInjected)}
-
-      {offers("status") && (
-        <FilterSection
-          title="Status"
-          concept="status"
-          summary={chipSummary(values.statuses.map(statusLabel))}
-          active={isActive.Status}
-          open={!!openSections["Status"]}
-          onToggle={() => toggleSection("Status")}
+      {groups.map((g, i) => (
+        <section
+          key={g.title}
+          aria-labelledby={`${groupId}-${i}`}
+          className={i > 0 ? "border-t border-neutral-700" : undefined}
         >
-          <ChipBucket
-            options={STATUS_FILTER_OPTIONS.map(([value, label]) => ({
-              id: value,
-              name: value,
-              label,
-            }))}
-            selected={values.statuses}
-            onToggle={(n) => toggleIn("statuses", n)}
-          />
-        </FilterSection>
-      )}
-
-      {offers("conflict") && conflicts.length > 0 && (
-        <FilterSection
-          title="Conflict"
-          concept="conflict"
-          summary={chipSummary(values.conflicts)}
-          active={isActive.Conflict}
-          open={!!openSections["Conflict"]}
-          onToggle={() => toggleSection("Conflict")}
-        >
-          <ConflictChips
-            filter
-            conflicts={conflicts}
-            selected={values.conflicts}
-            setSelected={(next) => onPatch({ conflicts: next })}
-          />
-        </FilterSection>
-      )}
-
-      {offers("source_kind") && (
-        <FilterSection
-          title="Source kind"
-          concept="source_kind"
-          summary={chipSummary(values.sourceKinds.map(sourceKindLabel))}
-          active={isActive["Source kind"]}
-          open={!!openSections["Source kind"]}
-          onToggle={() => toggleSection("Source kind")}
-        >
-          <ChipBucket
-            options={SOURCE_KIND_OPTIONS}
-            selected={values.sourceKinds}
-            onToggle={(n) => toggleIn("sourceKinds", n)}
-          />
-        </FilterSection>
-      )}
-
-      {offers("level") && (
-        <FilterSection
-          title="Level"
-          concept="source_level"
-          summary={chipSummary(values.levels.map(levelLabel))}
-          active={isActive.Level}
-          open={!!openSections["Level"]}
-          onToggle={() => toggleSection("Level")}
-        >
-          <ChipBucket
-            options={LEVEL_OPTIONS}
-            selected={values.levels}
-            onToggle={(n) => toggleIn("levels", n)}
-          />
-        </FilterSection>
-      )}
-
-      {offers("media") && (
-        <FilterSection
-          title="Media"
-          summary={chipSummary(values.mediaTypes.map(capitalize))}
-          active={isActive.Media}
-          open={!!openSections["Media"]}
-          onToggle={() => toggleSection("Media")}
-        >
-          <ChipBucket
-            options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
-            selected={values.mediaTypes}
-            onToggle={(n) => toggleIn("mediaTypes", n)}
-          />
-        </FilterSection>
-      )}
-
-      {offers("location_guess") && (
-        <FilterSection
-          title="Location guess"
-          summary={chipSummary(values.locationGuess.map(locationGuessLabel))}
-          active={isActive["Location guess"]}
-          open={!!openSections["Location guess"]}
-          onToggle={() => toggleSection("Location guess")}
-        >
-          <ChipBucket
-            options={LOCATION_GUESS_OPTIONS.map(([value, label]) => ({ id: value, name: value, label }))}
-            selected={values.locationGuess}
-            onToggle={(n) => toggleIn("locationGuess", n)}
-          />
-        </FilterSection>
-      )}
-
-      {dateSections.map(renderInjected)}
-
-      {offers("tags") && tags.length > 0 && (
-        <FilterSection
-          title="Tags"
-          summary={chipSummary(values.tags)}
-          active={isActive.Tags}
-          open={!!openSections["Tags"]}
-          onToggle={() => toggleSection("Tags")}
-        >
-          <TagChips
-            filter
-            tags={sortedTags}
-            selected={values.tags}
-            setSelected={(next) => onPatch({ tags: next })}
-          />
-        </FilterSection>
-      )}
-
-      {offers("author") && (
-        <FilterSection
-          title="Author"
-          summary={values.author.trim() || "Any"}
-          active={isActive.Author}
-          open={!!openSections["Author"]}
-          onToggle={() => toggleSection("Author")}
-        >
-          <AccountPicker
-            search={suggestAuthors}
-            minQueryLength={2}
-            selected={author ? analystAccount({ username: author }) : null}
-            onSelect={(account) => commitAuthor(accountName(account))}
-            onSubmitText={commitAuthor}
-            onClear={() => onPatch({ author: "" })}
-            placeholder="Type a username…"
-            aria-label="Author username"
-            emptyText="No analyst matches"
-          />
-        </FilterSection>
-      )}
-
-      {offers("approval") && (
-        <FilterSection
-          title="Approvals"
-          concept="approval_filter"
-          summary={
-            values.approvedBy
-              ? accountName(values.approvedBy)
-              : values.approved
-                ? "Approved"
-                : "Any"
-          }
-          active={isActive.Approvals}
-          open={!!openSections["Approvals"]}
-          onToggle={() => toggleSection("Approvals")}
-        >
-          <div className="space-y-2">
-            <ChipBucket
-              options={[{ id: APPROVED_ONLY, name: APPROVED_ONLY, label: "Approved only" }]}
-              selected={values.approved ? [APPROVED_ONLY] : []}
-              onToggle={() => onPatch({ approved: !values.approved })}
-            />
-            <label htmlFor={approvedById} className={FORM_LABEL}>
-              Approved by
-            </label>
-            <AccountPicker
-              id={approvedById}
-              search={suggestApprovers}
-              minQueryLength={2}
-              selected={values.approvedBy}
-              onSelect={(account) => onPatch({ approvedBy: account })}
-              onSubmitText={(name) => {
-                if (AUTHOR_FILTER_RE.test(name)) {
-                  onPatch({ approvedBy: analystAccount({ username: name }) });
-                }
-              }}
-              onClear={() => onPatch({ approvedBy: null })}
-              placeholder="Type an analyst or organization…"
-              emptyText="No analyst or organization matches"
-            />
-          </div>
-        </FilterSection>
-      )}
+          <h3 id={`${groupId}-${i}`} className={`${META_LINE} pt-2.5 -mb-1`}>
+            {g.title}
+          </h3>
+          {g.rows.map(renderRow)}
+        </section>
+      ))}
     </div>
   );
 }
+
+/** One collapsible row: a lone section, or several that share it under a field label each. */
+interface FilterRow {
+  /** Stable across scopes, so the open state holds while the row's members change. */
+  key: string;
+  /** A merged row's name; without one, the row lists its members ("Conflict, tags"). */
+  title?: string;
+  fields: InjectedSection[];
+}
+
+interface FilterGroup {
+  title: string;
+  rows: FilterRow[];
+}
+
+const rowTitle = (row: FilterRow) =>
+  row.title ?? row.fields.map((f, i) => (i ? f.title.toLowerCase() : f.title)).join(", ");

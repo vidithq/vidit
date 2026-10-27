@@ -126,6 +126,9 @@ const stamp = (id: string, username: string, over: Partial<Approval> = {}): Appr
   ...over,
 });
 
+/** Geolocate's `?`, which follows it in the row. */
+const HELP = "What does Geolocate do?";
+
 /** The row of controls, buttons and links, left to right, by accessible name. */
 const rowControls = () =>
   [...row().querySelectorAll<HTMLElement>("button, a")].map(
@@ -133,13 +136,14 @@ const rowControls = () =>
   );
 
 describe("the event actions per reader", () => {
-  it("gives the owner the version, Edit, Share, Add to collection and Request approval, and no report", async () => {
+  it("gives the owner the version, Edit, Share, Add to collection, Link to a site and Request approval, and no report", async () => {
     renderAs(OWNER, { status: "geolocated", surface: "event" });
     expect(rowControls()).toEqual([
       "v1: choose a version",
       "Edit",
       "Share",
       "Add to collection",
+      "Link to a site",
       "Request approval",
     ]);
     expect(within(row()).getByRole("link", { name: "Edit" })).toHaveAttribute(
@@ -207,10 +211,10 @@ describe("the owner's edit", () => {
     expect(within(row()).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  it("puts the asker's Edit and Geolocate in the request page's actions, with no card around them", () => {
+  it("puts the asker's Edit and Geolocate in the request page's actions row, with no card around them", () => {
     renderAs(OWNER, { status: "requested", surface: "request" });
-    expect(rowControls()).toEqual(["Edit", "Share"]);
-    expect(screen.getByRole("link", { name: "Geolocate" })).toHaveAttribute(
+    expect(rowControls()).toEqual(["Edit", "Share", "Geolocate", HELP]);
+    expect(within(row()).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
       "href",
       "/events/e1/edit",
     );
@@ -218,10 +222,9 @@ describe("the owner's edit", () => {
     expect(row().closest("section")).toBeNull();
   });
 
-  it("shows a visitor Share and Report on the request page, then Geolocate", () => {
+  it("shows a visitor Share and Report on the request page, then Geolocate on the same row", () => {
     renderAs(ANALYST, { status: "requested", surface: "request" });
-    expect(rowControls()).toEqual(["Share", "Report"]);
-    expect(screen.getByRole("link", { name: "Geolocate" })).toBeInTheDocument();
+    expect(rowControls()).toEqual(["Share", "Report", "Geolocate", HELP]);
   });
 
   it("gives a closed request Share and Report, and no Geolocate", () => {

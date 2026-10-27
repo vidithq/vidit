@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, FileArchive, ShieldCheck, Upload } from "lucide-react";
 
@@ -30,6 +30,7 @@ import {
   uploadArchive,
 } from "@/lib/events";
 import type { ArchiveImportJob } from "@/types";
+import type { ImportShell } from "./ImportPostPanel";
 import { pluralNoun } from "@/lib/format";
 import { detectionsQueueHref } from "@/lib/routes";
 
@@ -114,9 +115,11 @@ const IMPORT_PHASE_INDEX: Record<ImportPhase, number> = {
  * The bulk-import on-ramp: the export guide, the drop zone, the in-browser
  * strip, the upload, and the bridge to the owner Detections queue. Rendered as
  * the `/submit` archive sub-mode and the onboarding entry. `username` is the
- * caller. Auth and page chrome are the parent's job.
+ * caller. Auth is the parent's job, and `shell` lays the page out: **Import
+ * archive** for the page's actions, the guide and the form for its body.
  */
-export function ImportArchivePanel({ username }: { username: string }) {
+export function ImportArchivePanel({ username, shell }: { username: string; shell: ImportShell }) {
+  const formId = useId();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ArchiveImportJob | null>(null);
@@ -195,7 +198,9 @@ export function ImportArchivePanel({ username }: { username: string }) {
   useLeaveGuard(uploading);
 
   if (pollLost) {
-    return (
+    return shell({
+      actions: null,
+      body: (
       <div className="space-y-4">
         <p className="text-sm text-neutral-200">
           Your archive is uploaded and the import is still running in the background.
@@ -211,14 +216,15 @@ export function ImportArchivePanel({ username }: { username: string }) {
           </Link>
         </div>
       </div>
-    );
+      ),
+    });
   }
 
   // `result` (write-nothing outcomes) renders under the completed stepper.
   const failedSome = (result?.failed ?? 0) > 0;
   const alreadyImported = result !== null && !failedSome && result.skipped > 0;
 
-  return (
+  const body = (
     <div className="space-y-6">
       <section className="space-y-3">
         <SectionHeading title="How to export from X" />
@@ -242,6 +248,7 @@ export function ImportArchivePanel({ username }: { username: string }) {
       </section>
 
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           if (file) run(file);
@@ -295,15 +302,6 @@ export function ImportArchivePanel({ username }: { username: string }) {
 
         {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
 
-        <Button
-          type="submit"
-          variant="primary"
-          fullWidth
-          disabled={!file || loading}
-          className="sm:w-auto"
-        >
-          {loading ? "Importing…" : "Import archive"}
-        </Button>
         {(loading || error || phase === "done") && (
           <Card className="space-y-3">
             <ProgressSteps
@@ -432,4 +430,13 @@ export function ImportArchivePanel({ username }: { username: string }) {
       </form>
     </div>
   );
+
+  // In the page's actions, outside the form: `form` ties it back.
+  const actions = (
+    <Button type="submit" form={formId} variant="primary" disabled={!file || loading}>
+      {loading ? "Importing…" : "Import archive"}
+    </Button>
+  );
+
+  return shell({ actions, body });
 }

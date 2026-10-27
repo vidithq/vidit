@@ -82,7 +82,7 @@ const ROUTES: [RegExp, unknown][] = [
     new RegExp(`^/events/${EVENT_ID}/approvals$`),
     { items: EVENT_APPROVALS, viewer_can_approve: false },
   ],
-  // The event's site links: none, so its owner sees the Link to a site row.
+  // The event's site links: none, so the page shows no Sites block.
   [new RegExp(`^/events/${EVENT_ID}/site-links$`), []],
   // The owner's pending invitations, which the edit page's Geolocators card reads.
   [new RegExp(`^/events/${EVENT_ID}/geolocator-invites$`), []],

@@ -24,6 +24,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Changed
 
 - A collection's page and its create and edit forms share the event page's layout: the description and events on the left, 20 at a time, and the map with the current event and the details on the right, in view while you scroll ([#732](https://github.com/vidithq/vidit/pull/754)).
+- The Submit page opens on six tiles across the full width: Geolocation, Request, From an X post, Bulk import, Site and Collection, each with a drawing of the result, when to pick it and what it needs ([#728](https://github.com/vidithq/vidit/pull/752)).
+- The filter panel groups its filters under labels (Layers, Event, Source and people), and filters that belong together share one row, so the map shows five rows for its eleven filters; search, the Requests board and the feed group the same way ([#750](https://github.com/vidithq/vidit/pull/750)).
 - On a wide screen, the About page keeps the prose in its main column and moves Guides, Stay in touch and Legal to the right rail, which stays in view while you read; on a phone the links follow the prose ([#735](https://github.com/vidithq/vidit/pull/749)).
 - A site on the map previews its name when you rest the mouse on it and opens the same side panel as an event; the map draws sites as squares and zones without names, in a colour of their own that stands out from the military and airport highlight ([#747](https://github.com/vidithq/vidit/pull/747)).
 - `POST /uploads` answers an `UploadList` whose `items` holds one `UploadRead` per staged file, one per frame for a GIF ([#744](https://github.com/vidithq/vidit/pull/744)).
@@ -42,6 +44,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Sites work like events: each source filed or removed and each owner edit saves a version you browse in the history, the owner edits name, kind, sources, contours and links on one page, and Submit offers Site and Collection tiles ([#718](https://github.com/vidithq/vidit/pull/718)).
 - The profile's source origin counts a platform's aliases as one host: `twitter.com` links count under `x.com`, `youtu.be` under `youtube.com`, and `telegram.me` under `t.me` ([#743](https://github.com/vidithq/vidit/pull/743)).
 - In the event form, the fold under each source that holds the capture time, capture position, tags and graphic flag reads Capture details instead of More details ([#741](https://github.com/vidithq/vidit/pull/741)).
+- More page actions sit in the top right action bar: Post request on the Requests board, Geolocate on a request, Link to a site on your event, New collection and Sign out on your profile, and Create the detection and Import archive on Submit ([#751](https://github.com/vidithq/vidit/pull/751)).
 
 ### Fixed
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Link2, SquarePen } from "lucide-react";
 
@@ -42,30 +42,40 @@ function suggestionCandidate(s: SiteSuggestion): LinkCandidate {
 }
 
 /**
- * The event page's Sites block, last in the side column: the sites the event is linked to now,
- * each with the effect it shows there. The event's owner links it to a site, changes a link's
- * effect, and unlinks it. A reader sees the block only when a link exists.
+ * The sites of the event page, as two nodes over one read of the event's links:
+ *
+ * - `block`, the Sites block last in the side column: the sites the event is linked to now, each
+ *   with the effect it shows there. The event's owner changes a link's effect and unlinks it on
+ *   its row. Null while the event has no link.
+ * - `linkAction`, **Link to a site** for the actions row: the owner of a published event links
+ *   it to a site from the dialog it opens. Null for every other reader.
+ *
+ * `event` is null while the row loads and on a surface without sites: both nodes are null then.
  */
-export function EventSitesBlock({ event }: { event: EventDetail }) {
+export function useEventSites(event: EventDetail | null): {
+  block: ReactNode;
+  linkAction: ReactNode;
+} {
   const { user } = useAuth();
-  const links = useApiResource<EventSiteLink[]>(eventSiteLinksPath(event.id));
+  const links = useApiResource<EventSiteLink[]>(event ? eventSiteLinksPath(event.id) : null);
   const [dialog, setDialog] = useState<{ edit?: EventSiteLink } | null>(null);
   const offer = useSatelliteOffer();
-  const isOwner = user?.id === event.owner.id;
-  // Mirrors backend `event_filters.site_linkable_events`: a published event only; change both.
-  const canLink = isOwner && event.status === "geolocated";
   const suggestions = useApiResource<SiteSuggestion[]>(
-    dialog && !dialog.edit ? siteSuggestionsPath(event.id, "") : null,
+    event && dialog && !dialog.edit ? siteSuggestionsPath(event.id, "") : null,
   );
-  const unlink = useMutation((siteId: string) => unlinkEventFromSite(event.id, siteId), {
+  const unlink = useMutation((siteId: string) => unlinkEventFromSite(event?.id ?? "", siteId), {
     fallback: "The unlink failed. Try again.",
     onSuccess: links.refetch,
   });
 
-  const rows = links.data ?? [];
-  if (!canLink && rows.length === 0) return null;
+  if (!event) return { block: null, linkAction: null };
 
-  return (
+  const isOwner = user?.id === event.owner.id;
+  // Mirrors backend `event_filters.site_linkable_events`: a published event only; change both.
+  const canLink = isOwner && event.status === "geolocated";
+  const rows = links.data ?? [];
+
+  const block = (rows.length > 0 || links.error || unlink.error) && (
     <section>
       <SectionEyebrow title="Sites" concept="event_sites" />
       <DetailCard>
@@ -106,20 +116,24 @@ export function EventSitesBlock({ event }: { event: EventDetail }) {
             </span>
           </DetailRow>
         ))}
-        {canLink && (
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
-            <p className="text-sm text-neutral-500">
-              {rows.length === 0 ? "Not linked to a site yet." : "Link it to another site."}
-            </p>
-            <Button variant="secondary" onClick={() => setDialog({})}>
-              <Link2 size={14} />
-              Link to a site
-            </Button>
-          </div>
-        )}
         {unlink.error && <div className={`m-3 ${FORM_ERROR_BANNER}`}>{unlink.error}</div>}
       </DetailCard>
+    </section>
+  );
 
+  // The effect change opens from a row of the block, the link from the actions row: both are the
+  // owner's, so the one dialog rides the action.
+  const linkAction = canLink && (
+    <>
+      <Button
+        icon
+        variant="ghost"
+        aria-label="Link to a site"
+        aria-haspopup="dialog"
+        onClick={() => setDialog({})}
+      >
+        <Link2 size={14} />
+      </Button>
       {dialog && (
         <LinkDialog
           title={dialog.edit ? CHANGE_EFFECT_COPY.title : "Link to a site"}
@@ -170,6 +184,8 @@ export function EventSitesBlock({ event }: { event: EventDetail }) {
           onClose={() => setDialog(null)}
         />
       )}
-    </section>
+    </>
   );
+
+  return { block, linkAction };
 }

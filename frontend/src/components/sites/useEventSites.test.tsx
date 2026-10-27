@@ -19,15 +19,31 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   },
 }));
 
-import { EventSitesBlock } from "./EventSitesBlock";
+import type { EventDetail } from "@/types";
+import { useEventSites } from "./useEventSites";
 
 const ALPHA = { id: "s1", name: "Site Alpha", kind: "airbase" };
 
+/** The action in a stand-in for the actions row, the block in the page. */
+function Harness({ event }: { event: EventDetail }) {
+  const { block, linkAction } = useEventSites(event);
+  return (
+    <>
+      <div role="group" aria-label="Event actions">
+        {linkAction}
+      </div>
+      {block}
+    </>
+  );
+}
+
 async function renderBlock(event = eventDetail("e1", "Strike on the apron")) {
   await act(async () => {
-    render(<EventSitesBlock event={event} />);
+    render(<Harness event={event} />);
   });
 }
+
+const row = () => screen.getByRole("group", { name: "Event actions" });
 
 beforeEach(() => {
   calls.length = 0;
@@ -35,7 +51,7 @@ beforeEach(() => {
   viewer = null;
 });
 
-describe("EventSitesBlock", () => {
+describe("useEventSites", () => {
   it("shows a reader the live link and its effect, with no controls", async () => {
     await renderBlock();
     expect(screen.getByRole("link", { name: "Site Alpha" })).toBeInTheDocument();
@@ -48,6 +64,20 @@ describe("EventSitesBlock", () => {
     links = [];
     await renderBlock();
     expect(screen.queryByText("Sites")).not.toBeInTheDocument();
+  });
+
+  it("gives the owner Link to a site in the actions row, and no block before a link exists", async () => {
+    viewer = { id: "u1" };
+    links = [];
+    await renderBlock();
+    expect(row()).toContainElement(screen.getByRole("button", { name: "Link to a site" }));
+    expect(screen.queryByText("Sites")).not.toBeInTheDocument();
+  });
+
+  it("offers no link on an event that is not published", async () => {
+    viewer = { id: "u1" };
+    await renderBlock({ ...eventDetail("e1", "Strike on the apron"), status: "detected" });
+    expect(screen.queryByRole("button", { name: "Link to a site" })).not.toBeInTheDocument();
   });
 
   it("lets the owner unlink", async () => {

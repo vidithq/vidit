@@ -37,6 +37,7 @@ export function PageShell({
   narrowRail,
   headerInColumn = false,
   headerSide,
+  column,
   children,
 }: {
   title: ReactNode;
@@ -76,6 +77,10 @@ export function PageShell({
    *  is `wide`, and the children lay out their own `PageColumns` under the header. `EventShell`
    *  sets it, `null` for an empty side. */
   headerSide?: ReactNode;
+  /** The content column's width. Unset, it is `wide` with a `rail` or a `headerSide` and `reading`
+   *  otherwise. `wide` gives a page without either the full column, for a grid that fills it (the
+   *  submit chooser). */
+  column?: "reading" | "wide";
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -201,7 +206,7 @@ export function PageShell({
     // sticky `top` of the back arrow and of a rail beside the header (`PageWithRail`), so neither
     // moves when the page scrolls.
     <PageFrame
-      column={rail || headerSide !== undefined ? "wide" : "reading"}
+      column={column ?? (rail || headerSide !== undefined ? "wide" : "reading")}
       className="pt-10 max-sm:pt-16 pb-16"
     >
       <div className="relative space-y-6" style={railTop}>

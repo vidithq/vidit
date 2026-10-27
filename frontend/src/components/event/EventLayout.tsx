@@ -30,7 +30,7 @@ export interface EventLayoutSlots {
   proof: EventSlot;
   details: EventSlot;
   location?: EventSlot | null;
-  /** The event page's Sites block (`EventSitesBlock`), which heads itself, last in the side
+  /** The event page's Sites block (`useEventSites`), which heads itself, last in the side
    *  column. */
   sites?: ReactNode;
   form?: ComponentProps<"form">;

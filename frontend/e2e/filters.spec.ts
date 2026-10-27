@@ -46,7 +46,7 @@ const PAGES = [
     name: "requests",
     path: "/requests",
     signedIn: false,
-    section: "Conflict",
+    section: "Conflict, tags",
     pick: pickConflict,
     listed: REQUESTED_EVENT.title,
   },
@@ -54,7 +54,7 @@ const PAGES = [
     name: "search",
     path: "/search?type=event",
     signedIn: false,
-    section: "Conflict",
+    section: "Status, conflict, tags",
     pick: pickConflict,
     listed: null,
   },
@@ -120,7 +120,7 @@ test("picks and removes a tag through the search field, in the URL", async ({ pa
   await open(page, "/search?type=event", false);
 
   const rail = page.getByRole("complementary", { name: "Filters" });
-  await rail.getByRole("button", { name: "Toggle Tags" }).click();
+  await rail.getByRole("button", { name: "Toggle Status, conflict, tags" }).click();
   await rail.getByRole("combobox", { name: "Tags" }).fill("dro");
   const list = page.getByRole("listbox", { name: "Tags" });
   await expect(list.getByRole("option")).toHaveText([TAGS[0].name]);

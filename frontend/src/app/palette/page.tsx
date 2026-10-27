@@ -77,6 +77,7 @@ import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
 import { HorizontalScroller } from "@/components/ui/HorizontalScroller";
 import { IconTile } from "@/components/ui/IconTile";
+import { SUBMIT_PATHS } from "@/components/geolocations/SubmitChooser";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { NumberedSteps } from "@/components/ui/NumberedSteps";
@@ -687,7 +688,7 @@ export default function PalettePage() {
             <PaletteActiveFilterPills />
           </Item>
 
-          <Item name="<FilterSection>" usage="One collapsible filter section (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. Shared by the map overlay and the search filter area.">
+          <Item name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections stacks the rows in groups under a META_LINE label, with a border-neutral-700 rule between groups; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
             <PaletteFilterSection />
           </Item>
 
@@ -1451,10 +1452,17 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<IconTile>" usage="An icon, a title and an optional one-line note in a bordered tile (TILE, with TILE_TITLE on the heading): the chooser on /import, the entry chooser on /submit and the concept rows on /guide. `href` makes the whole tile one next/link with TAPPABLE_HOVER and an accent title on hover; without it the tile is inert. The caller passes the glyph as a node, so a brand mark such as XGlyph fits. The first tile below is linked, the second is inert.">
-            <div className="grid w-full max-w-xl gap-3 sm:grid-cols-2">
-              <IconTile icon={<Archive size={13} strokeWidth={1.8} />} title="Upload your X archive" note="Your whole history, once." href="/import#archive" />
-              <IconTile icon={<ClipboardCheck size={13} strokeWidth={1.8} />} title="Request approval" note="Ask an analyst or an organization to approve yours." />
+          <Item name="<IconTile>" usage="An icon, a title and an optional one-line note in a bordered tile (TILE, with TILE_TITLE on the heading): the chooser on /import, the entry chooser on /submit and the concept rows on /guide. `href` makes the whole tile one next/link with TAPPABLE_HOVER and an accent title on hover; without it the tile is inert. The caller passes the glyph as a node, so a brand mark such as XGlyph fits. `needs` adds a Needs row of neutral Pills at the tile's foot: what the reader needs in hand. `preview` puts a decorative drawing of the result over the title from sm up, and turns the tile into a row below sm, the drawing scaled down to a thumbnail beside the text; in a grid the tiles keep one height and the Needs rows line up. The /submit chooser (SubmitChooser, its drawings built from StatusBadge) uses both. The first tile below is linked, the second is inert, the last two carry a preview and needs.">
+            <div className="w-full max-w-3xl space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <IconTile icon={<Archive size={13} strokeWidth={1.8} />} title="Upload your X archive" note="Your whole history, once." href="/import#archive" />
+                <IconTile icon={<ClipboardCheck size={13} strokeWidth={1.8} />} title="Request approval" note="Ask an analyst or an organization to approve yours." />
+              </div>
+              <div className="grid gap-2 sm:auto-rows-fr sm:grid-cols-2 sm:gap-5">
+                {SUBMIT_PATHS.slice(0, 2).map((path) => (
+                  <IconTile key={path.title} {...path} />
+                ))}
+              </div>
             </div>
           </Item>
 
@@ -2115,7 +2123,7 @@ export default function PalettePage() {
               <li><span className="font-mono text-neutral-400">BetaBanner</span>: a {"<Pill tone=\"accent\">"} in a <code>position: fixed</code> wrapper, already visible bottom-right from <code>sm</code> up; below <code>sm</code> the same pill rides the nav drawer via {"<BetaBanner inline>"}</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span>: the primary nav, auth/route-driven, always on screen. Two shapes: a fixed rail on the left edge from <code>sm</code> up (glyphs, or glyphs plus labels once expanded), and below <code>sm</code> a floating chip in the top-left corner that opens the same rail as a drawer over the page</li>
               <li><span className="font-mono text-neutral-400">Sidebar</span> chip and drawer: the rail&apos;s own phone shape, rendered by that component rather than a <code>components/ui/</code> primitive, so there is nothing here to reuse. The chip&apos;s open control is a deliberate one-off too: a 44px neutral thumb target, which {"<Button icon>"} does not offer (36px, accent or red)</li>
-              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell, the profile and organization edit modes, the collection forms and the search page&apos;s Add to collection); <code>stickyActionsIdle</code> keeps their room but hides them (invisible, inert, no surface) for actions that come and go with a page state, so the header never moves when they return; PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell, see its entry, and by CollectionShell on the collection page and forms); <code>PageColumns</code>&apos; <code>stickySide</code> pins the side column under the sticky actions from lg up while the main column scrolls (CollectionShell); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
+              <li><span className="font-mono text-neutral-400">PageShell / PageFrame</span>: page scaffolding, this very page (PAGE_TITLE_TEXT is the title&apos;s type, which a form&apos;s Title field takes in its place): one container on every app page, its left edge at one x and a max-w-6xl column centred on the screen from lg up, 53rem reading width without a rail and max-w-6xl with one (PageShell&apos;s <code>rail</code>); PageShell&apos;s <code>controls</code> slot puts a view&apos;s segmented control under the title, left-aligned (the feed scope, the Requests sort),  PageShell&apos;s <code>titleField</code> puts a form&apos;s Title field in the title&apos;s place and keeps the title as a visually hidden h1 (set by EventShell alone); PageShell&apos;s <code>stickyActions</code> puts the page&apos;s actions at the top right of the header, in the aside named Actions it renders, the header keeping their room, and pins them at the top right of the column once the title scrolls away, on a surface (set by EventShell, the profile and organization edit modes, the collection forms and the search page&apos;s Add to collection); <code>stickyActionsIdle</code> keeps their room but hides them (invisible, inert, no surface) for actions that come and go with a page state, so the header never moves when they return; PageShell&apos;s <code>onBack</code> replaces Back&apos;s history walk (on a /submit path, back to the chooser); PageShell&apos;s <code>column=&quot;wide&quot;</code> gives a page without a rail or a header side the full max-w-6xl column, for a grid that fills it (the /submit chooser&apos;s 3x2 tiles);PageShell&apos;s <code>headerInColumn</code> puts the header (back, title, byline) at the top of the main column beside the rail, so the rail opens top right (the organization page); PageShell&apos;s <code>headerSide</code> lays the header out in <code>PageColumns</code>, a 65:35 main and side column from lg up, its side heading the side column under the sticky actions, and the body continues in <code>EventLayout</code> on the same split (<code>PAGE_COLUMNS_SPLIT</code>) (set by EventShell, see its entry, and by CollectionShell on the collection page and forms); <code>PageColumns</code>&apos; <code>stickySide</code> pins the side column under the sticky actions from lg up while the main column scrolls (CollectionShell); PageShell&apos;s <code>back</code> arrow parks in the gutter left of the title from lg up and sticks there at the top of the viewport while the page scrolls, level with the rail; <span className="font-mono text-neutral-400">PageCenter</span> (from PageFrame) is the one centred full-screen block, on the same rail inset</li>
             </ul>
           </Item>
         </section>
@@ -2401,23 +2409,38 @@ function PaletteDisclosure() {
 
 function PaletteFilterSection() {
   const [open, setOpen] = useState(true);
-  const [selected, setSelected] = useState<string[]>(["Drone"]);
+  const [kinds, setKinds] = useState<string[]>(["Drone"]);
+  const [levels, setLevels] = useState<string[]>([]);
+  const toggle = (n: string) => (prev: string[]) =>
+    prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n];
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+      <h3 className={`${META_LINE} pt-2.5 -mb-1`}>Source and people</h3>
       <FilterSection
-        title="Source kind"
-        summary={chipSummary(selected)}
-        active={selected.length > 0}
+        title="Source"
+        summary={chipSummary([...kinds, ...levels])}
+        active={kinds.length + levels.length > 0}
         open={open}
         onToggle={() => setOpen((o) => !o)}
       >
-        <ChipBucket
-          options={["Drone", "Dashcam", "Static camera"].map((n) => ({ id: n, name: n }))}
-          selected={selected}
-          onToggle={(n) =>
-            setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
-          }
-        />
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <FieldLabel label="Source kind" />
+            <ChipBucket
+              options={["Drone", "Dashcam", "Static camera"].map((n) => ({ id: n, name: n }))}
+              selected={kinds}
+              onToggle={(n) => setKinds(toggle(n))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel label="Level" />
+            <ChipBucket
+              options={["Direct", "Indirect"].map((n) => ({ id: n, name: n }))}
+              selected={levels}
+              onToggle={(n) => setLevels(toggle(n))}
+            />
+          </div>
+        </div>
       </FilterSection>
     </div>
   );
