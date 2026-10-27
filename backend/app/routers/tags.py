@@ -1,19 +1,16 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
-from app.models.event import Event
-from app.models.source import Source, source_tags
-from app.models.tag import Tag, event_tags
+from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.tag import TagCreate, TagRead
-from app.services.event_filters import visible_events
 from app.services.pagination import REFERENTIAL_MAX_ROWS
+from app.services.tags import live_tags, suggested_tags
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +47,22 @@ def list_tags(
     response landing on the ceiling is logged because the payload can't say it
     was cut.
     """
-    on_event = (
-        select(event_tags.c.tag_id)
-        .join(Event, Event.id == event_tags.c.event_id)
-        .where(*visible_events())
-    )
-    on_source = (
-        select(source_tags.c.tag_id)
-        .join(Source, Source.id == source_tags.c.source_id)
-        .join(Event, Event.id == Source.event_id)
-        .where(*visible_events())
-    )
-    query = db.query(Tag).filter(or_(Tag.id.in_(on_event), Tag.id.in_(on_source)))
-    return _warn_if_truncated(query.order_by(Tag.name).limit(REFERENTIAL_MAX_ROWS).all())
+    return _warn_if_truncated(live_tags(db))
+
+
+@router.get("/suggested", response_model=list[TagRead])
+@limiter.limit("60/minute")
+def list_suggested_tags(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the tags a form offers in one click: your most used tags, then the platform's.
+
+    Ranked by uses on live events you own and their sources, then filled with the most used
+    live tags. The list never holds an orphan tag.
+    """
+    return suggested_tags(db, current_user.id)
 
 
 @router.post("", response_model=TagRead, status_code=status.HTTP_201_CREATED)

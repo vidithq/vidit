@@ -48,6 +48,7 @@ export function SourcesField({
   setSources,
   tags,
   setTags,
+  suggestedTags,
   invalidKeys,
   attempt = 0,
 }: {
@@ -55,6 +56,7 @@ export function SourcesField({
   setSources: Dispatch<SetStateAction<SourceDraft[]>>;
   tags: Tag[];
   setTags: Dispatch<SetStateAction<Tag[]>>;
+  suggestedTags?: Tag[];
   /** The keys a publish attempt flagged (`useIncompleteForm`). */
   invalidKeys: ReadonlySet<MissingFieldKey>;
   /** `useIncompleteForm`'s attempt count: each new one shows the first source with a gap. */
@@ -125,6 +127,7 @@ export function SourcesField({
           onImportLink={(post) => void importLink(draft.key)(post)}
           tags={tags}
           setTags={setTags}
+          suggestedTags={suggestedTags}
           invalid={sourceGaps(draft, invalidKeys)}
           actions={sources.length > 1 && <RemoveSource index={index} onRemove={() => remove(index)} />}
           wide={sources.length === 1}

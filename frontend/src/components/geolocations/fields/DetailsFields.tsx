@@ -90,6 +90,7 @@ export function DetailsFields({
       <TagPicker
         tags={taxonomy.tags}
         setTags={taxonomy.setTags}
+        suggestedTags={taxonomy.suggestedTags}
         selectedTagIds={selectedTagIds}
         setSelectedTagIds={setSelectedTagIds}
         conflicts={taxonomy.conflicts}

@@ -1056,11 +1056,12 @@ export default function PalettePage() {
             </span>
           </Item>
 
-          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Each source editor renders <TagChips> alone, named for its source (Source 1 tags). The conflict field is <ConflictChips>; with filter, both fields serve the filter panel (see the filter search fields).">
+          <Item name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Under the search, one line of neutral <Pill> chips with a plus offers up to 8 suggested tags (GET /tags/suggested: your most used tags, then the platform's), the picked ones left out; a click picks the tag, and the row never wraps, clipping what does not fit. Each source editor renders <TagChips> alone, named for its source (Source 1 tags). The conflict field is <ConflictChips>; with filter, both fields serve the filter panel (see the filter search fields).">
             <div className="w-full max-w-2xl space-y-4">
               <TagPicker
                 tags={tpTags}
                 setTags={setTpTags}
+                suggestedTags={tpTags}
                 selectedTagIds={tpSelected}
                 setSelectedTagIds={setTpSelected}
                 conflicts={MOCK_CONFLICTS}
@@ -2065,6 +2066,7 @@ export default function PalettePage() {
                 setSources={setPaletteSources}
                 tags={tpTags}
                 setTags={setTpTags}
+                suggestedTags={tpTags}
                 invalidKeys={new Set()}
               />
             </div>
