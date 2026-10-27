@@ -61,15 +61,6 @@ test.describe("collection page", () => {
     // Where the owner goes to put more of their work on it: their own
     // catalogue, since an event joins a collection from its own page. It sits
     // in the Events header, the other row on this page that wraps.
-    //
-    // The player sits above that header, and its panel holds a one-line
-    // loading box until the first step's event answers, then grows by the
-    // whole event. Measured before that, the scroll lands the link in view and
-    // the panel then pushes it below the fold, so the wait is on the event's
-    // own heading in the panel, the one level-2 heading carrying its title.
-    await expect(
-      page.getByRole("heading", { level: 2, name: COLLECTED_EVENT.title }),
-    ).toBeVisible();
     await expectControlInsideViewport(
       page,
       page.getByRole("link", { name: "Your geolocations" }),
@@ -90,16 +81,15 @@ test.describe("collection page", () => {
 });
 
 /**
- * The same page read by a visitor, for the step player it opens the
- * collection's work with.
+ * The same page read by a visitor, for the Coverage section it steps the
+ * collection's work in.
  *
- * A visitor rather than the owner, because the player is what every reader of
- * the page gets and the owner's controls are covered above. The player is the
- * one block on this page whose two halves are sized against each other: a map
- * beside a panel from `sm` up, stacked below it, so a phone is where the
- * column can be pushed open or a control can land off it.
+ * A visitor rather than the owner, because Coverage is what every reader of
+ * the page gets and the owner's controls are covered above. Its last row holds
+ * where the reader stands beside the two moves, so a phone is where that row
+ * can push the column open or land a control off it.
  */
-test.describe("collection player", () => {
+test.describe("collection coverage", () => {
   test("steps through the collection on a narrow column", async ({ page }) => {
     await mockApi(page);
     await page.goto(`/collections/${COLLECTION_ID}`);
@@ -108,14 +98,17 @@ test.describe("collection player", () => {
       page.getByRole("heading", { name: COLLECTION.title }),
     ).toBeVisible();
 
-    // The player opens on the first item, and the two moves are what a reader
+    // Coverage opens on the first item, and the two moves are what a reader
     // came to this page to press.
     await expect(page.getByText("1 of 2")).toBeVisible();
-    const next = page.getByRole("button", { name: "Next event" });
+    await expect(
+      page.getByRole("link", { name: COLLECTED_EVENT.title }),
+    ).toBeVisible();
+    const next = page.getByRole("button", { name: "Next" });
     await expectNarrowViewportLayout(page, next);
     await expectControlInsideViewport(
       page,
-      page.getByRole("button", { name: "Previous event" }),
+      page.getByRole("button", { name: "Previous" }),
     );
 
     // The step is the share unit, so it rides the page's own URL.
@@ -150,7 +143,7 @@ test.describe("collection create page", () => {
     ).toBeVisible();
 
     // The collection holds nothing yet, and the block that says so points at
-    // the one above it.
+    // the one above it. The side column follows, below the fields on a phone.
     await expect(
       page.getByRole("heading", { name: "Events in this collection" }),
     ).toBeVisible();
@@ -195,7 +188,7 @@ test.describe("collection edit page", () => {
     await expect(
       page.getByRole("heading", { name: "Edit collection" }),
     ).toBeVisible();
-    await expect(page.getByLabel("Title")).toHaveValue(COLLECTION.title);
+    await expect(page.getByLabel("Title", { exact: true })).toHaveValue(COLLECTION.title);
 
     // The save is what the reader came here to press, and the fields above it,
     // the two text ones and the add block's search box, are what the shared

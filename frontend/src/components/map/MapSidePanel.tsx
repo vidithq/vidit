@@ -11,27 +11,11 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { CARD_FRAME } from "@/components/ui/Card";
 
-/** Where the panel sits. `overlay`: a card over the full-screen map page (a bottom sheet below
- * `sm`), taking the display cutout as margins from `sm` up and as padding on the sheet's three
- * edges. `inline`: the collection step player's own column beside the map, with no insets, sheet
- * or height cap: it fills the block its caller sized. */
-type MapSidePanelPlacement = "overlay" | "inline";
-
-const PLACEMENT: Record<MapSidePanelPlacement, string> = {
-  overlay:
-    "absolute top-4 right-4 sm:safe-mt sm:safe-mr max-h-[calc(100dvh-4.5rem)] z-1000 w-96 max-sm:top-auto max-sm:bottom-0 max-sm:inset-x-0 max-sm:w-auto max-sm:max-h-[60dvh] max-sm:rounded-b-none max-sm:border-x-0 max-sm:safe-pb max-sm:safe-pl max-sm:safe-pr max-sm:border-b-0",
-  inline: "relative w-full sm:w-96 sm:shrink-0 sm:h-full",
-};
-
 export interface MapSidePanelProps<T> {
   /** The read from `useApiResource`: one prop so no caller drops the error. `data` is null while
    * loading or after a failed load. */
   resource: ApiResource<T>;
-  /** Closes the panel. Absent where the panel does not float (the collection player). */
-  onClose?: () => void;
-  /** Chrome pinned to the panel's top edge, above the content (the collection step header). Outlives the content under it. */
-  header?: ReactNode;
-  placement?: MapSidePanelPlacement;
+  onClose: () => void;
   /** The error line when the read fails with no message. */
   errorFallback: string;
   /** The record's name, linked to its page, and the line under it (a byline, a kind). */
@@ -49,64 +33,47 @@ export interface MapSidePanelProps<T> {
  * Below `sm` it is a bottom sheet: a 384px card pinned right runs off a 375px viewport. It spans
  * the width, caps at 60dvh, scrolls its own content, and covers the map's zoom control while open.
  *
- * `placement="inline"` drops the insets, sheet and cap; the height comes from the caller's block.
- * `header` sticks to the top edge inside the scroll and sits outside the loading branch, so it
- * stays on screen while the next read lands.
+ * The display cutout is part of the box (docs/design.md, Phone chrome): margins from `sm` up, and
+ * padding on the sheet's three edges.
  */
 export function MapSidePanel<T>({
   resource,
   onClose,
-  header,
-  placement = "overlay",
   errorFallback,
   heading,
   children,
 }: MapSidePanelProps<T>) {
   const { data, error, loading, refetch } = resource;
 
-  const overlaid = placement === "overlay";
   const head = data ? heading(data) : null;
 
   return (
-    // Box and paint are shared by both placements; `PLACEMENT` holds the only difference. The display
-    // cutout is part of it (docs/design.md, Phone chrome): margins on the overlay, padding on the
-    // sheet's three edges.
     <div
       className={cn(
         CARD_FRAME,
-        "overflow-y-auto",
-        PLACEMENT[placement],
+        "overflow-y-auto absolute top-4 right-4 sm:safe-mt sm:safe-mr max-h-[calc(100dvh-4.5rem)] z-1000 w-96 max-sm:top-auto max-sm:bottom-0 max-sm:inset-x-0 max-sm:w-auto max-sm:max-h-[60dvh] max-sm:rounded-b-none max-sm:border-x-0 max-sm:safe-pb max-sm:safe-pl max-sm:safe-pr max-sm:border-b-0",
       )}
     >
-      {/* Sheet grab bar (phone, overlay only): the sheet has no top edge against the map. Centred to
-          clear the close button; decorative. */}
-      {overlaid && (
-        <div className="sm:hidden flex justify-center py-2" aria-hidden="true">
-          <div className="h-1 w-9 rounded-full bg-neutral-600" />
-        </div>
-      )}
+      {/* Sheet grab bar (phone): the sheet has no top edge against the map. Centred to clear the
+          close button; decorative. */}
+      <div className="sm:hidden flex justify-center py-2" aria-hidden="true">
+        <div className="h-1 w-9 rounded-full bg-neutral-600" />
+      </div>
 
-      {onClose && (
-        <Button
-          icon
-          variant="ghost"
-          onClick={onClose}
-          aria-label="Close detail panel"
-          title="Close detail panel"
-          className="absolute top-3 right-3 z-10 text-lg"
-        >
-          &times;
-        </Button>
-      )}
-
-      {/* `sticky`, not a scrolling middle: the panel scrolls as one box and pinning keeps that shape. */}
-      {header && (
-        <div className="sticky top-0 z-20 bg-neutral-900">{header}</div>
-      )}
+      <Button
+        icon
+        variant="ghost"
+        onClick={onClose}
+        aria-label="Close detail panel"
+        title="Close detail panel"
+        className="absolute top-3 right-3 z-10 text-lg"
+      >
+        &times;
+      </Button>
 
       {error !== null ? (
-        // `min-h-32` matches the loading box so the chrome holds still; `pr-12` only with a close button.
-        <div className={cn("p-4 space-y-3 min-h-32", onClose && "pr-12")}>
+        // `min-h-32` matches the loading box so the chrome holds still; `pr-12` clears the close button.
+        <div className="p-4 space-y-3 min-h-32 pr-12">
           <div className={FORM_ERROR_BANNER} role="alert">
             {error || errorFallback}
           </div>
@@ -115,8 +82,6 @@ export function MapSidePanel<T>({
           </Button>
         </div>
       ) : loading ? (
-        // `min-h-32` under `h-full`: an inline panel under the map on a phone is content-sized and would
-        // collapse, jumping the chrome on every step.
         <div className="flex items-center justify-center h-full min-h-32">
           <span className="text-neutral-500 text-sm">Loading...</span>
         </div>

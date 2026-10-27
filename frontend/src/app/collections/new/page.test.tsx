@@ -16,6 +16,9 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
 vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
+// MapLibre needs WebGL; the Coverage map is `CollectionCoverage.test.tsx`'s subject.
+vi.mock("@/components/map/Map", () => ({ default: () => <div data-testid="map" /> }));
+
 // The `?event=` read: the picker's first block renders the event's own row.
 const useApiResource = vi.fn();
 vi.mock("@/hooks/useApiResource", () => ({
@@ -208,9 +211,8 @@ describe("NewCollectionPage", () => {
     searchParams.set("event", "e1");
 
     render(<NewCollectionPage />);
-    expect(
-      screen.getByText("The collection opens with this event on it."),
-    ).toBeInTheDocument();
+    // Details counts what the create holds.
+    expect(screen.getByText("1 event")).toBeInTheDocument();
     // The event's own row, read off `/events/{id}`.
     expect(useApiResource).toHaveBeenCalledWith("/events/e1");
     expect(
@@ -329,10 +331,10 @@ describe("NewCollectionPage with a search selection", () => {
     expect(screen.getByText("Depot fire")).toBeInTheDocument();
     expect(screen.getByText("Bridge strike")).toBeInTheDocument();
     expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
-    expect(await screen.findByText("The collection opens with 2 geolocations.")).toBeInTheDocument();
+    expect(await screen.findByText("2 events")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Depot fire from this collection" }));
-    expect(screen.getByText("The collection opens with 1 geolocation.")).toBeInTheDocument();
+    expect(screen.getByText("1 event")).toBeInTheDocument();
 
     await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
@@ -373,13 +375,13 @@ describe("NewCollectionPage with a search selection", () => {
     expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
     expect(screen.getByText("Dam breach")).toBeInTheDocument();
     expect(screen.getByText("44 events, ordered by event date, earliest first.")).toBeInTheDocument();
-    expect(screen.getByText("The collection opens with 44 geolocations.")).toBeInTheDocument();
+    expect(screen.getByText("44 events")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(loadMore).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Dam breach from this collection" }));
     expect(screen.queryByText("Dam breach")).not.toBeInTheDocument();
-    expect(screen.getByText("The collection opens with 43 geolocations.")).toBeInTheDocument();
+    expect(screen.getByText("43 events")).toBeInTheDocument();
 
     await fillForm();
     fireEvent.click(screen.getByRole("button", { name: "Create and add" }));

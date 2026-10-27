@@ -9,6 +9,13 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
+// MapLibre needs WebGL; the stub reports the pins it was handed.
+vi.mock("@/components/map/Map", () => ({
+  default: ({ points }: { points: unknown[] }) => (
+    <div data-testid="map" data-points={points.length} />
+  ),
+}));
+
 // The picker is `EventPicker.test.tsx`'s subject.
 vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => ({
@@ -37,6 +44,7 @@ async function renderForm(props: Record<string, unknown> = {}) {
   const result = render(
     <CollectionDetailsForm
       title="New collection"
+      owner={{ username: "ana", avatar_url: null }}
       backFallback="/profile/ana"
       username="ana"
       submitLabel="Create collection"
@@ -171,5 +179,36 @@ describe("CollectionDetailsForm", () => {
       textHtml("Three days of strikes."),
       [],
     );
+  });
+
+  it("lays out like the collection page: the byline, then Coverage and Details", async () => {
+    await renderForm();
+
+    expect(screen.getByRole("link", { name: "ana" })).toHaveAttribute("href", "/profile/ana");
+    expect(screen.getByText("Collection")).toBeInTheDocument();
+    expect(screen.getByText("The map shows the events you add.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Details" })).toBeInTheDocument();
+  });
+
+  it("maps the held events and adds them up in Details", async () => {
+    const held = (id: string, date: string, coords: { lat: number; lng: number } | null) => ({
+      id,
+      title: `Strike ${id}`,
+      status: "geolocated" as const,
+      media: null,
+      is_graphic: false,
+      occurred_date: date,
+      coords,
+      tags: [],
+    });
+    await renderForm({
+      initialEvents: [
+        held("e1", "2026-03-14", { lat: 49.71, lng: 37.616 }),
+        held("e2", "2026-03-16", null),
+      ],
+    });
+
+    expect(await screen.findByTestId("map")).toHaveAttribute("data-points", "1");
+    expect(screen.getByText("14 Mar 2026 to 16 Mar 2026")).toBeInTheDocument();
   });
 });

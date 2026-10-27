@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 
 const replace = vi.fn();
 const push = vi.fn();
@@ -32,22 +31,6 @@ vi.mock("next/dynamic", () => ({
     },
 }));
 
-// The panel is covered on the map page; stubbed so the step header and the handed event are what is measured.
-vi.mock("@/components/map/DetailSidePanel", () => ({
-  DetailSidePanel: ({
-    header,
-    detail,
-  }: {
-    header?: ReactNode;
-    detail: { title: string } | null;
-  }) => (
-    <div data-testid="panel">
-      {header}
-      <p>{detail?.title ?? "Loading..."}</p>
-    </div>
-  ),
-}));
-
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
@@ -56,7 +39,7 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
 }));
 
-// The page walks the cursor once and hands that sequence to the player, panel and list.
+// The page walks the cursor once and hands that sequence to the map and the list.
 const fetchCollectionSequence = vi.fn();
 const deleteCollection = vi.fn();
 const reportCollection = vi.fn();
@@ -123,21 +106,12 @@ const ITEMS: EventListItem[] = [
   },
 ];
 
-/** Paths the page reads: the collection for the header, the current step's event for the panel. */
+/** The one path the page reads: the collection. */
 function mockReads(data: Collection) {
-  useApiResource.mockImplementation((path: string | null) =>
-    path?.startsWith("/events/")
-      ? {
-          data: { id: path.slice("/events/".length), title: `event ${path}` },
-          error: null,
-          loading: false,
-          refetch: vi.fn(),
-        }
-      : { data, error: null, loading: false, refetch: vi.fn() },
-  );
+  useApiResource.mockImplementation(() => ({ data, error: null, loading: false, refetch: vi.fn() }));
 }
 
-/** Render, then wait for the sequence walk: the player and list draw from it. */
+/** Render, then wait for the sequence walk: the map and the list draw from it. */
 async function renderPage() {
   render(<CollectionPage />);
   await screen.findByRole("heading", { name: "Kupiansk rail corridor" });
@@ -193,7 +167,7 @@ describe("CollectionPage", () => {
     expect(screen.getByText("14 Mar 2026 to 16 Mar 2026")).toBeInTheDocument();
   });
 
-  it("shows the tags the collection's items carry, under the meta line", async () => {
+  it("shows the tags the collection's items carry in Details", async () => {
     // Derived server-side from the items.
     mockReads(
       collection({
@@ -217,7 +191,6 @@ describe("CollectionPage", () => {
     await renderPage();
 
     expect(screen.getByText("1 event")).toBeInTheDocument();
-    expect(await screen.findByText("1 event on the map")).toBeInTheDocument();
   });
 
   it("carries no cover upload and no per-row byline", async () => {
@@ -246,7 +219,6 @@ describe("CollectionPage", () => {
     await renderPage();
 
     expect(await screen.findByTestId("map")).toHaveAttribute("data-points", "2");
-    expect(screen.getByText("2 events on the map")).toBeInTheDocument();
     const rows = screen.getAllByRole("heading", { level: 3 });
     expect(rows.map((row) => row.textContent)).toEqual([
       "Strike on the rail junction",
@@ -261,7 +233,11 @@ describe("CollectionPage", () => {
 
     expect(await screen.findByText("1 of 2")).toBeInTheDocument();
     expect(screen.getByTestId("map")).toHaveAttribute("data-selected", "e1");
-    expect(useApiResource).toHaveBeenCalledWith("/events/e1");
+    // The event the reader stands on opens from Coverage.
+    expect(screen.getByRole("link", { name: "Strike on the rail junction" })).toHaveAttribute(
+      "href",
+      "/events/e1",
+    );
     expect(
       screen.getByRole("button", {
         name: "Read this collection from Strike on the rail junction",
@@ -304,8 +280,9 @@ describe("CollectionPage", () => {
   it("carries one gesture per row: the title is plain text, not a second link", async () => {
     await renderPage();
 
+    // The one link is the Coverage section's Event row, for the step the reader stands on.
     expect(
-      screen.queryByRole("link", { name: "Strike on the rail junction" }),
+      screen.queryByRole("link", { name: "Damaged locomotive shed" }),
     ).not.toBeInTheDocument();
     // The stretched button keeps the row's accessible name and still moves the player.
     expect(
@@ -315,17 +292,17 @@ describe("CollectionPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers no player for a collection with nothing on it", async () => {
+  it("offers no map for a collection with nothing on it", async () => {
     mockReads(collection({ event_count: 0, first_date: null, last_date: null }));
     fetchCollectionSequence.mockResolvedValue([]);
 
     await renderPage();
 
     await waitFor(() =>
-      expect(screen.getByText("Nothing on this collection yet.")).toBeInTheDocument(),
+      expect(screen.getByText(/^Nothing on this collection yet\./)).toBeInTheDocument(),
     );
-    expect(screen.queryByTestId("panel")).not.toBeInTheDocument();
     expect(screen.queryByTestId("map")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Coverage" })).not.toBeInTheDocument();
   });
 
   it("shares the collection on X for a visitor, prefilled with the title, the byline line and its url", async () => {
@@ -441,8 +418,10 @@ describe("CollectionPage", () => {
         details: null,
       }),
     );
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Report received",
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("status").map((status) => status.textContent).join(" "),
+      ).toContain("Report received"),
     );
   });
 
@@ -479,5 +458,39 @@ describe("CollectionPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("nope");
     expect(push).not.toHaveBeenCalled();
+  });
+
+  describe("a long collection", () => {
+    const many = Array.from({ length: 45 }, (_, i) => ({
+      ...ITEMS[0],
+      id: `e${i + 1}`,
+      title: `Strike ${i + 1}`,
+    }));
+    const rows = () => screen.getAllByRole("button", { name: /^Read this collection from/ });
+
+    it("lists the events 20 at a time behind Show more", async () => {
+      fetchCollectionSequence.mockResolvedValue(many);
+
+      await renderPage();
+
+      await waitFor(() => expect(rows()).toHaveLength(20));
+      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+      expect(rows()).toHaveLength(40);
+      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+      expect(rows()).toHaveLength(45);
+      expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+    });
+
+    it("opens the pages down to the step a link carries", async () => {
+      fetchCollectionSequence.mockResolvedValue(many);
+      searchParams.set("step", "23");
+
+      await renderPage();
+
+      await waitFor(() => expect(rows()).toHaveLength(40));
+      expect(
+        screen.getByRole("button", { name: "Read this collection from Strike 23" }),
+      ).toHaveAttribute("aria-current", "true");
+    });
   });
 });

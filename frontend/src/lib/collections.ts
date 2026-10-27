@@ -415,26 +415,26 @@ export function eventCountLabel(count: number): string {
   return countLabel(count, "event");
 }
 
-/** The meta line the page and profile card print: the count (zero included), then the span
- *  of item dates when they carry any (one day prints once, not as a range). */
+/** The meta line the profile card and the share texts print: the count (zero included), then
+ *  the span of item dates when they carry any. */
 export function collectionMetaSegments(collection: Collection): string[] {
-  const { event_count: count, first_date: first, last_date: last } = collection;
-  const segments = [eventCountLabel(count)];
-  if (first && last) {
-    segments.push(
-      first === last
-        ? formatDate(first)
-        : `${formatDate(first)} to ${formatDate(last)}`,
-    );
-  }
-  return segments;
+  const span = collectionSpanLabel(collection.first_date, collection.last_date);
+  return [eventCountLabel(collection.event_count), ...(span ? [span] : [])];
+}
+
+/** The span the item dates cover, null without a date; one day prints once, not as a range. */
+export function collectionSpanLabel(first: string | null, last: string | null): string | null {
+  if (!first || !last) return null;
+  return first === last ? formatDate(first) : `${formatDate(first)} to ${formatDate(last)}`;
 }
 
 /** The items as map points for `<Map>`. Read off the already loaded rows (there is no
  *  points endpoint per collection, and a second read could frame a different set). No
  *  coordinates, no pin. The two date slots are the map page's scrubber payload, unused by
  *  an embedded map. */
-export function collectionPoints(items: EventListItem[]): MapPoint[] {
+export function collectionPoints(
+  items: Pick<EventListItem, "id" | "coords" | "occurred_date" | "status">[],
+): MapPoint[] {
   return items.flatMap((item) =>
     item.coords
       ? [

@@ -11,15 +11,11 @@ import { MapSidePanel, type MapSidePanelProps } from "./MapSidePanel";
 export function DetailSidePanel({
   resource,
   onClose,
-  header,
-  placement = "overlay",
 }: Omit<MapSidePanelProps<EventDetail>, "errorFallback" | "heading" | "children">) {
   return (
     <MapSidePanel
       resource={resource}
       onClose={onClose}
-      header={header}
-      placement={placement}
       errorFallback="Couldn't load this event."
       heading={(detail) => ({
         title: detail.title,

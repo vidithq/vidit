@@ -23,7 +23,6 @@ import {
   readSelectionHandoff,
   type CollectionDescription,
 } from "@/lib/collections";
-import { countLabel } from "@/lib/format";
 import type { EventDetail, EventListItem } from "@/types";
 import { eventHref, profileHref } from "@/lib/routes";
 
@@ -120,13 +119,7 @@ function NewCollectionPageBody() {
   return (
     <CollectionDetailsForm
       title="New collection"
-      subtitle={
-        eventId
-          ? "The collection opens with this event on it."
-          : (match || checked) && total > 0
-            ? `The collection opens with ${countLabel(total, "geolocation")}.`
-            : "A named set of your own events, shown on your profile."
-      }
+      owner={user}
       backFallback={origin}
       username={user.username}
       initialEvents={event ? [pickableFromDetail(event)] : (checked ?? [])}

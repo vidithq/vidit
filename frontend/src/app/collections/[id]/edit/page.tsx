@@ -87,6 +87,7 @@ export default function EditCollectionPage() {
   return (
     <CollectionDetailsForm
       title="Edit collection"
+      owner={collection.owner}
       backFallback={collectionHref(collection.id)}
       username={user.username}
       initialTitle={collection.title}

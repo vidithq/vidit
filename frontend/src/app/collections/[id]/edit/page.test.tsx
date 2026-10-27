@@ -166,7 +166,10 @@ describe("EditCollectionPage", () => {
     expect(
       screen.getByRole("heading", { name: "Edit collection" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Kupiansk rail corridor")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Kupiansk rail corridor" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Title")).toHaveValue("Kupiansk rail corridor");
   });
 
   it("splits the form into a Details card, an Events in this collection card, and an Add events card", async () => {
