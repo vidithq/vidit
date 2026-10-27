@@ -2,7 +2,7 @@
 
 import { useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
-import { Stamp } from "lucide-react";
+import { ChevronDown, Stamp } from "lucide-react";
 
 import { useAdmin } from "@/contexts/AdminContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,7 @@ import { eventVersionHref, eventVersionPath } from "@/lib/events";
 import { formatDate } from "@/lib/format";
 import { organizationByline, type OrganizationRef } from "@/lib/organizations";
 import type { EventDetail, EventVersion } from "@/types";
+import { ActionMenu } from "@/components/ui/ActionMenu";
 import { AvatarStack, type AvatarStackItem } from "@/components/ui/AvatarStack";
 import { Button } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -216,11 +217,13 @@ export function ApprovedBy(props: ComponentProps<typeof ApprovalStamps>) {
 }
 
 /**
- * The approve controls of the live version: **Approve** for an analyst outside the event's
- * geolocators who has not approved it, and one **Approve as <organization>** per organization the
- * reader is a member of that has not approved it. An approval is final, so a click opens a
- * confirmation step naming the version (and the organization) before anything is sent. A stale
- * version offers **Reload**.
+ * The approve control of the live version, for the actions row. The reader may approve as
+ * themselves (an analyst outside the event's geolocators who has not approved it) and as each
+ * organization they are a member of that has not approved it. With one of these identities it is
+ * one **Approve** (or **Approve as <organization>**) button; with several, one **Approve** opens
+ * an **Approve as** menu listing them. An approval is final, so a pick opens a confirmation step
+ * naming the version (and the organization) before anything is sent. A stale version offers
+ * **Reload**.
  */
 export function ApproveButtons({
   event,
@@ -267,27 +270,36 @@ export function ApproveButtons({
     setConfirming(organization);
   };
 
+  const identities: (OrganizationRef | null)[] = [...(eligible ? [null] : []), ...organizations];
+  const disabled = approve.loading || busy;
+
   return (
     <>
-      {eligible && (
-        <Button variant="secondary" onClick={() => open(null)} disabled={approve.loading || busy}>
-          <Stamp size={14} />
-          Approve
-        </Button>
+      {identities.length > 1 ? (
+        <ActionMenu
+          label="Approve as…"
+          text="Approve"
+          icon={<ChevronDown size={14} />}
+          menuLabel="Approve as"
+          variant="primary"
+          disabled={disabled}
+          items={identities.map((identity) => ({
+            key: identity?.slug ?? "",
+            label: identity?.name ?? user?.username ?? "You",
+            icon: <Stamp size={14} />,
+            onSelect: () => open(identity),
+          }))}
+        />
+      ) : (
+        identities.map((identity) => (
+          <Button key={identity?.slug ?? ""} onClick={() => open(identity)} disabled={disabled}>
+            <Stamp size={14} />
+            {identity ? `Approve as ${identity.name}` : "Approve"}
+          </Button>
+        ))
       )}
-      {organizations.map((organization) => (
-        <Button
-          key={organization.slug}
-          variant="secondary"
-          onClick={() => open(organization)}
-          disabled={approve.loading || busy}
-        >
-          <Stamp size={14} />
-          Approve as {organization.name}
-        </Button>
-      ))}
       {approve.error && (
-        <div className={`${FORM_ERROR_BANNER} w-full`} role="alert">
+        <div className={`${FORM_ERROR_BANNER} basis-full`} role="alert">
           {approve.error}
         </div>
       )}

@@ -154,11 +154,18 @@ describe("the event actions per reader", () => {
   });
 
   // Approving starts from the approvals under the row, after reading the record.
-  it("gives an analyst who may approve the version, Share and Report; Approve waits under the row", async () => {
+  it("gives an analyst who may approve the version, Share, Report, then Approve in the same row", async () => {
     renderAs(ANALYST, { status: "geolocated", surface: "event" });
-    const card = await screen.findByRole("region", { name: "Approvals" });
-    expect(await within(card).findByRole("button", { name: "Approve" })).toBeInTheDocument();
-    expect(rowControls()).toEqual(["v1: choose a version", "Share", "Report"]);
+    expect(await within(row()).findByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(rowControls()).toEqual([
+      "v1: choose a version",
+      "Share",
+      "Report",
+      "Approve",
+      "What is an approval?",
+    ]);
+    // No stamp yet, so nothing reads under the row.
+    expect(screen.queryByRole("region", { name: "Approvals" })).toBeNull();
   });
 
   // Credit only: a co-geolocator shelves the row and reads its geolocators (where they leave),

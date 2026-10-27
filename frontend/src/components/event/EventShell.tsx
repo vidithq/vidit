@@ -9,7 +9,7 @@ import { EventLayout, type EventLayoutSlots } from "@/components/event/EventLayo
 export interface EventShellActions {
   /** The row of buttons (or a form's writes and banners), the only part pinned on scroll. */
   pinned: ReactNode;
-  /** Under the row, not pinned: the approvals and an invitation on the event page, a version's
+  /** Under the row, not pinned: the approvals on the event page, a version's
    *  approvals, a form's hidden announcer. */
   below?: ReactNode;
 }
