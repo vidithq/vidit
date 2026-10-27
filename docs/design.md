@@ -250,7 +250,7 @@ flowchart BT
   - Ordinary clusters keep zoom-on-click.
 - **Cluster to points crossfade.** The map sets `fadeDuration: 0`, so count labels and their circles swap on the same frame; basemap place labels pop in instead of fading. Count labels skip symbol placement (`text-allow-overlap` + `text-ignore-placement`), so a count is never culled apart from its circle. Around the clustering ceiling, a zoom-interpolated opacity crossfade runs in paint expressions, with stops derived from `CLUSTER_MAX_ZOOM`: clusters and counts thin approaching one zoom past the ceiling, and points and stack badges rise just past it. The crossfade applies **only while a zoom is in flight**; at rest every layer holds full opacity, and a cluster click that resolves past the ceiling lands its pins at full opacity.
 - **Sites layer.** A map draws sites through `<Map>`'s `children`, the slot for extra sources and layers. [`SiteLayers`](../frontend/src/components/map/SiteLayers.tsx) keeps them under the event pins through `useUnderEventPins`, so an event always draws above a zone.
-  - On `/map` the **Sites** section leads the filter overlay's sections, above Status. Its **Show sites** switch, a described `<ToggleRow>`, turns the layer on; it starts off. The line under the switch names the date the zones are read at: the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. **New site** under it opens [`/sites/new`](#sites) for a signed-in reader.
+  - On `/map` the **Sites** row is the filter overlay's **Layers** group, above the event filters (see [Filter panel](#filter-panel)). Its **Show sites** switch, a described `<ToggleRow>`, turns the layer on; it starts off. The line under the switch names the date the zones are read at: the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. **New site** under it opens [`/sites/new`](#sites) for a signed-in reader.
   - The layer counts as one active filter. While it is on, the collapsed section reads **On**, the **Filters** button counts it, and a **Sites** pill heads the active-filter pills. Removing the pill or **Clear all** turns the layer off.
   - Below zoom 10 (`ZONE_MIN_ZOOM`) each site is one square symbol at its centroid, the shape that tells a site from a round event pin. From zoom 10 the map draws every zone. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
   - A zone and its square take Tailwind fuchsia, the `400` stop on a dark basemap and the `700` stop on a light one (`SITE_MAP_COLORS` in [`lib/palette.ts`](../frontend/src/lib/palette.ts), read by the basemap's brightness like the highlights). No accent palette and no basemap highlight uses that hue, so a site on a military area or an airport reads as its own zone over the lime or cyan highlight. Only the effect of the latest linked event changes the colour, read at the same date as the zone: damage takes the warning amber, destruction the danger red. A zone draws like the military and airport highlights, a fill at 12% opacity (22% when selected) under a solid outline of 2 px (3 px when selected), so the pins and labels inside it stay readable. `zoneEmphasis` in [`lib/sites.ts`](../frontend/src/lib/sites.ts) holds this mapping for `/map` and the site page. A link effect shows as a `<Pill>` (`LinkEffectPill`), in the warning or danger tone for those two effects and neutral for the others.
@@ -651,6 +651,53 @@ The **Filters** button opens the same panel full screen in `MediaOverlay`'s dial
 - **Cancel**, Escape or a tap on the backdrop closes the dialog and drops the draft. While a search field's list is open, Escape closes the list only.
 
 The pills act on the applied filters at every width. Every applied value has its pill, the author included (**By** *username*), and counts once in **Filters (N)**. The pill row hides from `lg` up while no filter is active, since the button is off the page there.
+
+#### Filter panel
+
+```mermaid
+flowchart TB
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef page fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`the panel and its group labels`"]:::core
+    l2["`a FilterSection row, every surface`"]:::shared
+    l3["`a row the surface brings or opts into`"]:::page
+    l1 ~~~ l2 ~~~ l3
+  end
+
+  panel["`**EventFilterSections**`"]:::core
+  lead["`**lead**: Layers on the map, Activity on the feed`"]:::core
+  event["`**Event**`"]:::core
+  source["`**Source and people**`"]:::core
+  sites["`Sites (map), Kind (feed)`"]:::page
+  what["`Status, conflict, tags`"]:::shared
+  dates["`Dates: Event date, Added (**dateSections**)`"]:::page
+  guess["`Location guess (Requests board)`"]:::page
+  src["`Source: Source kind, Level, Media`"]:::shared
+  people["`People: Author, Approvals`"]:::shared
+
+  panel --> lead --> sites
+  panel --> event
+  event --> what
+  event --> dates
+  event --> guess
+  panel --> source
+  source --> src
+  source --> people
+```
+
+[`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx) is the one filter panel of the map overlay, search, the [Requests board](#requests-board) and the feed. It stacks the filters in three groups inside one `CARD_FRAME`, each under a `META_LINE` label, with a `border-neutral-700` rule between two groups:
+
+- **The lead group** holds the surface's own rows, passed as `lead`: **Layers** with **Sites** on the map, **Activity** with **Kind** on the feed. Search and the board have none.
+- **Event** holds the **Status, conflict, tags** row, the **Dates** row of the surface's `dateSections`, and **Location guess** on the board alone.
+- **Source and people** holds the **Source** row (Source kind, Level, Media) and the **People** row (Author, Approvals).
+
+Each row is a [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx). Filters that share a row show as fields, each under a `<FieldLabel>` with its `?`. A row left with one filter on a surface shows that filter as its own row, with its own title and `?`: the Collections scope of search shows **Author**, and the feed shows **Approvals**. A merged row whose filters change per surface names itself after the ones present, so the board reads **Conflict, tags**. The map shows five rows for its eleven filters.
+
+A collapsed row sums up its active values, joined by commas, or reads **Any**. Every row opens collapsed, except a row that holds an active value, which opens expanded so the applied filters stay visible. Each header still toggles its row. The panel keeps the open state per row, so a re-render or a scope change on search never resets it.
 
 #### Phone chrome
 
@@ -1266,7 +1313,7 @@ flowchart TB
 
 **A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) under the title picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
 
-**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind**, Conflict, Source kind, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
+**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind**, in its own **Activity** group, then Conflict, Source kind, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
 
 **Kind** is one [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) of three chips: **Geolocations**, **Requests** and **Detections**. With no chip selected the feed lists all three kinds, and the page sends no `kind`. Selected chips narrow the feed to those kinds, and the page sends each one as a `kind` value (`geolocation`, `request`, `detected`). Each selected chip has a removable pill, as every other filter does. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
 
@@ -1562,9 +1609,9 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 #### Search, shelving, and moderation
 
-**Search.** `/search` carries a `Collections` result group and a **Collections** option in the result type control, between Events and Analysts. Each hit is `<CollectionCard showOwner>`, whose meta line leads with `by user` through `<AuthorByline link={false}>`. On this scope the filter panel shows the Author section only: every other filter is an event predicate, and the backend empties the group on it, while `author` narrows the group (see [`api.md`](api.md#get-search)). It is the event scope's own section, the typeahead over `GET /search/authors`, so a scope change keeps the analyst. The panel takes its sections per scope through the `sections` prop of [`EventFilterSections.tsx`](../frontend/src/components/filters/EventFilterSections.tsx), which also drops Status and Approvals on the legacy request scope. Every section of the filter panel opens collapsed on the map, the search page, the Requests board and the feed, except a section that holds an active value, which opens expanded so the applied filters stay visible; each header still toggles its section. Above the results, a head row prints the total on the right. A result group wears its header (*Geolocations · 6*) only while several groups show; a lone group drops it, its size being that total, and keeps its name as the section's accessible name.
+**Search.** `/search` carries a `Collections` result group and a **Collections** option in the result type control, between Events and Analysts. Each hit is `<CollectionCard showOwner>`, whose meta line leads with `by user` through `<AuthorByline link={false}>`. On this scope the filter panel shows the Author section only: every other filter is an event predicate, and the backend empties the group on it, while `author` narrows the group (see [`api.md`](api.md#get-search)). It is the event scope's own section, the typeahead over `GET /search/authors`, so a scope change keeps the analyst. The panel takes its sections per scope through the `sections` prop of [`EventFilterSections.tsx`](../frontend/src/components/filters/EventFilterSections.tsx), which also drops Status and Approvals on the legacy request scope. The [filter panel](#filter-panel) gives each row's open state. Above the results, a head row prints the total on the right. A result group wears its header (*Geolocations · 6*) only while several groups show; a lone group drops it, its size being that total, and keeps its name as the section's accessible name.
 
-**Approvals filter.** The map, the search page's event scopes and the feed offer an **Approvals** section, last in the panel. **Approved only** is a one-chip `ChipBucket` that sends [`approved`](api.md#get-events). **Approved by** is an `<AccountPicker>` over the `user` and `organization` groups of `GET /search` (`suggestApprovers` in [`lib/search.ts`](../frontend/src/lib/search.ts)). An analyst sends `approved_by` and an organization sends `approved_by_org`, and Enter on a typed handle picks it as an analyst. Each value has a removable pill (**Approved**, **Approved by** *name*) and counts once in **Filters (N)**. `appendApprovalFilters` writes the keys into every request and the search page's URL, and `approvalFiltersFromParams` reads them back. The Requests board leaves the section out, because a request carries no approval.
+**Approvals filter.** The map, the search page's event scopes and the feed offer an **Approvals** filter, in the panel's **People** row. **Approved only** is a one-chip `ChipBucket` that sends [`approved`](api.md#get-events). **Approved by** is an `<AccountPicker>` over the `user` and `organization` groups of `GET /search` (`suggestApprovers` in [`lib/search.ts`](../frontend/src/lib/search.ts)). An analyst sends `approved_by` and an organization sends `approved_by_org`, and Enter on a typed handle picks it as an analyst. Each value has a removable pill (**Approved**, **Approved by** *name*) and counts once in **Filters (N)**. `appendApprovalFilters` writes the keys into every request and the search page's URL, and `approvalFiltersFromParams` reads them back. The Requests board leaves the section out, because a request carries no approval.
 
 **Shelving.** [`<AddToCollectionPanel>`](../frontend/src/components/collections/AddToCollectionPanel.tsx) opens in a `<Popover>` from the event page's **Add to collection** button, for the owner and every co-geolocator of a `geolocated` or `detected` row; on a request or a closed row the control is absent. The list scrolls past `18rem`, since the panel is fixed to the viewport.
 
@@ -1694,7 +1741,7 @@ flowchart LR
 [`/requests`](../frontend/src/app/requests/page.tsx) lists open requests from [`GET /events`](api.md#get-events) with `view=requested&status=requested`, cursor-paged behind a **Show more** button. The board is public by link, but the rail lists it only for a signed-in reader. On a request page, a signed-out reader sees **Geolocate** under the actions row, which opens the sign-in page and returns to the submit form.
 
 - The status is fixed to `requested`. The board mounts the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the [filter rail](#right-rail) without its Status section, because a `closed` chip would read as "done" on a work queue. The media filter is also left out, because `GET /events` takes no `media` filter.
-- The panel offers Conflict, Source kind, Level, Location guess, Tags and Author. Location guess is offered on the board alone. **With a guess** keeps requests that carry a guessed point, **No guess** keeps the blind ones, and picking both or neither drops the filter. The section sends [`has_coords`](api.md#get-events).
+- The panel offers Conflict, Source kind, Level, Location guess, Tags and Author. Location guess is offered on the board alone, as a row of its own in the Event group. **With a guess** keeps requests that carry a guessed point, **No guess** keeps the blind ones, and picking both or neither drops the filter. The section sends [`has_coords`](api.md#get-events).
 - A `<SegmentedControl>` orders the list **Newest** (the default) or **Oldest**. It sends [`sort`](api.md#get-events), so every page of the cursor walk keeps that order.
 - Each card shows how long the request has been open, in whole days from `requested_at`, through `<EntityCard>`'s `age` slot: *Open today*, *Open 1 day*, *Open 12 days*. A row with no `requested_at` shows no age.
 - Filters and sort live in page state and reset on reload.

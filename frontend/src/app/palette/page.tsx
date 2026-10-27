@@ -687,7 +687,7 @@ export default function PalettePage() {
             <PaletteActiveFilterPills />
           </Item>
 
-          <Item name="<FilterSection>" usage="One collapsible filter section (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. Shared by the map overlay and the search filter area.">
+          <Item name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections stacks the rows in groups under a META_LINE label, with a border-neutral-700 rule between groups; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
             <PaletteFilterSection />
           </Item>
 
@@ -2401,23 +2401,38 @@ function PaletteDisclosure() {
 
 function PaletteFilterSection() {
   const [open, setOpen] = useState(true);
-  const [selected, setSelected] = useState<string[]>(["Drone"]);
+  const [kinds, setKinds] = useState<string[]>(["Drone"]);
+  const [levels, setLevels] = useState<string[]>([]);
+  const toggle = (n: string) => (prev: string[]) =>
+    prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n];
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+      <h3 className={`${META_LINE} pt-2.5 -mb-1`}>Source and people</h3>
       <FilterSection
-        title="Source kind"
-        summary={chipSummary(selected)}
-        active={selected.length > 0}
+        title="Source"
+        summary={chipSummary([...kinds, ...levels])}
+        active={kinds.length + levels.length > 0}
         open={open}
         onToggle={() => setOpen((o) => !o)}
       >
-        <ChipBucket
-          options={["Drone", "Dashcam", "Static camera"].map((n) => ({ id: n, name: n }))}
-          selected={selected}
-          onToggle={(n) =>
-            setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
-          }
-        />
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <FieldLabel label="Source kind" />
+            <ChipBucket
+              options={["Drone", "Dashcam", "Static camera"].map((n) => ({ id: n, name: n }))}
+              selected={kinds}
+              onToggle={(n) => setKinds(toggle(n))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel label="Level" />
+            <ChipBucket
+              options={["Direct", "Indirect"].map((n) => ({ id: n, name: n }))}
+              selected={levels}
+              onToggle={(n) => setLevels(toggle(n))}
+            />
+          </div>
+        </div>
       </FilterSection>
     </div>
   );
