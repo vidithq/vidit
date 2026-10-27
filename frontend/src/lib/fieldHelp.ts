@@ -184,10 +184,6 @@ export const FIELD_HELP = {
     text: "A dated satellite image of the site, filed with a link that reopens it at its date. Any analyst files one, and only that analyst removes it, once it carries no contour. An image states no effect: it shows the place on one date. It is never edited, and the site's history keeps it.",
     label: "What is a site image?",
   },
-  site_contour_image: {
-    text: "The image the contour is drawn on. The contour holds from its capture date, so an older image does not replace a newer zone.",
-    label: "Which image shows the contour?",
-  },
   site_image_captured: {
     text: "Required. When the satellite captured the image (UTC), as the provider dates it. The zone drawn from the image holds from this date, and a reader reopens the image at it.",
     label: "When was the image captured?",

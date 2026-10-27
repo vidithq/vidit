@@ -27,22 +27,6 @@ export function removeImageLabel(image: Pick<SiteImage, "captured_at" | "created
     : `Remove the ${name}`;
 }
 
-/** The names the contour form's image picker shows, by image id: the capture day and the
- *  provider, plus who filed it when two images would otherwise read the same. */
-export function imageChoiceLabels(images: SiteImage[]): Map<string, string> {
-  const base = (image: SiteImage) =>
-    image.provider ? `${imageName(image)}, ${image.provider.name}` : imageName(image);
-  const counts = new Map<string, number>();
-  for (const image of images) counts.set(base(image), (counts.get(base(image)) ?? 0) + 1);
-  return new Map(
-    images.map((image) => {
-      const label = base(image);
-      const repeated = (counts.get(label) ?? 0) > 1 && image.author;
-      return [image.id, repeated ? `${label}, filed by ${image.author!.username}` : label];
-    }),
-  );
-}
-
 /** A provider's credit line with its `[year]` filled in from the capture date. */
 function creditFor(credit: string, capturedAt: string | null): string {
   return capturedAt ? credit.replace("[year]", capturedAt.slice(0, 4)) : credit;
@@ -54,6 +38,36 @@ function creditFor(credit: string, capturedAt: string | null): string {
  * pill and border on the image on show), then `controls` (its filer's Remove), and the rows for
  * the provider, the note, who filed it and when, and the contour drawn on it.
  */
+/** An image card's map control: an icon button that puts the image's zone on the map, or an
+ *  accent *On the map* pill on the image on show. */
+export function ShowOnMap({
+  name,
+  shown,
+  onShow,
+}: {
+  name: string;
+  shown: boolean;
+  onShow: () => void;
+}) {
+  return shown ? (
+    // As tall as the icon button it replaces, so every card's rows start level.
+    <span className="flex h-8 items-center">
+      <Pill tone="accent" icon={<MapPinned size={11} />}>
+        On the map
+      </Pill>
+    </span>
+  ) : (
+    <Button
+      icon
+      variant="ghost"
+      onClick={onShow}
+      aria-label={`Show the zone of the ${name[0].toLowerCase()}${name.slice(1)} on the map`}
+    >
+      <MapPinned size={14} />
+    </Button>
+  );
+}
+
 export function siteImageExtras({
   image,
   contour,
@@ -70,29 +84,12 @@ export function siteImageExtras({
   controls?: ReactNode;
 }): SourceBlockExtras {
   const name = imageName(image);
-  const show = shown ? (
-      // As tall as the icon button it replaces, so every card's rows start level.
-      <span className="flex h-8 items-center">
-        <Pill tone="accent" icon={<MapPinned size={11} />}>
-          On the map
-        </Pill>
-      </span>
-    ) : (
-      <Button
-        icon
-        variant="ghost"
-        onClick={onShow}
-        aria-label={`Show the zone of the ${name.replace("Image", "image")} on the map`}
-      >
-        <MapPinned size={14} />
-      </Button>
-    );
   return {
     name,
     className: cn(shown && "border-orange-500/50"),
     actions: (
       <>
-        {show}
+        <ShowOnMap name={name} shown={shown} onShow={onShow} />
         {controls}
       </>
     ),

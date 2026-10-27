@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ImagePlus, RotateCcw, Save } from "lucide-react";
 
@@ -9,8 +9,7 @@ import { EventShell } from "@/components/event/EventShell";
 import { SourceBlock } from "@/components/sources/SourceBlock";
 import { SourcesRow } from "@/components/sources/SourcesRow";
 import { Button } from "@/components/ui/Button";
-import { FieldLabel } from "@/components/ui/FieldLabel";
-import { Select } from "@/components/ui/Input";
+import type { HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
 import { PageColumns } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { RemoveButton } from "@/components/ui/RemoveButton";
@@ -35,7 +34,7 @@ import {
 import { sourceWriteError } from "@/lib/sources";
 import { padBounds } from "@/lib/viewport";
 import { ContourDraft, SiteKindCard, SiteNameField, type ContourDraftValue } from "./SiteFormFields";
-import { imageChoiceLabels, imageName, removeImageLabel, siteImageExtras } from "./SiteImageBlock";
+import { ShowOnMap, imageName, removeImageLabel, siteImageExtras } from "./SiteImageBlock";
 import { SiteImageEditor, SiteWriteActions, useSiteImageDraft } from "./SiteImageEditor";
 import { SiteLinksField, linkPayload, type DraftLink } from "./SiteLinksField";
 
@@ -75,6 +74,11 @@ export function SiteEditForm({
   const [name, setName] = useState(site.name);
   const [kind, setKind] = useState<SiteKind | "">(site.kind);
   const [adding, setAdding] = useState(false);
+  // The new image leads the row, so adding one scrolls the row back to it.
+  const scroller = useRef<HorizontalScrollerHandle>(null);
+  useEffect(() => {
+    if (adding) scroller.current?.show(0);
+  }, [adding]);
   const image = useSiteImageDraft();
   const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, ContourDraftValue>>({});
@@ -200,7 +204,6 @@ export function SiteEditForm({
     );
   };
 
-  const choices = imageChoiceLabels(kept);
   const pickedImage = kept.find((i) => i.id === pickedKey) ?? null;
   const pickedZone = zoneOf(pickedKey);
   const capturedAt = pickedKey === ADDED ? image.payload().captured_at : pickedImage?.captured_at;
@@ -232,11 +235,18 @@ export function SiteEditForm({
           main={
             <>
               <SourcesRow
+                ref={scroller}
                 count={kept.length + (adding ? 1 : 0)}
                 invalid={flagged && adding && image.missing.length > 0}
                 actions={
                   !adding && (
-                    <Button variant="secondary" onClick={() => setAdding(true)}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setAdding(true);
+                        setPicked(ADDED);
+                      }}
+                    >
                       <ImagePlus size={13} />
                       Add an image
                     </Button>
@@ -249,13 +259,20 @@ export function SiteEditForm({
                     flagged={flagged}
                     name={ADDED_NAME}
                     actions={
-                      <RemoveButton
-                        label="Discard the new image"
-                        onClick={() => {
-                          setAdding(false);
-                          setDraft(ADDED, undefined);
-                        }}
-                      />
+                      <>
+                        <ShowOnMap
+                          name={ADDED_NAME}
+                          shown={pickedKey === ADDED}
+                          onShow={() => setPicked(ADDED)}
+                        />
+                        <RemoveButton
+                          label="Discard the new image"
+                          onClick={() => {
+                            setAdding(false);
+                            setDraft(ADDED, undefined);
+                          }}
+                        />
+                      </>
                     }
                   />
                 )}
@@ -296,21 +313,6 @@ export function SiteEditForm({
                   invalid: flagged && (open || !anyContour),
                   content: (
                     <div className="space-y-3">
-                      <div className="space-y-1.5">
-                        <FieldLabel label="Image" concept="site_contour_image" htmlFor="contour-image" />
-                        <Select
-                          id="contour-image"
-                          value={pickedKey}
-                          onChange={(e) => setPicked(e.target.value)}
-                        >
-                          {kept.map((i) => (
-                            <option key={i.id} value={i.id}>
-                              {choices.get(i.id)}
-                            </option>
-                          ))}
-                          {adding && <option value={ADDED}>{ADDED_NAME}</option>}
-                        </Select>
-                      </div>
                       {pickedKey && (
                         <ContourDraft
                           key={pickedKey}
