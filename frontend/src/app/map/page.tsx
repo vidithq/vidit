@@ -222,6 +222,7 @@ export default function HomePage() {
         zoom={viewState.zoom}
         onViewChange={setViewState}
         onBoundsChange={handleBoundsChange}
+        goToControl
       >
         {sitesShown && (
           <SiteLayers sites={mapSites} selectedId={selectedSiteId} onSelect={selectSite} />

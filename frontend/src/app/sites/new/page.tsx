@@ -154,7 +154,6 @@ export default function NewSitePage() {
     <EventShell
       title="New site"
       titleField={<SiteNameField value={name} onChange={setName} invalid={flagged && !name.trim()} />}
-      byline="File the first source, draw the contour it shows and name the site."
       backFallback="/map"
       actions={{
         pinned: (
