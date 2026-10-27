@@ -1,6 +1,6 @@
 # Licence of the map sprite
 
-`ofm.json`, `ofm.png`, `ofm@2x.json` and `ofm@2x.png` are the OpenFreeMap icon sprite, downloaded unchanged from the URL in `manifest.json` by `frontend/scripts/update-map-sprite.sh`. OpenFreeMap builds the sprite in [hyperknot/openfreemap-styles](https://github.com/hyperknot/openfreemap-styles) (`sprites/create_sprites.sh`) from the OSM Liberty and OSM Bright icon sets. That repository states the licences below.
+`ofm.json`, `ofm.png`, `ofm@2x.json` and `ofm@2x.png` are the OpenFreeMap icon sprite, downloaded unchanged from the URL in `manifest.json`. The map loads them on an instance without [self-hosted map files](../../../docs/engineering.md#self-hosted-map-files). OpenFreeMap builds the sprite in [hyperknot/openfreemap-styles](https://github.com/hyperknot/openfreemap-styles) (`sprites/create_sprites.sh`) from the OSM Liberty and OSM Bright icon sets. That repository states the licences below.
 
 ## Icons
 
