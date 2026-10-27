@@ -6,6 +6,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
+
+from PIL import Image
 
 from app.models.event import Event
 from app.models.media import Media
@@ -14,7 +17,7 @@ from app.models.upload import Upload
 from app.schemas.media import MediaRead
 from app.services import uploads as uploads_service
 from app.services.storage import get_storage
-from tests._fixtures import TINY_JPEG, stored_path
+from tests._fixtures import TINY_JPEG, gif_bytes, stored_bytes, stored_keys, stored_path
 from tests.conftest import login_as
 from tests.events._helpers import (
     WORLD_BBOX,
@@ -254,7 +257,7 @@ def test_an_upload_is_staged_then_taken_by_the_write(db, author, conflict):
         files={"file": ("strike.jpg", TINY_JPEG, "image/jpeg")},
     )
     assert staged.status_code == 201, staged.text
-    body = staged.json()
+    [body] = staged.json()["items"]
     assert body["kind"] == "image" and body["original_filename"] == "strike.jpg"
     assert datetime.fromisoformat(body["expires_at"]) > datetime.now(UTC) + timedelta(hours=23)
     assert stored_path(_key(body["storage_url"])).exists()
@@ -322,6 +325,63 @@ def test_staged_uploads_are_capped_per_account(db, author, monkeypatch):
         headers=login_as(client, author),
         files={"file": ("b.jpg", TINY_JPEG, "image/jpeg")},
     )
+    assert response.status_code == 429
+    assert response.json()["detail"]["code"] == "too_many_uploads"
+
+
+def _post_gif(user, frames: int, filename: str = "comparison.gif"):
+    return client.post(
+        "/api/v1/uploads",
+        headers=login_as(client, user),
+        files={"file": (filename, gif_bytes(frames), "image/gif")},
+    )
+
+
+def test_a_gif_is_staged_as_one_png_per_frame(db, author, conflict):
+    response = _post_gif(author, 2)
+    assert response.status_code == 201, response.text
+    items = response.json()["items"]
+    assert [i["original_filename"] for i in items] == ["comparison-1.png", "comparison-2.png"]
+    assert {i["kind"] for i in items} == {"image"}
+    for index, item in enumerate(items):
+        key = _key(item["storage_url"])
+        assert key.endswith(".png")
+        frame = Image.open(BytesIO(stored_bytes(key)))
+        assert frame.format == "PNG"
+        assert frame.convert("RGB").getpixel((0, 0)) == (40 * index, 0, 0)
+
+    # Each frame is a file of its own: two sources take one each.
+    specs = [source_spec(upload_id=item["id"]) for item in items]
+    created = _create(author, conflict, sources_field(*specs))
+    assert created.status_code == 201, created.text
+    assert {s["media"]["storage_url"] for s in created.json()["sources"]} == {
+        item["storage_url"] for item in items
+    }
+
+
+def test_a_single_frame_gif_is_staged_as_one_png(author):
+    response = _post_gif(author, 1, filename="scan.gif")
+    assert response.status_code == 201, response.text
+    [item] = response.json()["items"]
+    assert item["original_filename"] == "scan.png"
+    assert _key(item["storage_url"]).endswith(".png")
+
+
+def test_a_gif_past_the_frame_cap_is_refused_for_a_video(db, author):
+    before = db.query(Upload).count()
+    response = _post_gif(author, 7)
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "evidence_processing_failed"
+    assert "7 frames" in detail["message"] and "MP4" in detail["message"]
+    assert db.query(Upload).count() == before
+    assert not any(key.startswith("uploads/") for key in stored_keys())
+
+
+def test_each_gif_frame_counts_toward_the_staged_file_cap(db, author, monkeypatch):
+    monkeypatch.setattr(uploads_service, "MAX_PENDING_UPLOADS_PER_USER", 2)
+    stage_file(author)
+    response = _post_gif(author, 2)
     assert response.status_code == 429
     assert response.json()["detail"]["code"] == "too_many_uploads"
 

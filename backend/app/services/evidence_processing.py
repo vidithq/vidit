@@ -25,7 +25,7 @@ from io import BytesIO
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from app.services.storage import ALLOWED_IMAGE_TYPES
+from app.services.storage import ALLOWED_IMAGE_TYPES, MAX_GIF_FRAMES
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,15 @@ def _convert(image: Image.Image, mode: str) -> Image.Image:
     return converted
 
 
+def _check_pixels(img: Image.Image, max_pixels: int) -> None:
+    width, height = img.size
+    pixels = width * height
+    if pixels > max_pixels:
+        raise EvidenceProcessingError(
+            f"Image dimensions {width}x{height} ({pixels} px) exceed the {max_pixels} pixel cap"
+        )
+
+
 @contextmanager
 def _guarded_open(data: bytes, max_pixels: int) -> Iterator[Image.Image]:
     """Open image bytes behind the pre-decode guards and yield a usable image.
@@ -98,12 +107,7 @@ def _guarded_open(data: bytes, max_pixels: int) -> Iterator[Image.Image]:
     """
     # Fresh BytesIO so ``img.load()`` detaches from the source bytes.
     with _decode_slots, Image.open(BytesIO(data), formats=_ACCEPTED_FORMATS) as img:
-        width, height = img.size
-        pixels = width * height
-        if pixels > max_pixels:
-            raise EvidenceProcessingError(
-                f"Image dimensions {width}x{height} ({pixels} px) exceed the {max_pixels} pixel cap"
-            )
+        _check_pixels(img, max_pixels)
 
         if getattr(img, "is_animated", False):
             raise EvidenceProcessingError(
@@ -119,11 +123,11 @@ def _guarded_open(data: bytes, max_pixels: int) -> Iterator[Image.Image]:
 
 
 @contextmanager
-def _decode_errors(context: str) -> Iterator[None]:
+def _decode_errors(context: str, unreadable: str = UNREADABLE_IMAGE_MESSAGE) -> Iterator[None]:
     """Map Pillow's failure modes onto :class:`EvidenceProcessingError`.
 
     ``context`` prefixes the log line. Unrecognised and damaged files share
-    ``UNREADABLE_IMAGE_MESSAGE``; the log line tells them apart. Errors from
+    the ``unreadable`` message; the log line tells them apart. Errors from
     :func:`_guarded_open` re-raise untouched so a bomb or animation rejection
     isn't logged as "cannot decode".
     """
@@ -137,10 +141,10 @@ def _decode_errors(context: str) -> Iterator[None]:
         raise EvidenceProcessingError("Image rejected as a decompression bomb") from exc
     except UnidentifiedImageError as exc:
         logger.warning("%s: unidentified image: %s", context, exc)
-        raise EvidenceProcessingError(UNREADABLE_IMAGE_MESSAGE) from exc
+        raise EvidenceProcessingError(unreadable) from exc
     except OSError as exc:
         logger.warning("%s: cannot decode image: %s", context, exc)
-        raise EvidenceProcessingError(UNREADABLE_IMAGE_MESSAGE) from exc
+        raise EvidenceProcessingError(unreadable) from exc
 
 
 def strip_metadata(data: bytes, content_type: str, *, max_pixels: int | None = None) -> bytes:
@@ -197,6 +201,57 @@ def strip_metadata(data: bytes, content_type: str, *, max_pixels: int | None = N
         else:  # image/webp; the encoder converts any other mode itself
             image.save(output, format="WEBP", quality=95, method=6)
         return output.getvalue()
+
+
+@contextmanager
+def _open_gif(data: bytes) -> Iterator[tuple[Image.Image, int]]:
+    """Open a GIF and yield it with its frame count, behind the guards of :func:`_guarded_open`.
+
+    The canvas size and the frame count are checked before any frame decodes:
+    ``n_frames`` walks the frame headers without decoding one.
+    """
+    with (
+        _decode_errors(
+            f"GIF ({len(data)} bytes)", "Could not read this GIF: upload a valid GIF file"
+        ),
+        Image.open(BytesIO(data), formats=("GIF",)) as img,
+    ):
+        _check_pixels(img, MAX_DECODED_PIXELS)
+        count = getattr(img, "n_frames", 1)
+        if count > MAX_GIF_FRAMES:
+            raise EvidenceProcessingError(
+                f"This GIF holds {count} frames, and a GIF may hold at most {MAX_GIF_FRAMES}. "
+                f"Upload it as an MP4 video, or as a GIF of {MAX_GIF_FRAMES} frames or fewer"
+            )
+        yield img, count
+
+
+def count_gif_frames(data: bytes) -> int:
+    """The frame count of a GIF; raises ``EvidenceProcessingError`` as :func:`split_gif` does."""
+    with _open_gif(data) as (_, count):
+        return count
+
+
+def split_gif(data: bytes) -> list[bytes]:
+    """One PNG per frame of a GIF, in frame order, each frame as the GIF displays it.
+
+    Sync and CPU-bound, holding one decode slot. The PNGs carry no metadata and are not
+    optimised: the caller strips each as an uploaded PNG. Raises ``EvidenceProcessingError``
+    for an unreadable GIF, one past ``MAX_GIF_FRAMES`` frames, or a frame over
+    ``MAX_DECODED_PIXELS``.
+    """
+    frames: list[bytes] = []
+    with _decode_slots, _open_gif(data) as (img, count):
+        for index in range(count):
+            img.seek(index)
+            # A frame may extend the canvas past the size checked on open.
+            _check_pixels(img, MAX_DECODED_PIXELS)
+            frame = img.convert("RGBA" if img.has_transparency_data else "RGB")
+            output = BytesIO()
+            frame.save(output, format="PNG")
+            frame.close()
+            frames.append(output.getvalue())
+    return frames
 
 
 # Display derivatives. Hero = detail-page render (~1280 px); thumbnail = map

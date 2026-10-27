@@ -11,6 +11,7 @@ export type Source = components["schemas"]["SourceRead"];
 type SourceLink = components["schemas"]["SourceLinkRead"];
 /** A staged source file (`POST /uploads`), referenced by a source's `upload_id`. */
 export type Upload = components["schemas"]["UploadRead"];
+type UploadList = components["schemas"]["UploadList"];
 type LinkUpload = components["schemas"]["LinkUploadRead"];
 export type SourceLevel = Source["level"];
 export type SourceKind = Source["kind"];
@@ -368,11 +369,12 @@ export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean
   });
 }
 
-/** `POST /uploads`: stage one source file before the event write that names it. */
-export function uploadSourceFile(file: File): Promise<Upload> {
+/** `POST /uploads`: stage one source file before the event write that names it. A GIF stages
+ *  one PNG per frame, in frame order. */
+export async function uploadSourceFile(file: File): Promise<Upload[]> {
   const fd = new FormData();
   fd.append("file", file);
-  return apiFetch<Upload>("/uploads", { method: "POST", body: fd });
+  return (await apiFetch<UploadList>("/uploads", { method: "POST", body: fd })).items;
 }
 
 const X_HOST_RE = /^(?:www\.)?(?:x|twitter)\.com$/i;

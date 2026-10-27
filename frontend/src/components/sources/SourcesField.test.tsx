@@ -144,15 +144,21 @@ describe("SourcesField", () => {
     expect(screen.getByText("10 maximum.")).toBeInTheDocument();
   });
 
-  it("uploads a picked file at once and keeps the staged copy", async () => {
-    upload.mockResolvedValue({
-      id: "u1",
-      kind: "image",
-      sha256: "0",
-      original_filename: "a.png",
-      storage_url: "https://cdn/uploads/a.png",
-      expires_at: "2099-01-01T00:00:00Z",
+  const stagedFile = (id: string) => ({
+    id,
+    kind: "image",
+    sha256: "0",
+    original_filename: `${id}.png`,
+    storage_url: `https://cdn/uploads/${id}.png`,
+    expires_at: "2099-01-01T00:00:00Z",
+  });
+  const pick = (name: string, type: string) =>
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(["a"], name, { type })] },
     });
+
+  it("uploads a picked file at once and keeps the staged copy", async () => {
+    upload.mockResolvedValue([stagedFile("u1")]);
     render(<Host initial={[newSourceDraft()]} />);
     const file = new File(["a"], "a.png", { type: "image/png" });
     fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
@@ -162,6 +168,36 @@ describe("SourcesField", () => {
     expect(sourcesBlockWrite(seen.current)).toBe("Wait for the source files to finish uploading.");
     await waitFor(() => expect(seen.current[0].file?.state).toBe("staged"));
     expect(sourcesBlockWrite(seen.current)).toBeNull();
+  });
+
+  it("opens a source after the picking one for each further frame of a GIF", async () => {
+    upload.mockResolvedValue([stagedFile("f1"), stagedFile("f2"), stagedFile("f3")]);
+    const picked = { ...newSourceDraft(), level: "indirect" as const, kind: "satellite" as const };
+    const after = withUrl("https://a.example/after");
+    render(<Host initial={[picked, after]} />);
+    pick("compare.gif", "image/gif");
+
+    await waitFor(() => expect(seen.current).toHaveLength(4));
+    expect(seen.current.map((d) => (d.file?.state === "staged" ? d.file.upload.id : null))).toEqual(
+      ["f1", "f2", "f3", null]
+    );
+    expect(seen.current.slice(1, 3).map((d) => [d.level, d.kind])).toEqual([
+      ["indirect", "satellite"],
+      ["indirect", "satellite"],
+    ]);
+    expect(seen.current[3].links[0].url).toBe("https://a.example/after");
+  });
+
+  it("fails the pick when the frames of a GIF pass the source cap", async () => {
+    upload.mockResolvedValue([stagedFile("f1"), stagedFile("f2"), stagedFile("f3")]);
+    render(<Host initial={Array.from({ length: 9 }, () => newSourceDraft())} />);
+    pick("compare.gif", "image/gif");
+
+    await waitFor(() => expect(seen.current[0].file?.state).toBe("failed"));
+    expect(seen.current).toHaveLength(9);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "compare.gif: This GIF holds 3 frames, one file each, and the form has room for 2."
+    );
   });
 
   it("imports a link's file, then re-imports the file picked from the post", async () => {

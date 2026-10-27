@@ -264,9 +264,23 @@ def test_rewrite_image_srcs_swaps_placeholders_for_stored_urls(dev_media):
         '<p>x</p><img src="placeholder://a b.png"><img src="https://m.example/kept.png">',
         allow_placeholders=True,
     )
-    out = rewrite_image_srcs(body, {"placeholder://a b.png": "https://m.example/new.png"})
+    out = rewrite_image_srcs(body, {"placeholder://a b.png": ["https://m.example/new.png"]})
     assert (
         out == '<p>x</p><img src="https://m.example/new.png"><img src="https://m.example/kept.png">'
+    )
+
+
+def test_rewrite_image_srcs_repeats_an_image_once_per_mapped_url(dev_media):
+    body = sanitize_html(
+        '<p>x</p><img src="placeholder://a&amp;b.gif" alt="Depot"><p>y</p>',
+        allow_placeholders=True,
+    )
+    out = rewrite_image_srcs(
+        body, {"placeholder://a&b.gif": ["https://m.example/1.png", "https://m.example/2.png"]}
+    )
+    assert out == (
+        '<p>x</p><img src="https://m.example/1.png" alt="Depot">'
+        '<img src="https://m.example/2.png" alt="Depot"><p>y</p>'
     )
 
 

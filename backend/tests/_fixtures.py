@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -100,3 +101,13 @@ def collection_description(text: str = "What this shelf holds.") -> dict[str, An
 def tiny_jpeg(filename: str = "tiny.jpg") -> tuple[str, bytes, str]:
     """A ``(filename, bytes, content_type)`` tuple for ``TestClient`` multipart."""
     return (filename, TINY_JPEG, "image/jpeg")
+
+
+def gif_bytes(frames: int, size: tuple[int, int] = (8, 8)) -> bytes:
+    """An animated GIF whose frame ``i`` is solid red ``40 * i``, so each frame reads apart."""
+    from PIL import Image
+
+    images = [Image.new("RGB", size, (40 * i, 0, 0)) for i in range(frames)]
+    out = BytesIO()
+    images[0].save(out, format="GIF", save_all=True, append_images=images[1:], duration=100)
+    return out.getvalue()

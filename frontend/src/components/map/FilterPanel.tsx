@@ -1,16 +1,19 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { ChevronDown, ChevronUp, Filter } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronUp, Filter, Plus } from "lucide-react";
 
 import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, Tag } from "@/types";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
 import { Dot } from "@/components/ui/Dot";
+import { buttonClasses } from "@/components/ui/Button";
 import { ToggleRow } from "@/components/ui/ToggleRow";
+import { useAuth } from "@/contexts/AuthContext";
 import { formatDate } from "@/lib/format";
-import { sitesAsOf, todayUtc } from "@/lib/sites";
+import { NEW_SITE_HREF, sitesAsOf, todayUtc } from "@/lib/sites";
 import {
   EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
@@ -58,6 +61,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     sitesShown,
     setSitesShown,
   } = useMapState();
+  const { user } = useAuth();
   const asOf = sitesAsOf(dateWindows.eventTo, todayUtc());
 
   const onPatch: EventFilterPatch = (patch) =>
@@ -170,12 +174,20 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                 summary: sitesShown ? "On" : "Off",
                 active: sitesShown,
                 children: (
-                  <ToggleRow
-                    label="Show sites"
-                    description={`Zones as of ${asOf ? formatDate(asOf) : "today"}`}
-                    on={sitesShown}
-                    onToggle={() => setSitesShown(!sitesShown)}
-                  />
+                  <>
+                    <ToggleRow
+                      label="Show sites"
+                      description={`Zones as of ${asOf ? formatDate(asOf) : "today"}`}
+                      on={sitesShown}
+                      onToggle={() => setSitesShown(!sitesShown)}
+                    />
+                    {user && (
+                      <Link href={NEW_SITE_HREF} className={buttonClasses("ghost", { className: "mt-1" })}>
+                        <Plus size={14} />
+                        New site
+                      </Link>
+                    )}
+                  </>
                 ),
               },
             ]}

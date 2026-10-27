@@ -97,7 +97,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + import counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
-| POST | `/uploads` | 🔒 | Stage one source file for a later event write (multipart, one file) |
+| POST | `/uploads` | 🔒 | Stage one source file, or each frame of a GIF, for a later event write (multipart, one file) |
 | POST | `/uploads/from-link` | 🔒 | Stage the file of an X, public Telegram or TikTok post, by its link |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
@@ -605,7 +605,7 @@ A link's `snapshot_url` is checked and stored in the same transaction as the wri
 
 #### Proof-image ceiling
 
-`max_proof_images_per_event` bounds what the final proof body displays: the already-uploaded images it still references plus the new files. An image kept only because a past version displays it does not count. Over the ceiling is a 422 `too_many_files`.
+`max_proof_images_per_event` bounds what the final proof body displays: the already-uploaded images it still references plus the new files. A GIF counts once per frame. An image kept only because a past version displays it does not count. Over the ceiling is a 422 `too_many_files`.
 
 #### Rich text
 
@@ -620,7 +620,7 @@ An event's `proof` and a collection's `description` are HTML strings. The server
 
 The plain-text projection (`sanitize.html_text`) measures the description cap and feeds `description_text` and search. It decodes entities and starts a new line at every `p`, `h2`, `h3`, `li`, `blockquote`, `pre`, `ul`, `ol` and `hr` boundary, at every `br`, and at every newline in the text. Each line is stripped, blank lines are dropped, and the rest join with `\n`.
 
-At publish, the server sanitizes the body first, uploads `proof_files`, and then rewrites each `placeholder://` src to the stored URL.
+At publish, the server sanitizes the body first, uploads `proof_files`, and then rewrites each `placeholder://` src to the stored URL. A GIF in `proof_files` is stored as one PNG per frame, and its `img` repeats in place once per frame, in frame order, each copy keeping its `alt`.
 
 ### Sources
 
@@ -755,17 +755,21 @@ The error table every event form endpoint shares. Each endpoint section names wh
 
 Stage one source file before the event write that uses it: the first layer of the two-layer upload. Each file travels on its own request, so a request carries at most one video. A source of a later event write names the returned `id` as its `upload_id`.
 
-**Request body (`multipart/form-data`):** one `file` part, an image or a video within the [file limits](#file-limits).
+**Request body (`multipart/form-data`):** one `file` part, an image, a GIF or a video within the [file limits](#file-limits).
 
-**Response 201:** an `UploadRead`.
+**Response 201:** an `UploadList`, whose `items` holds one `UploadRead` per staged file. A GIF stages one PNG per frame, in frame order, each named after the GIF with its frame number (`scan.gif` gives `scan-1.png`, `scan-2.png`); every other file stages as one item. Each item is a file of its own: a source names one `id`.
 ```json
 {
-  "id": "uuid",
-  "kind": "video",
-  "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
-  "original_filename": "IMG_2034.MOV",
-  "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
-  "expires_at": "2026-03-17T09:42:00Z"
+  "items": [
+    {
+      "id": "uuid",
+      "kind": "video",
+      "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+      "original_filename": "IMG_2034.MOV",
+      "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
+      "expires_at": "2026-03-17T09:42:00Z"
+    }
+  ]
 }
 ```
 
@@ -775,8 +779,8 @@ Stage one source file before the event write that uses it: the first layer of th
 | Status | Code | Case |
 |---|---|---|
 | 400 | `invalid_file` | Disallowed type or size |
-| 400 | `evidence_processing_failed` | An image the server refuses (see [File limits](#file-limits)), or a failed upload |
-| 429 | `too_many_uploads` | You already hold 20 unexpired staged files no event uses. Submit the form that uses them, or wait for them to expire |
+| 400 | `evidence_processing_failed` | An image or a GIF the server refuses (see [File limits](#file-limits)), or a failed upload |
+| 429 | `too_many_uploads` | The upload would take you past 20 unexpired staged files no event uses, each GIF frame counting as one. Submit the form that uses them, or wait for them to expire |
 
 ### `POST /uploads/from-link` 🔒
 
@@ -784,7 +788,7 @@ Stage the file of a post by its link. The server reads the post through the [cha
 
 **Request body (JSON):** `url`, the post link (at most 2000 characters), and `index`, which of the post's files in post order (default `0`).
 
-**Response 201:** the `UploadRead` of [`POST /uploads`](#post-uploads) plus `post_media`, the kind of every file the post holds, in post order. To pick another file, post the same `url` with its `index`.
+**Response 201:** one `UploadRead`, as an item of [`POST /uploads`](#post-uploads), plus `post_media`, the kind of every file the post holds, in post order. To pick another file, post the same `url` with its `index`.
 
 **Errors:** those of [`POST /uploads`](#post-uploads), plus:
 | Status | Code | Case |
@@ -4318,6 +4322,7 @@ Branch on `code`, not on `message`: `code` is the stable contract, and each endp
 | Type | Extensions | Max size | Max pixels |
 |------|------------|----------|------------|
 | Image | jpg, png, webp | 10 MB | 60 megapixels; 25 megapixels for a profile picture |
+| GIF | gif | 10 MB, and 10 MB for each frame as a PNG | 60 megapixels for each frame |
 | Video | mp4, webm | 95 MiB | |
 
 The server decodes each image before it stores it. The content must be JPEG, PNG or WebP, whatever the declared `Content-Type`, and the server stores the image re-encoded in the declared type: a PNG sent as `image/jpeg` is stored as a JPEG. The server refuses an image when:
@@ -4325,5 +4330,11 @@ The server decodes each image before it stores it. The content must be JPEG, PNG
 - Its content is not a readable JPEG, PNG or WebP file, either another format or a damaged file. The error message names the accepted formats.
 - The width times the height in its header exceeds the pixel limit. The check runs before any pixel is decoded.
 - It is animated. Upload it as a video instead.
+
+A GIF is accepted as a source file and as a proof image, never as a profile picture. The server never stores the GIF itself: it stores each frame as a PNG, as the GIF displays it, with no metadata. A GIF holds at most 6 frames (`storage.MAX_GIF_FRAMES`). The server refuses a GIF when:
+
+- Its content is not a readable GIF file.
+- It holds more than 6 frames. Upload it as an MP4 video, or as a GIF of 6 frames or fewer.
+- Its canvas exceeds the pixel limit, or one of its frames is over the image size limit once encoded as a PNG.
 
 `POST /uploads` and an event write's proof images return 400 `evidence_processing_failed` for a refused image, and `PUT /users/me/avatar` returns 422 `invalid_avatar`.

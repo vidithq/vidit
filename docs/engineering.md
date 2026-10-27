@@ -98,6 +98,7 @@ S3 provides the evidence-preservation primitives: Object Lock, versioning and re
 Every image is decoded and re-encoded before it is stored: [`evidence_processing.py`](../backend/app/services/evidence_processing.py) strips its metadata, applies its EXIF orientation, and cuts its display derivatives. The decode is bounded in four ways:
 
 - Only the JPEG, PNG and WebP decoders may read the file, whatever its declared `Content-Type`. The image is then re-encoded in the declared type.
+- A file declared `image/gif` is read by the GIF decoder alone. Its frame count and canvas size are checked before any frame decodes, and each frame is then stored as a PNG upload (`evidence_processing.split_gif`).
 - The pixel limit is checked against the file header before any pixel is decoded. The limits are in [`api.md`](api.md#file-limits).
 - The strip works on the decoded image in place. A mode conversion copies it once and frees the source before the encode.
 - A process decodes at most `MAX_CONCURRENT_DECODES` images at once. An upload that arrives while every slot is busy waits for one, so a burst of uploads adds latency, not memory.
@@ -475,7 +476,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 
 | Frontend | Backend source | Drift breaks |
 |---|---|---|
-| `lib/mediaTypes.ts` | `storage.ALLOWED_IMAGE_TYPES`, `ALLOWED_VIDEO_TYPES` | picker accepts a file the API refuses |
+| `lib/mediaTypes.ts` | `storage.ALLOWED_IMAGE_TYPES`, `GIF_CONTENT_TYPE`, `ALLOWED_VIDEO_TYPES` | picker accepts a file the API refuses |
 | `lib/coordinates.ts` | `events.validate_coordinates` | form accepts coordinates the API refuses |
 | `lib/auth.ts` `PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_BYTES` | `schemas/auth.PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_BYTES` | password form accepts a password the API refuses, or refuses one it accepts |
 | `lib/auth.ts` CSRF cookie and header names; the cookie name again in `proxy.ts` (edge runtime) | `auth_cookies.CSRF_COOKIE`, `CSRF_HEADER` | every write is refused |

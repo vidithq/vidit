@@ -32,7 +32,7 @@ import { BlockNoteView } from "@blocknote/mantine";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { FIELD_TEXT } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
-import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
+import { ACCEPTED_EVIDENCE_IMAGE_MIME } from "@/lib/mediaTypes";
 import { isSafeLinkHref, proofImageSrcs } from "@/lib/proof";
 import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
 
@@ -83,7 +83,7 @@ const { paragraph, bulletListItem, numberedListItem, quote, divider, codeBlock, 
   defaultBlockSpecs;
 const { bold, italic, strike, code } = defaultStyleSpecs;
 
-const IMAGE_MIMES = ACCEPTED_IMAGE_MIME.split(",");
+const IMAGE_MIMES = ACCEPTED_EVIDENCE_IMAGE_MIME.split(",");
 
 // The picker and paste/drop read `fileBlockAccept`; BlockNote's default is `image/*`.
 const proofImage = {

@@ -1,7 +1,7 @@
 """The first layer of the two-layer upload: stage a source file before the event write.
 
-``POST /uploads`` stores one file and records an ``uploads`` row (:func:`stage_upload`), so
-every request carries at most one file. An event write then names the row in a source's
+``POST /uploads`` stores one picked file and records an ``uploads`` row (:func:`stage_upload`), so
+every request carries at most one file; a GIF stores, and records, one PNG per frame. An event write then names the row in a source's
 ``upload_id``; ``services/events/sources`` takes it (:func:`take_uploads`), turns it into the
 source's ``media`` row and deletes it. A row nobody takes expires after ``UPLOAD_TTL`` and
 :func:`reap_expired_uploads` deletes it with its object.
@@ -30,9 +30,10 @@ from app.services.evidence_intake import (
 )
 from app.services.evidence_processing import EvidenceProcessingError
 from app.services.storage import (
+    StoredFile,
     UploadResult,
     get_storage,
-    safe_original_filename,
+    stored_file_count,
     sweep_keys,
     upload_source_bytes,
     upload_source_file,
@@ -95,13 +96,13 @@ UPLOAD_ERROR_STATUS: dict[str, int] = {
 }
 
 
-def _ensure_room(db: Session, uploader: User, now: datetime) -> None:
+def _ensure_room(db: Session, uploader: User, now: datetime, needed: int = 1) -> None:
     pending = (
         db.query(func.count(Upload.id))
         .filter(Upload.uploader_id == uploader.id, Upload.expires_at > now)
         .scalar()
     )
-    if pending >= MAX_PENDING_UPLOADS_PER_USER:
+    if pending + needed > MAX_PENDING_UPLOADS_PER_USER:
         raise TooManyUploadsError(
             f"You hold {pending} staged files no event uses yet; "
             f"submit or wait for them to expire before uploading more."
@@ -113,59 +114,68 @@ async def _record(
     *,
     uploader: User,
     kind: str,
-    store: Awaitable[UploadResult],
-    original_filename: str | None,
+    store: Awaitable[list[StoredFile]],
     now: datetime,
-) -> Upload:
-    """Await ``store`` and record what it stored as a staged row; commits."""
+) -> list[Upload]:
+    """Await ``store`` and record each file it stored as a staged row, in one commit."""
     try:
-        result = await store
+        stored = await store
     except EvidenceProcessingError as exc:
         raise EvidenceProcessingFailedError(str(exc)) from exc
     storage = get_storage()
-    key = storage.key_from_url(result.url)
-    if key is None:  # pragma: no cover - both backends resolve their own URLs
-        raise RuntimeError(f"Storage returned a URL it cannot resolve: {result.url}")
-    row = Upload(
-        uploader_id=uploader.id,
-        storage_key=key,
-        kind=kind,
-        sha256=result.sha256,
-        original_filename=original_filename,
-        expires_at=now + UPLOAD_TTL,
-    )
-    db.add(row)
+    rows: list[Upload] = []
+    keys: list[str] = []
+    for result, original_filename in stored:
+        key = storage.key_from_url(result.url)
+        if key is None:  # pragma: no cover - both backends resolve their own URLs
+            raise RuntimeError(f"Storage returned a URL it cannot resolve: {result.url}")
+        keys += [key, *result.derivative_keys]
+        rows.append(
+            Upload(
+                uploader_id=uploader.id,
+                storage_key=key,
+                kind=kind,
+                sha256=result.sha256,
+                original_filename=original_filename,
+                expires_at=now + UPLOAD_TTL,
+            )
+        )
+    db.add_all(rows)
     try:
         db.commit()
     except Exception:
         db.rollback()
-        sweep_keys([key, *result.derivative_keys], context="upload staging rollback")
+        sweep_keys(keys, context="upload staging rollback")
         raise
-    db.refresh(row)
-    return row
+    for row in rows:
+        db.refresh(row)
+    return rows
 
 
-async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> Upload:
-    """Store one source file and record it for a later event write; commits.
+async def _unnamed(store: Awaitable[UploadResult]) -> list[StoredFile]:
+    return [StoredFile(await store, None)]
 
-    Raises :class:`TooManyUploadsError` past :data:`MAX_PENDING_UPLOADS_PER_USER` live rows,
-    :class:`InvalidFileError` on a disallowed type or size, and
-    :class:`EvidenceProcessingFailedError` when the image cannot be re-encoded.
+
+async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> list[Upload]:
+    """Store one picked file and record it for a later event write; commits.
+
+    A GIF is stored and recorded as one PNG per frame, in frame order. Raises
+    :class:`TooManyUploadsError` when the files would pass
+    :data:`MAX_PENDING_UPLOADS_PER_USER` live rows, :class:`InvalidFileError` on a disallowed
+    type or size, and :class:`EvidenceProcessingFailedError` when the image cannot be re-encoded
+    or the GIF holds too many frames.
     """
     now = datetime.now(UTC)
-    _ensure_room(db, uploader, now)
     try:
         kind = validate_file(file)
     except ValueError as exc:
         raise InvalidFileError(str(exc)) from exc
-    return await _record(
-        db,
-        uploader=uploader,
-        kind=kind,
-        store=upload_source_file(file),
-        original_filename=safe_original_filename(file.filename),
-        now=now,
-    )
+    try:
+        count = await asyncio.to_thread(stored_file_count, file)
+    except EvidenceProcessingError as exc:
+        raise EvidenceProcessingFailedError(str(exc)) from exc
+    _ensure_room(db, uploader, now, count)
+    return await _record(db, uploader=uploader, kind=kind, store=upload_source_file(file), now=now)
 
 
 async def stage_from_link(
@@ -204,12 +214,11 @@ async def stage_from_link(
         kind = validate_bytes(data, parsed.content_type)
     except ValueError as exc:
         raise InvalidFileError(str(exc)) from exc
-    upload = await _record(
+    [upload] = await _record(
         db,
         uploader=uploader,
         kind=kind,
-        store=upload_source_bytes(data, parsed.content_type),
-        original_filename=None,
+        store=_unnamed(upload_source_bytes(data, parsed.content_type)),
         now=now,
     )
     return upload, [item.kind for item in media]

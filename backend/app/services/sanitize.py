@@ -7,8 +7,9 @@ other.
 
 import re
 import secrets
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from html import escape as html_escape
+from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
@@ -79,6 +80,8 @@ _PLAIN_TAG_REST = re.compile(
 # ``<a>`` lost it; the parser never nests links, so the lazy match pairs it
 # with its own ``</a>``.
 _BARE_IMG = re.compile(r'<img(?:\s(?!src=)[a-z-]+="[^"]*")*>')
+_CANONICAL_IMG = re.compile(r'<img(?:\s[a-z-]+="[^"]*")*>')
+_IMG_SRC = re.compile(r'\ssrc="([^"]*)"')
 _BARE_LINK = re.compile(r"<a>(.*?)</a>", re.DOTALL)
 
 # The editor writes U+FFFC into an empty block; it carries no text.
@@ -246,13 +249,32 @@ def sanitize_html(html: str, *, allow_images: bool = True, allow_placeholders: b
     return cleaned
 
 
-def rewrite_image_srcs(html: str, src_map: Mapping[str, str]) -> str:
-    """A sanitised proof body with each image src in ``src_map`` swapped for its value.
+def rewrite_image_srcs(html: str, src_map: Mapping[str, Sequence[str]]) -> str:
+    """A sanitised proof body with each image whose src is in ``src_map`` shown once per mapped URL.
 
-    The swap runs inside the sanitiser, so the result stays canonical. Mapped
-    URLs are ones storage minted, so they skip the host check.
+    An image mapped to several URLs (the frames of a GIF) repeats in place, each
+    copy keeping its other attributes. The swap runs inside the sanitiser, so
+    the result stays canonical. Mapped URLs are ones storage minted, so they
+    skip the host check.
     """
-    return _clean(html, allow_images=True, allow_placeholders=True, src_map=src_map)
+    marker = f"{PROOF_PLACEHOLDER_PREFIX}{secrets.token_hex(16)}/"
+    flat = {src: urls[0] for src, urls in src_map.items() if urls}
+
+    def repeat(match: re.Match[str]) -> str:
+        tag = match.group(0)
+        src = _IMG_SRC.search(tag)
+        urls = src_map.get(unescape(src.group(1))) if src else None
+        if src is None or not urls:
+            return tag
+        copies = []
+        for url in urls:
+            placeholder = f"{marker}{len(flat)}"
+            flat[placeholder] = url
+            copies.append(tag[: src.start(1)] + placeholder + tag[src.end(1) :])
+        return "".join(copies)
+
+    expanded = _CANONICAL_IMG.sub(repeat, html)
+    return _clean(expanded, allow_images=True, allow_placeholders=True, src_map=flat)
 
 
 def html_from_text(text: str, *, image_srcs: list[str] | None = None) -> str:
@@ -264,7 +286,7 @@ def html_from_text(text: str, *, image_srcs: list[str] | None = None) -> str:
     paragraphs = "".join(
         f"<p>{html_escape(line, quote=False)}</p>" for line in text.split("\n") if line.strip()
     )
-    minted = {f"{PROOF_PLACEHOLDER_PREFIX}{i}": src for i, src in enumerate(image_srcs or [])}
+    minted = {f"{PROOF_PLACEHOLDER_PREFIX}{i}": [src] for i, src in enumerate(image_srcs or [])}
     images = "".join(f'<img src="{placeholder}">' for placeholder in minted)
     return sanitize_html(paragraphs, allow_images=False) + rewrite_image_srcs(images, minted)
 

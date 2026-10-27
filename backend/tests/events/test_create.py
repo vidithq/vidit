@@ -11,11 +11,12 @@ from io import BytesIO
 
 from PIL import Image
 
+from app.config import settings
 from app.models.event import Event
 from app.models.media import Media
 from app.services.evidence_processing import UNREADABLE_IMAGE_MESSAGE
 from app.services.sanitize import extract_image_srcs
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, gif_bytes
 from tests.conftest import login_as
 from tests.events._helpers import (
     WORLD_BBOX,
@@ -150,6 +151,32 @@ def test_create_rejects_too_many_proof_files(author, conflict):
     detail = response.json()["detail"]
     assert detail["code"] == "too_many_files"
     assert "proof images" in detail["message"]
+
+
+def test_a_gif_proof_image_shows_once_per_frame(db, author, conflict):
+    proof = '<p>Before and after.</p><img src="placeholder://compare.gif" alt="Depot">'
+    files = [("proof_files", ("compare.gif", gif_bytes(2), "image/gif"))]
+    response = _post(author, _form(author, conflict, proof=proof), files)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    srcs = extract_image_srcs(body["proof"])
+    assert len(srcs) == 2 and all(src.endswith(".png") for src in srcs)
+    assert body["proof"].count('alt="Depot"') == 2
+
+    rows = db.query(Media).filter(
+        Media.event_id == uuid.UUID(body["id"]), Media.source_id.is_(None)
+    )
+    by_url = {m.storage_url: m.original_filename for m in rows}
+    assert [by_url[src] for src in srcs] == ["compare-1.png", "compare-2.png"]
+
+
+def test_each_gif_frame_counts_toward_the_proof_image_ceiling(author, conflict, monkeypatch):
+    monkeypatch.setattr(settings, "max_proof_images_per_event", 1)
+    proof = '<img src="placeholder://compare.gif">'
+    files = [("proof_files", ("compare.gif", gif_bytes(2), "image/gif"))]
+    response = _post(author, _form(author, conflict, proof=proof), files)
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "too_many_files"
 
 
 def test_create_rejects_video_proof_file(author, conflict):

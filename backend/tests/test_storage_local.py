@@ -67,7 +67,7 @@ async def test_upload_source_file_helper_routes_through_local(tmp_path: Path):
 
     file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
 
-    result = await upload_source_file(file)
+    [(result, _)] = await upload_source_file(file)
 
     assert result.url.startswith(f"{LOCAL_STORAGE_URL_PREFIX}/uploads/")
     assert result.url.endswith(".jpg")
@@ -89,7 +89,7 @@ async def test_upload_source_file_writes_hero_and_thumbnail_derivatives(tmp_path
 
     file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
 
-    result = await upload_source_file(file)
+    [(result, _)] = await upload_source_file(file)
 
     original_relative = result.url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
     assert (tmp_path / original_relative).exists(), "original missing on disk"
@@ -113,7 +113,7 @@ async def test_upload_source_file_derives_extension_from_content_type_not_filena
     # '.html' on a video/mp4 payload: the content type wins.
     file = _upload_file("evil.html", b"fake-mp4-bytes", "video/mp4")
 
-    result = await upload_source_file(file)
+    [(result, _)] = await upload_source_file(file)
 
     assert result.url.endswith(".mp4")
 
@@ -122,7 +122,7 @@ async def test_upload_source_file_skips_derivatives_for_video(tmp_path: Path):
     """Videos produce no JPEG derivatives, so a rollback sweeps no missing sibling keys."""
     file = _upload_file("clip.mp4", b"fake-mp4-bytes", "video/mp4")
 
-    result = await upload_source_file(file)
+    [(result, _)] = await upload_source_file(file)
     assert result.derivative_keys == ()
 
 
@@ -192,7 +192,7 @@ async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
 
     user_id = uuid4()
     file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
-    result = await upload_proof_image(file, user_id)
+    [(result, _)] = await upload_proof_image(file, user_id)
 
     assert result.derivative_keys == ()
     relative = result.url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
