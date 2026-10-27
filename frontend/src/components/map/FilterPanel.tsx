@@ -42,7 +42,7 @@ interface FilterPanelProps {
 
 /**
  * The map's filter overlay: header button, `ActiveFilterPills`, and the shared
- * `EventFilterSections`, with the sites layer as its lead section and the two timeline scrubbers as
+ * `EventFilterSections`, with the sites layer as its Layers group and the two timeline scrubbers as
  * date sections. The sites layer counts as one active filter with its own pill, so the collapsed
  * panel shows it. Filter state lives in MapStateContext so it survives navigation.
  */
@@ -167,7 +167,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             conflicts={conflicts}
             values={filters}
             onPatch={onPatch}
-            leadSections={[
+            lead={{ title: "Layers", sections: [
               {
                 title: "Sites",
                 concept: "sites_layer",
@@ -190,7 +190,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                   </>
                 ),
               },
-            ]}
+            ]}}
             dateSections={[
               {
                 title: "Event date",

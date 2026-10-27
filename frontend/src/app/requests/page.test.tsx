@@ -73,13 +73,13 @@ describe("RequestsPage", () => {
     render(<RequestsPage />);
 
     expect(await screen.findByText(REQUEST.title)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Status" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Conflict" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Source kind" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Level" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Status/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Conflict, tags" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Location guess" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Source kind" }));
+    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    expect(screen.getByText("Source kind")).toBeInTheDocument();
+    expect(screen.getByText("Level")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Drone" }));
 
     await waitFor(() => expect(lastQuery().getAll("source_kind")).toEqual(["drone"]));
@@ -136,12 +136,12 @@ describe("RequestsPage", () => {
     render(<RequestsPage />);
     await screen.findByText(REQUEST.title);
     expect(screen.getByRole("complementary", { name: "Filters" })).toContainElement(
-      screen.getByRole("button", { name: "Toggle Conflict" })
+      screen.getByRole("button", { name: "Toggle Conflict, tags" })
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     const dialog = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Conflict" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Conflict, tags" }));
     fireEvent.focus(within(dialog).getByRole("combobox", { name: "Conflict" }));
     fireEvent.click(screen.getByRole("option", { name: /^Russian invasion of Ukraine/ }));
     expect(lastQuery().has("conflict")).toBe(false);
