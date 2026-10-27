@@ -23,7 +23,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
-- On a wide screen, the About page keeps the prose in its main column and moves Guides, Stay in touch and Legal to the right rail, which stays in view while you read; on a phone the links follow the prose ([#735](https://github.com/vidithq/vidit/issues/735)).
+- On a wide screen, the About page keeps the prose in its main column and moves Guides, Stay in touch and Legal to the right rail, which stays in view while you read; on a phone the links follow the prose ([#735](https://github.com/vidithq/vidit/pull/749)).
 - A site on the map previews its name when you rest the mouse on it and opens the same side panel as an event; the map draws sites as squares and zones without names, in a colour of their own that stands out from the military and airport highlight ([#747](https://github.com/vidithq/vidit/pull/747)).
 - `POST /uploads` answers an `UploadList` whose `items` holds one `UploadRead` per staged file, one per frame for a GIF ([#744](https://github.com/vidithq/vidit/pull/744)).
 - The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#709](https://github.com/vidithq/vidit/pull/709)).
