@@ -457,6 +457,47 @@ def test_stats_source_hosts_fold_www_and_rank_by_count(db, live_user):
     assert body["no_source_count"] == 0
 
 
+def test_stats_source_hosts_merge_a_platforms_aliases(db, live_user):
+    """A platform's aliases sum into its canonical host; an unknown host is untouched."""
+    _make_geo(db, author=live_user, source_url="https://x.com/a/status/1")
+    _make_geo(db, author=live_user, source_url="https://twitter.com/a/status/2")
+    _make_geo(db, author=live_user, source_url="https://mobile.twitter.com/a/status/3")
+    _make_geo(db, author=live_user, source_url="https://youtu.be/abc")
+    _make_geo(db, author=live_user, source_url="https://m.youtube.com/watch?v=def")
+    _make_geo(db, author=live_user, source_url="https://telegram.me/chan/7")
+    _make_geo(db, author=live_user, source_url="https://unknown.example/1")
+
+    body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert body["source_hosts"] == [
+        {"name": "x.com", "count": 3},
+        {"name": "youtube.com", "count": 2},
+        {"name": "t.me", "count": 1},
+        {"name": "unknown.example", "count": 1},
+    ]
+    assert body["other_hosts_count"] == 0
+
+
+def test_stats_source_hosts_cut_to_five_after_merging(db, live_user):
+    """Aliases merge before the ``TOP_N`` cut: ``x.com`` and ``twitter.com`` each tie the
+    tail, and as one platform they rank third."""
+    for rank, count in enumerate([5, 4, 3, 2, 1]):
+        for i in range(count):
+            _make_geo(db, author=live_user, source_url=f"https://host{rank}.example/{i}")
+    for i in range(2):
+        _make_geo(db, author=live_user, source_url=f"https://x.com/a/status/{i}")
+        _make_geo(db, author=live_user, source_url=f"https://twitter.com/a/status/{i}")
+
+    body = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    assert body["source_hosts"] == [
+        {"name": "host0.example", "count": 5},
+        {"name": "host1.example", "count": 4},
+        {"name": "x.com", "count": 4},
+        {"name": "host2.example", "count": 3},
+        {"name": "host3.example", "count": 2},
+    ]
+    assert body["other_hosts_count"] == 1
+
+
 def test_stats_source_hosts_keep_five_and_tip_the_tail_into_other(db, live_user):
     """Named segments stop at ``TOP_N``; the rest land in ``other_hosts_count``
     (boundary: five hosts name themselves, six do not)."""

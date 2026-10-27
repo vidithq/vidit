@@ -2,8 +2,8 @@ import type { components } from "@/lib/api-types";
 import { Pill } from "./Pill";
 import { ACCENT_RAMP, CHART_NEUTRAL, CHART_TAIL } from "./styles";
 
-/** One (host, count) entry of `source_hosts`; `name` is the host, lower-cased with
- *  any leading `www.` removed server side. */
+/** One (host, count) entry of `source_hosts`; `name` is the host, lower-cased, with
+ *  any leading `www.` removed and a platform's aliases merged server side. */
 type SourceHostCount = components["schemas"]["TagCount"];
 
 interface Segment {

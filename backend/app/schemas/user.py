@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.services.sanitize import PLATFORM_HOSTS
+
 # Per-field caps: generous but keeping payloads predictable. Mirrors
 # ``frontend/src/components/profile/useProfileEdit.ts::BIO_MAX_LEN``.
 BIO_MAX_LEN = 500
@@ -40,8 +42,7 @@ def normalise_url(value: str | None, *, field: str) -> str | None:
 # + ``SOCIAL_HANDLE_PATTERN``; change both). Canonical host first: a stored
 # handle expands to it when linked.
 SOCIAL_PROFILE_HOSTS: dict[str, tuple[str, ...]] = {
-    "x": ("x.com", "twitter.com"),
-    "github": ("github.com",),
+    field: PLATFORM_HOSTS[field] for field in ("x", "github")
 }
 
 # Each platform's account-name rule. ``discord`` has no profile URL, so it is

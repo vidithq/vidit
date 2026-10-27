@@ -18,6 +18,9 @@ describe("resolveLinkHref", () => {
     expect(resolveLinkHref("x", "https://www.x.com/analyst_example/")).toBe(
       "https://x.com/analyst_example"
     );
+    expect(resolveLinkHref("x", "https://mobile.twitter.com/analyst_example")).toBe(
+      "https://x.com/analyst_example"
+    );
   });
 
   it("links nothing for a URL on a host the platform does not own", () => {
