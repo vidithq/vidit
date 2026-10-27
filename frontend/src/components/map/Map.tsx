@@ -52,11 +52,12 @@ import {
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { CLUSTER_LAYER, POINT_LAYERS, STACK_LAYER, TAP_TARGET_LAYERS } from "./layers";
-import { BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
+import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
 import { BasemapControl } from "./BasemapControl";
 import { CoordinateGrid } from "./CoordinateGrid";
 import { SatelliteOverlays } from "./SatelliteOverlays";
 import { useBasemapSettings } from "./basemapSettings";
+import { useMapAssets } from "./mapAssets";
 
 const POINTS_SOURCE = "points";
 
@@ -792,12 +793,13 @@ function FlyToCamera({ target }: { target: { lat: number; lng: number } | null }
 /** Applies the basemap style. The map mounts on `BLANK_STYLE`; every later style swaps in with
  *  MapLibre's diff, which keeps the overlays (`carryOverlays`) and turns an option change into
  *  `setLayoutProperty` and `setFilter` calls. The first swap rebuilds from scratch: a diff against
- *  a style still loading would fail and fall back to the same rebuild, with a console warning. */
-function BasemapStyle({ style }: { style: StyleSpecification | string }) {
+ *  a style still loading would fail and fall back to the same rebuild, with a console warning.
+ *  A null style keeps the map as it is. */
+function BasemapStyle({ style }: { style: StyleSpecification | null }) {
   const { current: map } = useMap();
-  const applied = useRef<StyleSpecification | string | null>(null);
+  const applied = useRef<StyleSpecification | null>(null);
   useEffect(() => {
-    if (!map || applied.current === style) return;
+    if (!map || !style || applied.current === style) return;
     const first = applied.current === null;
     applied.current = style;
     map.getMap().setStyle(style, { diff: !first, transformStyle: carryOverlays });
@@ -849,7 +851,13 @@ export default function Map({
   const [basemap, setBasemap] = useBasemapSettings();
   const presetId = resolvePreset(basemap.preset, theme);
   const { brightness } = BASEMAP_PRESETS[presetId];
-  const basemapStyle = useMemo(() => BASEMAP_PRESETS[presetId].style(basemap), [presetId, basemap]);
+  // While the self-hosted map files load, the map waits on its blank style rather than fetch the
+  // public tiles it would then drop.
+  const mapAssets = useMapAssets();
+  const basemapStyle = useMemo(
+    () => (mapAssets === undefined ? null : applyMapAssets(BASEMAP_PRESETS[presetId].style(basemap), mapAssets)),
+    [presetId, basemap, mapAssets],
+  );
   // Halo around the selected point: white on a dark basemap, a dark ring on a light one.
   const SELECTED_STROKE = brightness === "light" ? "#1a1a1a" : "#ffffff";
 

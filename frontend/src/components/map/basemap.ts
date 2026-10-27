@@ -11,8 +11,10 @@ import { MAP_LAYER_COLORS } from "@/lib/palette";
 import type { ThemeId } from "@/lib/theme";
 
 import { DAILY_IMAGERY_SOURCE } from "./gibs";
+import type { MapAssets } from "./mapAssets";
 import viditDark from "./styles/vidit-dark.json";
 import viditLight from "./styles/vidit-light.json";
+import viditStreets from "./styles/vidit-streets.json";
 
 export type Brightness = "dark" | "light";
 
@@ -183,7 +185,7 @@ const LINES: ExpressionSpecification = [
  *  `aeroway` aerodrome area, runways and taxiways) drawn over the land, in colours of their own. */
 function militaryAirportLayers(brightness: Brightness): LayerSpecification[] {
   const { military, airport } = MAP_LAYER_COLORS[brightness];
-  const source = { source: "openmaptiles", metadata: { "vidit:role": "military-airport" } };
+  const source = { source: VECTOR_SOURCE, metadata: { "vidit:role": "military-airport" } };
   const isMilitary: FilterSpecification = ["==", ["get", "class"], "military"];
   const isAerodrome: FilterSpecification = ["==", ["get", "class"], "aerodrome"];
   const outlineWidth: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 10, 0.75, 16, 1.5];
@@ -244,6 +246,8 @@ function militaryAirportLayers(brightness: Brightness): LayerSpecification[] {
   ];
 }
 
+const VECTOR_SOURCE = "openmaptiles";
+const NATURAL_EARTH_SOURCE = "ne2_shaded";
 const RELIEF_SOURCE = "relief-dem";
 
 // The elevation tiles stop at 15; MapLibre scales the last level past it.
@@ -356,8 +360,11 @@ interface BasemapPreset {
   brightness: Brightness;
   /** Whether the reader's options apply. Third-party styles draw as published. */
   adjustable: boolean;
-  style: (options: BasemapOptions) => StyleSpecification | string;
+  style: (options: BasemapOptions) => StyleSpecification;
 }
+
+/** OpenFreeMap Liberty, forked to read the self-hosted files too (licence in `styles/LICENSE`). */
+const STREETS_STYLE = viditStreets as unknown as StyleSpecification;
 
 export const BASEMAP_PRESETS: Record<ConcretePresetId, BasemapPreset> = {
   "vidit-dark": {
@@ -373,11 +380,35 @@ export const BASEMAP_PRESETS: Record<ConcretePresetId, BasemapPreset> = {
   streets: {
     brightness: "light",
     adjustable: false,
-    style: () => "https://tiles.openfreemap.org/styles/liberty",
+    style: () => STREETS_STYLE,
   },
   terrain: { brightness: "light", adjustable: false, style: () => TERRAIN_STYLE },
   satellite: { brightness: "dark", adjustable: false, style: () => SATELLITE_STYLE },
 };
+
+/** Points a basemap's OpenFreeMap tiles, Natural Earth relief, elevation and sprite at the
+ *  self-hosted files. The archive's header sets each source's zoom range, so the style's own
+ *  `maxzoom` goes: the relief archive stops below the public elevation tiles. */
+export function applyMapAssets(style: StyleSpecification, assets: MapAssets | null): StyleSpecification {
+  if (!assets) return style;
+  const urls: Record<string, string> = {
+    [VECTOR_SOURCE]: assets.planet,
+    [NATURAL_EARTH_SOURCE]: assets.naturalEarth,
+    [RELIEF_SOURCE]: assets.relief,
+  };
+  const sources = Object.fromEntries(
+    Object.entries(style.sources).map(([id, source]) => {
+      if (!(id in urls) || !("tiles" in source || "url" in source)) return [id, source];
+      const { tiles: _tiles, url: _url, maxzoom: _maxzoom, ...rest } = source as SourceSpecification & {
+        tiles?: string[];
+        url?: string;
+        maxzoom?: number;
+      };
+      return [id, { ...rest, url: urls[id] }];
+    }),
+  ) as StyleSpecification["sources"];
+  return { ...style, sources, ...(style.sprite ? { sprite: assets.sprite } : {}) };
+}
 
 /** Auto follows the theme onto the Vidit style of the same brightness. */
 export function resolvePreset(id: BasemapPresetId, theme: ThemeId): ConcretePresetId {

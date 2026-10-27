@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { MAP_LAYER_COLORS } from "@/lib/palette";
 
 import {
+  applyMapAssets,
   BASEMAP_PRESET_IDS,
   BASEMAP_PRESETS,
   BLANK_STYLE,
@@ -27,6 +28,7 @@ import {
   type Brightness,
 } from "./basemap";
 import { DAILY_IMAGERY_SOURCE } from "./gibs";
+import type { MapAssets } from "./mapAssets";
 
 type Layer = LayerSpecification & {
   filter?: unknown;
@@ -318,6 +320,18 @@ describe("basemap presets", () => {
     expect(terrain.sources.opentopomap).toMatchObject({ maxzoom: 17 });
   });
 
+  it("draws Streets from the forked Liberty style, on the public tiles and the vendored sprite", () => {
+    const streets = BASEMAP_PRESETS.streets.style(DEFAULT_BASEMAP_OPTIONS);
+    expect(validateStyleMin(streets)).toEqual([]);
+    expect(streets.sprite).toBe("/map-sprites/ofm");
+    expect(streets.sources.openmaptiles).toMatchObject({ url: "https://tiles.openfreemap.org/planet" });
+    expect((streets.sources.openmaptiles as { attribution: string }).attribution).toContain("OpenMapTiles");
+    expect(streets.sources.ne2_shaded).toMatchObject({
+      tiles: ["https://tiles.openfreemap.org/natural_earth/ne2sr/{z}/{x}/{y}.png"],
+      maxzoom: 6,
+    });
+  });
+
   it("offers every preset, Auto first", () => {
     expect(BASEMAP_PRESET_IDS).toEqual(["auto", "vidit-dark", "vidit-light", "streets", "terrain", "satellite"]);
     for (const id of BASEMAP_PRESET_IDS.filter((id) => id !== "auto")) {
@@ -480,5 +494,50 @@ describe("carryOverlays", () => {
     expect(next.glyphs).toBe("/map-glyphs/{fontstack}/{range}.pbf");
     const fonts = next.layers.map((layer) => (layer as Layer).layout?.["text-font"]);
     expect(fonts).toEqual([undefined, ["Montserrat Medium"], ["Montserrat Regular"]]);
+  });
+});
+
+describe("applyMapAssets", () => {
+  const assets: MapAssets = {
+    planet: "pmtiles://https://maps.example/planet/v1.pmtiles",
+    sprite: "https://maps.example/sprite/ofm_1/ofm",
+    naturalEarth: "pmtiles://https://maps.example/natural-earth/ne2sr-z6.pmtiles",
+    relief: "pmtiles://https://maps.example/relief/terrarium-z8.pmtiles",
+  };
+  const dark = buildViditStyle("dark", { ...DEFAULT_BASEMAP_OPTIONS, relief: true });
+
+  it("leaves every style as it is without self-hosted files", () => {
+    expect(applyMapAssets(dark, null)).toBe(dark);
+  });
+
+  it("reads the Vidit styles' tiles, relief and sprite from the self-hosted files", () => {
+    const style = applyMapAssets(dark, assets);
+    expect(validateStyleMin(style)).toEqual([]);
+    expect(style.sprite).toBe(assets.sprite);
+    expect(style.sources.openmaptiles).toEqual({
+      type: "vector",
+      url: assets.planet,
+      attribution: (dark.sources.openmaptiles as { attribution: string }).attribution,
+    });
+    const relief = style.sources["relief-dem"] as Record<string, unknown>;
+    expect(relief).toMatchObject({ type: "raster-dem", encoding: "terrarium", url: assets.relief });
+    expect(relief.tiles).toBeUndefined();
+    expect(relief.maxzoom).toBeUndefined();
+    expect(style.layers).toEqual(dark.layers);
+  });
+
+  it("reads the Streets tiles and Natural Earth relief from the self-hosted files", () => {
+    const style = applyMapAssets(BASEMAP_PRESETS.streets.style(DEFAULT_BASEMAP_OPTIONS), assets);
+    expect(validateStyleMin(style)).toEqual([]);
+    expect(style.sprite).toBe(assets.sprite);
+    expect(style.sources.openmaptiles).toMatchObject({ url: assets.planet });
+    expect(style.sources.ne2_shaded).toEqual({ type: "raster", tileSize: 256, url: assets.naturalEarth });
+  });
+
+  it("leaves the external raster basemaps on their hosts", () => {
+    for (const id of ["terrain", "satellite"] as const) {
+      const style = BASEMAP_PRESETS[id].style(DEFAULT_BASEMAP_OPTIONS);
+      expect(applyMapAssets(style, assets), id).toEqual(style);
+    }
   });
 });

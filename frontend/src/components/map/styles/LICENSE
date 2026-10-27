@@ -6,6 +6,13 @@ vidit-light.json is derived from the OpenFreeMap "positron" style
 (https://github.com/hyperknot/openfreemap-styles), a fork of
 openmaptiles/positron-gl-style (https://github.com/openmaptiles/positron-gl-style).
 
+vidit-streets.json is the OpenFreeMap "liberty" style
+(https://github.com/hyperknot/openfreemap-styles) with its sources, sprite and
+glyphs pointed at the files Vidit serves. That style is a fork of OSM Liberty
+(https://github.com/maputnik/osm-liberty), which derives from OSM Bright in
+Mapbox Open Styles (https://github.com/mapbox/mapbox-gl-styles). Its licences
+follow the OpenMapTiles licence below.
+
 Both OpenMapTiles styles carry the licence below. The map credits OpenMapTiles
 and OpenStreetMap contributors in its attribution control.
 
@@ -71,6 +78,48 @@ Exceptions to OpenMapTiles attribution requirement can be in a written form gran
 by MapTiler AG (info@maptiler.com).  
 The project contributors grant MapTiler AG the license to give such
 exceptions on a commercial basis.
+
+
+OSM Liberty states the licence below.
+
+# Code license
+
+The Mapbox GL Style JSON file is originally derived from OSM Bright from
+Mapbox Open Styles (https://github.com/mapbox/mapbox-gl-styles/blob/master/LICENSE.md).
+The modified Mapbox GL Style JSON retains the same BSD license.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of Mapbox nor the names of its contributors may be used to
+  endorse or promote products derived from this software without specific
+  prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Design license
+
+The look and feel of the OSM Liberty map design is also derived (although
+heavily altered) from OSM Bright from Mapbox Open Styles, which is licensed
+under the Creative Commons Attribution 3.0 license. The map displays and styles
+data from OpenMapTiles under its CC-BY 4.0 design license, and credits
+OpenMapTiles as stated above.
 
 
 The OpenFreeMap styles carry the licence below.

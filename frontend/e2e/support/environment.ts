@@ -29,7 +29,7 @@ export const API_BASE_URL = "http://localhost:9999/api/v1";
 export const MEDIA_ORIGIN = "http://localhost:8000";
 
 /**
- * OpenFreeMap serves the basemap tiles, sprite and third-party styles the map
+ * OpenFreeMap serves the basemap tiles and the Streets shaded relief the map
  * requests. Refused, so `/map` renders without reaching the network: the map
  * still mounts and draws its own point layers over the style's background.
  */
