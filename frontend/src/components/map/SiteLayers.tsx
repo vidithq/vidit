@@ -18,9 +18,8 @@ export const ZONE_MIN_ZOOM = 10;
 const FILL = "sites-zone-fill";
 const LINE = "sites-zone-line";
 const MARKER = "sites-marker";
-const LABEL = "sites-label";
-const CLICK_LAYERS = [FILL, MARKER, LABEL];
-const ALL_LAYERS = [FILL, LINE, MARKER, LABEL];
+const CLICK_LAYERS = [FILL, MARKER];
+const ALL_LAYERS = [FILL, LINE, MARKER];
 
 const ICON_PX = 24;
 const ICON_BORDER_PX = 3;
@@ -28,7 +27,6 @@ const ICON_PIXEL_RATIO = 2;
 
 export interface MapSite {
   id: string;
-  name: string;
   zone: Zone;
   centroid: { lat: number; lng: number };
   emphasis?: "damage" | "destruction" | null;
@@ -93,7 +91,8 @@ interface HoverTarget {
 
 /**
  * The sites layer of a map, mounted as `<Map>` children: zones from `zoneMinZoom`, one square per
- * site below it, names beside both. Every layer sits under the event pins.
+ * site below it, with no name: the preview and the side panel carry it. Every layer sits under
+ * the event pins.
  *
  * With `onSelect`, a site takes the pointer like an event pin: the hand cursor, a click selects it,
  * and with `renderPreview` a mouse resting on it shows that content in the map's preview card after
@@ -228,7 +227,6 @@ export function SiteLayers({
         type: "Feature",
         properties: {
           id: site.id,
-          name: site.name,
           selected: site.id === selectedId ? 1 : 0,
           emphasis: site.emphasis ?? "none",
         },
@@ -270,8 +268,8 @@ export function SiteLayers({
           }}
         />
       </Source>
-      <Source id="sites-markers" type="geojson" data={markers}>
-        {zoneMinZoom > 0 && (
+      {zoneMinZoom > 0 && (
+        <Source id="sites-markers" type="geojson" data={markers}>
           <Layer
             id={MARKER}
             type="symbol"
@@ -288,36 +286,10 @@ export function SiteLayers({
               ],
               "icon-allow-overlap": true,
               "icon-size": ["case", ["==", ["get", "selected"], 1], 1.4, 1],
-              "text-field": ["get", "name"],
-              "text-font": ["Montserrat Medium"],
-              "text-size": 11,
-              "text-anchor": "left",
-              "text-offset": [1, 0],
-              "text-optional": true,
-            }}
-            paint={{
-              "text-color": color,
-              "text-halo-color": colors.halo,
-              "text-halo-width": 1.2,
             }}
           />
-        )}
-        <Layer
-          id={LABEL}
-          type="symbol"
-          minzoom={zoneMinZoom}
-          layout={{
-            "text-field": ["get", "name"],
-            "text-font": ["Montserrat Medium"],
-            "text-size": 11,
-          }}
-          paint={{
-            "text-color": color,
-            "text-halo-color": colors.halo,
-            "text-halo-width": 1.2,
-          }}
-        />
-      </Source>
+        </Source>
+      )}
       {hover && preview && (
         <MapPreviewCard x={hover.x} y={hover.y}>
           {preview}

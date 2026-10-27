@@ -56,8 +56,8 @@ const FIELDS: { [K in keyof BasemapSettings]: readonly BasemapSettings[K][] } = 
   fires: BOOLEAN,
 };
 
-/** A stored value read field by field: a missing or invalid field takes its default. */
-function parse(raw: string | null): BasemapSettings {
+/** The fields a stored value sets to a valid value: the reader's own choices. */
+function storedChoices(raw: string | null): Partial<BasemapSettings> {
   let stored: Record<string, unknown> = {};
   try {
     const value: unknown = raw === null ? null : JSON.parse(raw);
@@ -67,11 +67,11 @@ function parse(raw: string | null): BasemapSettings {
   }
   const keys = Object.keys(FIELDS) as (keyof BasemapSettings)[];
   return Object.fromEntries(
-    keys.map((key) => {
+    keys.flatMap((key) => {
       const allowed: readonly unknown[] = FIELDS[key];
-      return [key, allowed.includes(stored[key]) ? stored[key] : DEFAULT_BASEMAP_SETTINGS[key]];
+      return allowed.includes(stored[key]) ? [[key, stored[key]]] : [];
     }),
-  ) as unknown as BasemapSettings;
+  ) as Partial<BasemapSettings>;
 }
 
 // `localStorage` can be absent or throw (a private window, blocked site data). The settings then
@@ -79,15 +79,18 @@ function parse(raw: string | null): BasemapSettings {
 // `useSyncExternalStore` requires.
 let current = DEFAULT_BASEMAP_SETTINGS;
 let currentRaw: string | null = null;
+let currentChoices: Partial<BasemapSettings> = {};
 let storageWorks = true;
 
+/** The stored choices over the defaults: a field the reader never set follows the default. */
 export function getBasemapSettings(): BasemapSettings {
   if (!storageWorks) return current;
   try {
     const raw = window.localStorage.getItem(KEY);
     if (raw !== currentRaw) {
       currentRaw = raw;
-      current = parse(raw);
+      currentChoices = storedChoices(raw);
+      current = { ...DEFAULT_BASEMAP_SETTINGS, ...currentChoices };
     }
   } catch {
     storageWorks = false;
@@ -95,9 +98,13 @@ export function getBasemapSettings(): BasemapSettings {
   return current;
 }
 
+/** Stores the patch with the earlier choices, and only those, so a changed default reaches every
+ *  field the reader never set. */
 export function saveBasemapSettings(patch: Partial<BasemapSettings>): void {
-  current = { ...getBasemapSettings(), ...patch };
-  currentRaw = JSON.stringify(current);
+  getBasemapSettings();
+  currentChoices = { ...currentChoices, ...patch };
+  current = { ...DEFAULT_BASEMAP_SETTINGS, ...currentChoices };
+  currentRaw = JSON.stringify(currentChoices);
   try {
     window.localStorage.setItem(KEY, currentRaw);
   } catch {

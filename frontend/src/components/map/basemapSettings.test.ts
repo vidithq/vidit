@@ -15,7 +15,7 @@ describe("basemap settings", () => {
   beforeEach(() => window.localStorage.clear());
   afterEach(() => vi.restoreAllMocks());
 
-  it("defaults to Auto, Latin labels, sparse density, every layer but region borders and relief on, and no overlay", async () => {
+  it("defaults to Auto, Latin labels, sparse density, roads and buildings on, the other layers off, and no overlay", async () => {
     const { getBasemapSettings } = await load();
     expect(getBasemapSettings()).toEqual({
       preset: "auto",
@@ -24,7 +24,7 @@ describe("basemap settings", () => {
       regionBorders: false,
       roads: true,
       buildings: true,
-      militaryAndAirports: true,
+      militaryAndAirports: false,
       relief: false,
       disputedDashed: true,
       grid: false,
@@ -85,13 +85,24 @@ describe("basemap settings", () => {
       regionBorders: true,
       roads: false,
       buildings: true,
-      militaryAndAirports: true,
+      militaryAndAirports: false,
       relief: false,
       disputedDashed: true,
       grid: false,
       dailyImagery: false,
       fires: false,
     });
+  });
+
+  it("stores only the reader's choices, so a field never set follows its default", async () => {
+    const { getBasemapSettings, saveBasemapSettings } = await load();
+    saveBasemapSettings({ roads: false });
+    saveBasemapSettings({ militaryAndAirports: true });
+    expect(JSON.parse(window.localStorage.getItem("vidit:basemap") ?? "")).toEqual({
+      roads: false,
+      militaryAndAirports: true,
+    });
+    expect(getBasemapSettings()).toMatchObject({ roads: false, militaryAndAirports: true, buildings: true });
   });
 
   it("reads an unparsable value as the defaults", async () => {

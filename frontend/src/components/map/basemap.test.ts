@@ -204,8 +204,8 @@ describe.each(BASES)("buildViditStyle on the %s style", (brightness, base) => {
     expect(visible(solid)).toBe(true);
   });
 
-  it("highlights military areas and airports above the aeroways and under the roads by default", () => {
-    const layers = build(brightness);
+  it("highlights military areas and airports above the aeroways and under the roads, when on", () => {
+    const layers = build(brightness, { militaryAndAirports: true });
     const highlights = withRole(layers, "military-airport");
     const anyShows = (sourceLayer: string, properties: Record<string, unknown>) =>
       highlights.some((layer) => layer["source-layer"] === sourceLayer && shows(layer, 12, properties));
@@ -234,8 +234,8 @@ describe.each(BASES)("buildViditStyle on the %s style", (brightness, base) => {
     expect(paints).toContain(colors.airport);
   });
 
-  it("hides the military and airport highlights when off", () => {
-    const highlights = withRole(build(brightness, { militaryAndAirports: false }), "military-airport");
+  it("hides the military and airport highlights by default", () => {
+    const highlights = withRole(build(brightness), "military-airport");
     expect(highlights).not.toHaveLength(0);
     expect(highlights.every((layer) => !visible(layer))).toBe(true);
   });
