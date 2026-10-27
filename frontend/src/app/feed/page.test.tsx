@@ -352,10 +352,9 @@ describe("FeedPage", () => {
     fireEvent.click(chip(rail, "Requests"));
     expect(lastPath()).toBe("/feed?scope=following&kind=request");
 
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Conflict" }));
+    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Conflict, tags" }));
     fireEvent.focus(within(rail).getByRole("combobox", { name: "Conflict" }));
     fireEvent.click(screen.getByRole("option", { name: /^Russo-Ukrainian war/ }));
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Tags" }));
     fireEvent.focus(within(rail).getByRole("combobox", { name: "Tags" }));
     fireEvent.click(screen.getByRole("option", { name: "airstrike" }));
     expect(lastPath()).toBe(

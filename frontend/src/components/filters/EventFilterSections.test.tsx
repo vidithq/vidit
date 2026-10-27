@@ -32,58 +32,109 @@ const renderPanel = (values: EventFilterValues = EMPTY_EVENT_FILTERS) =>
 
 const header = (name: string) => screen.getByRole("button", { name });
 
+const DATE_SECTIONS = (eventActive: boolean) => [
+  {
+    title: "Event date",
+    summary: eventActive ? "2024" : "Any",
+    active: eventActive,
+    children: <p>event scrubber</p>,
+  },
+  { title: "Added", summary: "Any", active: false, children: <p>added scrubber</p> },
+];
+
 describe("<EventFilterSections>", () => {
-  it("starts every section collapsed when no filter is set", () => {
-    renderPanel();
-
-    for (const name of [
-      "Status",
-      "Conflict",
-      "Source kind",
-      "Level",
-      "Media",
-      "Author",
-      "Approvals",
-    ]) {
-      expect(header(name)).toHaveAttribute("aria-expanded", "false");
-    }
-    expect(screen.queryByRole("button", { name: "Drone" })).not.toBeInTheDocument();
-  });
-
-  it("starts a section expanded when it holds an active value", () => {
-    renderPanel({ ...EMPTY_EVENT_FILTERS, sourceKinds: ["drone"] });
-
-    expect(header("Source kind")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: "Drone" })).toBeInTheDocument();
-    expect(header("Conflict")).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("starts an injected date section expanded when its window is active", () => {
+  it("labels its groups and merges the sections that belong together into one row each", () => {
     render(
       <EventFilterSections
         tags={TAGS}
         conflicts={CONFLICTS}
         values={EMPTY_EVENT_FILTERS}
         onPatch={vi.fn()}
-        dateSections={[
-          { title: "Event date", summary: "2024", active: true, children: <p>event scrubber</p> },
-          { title: "Added date", summary: "Any", active: false, children: <p>added scrubber</p> },
-        ]}
+        lead={{
+          title: "Layers",
+          sections: [{ title: "Sites", summary: "Off", active: false, children: <p>sites</p> }],
+        }}
+        dateSections={DATE_SECTIONS(false)}
       />,
     );
 
-    expect(screen.getByText("event scrubber")).toBeInTheDocument();
-    expect(screen.queryByText("added scrubber")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
+      "Layers",
+      "Event",
+      "Source and people",
+    ]);
+    expect(screen.getByRole("region", { name: "Event" })).toContainElement(header("Dates"));
+    expect(screen.getAllByRole("button", { expanded: false }).map((b) => b.textContent)).toEqual([
+      "Sites",
+      "Status, conflict, tags",
+      "Dates",
+      "Source",
+      "People",
+    ]);
+    expect(screen.queryByRole("button", { name: "Drone" })).not.toBeInTheDocument();
   });
 
-  it("toggles an active section closed and a collapsed one open", () => {
+  it("names a merged row after the sections the surface offers, and keeps a lone one as its own row", () => {
+    render(
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={CONFLICTS}
+        values={EMPTY_EVENT_FILTERS}
+        onPatch={vi.fn()}
+        sections={["conflict", "tags", "location_guess", "author"]}
+      />,
+    );
+
+    expect(header("Conflict, tags")).toBeInTheDocument();
+    expect(header("Location guess")).toBeInTheDocument();
+    expect(header("Author")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "People" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Source" })).not.toBeInTheDocument();
+  });
+
+  it("starts a row expanded when one of its sections holds an active value", () => {
     renderPanel({ ...EMPTY_EVENT_FILTERS, sourceKinds: ["drone"] });
 
-    fireEvent.click(header("Source kind"));
-    expect(header("Source kind")).toHaveAttribute("aria-expanded", "false");
+    expect(header("Source")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Drone" })).toBeInTheDocument();
+    expect(screen.getByText("Level")).toBeInTheDocument();
+    expect(header("Status, conflict, tags")).toHaveAttribute("aria-expanded", "false");
+  });
 
-    fireEvent.click(header("Conflict"));
-    expect(header("Conflict")).toHaveAttribute("aria-expanded", "true");
+  it("opens the Dates row on an active window and shows both windows", () => {
+    render(
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={CONFLICTS}
+        values={EMPTY_EVENT_FILTERS}
+        onPatch={vi.fn()}
+        dateSections={DATE_SECTIONS(true)}
+      />,
+    );
+
+    expect(header("Dates")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("event scrubber")).toBeInTheDocument();
+    expect(screen.getByText("added scrubber")).toBeInTheDocument();
+  });
+
+  it("sums up a collapsed merged row with its active values", () => {
+    renderPanel({ ...EMPTY_EVENT_FILTERS, statuses: ["geolocated"], tags: ["Drone"] });
+
+    fireEvent.click(header("Status, conflict, tags"));
+    expect(screen.getByRole("button", { name: "Toggle Status, conflict, tags" })).toHaveTextContent(
+      "Geolocated, Drone",
+    );
+    expect(screen.getByRole("button", { name: "Toggle People" })).toHaveTextContent("Any");
+  });
+
+  it("toggles an active row closed and a collapsed one open", () => {
+    renderPanel({ ...EMPTY_EVENT_FILTERS, sourceKinds: ["drone"] });
+
+    fireEvent.click(header("Source"));
+    expect(header("Source")).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(header("Status, conflict, tags"));
+    expect(header("Status, conflict, tags")).toHaveAttribute("aria-expanded", "true");
   });
 });
 
@@ -94,7 +145,7 @@ describe("the Approvals section", () => {
     approvedBy: { kind: "organization", slug: "osw", name: "Open Source Watch" },
   };
 
-  it("opens on an active value and toggles Approved only", () => {
+  it("opens its row on an active value and toggles Approved only", () => {
     const onPatch = vi.fn();
     render(
       <EventFilterSections
@@ -105,7 +156,7 @@ describe("the Approvals section", () => {
       />,
     );
 
-    expect(header("Approvals")).toHaveAttribute("aria-expanded", "true");
+    expect(header("People")).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(screen.getByRole("button", { name: "Approved only" }));
     expect(onPatch).toHaveBeenCalledWith({ approved: false });
   });
@@ -121,7 +172,7 @@ describe("the Approvals section", () => {
       />,
     );
 
-    fireEvent.click(header("Approvals"));
+    fireEvent.click(header("People"));
     const field = screen.getByLabelText("Approved by");
     fireEvent.change(field, { target: { value: "ana" } });
     fireEvent.keyDown(field, { key: "Enter" });
