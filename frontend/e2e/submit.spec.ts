@@ -195,6 +195,9 @@ test.describe("submit", () => {
     const modes = page.getByRole("group", { name: "Submission mode" });
     const cards = modes.getByRole("link");
     await expect(cards).toHaveCount(6);
+    // The six cards outrun a phone screen. A minimal scroll to the last one stops on a whole
+    // pixel, short of its fractional bottom edge, so the measure starts at the page's foot.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expectNarrowViewportLayout(page, cards.last());
     await expect(page.getByRole("button", { name: "Publish geolocation" })).toBeHidden();
 
