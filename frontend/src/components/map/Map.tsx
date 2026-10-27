@@ -53,6 +53,8 @@ import { CLUSTER_LAYER, POINT_LAYERS, STACK_LAYER, TAP_TARGET_LAYERS } from "./l
 import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
 import { BasemapControl } from "./BasemapControl";
 import { CoordinateGrid } from "./CoordinateGrid";
+import { GoToCoordinatesControl, goToPoint } from "./GoToCoordinatesControl";
+import type { CoordinatePair } from "@/lib/coordinates";
 import { SatelliteOverlays } from "./SatelliteOverlays";
 import { useBasemapSettings } from "./basemapSettings";
 import { useMapAssets } from "./mapAssets";
@@ -644,6 +646,10 @@ interface MapProps {
   /** Flies the camera here on change. The first value is the caller's own frame and moves nothing.
    * Null leaves the camera where it is. */
   flyTo?: { lat: number; lng: number } | null;
+  /** Centres the camera on each new object, a coordinate typed beside the map (`goToPoint`). */
+  goTo?: CoordinatePair | null;
+  /** Adds the go-to-coordinates control beside the basemap control. */
+  goToControl?: boolean;
   /** Ids drawn at reduced strength (steps already walked past). A dimmed pin keeps its colour,
    * stack and click; the selected pin is never dimmed. */
   dimmedIds?: ReadonlySet<string>;
@@ -754,6 +760,15 @@ function FlyToCamera({ target }: { target: { lat: number; lng: number } | null }
   return null;
 }
 
+/** Centres the camera on each new `target` object, so the same coordinate typed twice goes twice. */
+function GoToCamera({ target }: { target: CoordinatePair | null }) {
+  const { current: map } = useMap();
+  useEffect(() => {
+    if (map && target) goToPoint(map, target);
+  }, [map, target]);
+  return null;
+}
+
 /** Applies the basemap style. The map mounts on `BLANK_STYLE`; every later style swaps in with
  *  MapLibre's diff, which keeps the overlays (`carryOverlays`) and turns an option change into
  *  `setLayoutProperty` and `setFilter` calls. The first swap rebuilds from scratch: a diff against
@@ -795,6 +810,8 @@ export default function Map({
   zoom,
   fitBounds,
   flyTo,
+  goTo = null,
+  goToControl = false,
   dimmedIds,
   onViewChange,
   onBoundsChange,
@@ -1131,6 +1148,7 @@ export default function Map({
       />
       {fitBounds && <FitBoundsCamera bounds={fitBounds} maxZoom={fitMaxZoom} />}
       <FlyToCamera target={flyTo ?? null} />
+      <GoToCamera target={goTo} />
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <BasemapStyle style={basemapStyle} />
@@ -1139,6 +1157,7 @@ export default function Map({
         adjustable={BASEMAP_PRESETS[presetId].adjustable}
         onChange={setBasemap}
       />
+      {goToControl && <GoToCoordinatesControl />}
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
       {(basemap.dailyImagery || basemap.fires) && (

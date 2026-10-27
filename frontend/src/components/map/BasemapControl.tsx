@@ -1,14 +1,10 @@
 "use client";
 
-import { useId, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { useControl } from "react-map-gl/maplibre";
+import type { ReactNode } from "react";
 import { Map as MapIcon } from "lucide-react";
 
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
-import { MapControlButton } from "@/components/ui/MapControlButton";
-import { PopoverPanel } from "@/components/ui/Popover";
 import {
   SegmentedControl,
   type SegmentedControlOption,
@@ -17,6 +13,7 @@ import { ToggleRow } from "@/components/ui/ToggleRow";
 
 import type { BasemapPresetId, LabelDensity, LabelLanguage } from "./basemap";
 import type { BasemapSettings } from "./basemapSettings";
+import { MapPopoverControl } from "./MapPopoverControl";
 
 // Two rows, since six options overflow the panel: the Vidit styles, which take the label and layer
 // settings, then the third-party ones, drawn as published.
@@ -96,21 +93,6 @@ export function BasemapControl({
   adjustable: boolean;
   onChange: (patch: Partial<BasemapSettings>) => void;
 }) {
-  // MapLibre places a control's element in its corner; the button renders into it.
-  const [container] = useState(() => {
-    const element = document.createElement("div");
-    element.className = "maplibregl-ctrl";
-    return element;
-  });
-  useControl(
-    () => ({ onAdd: () => container, onRemove: () => container.remove() }),
-    { position: "bottom-left" },
-  );
-
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelId = useId();
-
   const switches = (toggles: SwitchSetting[]) =>
     toggles.map((toggle) => (
       <ToggleRow
@@ -122,68 +104,50 @@ export function BasemapControl({
       />
     ));
 
-  const close = (restoreFocus: boolean) => {
-    setOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
-  };
-
-  return createPortal(
-    <>
-      <MapControlButton
-        ref={triggerRef}
-        label="Basemap"
-        icon={<MapIcon size={15} />}
-        active={open}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        onClick={() => setOpen((v) => !v)}
-      />
-      {open && (
-        <PopoverPanel id={panelId} label="Basemap" anchorRef={triggerRef} onClose={close} wide>
-          {/* Stops short of the map's top-left filter overlay and scrolls when the settings do not fit. */}
-          <div className="max-h-[calc(100dvh-12rem)] space-y-2 overflow-y-auto">
-            <div className="space-y-1.5">
-              <p className={FORM_LABEL}>Basemap</p>
-              {PRESET_ROWS.map((row) => (
-                <SegmentedControl
-                  key={row.label}
-                  aria-label={row.label}
-                  options={row.options}
-                  value={settings.preset}
-                  onChange={(preset) => onChange({ preset })}
-                  fullWidth
-                />
-              ))}
-            </div>
-            {adjustable ? (
-              <>
-                <SettingsGroup title="Labels">
-                  <ChoiceRow
-                    label="Label language"
-                    options={LANGUAGE_OPTIONS}
-                    value={settings.language}
-                    onChange={(language) => onChange({ language })}
-                  />
-                  <ChoiceRow
-                    label="Label density"
-                    options={DENSITY_OPTIONS}
-                    value={settings.density}
-                    onChange={(density) => onChange({ density })}
-                  />
-                </SettingsGroup>
-                <SettingsGroup title="Layers">{switches(LAYER_TOGGLES)}</SettingsGroup>
-              </>
-            ) : (
-              <p className="border-t border-neutral-700 pt-2 text-xs text-neutral-500">
-                Labels and layers adjust on the Dark and Light basemaps.
-              </p>
-            )}
-            <SettingsGroup title="Overlays">{switches(OVERLAY_TOGGLES)}</SettingsGroup>
+  return (
+    <MapPopoverControl label="Basemap" icon={<MapIcon size={15} />} wide>
+      {/* Stops short of the map's top-left filter overlay and scrolls when the settings do not fit. */}
+      {() => (
+        <div className="max-h-[calc(100dvh-12rem)] space-y-2 overflow-y-auto">
+          <div className="space-y-1.5">
+            <p className={FORM_LABEL}>Basemap</p>
+            {PRESET_ROWS.map((row) => (
+              <SegmentedControl
+                key={row.label}
+                aria-label={row.label}
+                options={row.options}
+                value={settings.preset}
+                onChange={(preset) => onChange({ preset })}
+                fullWidth
+              />
+            ))}
           </div>
-        </PopoverPanel>
+          {adjustable ? (
+            <>
+              <SettingsGroup title="Labels">
+                <ChoiceRow
+                  label="Label language"
+                  options={LANGUAGE_OPTIONS}
+                  value={settings.language}
+                  onChange={(language) => onChange({ language })}
+                />
+                <ChoiceRow
+                  label="Label density"
+                  options={DENSITY_OPTIONS}
+                  value={settings.density}
+                  onChange={(density) => onChange({ density })}
+                />
+              </SettingsGroup>
+              <SettingsGroup title="Layers">{switches(LAYER_TOGGLES)}</SettingsGroup>
+            </>
+          ) : (
+            <p className="border-t border-neutral-700 pt-2 text-xs text-neutral-500">
+              Labels and layers adjust on the Dark and Light basemaps.
+            </p>
+          )}
+          <SettingsGroup title="Overlays">{switches(OVERLAY_TOGGLES)}</SettingsGroup>
+        </div>
       )}
-    </>,
-    container,
+    </MapPopoverControl>
   );
 }

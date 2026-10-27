@@ -15,12 +15,14 @@ from collections.abc import Awaitable, Iterable
 from datetime import UTC, datetime
 
 from fastapi import UploadFile
-from sqlalchemy import delete, func
+from sqlalchemy import delete, func, or_
 from sqlalchemy.orm import Session
 
-from app.models.media import MediaKind
+from app.models.event import STATUS_REQUESTED, Event
+from app.models.media import Media, MediaKind
 from app.models.upload import UPLOAD_TTL, Upload
 from app.models.user import User
+from app.services.event_filters import visible_events
 from app.services.evidence_intake import (
     EvidenceIntakeError,
     EvidenceProcessingFailedError,
@@ -32,10 +34,13 @@ from app.services.evidence_processing import EvidenceProcessingError
 from app.services.storage import (
     StoredFile,
     UploadResult,
+    content_type_of_key,
     get_storage,
+    read_stored_bytes,
     stored_file_count,
     sweep_keys,
     upload_source_bytes,
+    upload_source_copy,
     upload_source_file,
     validate_bytes,
     validate_file,
@@ -85,7 +90,14 @@ class LinkImportError(EvidenceIntakeError):
         self.code = code
 
 
+class ProofImageNotFoundError(EvidenceIntakeError):
+    """The image is not a stored proof image of a live event you may edit."""
+
+    code = "proof_image_not_found"
+
+
 UPLOAD_ERROR_STATUS: dict[str, int] = {
+    "proof_image_not_found": 404,
     "upload_not_found": 400,
     "upload_expired": 400,
     "too_many_uploads": 429,
@@ -152,8 +164,8 @@ async def _record(
     return rows
 
 
-async def _unnamed(store: Awaitable[UploadResult]) -> list[StoredFile]:
-    return [StoredFile(await store, None)]
+async def _named(store: Awaitable[UploadResult], name: str | None = None) -> list[StoredFile]:
+    return [StoredFile(await store, name)]
 
 
 async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> list[Upload]:
@@ -218,10 +230,52 @@ async def stage_from_link(
         db,
         uploader=uploader,
         kind=kind,
-        store=_unnamed(upload_source_bytes(data, parsed.content_type)),
+        store=_named(upload_source_bytes(data, parsed.content_type)),
         now=now,
     )
     return upload, [item.kind for item in media]
+
+
+async def stage_from_proof(db: Session, *, uploader: User, event_id: uuid.UUID, url: str) -> Upload:
+    """Stage a copy of the proof image ``url`` of event ``event_id`` as a source file.
+
+    The image must be a stored proof image of a live event ``uploader`` may edit, by the rule of
+    ``events.revision.save_version``: their own, or an open request. The proof keeps its image.
+    Raises :class:`ProofImageNotFoundError` and :func:`stage_upload`'s errors.
+    """
+    now = datetime.now(UTC)
+    _ensure_room(db, uploader, now)
+    proof = (
+        db.query(Media)
+        .join(Event, Media.event_id == Event.id)
+        .filter(
+            Media.event_id == event_id,
+            Media.storage_url == url,
+            Media.kind == "image",
+            *visible_events(),
+            or_(Event.owner_id == uploader.id, Event.status == STATUS_REQUESTED),
+        )
+        .first()
+    )
+    key = get_storage().key_from_url(url) if proof is not None else None
+    content_type = content_type_of_key(key) if key is not None else None
+    if proof is None or key is None or content_type is None:
+        raise ProofImageNotFoundError(
+            "This image is not a stored proof image of an event you edit."
+        )
+    data = await asyncio.to_thread(read_stored_bytes, key)
+    try:
+        kind = validate_bytes(data, content_type)
+    except ValueError as exc:
+        raise InvalidFileError(str(exc)) from exc
+    [upload] = await _record(
+        db,
+        uploader=uploader,
+        kind=kind,
+        store=_named(upload_source_copy(data, content_type), proof.original_filename),
+        now=now,
+    )
+    return upload
 
 
 def storage_url_of(upload: Upload) -> str:

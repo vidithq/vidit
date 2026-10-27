@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import shutil
+import tempfile
 import unicodedata
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
@@ -86,6 +87,12 @@ _EXTENSION_FOR_CONTENT_TYPE = {
     "video/mp4": ".mp4",
     "video/webm": ".webm",
 }
+
+
+def content_type_of_key(key: str) -> str | None:
+    """The allowed MIME type a key this module minted was stored as, read off its extension."""
+    suffix = PurePosixPath(key).suffix
+    return next((ct for ct, ext in _EXTENSION_FOR_CONTENT_TYPE.items() if ext == suffix), None)
 
 
 def safe_storage_extension(content_type: str | None) -> str:
@@ -455,14 +462,15 @@ class PreparedMedia(NamedTuple):
 
 
 def prepare_media(
-    data: bytes, content_type: str, *, produce_derivatives: bool = True
+    data: bytes, content_type: str, *, produce_derivatives: bool = True, strip: bool = True
 ) -> PreparedMedia:
     """Strip metadata + (optionally) build hero/thumb JPEGs. Sync and CPU-bound, so run in a thread.
 
     ``content_type`` is the stored type and, for an image, the output encoding
     (``strip_metadata`` re-encodes to it), which normalises machine-fetched
     photos (``tweet_ingest.records.PHOTO_CONTENT_TYPE``). Non-images pass
-    through unstripped.
+    through unstripped. ``strip=False`` keeps bytes intake already stripped, since a second
+    lossy re-encode would change them and their sha256.
     """
     # Local import avoids an eager Pillow load at process start.
     from app.services.evidence_processing import (
@@ -476,7 +484,7 @@ def prepare_media(
         # Video / other: no strip, no derivatives (already buffered by the
         # caller and capped by ``validate_bytes``).
         return PreparedMedia(data, None, None, content_type)
-    cleaned = strip_metadata(data, content_type)
+    cleaned = strip_metadata(data, content_type) if strip else data
     if not produce_derivatives:
         return PreparedMedia(cleaned, None, None, content_type)
     hero = make_jpeg_derivative(cleaned, content_type, HERO_MAX_DIM)
@@ -676,6 +684,26 @@ async def upload_source_bytes(data: bytes, content_type: str) -> UploadResult:
     return await upload_bytes_with_optional_strip(
         data, content_type, _source_file_key(content_type)
     )
+
+
+async def upload_source_copy(data: bytes, content_type: str) -> UploadResult:
+    """A stored proof image staged as a source file (``services/uploads.stage_from_proof``).
+
+    A new object under ``uploads/``: the proof's own object stays where it is, under the
+    bucket's Object Lock retention. The bytes land as they are, already stripped at intake, so
+    the copy keeps the proof's sha256, and gain the hero and thumbnail a source image has.
+    """
+    validate_bytes(data, content_type)
+    prepared = await asyncio.to_thread(prepare_media, data, content_type, strip=False)
+    return await upload_prepared_media(prepared, _source_file_key(content_type))
+
+
+def read_stored_bytes(key: str) -> bytes:
+    """The whole object at ``key``. Sync; only for objects bounded by the file limits."""
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp) / "object"
+        get_storage().get_to_path(key, dest)
+        return dest.read_bytes()
 
 
 def detected_media_key(geolocation_id: UUID, content_type: str) -> str:

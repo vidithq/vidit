@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { htmlText, proofHasImage, renderProof } from "./proof";
+import { htmlText, proofHasImage, renderProof, storedProofImages } from "./proof";
 
 function renderHtml(html: string | null, gateImages?: boolean) {
   return render(<div>{renderProof(html, { gateImages })}</div>).container;
@@ -267,5 +267,15 @@ describe("htmlText", () => {
 
   it("gives an image no text of its own", () => {
     expect(htmlText('<img src="https://x/y.jpg" alt="ruins"><p>Caption</p>')).toBe("Caption");
+  });
+});
+
+describe("storedProofImages", () => {
+  it("keeps the stored images the form still shows, in its order, once each", () => {
+    const img = (src: string) => `<img src="${src}">`;
+    const stored = `<p>x</p>${img("https://cdn/a.jpg")}${img("https://cdn/b.jpg")}`;
+    const form = `${img("https://cdn/b.jpg")}${img("placeholder://new.jpg")}${img("https://cdn/a.jpg")}${img("https://cdn/b.jpg")}`;
+    expect(storedProofImages(form, stored)).toEqual(["https://cdn/b.jpg", "https://cdn/a.jpg"]);
+    expect(storedProofImages(form, null)).toEqual([]);
   });
 });
