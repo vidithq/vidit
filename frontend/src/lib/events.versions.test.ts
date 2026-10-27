@@ -7,12 +7,12 @@ import {
   eventVersions,
   eventVersionsPath,
   eventVersionHref,
-  parseVersionSegment,
   snapshotToEventView,
   versionLabel,
   type EventVersionFormState,
 } from "./events";
 import type { Source } from "./sources";
+import { parseVersionSegment } from "./versions";
 import { snapshotSource, source } from "@/test/eventDetail";
 import type { EventDetail, EventVersion } from "@/types";
 
