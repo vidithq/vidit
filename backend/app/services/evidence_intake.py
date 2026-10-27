@@ -22,6 +22,7 @@ domain errors subclass it, so a router catches one base.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Iterable, Mapping
 from typing import Any, NamedTuple
@@ -44,6 +45,7 @@ from app.services.storage import (
     derivative_key,
     get_storage,
     safe_original_filename,
+    stored_file_count,
     sweep_keys,
     upload_proof_image,
     validate_file,
@@ -325,14 +327,16 @@ async def attach_evidence_and_commit(
 
     ``proof_html`` is the sanitised incoming proof HTML, or ``None`` to keep ``event.proof``.
     Its ``placeholder://`` srcs are matched to ``proof_files`` (see :func:`_match_proof_files`),
-    uploaded without derivatives, rewritten to public URLs, and get proof ``Media`` rows.
+    uploaded without derivatives, rewritten to public URLs, and get proof ``Media`` rows. A GIF
+    stores one PNG per frame, and its image repeats in the body once per frame.
     Already-uploaded URLs pass through (the edit flow) and must name this event's own images
     (see :func:`_reject_foreign_proof_srcs`). Proof rows the final body no longer shows, and no
     readable snapshot displays, are deleted.
 
     ``max_proof_images_per_event`` is checked twice before anything reaches S3:
     on ``proof_files`` alone (an over-ceiling batch should not cost a decode per
-    file), then on what the final body displays, which bounds the event.
+    file), then on what the final body displays, a GIF counting once per frame,
+    which bounds the event.
 
     Every file is validated up front so a bad file can't strand its siblings in S3. The commit
     is inside the try, so a commit failure also sweeps the new objects. After the commit, the
@@ -342,7 +346,8 @@ async def attach_evidence_and_commit(
     Raises :class:`TooManyFilesError` (the proof body would display more than
     ``max_proof_images_per_event`` images), :class:`InvalidFileError` (a non-image in
     ``proof_files``, or a proof src naming another event's stored image),
-    :class:`ProofFilesMismatchError`, or :class:`EvidenceProcessingFailedError`.
+    :class:`ProofFilesMismatchError`, or :class:`EvidenceProcessingFailedError` (also for a GIF
+    past ``storage.MAX_GIF_FRAMES`` frames).
     """
     if len(proof_files) > settings.max_proof_images_per_event:
         raise TooManyFilesError(
@@ -363,6 +368,11 @@ async def attach_evidence_and_commit(
     # Before any S3 work: a mismatched batch is a 400 with nothing to sweep.
     proof_pairs = _match_proof_files(proof_html, proof_files)
 
+    try:
+        new_images = sum([await asyncio.to_thread(stored_file_count, file) for file in proof_files])
+    except EvidenceProcessingError as exc:
+        raise EvidenceProcessingFailedError(str(exc)) from exc
+
     # Diff against the FINAL body (incoming, else the row's), plus history.
     final_proof = proof_html if proof_html is not None else event.proof
     displayed_srcs = displayed_proof_srcs(final_proof)
@@ -373,12 +383,12 @@ async def attach_evidence_and_commit(
     # The batch alone lets an event grow past the cap; counting kept rows
     # would charge for images pinned only by old versions.
     displayed_proof_rows = sum(1 for m in event.media if m.storage_url in displayed_srcs)
-    total_displayed = displayed_proof_rows + len(proof_files)
+    total_displayed = displayed_proof_rows + new_images
     if total_displayed > settings.max_proof_images_per_event:
         raise TooManyFilesError(
             f"At most {settings.max_proof_images_per_event} proof images per event; "
             f"this proof body would display {total_displayed} "
-            f"({displayed_proof_rows} already uploaded, {len(proof_files)} new)"
+            f"({displayed_proof_rows} already uploaded, {new_images} new)"
         )
 
     dropped = _drop_unreferenced_proof_media(db, event, kept_srcs)
@@ -389,26 +399,27 @@ async def attach_evidence_and_commit(
     # Tracked so a mid-batch failure can sweep them on rollback.
     uploaded_keys: list[str] = []
     try:
-        src_by_placeholder: dict[str, str] = {}
+        src_by_placeholder: dict[str, list[str]] = {}
         for placeholder_src, file in proof_pairs:
             try:
-                result = await upload_proof_image(file, event.owner_id)
+                stored = await upload_proof_image(file, event.owner_id)
             except EvidenceProcessingError as exc:
                 raise EvidenceProcessingFailedError(str(exc)) from exc
-            src_by_placeholder[placeholder_src] = result.url
-            db.add(
-                Media(
-                    event_id=event.id,
-                    storage_url=result.url,
-                    kind="image",
-                    sha256=result.sha256,
-                    original_filename=safe_original_filename(file.filename),
+            src_by_placeholder[placeholder_src] = [s.result.url for s in stored]
+            for result, original_filename in stored:
+                db.add(
+                    Media(
+                        event_id=event.id,
+                        storage_url=result.url,
+                        kind="image",
+                        sha256=result.sha256,
+                        original_filename=original_filename,
+                    )
                 )
-            )
-            key = storage.key_from_url(result.url)
-            if key is not None:
-                uploaded_keys.append(key)
-                uploaded_keys.extend(result.derivative_keys)
+                key = storage.key_from_url(result.url)
+                if key is not None:
+                    uploaded_keys.append(key)
+                    uploaded_keys.extend(result.derivative_keys)
 
         if proof_html is not None:
             event.proof = rewrite_image_srcs(proof_html, src_by_placeholder)

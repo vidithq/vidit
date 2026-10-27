@@ -168,6 +168,12 @@ class UploadRead(BaseModel):
     expires_at: datetime
 
 
+class UploadList(BaseModel):
+    """What ``POST /uploads`` staged: one file, or one per frame of a GIF, in frame order."""
+
+    items: list[UploadRead]
+
+
 class UploadFromLink(BaseModel):
     """A post link to stage a file from, for ``POST /uploads/from-link``."""
 

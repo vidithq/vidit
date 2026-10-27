@@ -2427,9 +2427,9 @@ export interface paths {
         put?: never;
         /**
          * Create Upload
-         * @description Stage one source file; a source of a later event write names it by ``id``.
+         * @description Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``.
          *
-         *     The file is validated (type, size) and stored now, and the row expires
+         *     The file is validated (type, size) and stored now, and each row expires
          *     after 24 hours unless a write takes it. 400 on an invalid file, 429 past
          *     the per-account ceiling of staged files.
          */
@@ -5829,6 +5829,14 @@ export interface components {
             index: number;
             /** Url */
             url: string;
+        };
+        /**
+         * UploadList
+         * @description What ``POST /uploads`` staged: one file, or one per frame of a GIF, in frame order.
+         */
+        UploadList: {
+            /** Items */
+            items: components["schemas"]["UploadRead"][];
         };
         /**
          * UploadRead
@@ -10224,7 +10232,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UploadRead"];
+                    "application/json": components["schemas"]["UploadList"];
                 };
             };
             /** @description Validation Error */

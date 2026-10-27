@@ -940,7 +940,7 @@ async def open_request(
         headers=Headers({"content-type": content_type}),
     )
     try:
-        staged = await uploads.stage_upload(db, uploader=owner, file=upload)
+        [staged] = await uploads.stage_upload(db, uploader=owner, file=upload)
         row = await create_request(
             db,
             current_user=owner,

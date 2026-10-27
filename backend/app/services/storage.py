@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import unicodedata
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple, Protocol
 from uuid import UUID, uuid4
@@ -68,6 +69,13 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 ALLOWED_TYPES = ALLOWED_IMAGE_TYPES | ALLOWED_VIDEO_TYPES
 
+# A source file or a proof image may be a GIF, never stored as is: each frame is
+# stored as its own PNG (``evidence_processing.split_gif``). More frames than
+# ``MAX_GIF_FRAMES`` make a clip, refused for an MP4 upload. An avatar takes none.
+GIF_CONTENT_TYPE = "image/gif"
+GIF_FRAME_CONTENT_TYPE = "image/png"
+MAX_GIF_FRAMES = 6
+
 # Extension comes from the validated MIME, never ``file.filename`` (attacker
 # controlled: a long suffix can pass S3's 1024-byte key limit, an RTL override
 # can disguise it, a ``.html`` on a ``video/mp4`` lies about content).
@@ -121,8 +129,11 @@ def _media_type_and_max_size(content_type: str | None) -> tuple[str, int]:
 
 
 def validate_file(file: UploadFile) -> str:
-    """Validate type + size; return media_type ('image' or 'video')."""
-    media_type, max_size = _media_type_and_max_size(file.content_type)
+    """Validate type + size; return media_type ('image' or 'video'). A GIF is an image."""
+    if file.content_type == GIF_CONTENT_TYPE:
+        media_type, max_size = "image", settings.max_image_size
+    else:
+        media_type, max_size = _media_type_and_max_size(file.content_type)
     file.file.seek(0, 2)
     size = file.file.tell()
     file.file.seek(0)
@@ -545,16 +556,106 @@ async def _upload_with_optional_strip(
     """
     if file.content_type in ALLOWED_IMAGE_TYPES:
         content_type = file.content_type or ""
-
-        def _read() -> bytes:
-            file.file.seek(0)
-            return file.file.read()
-
-        raw = await asyncio.to_thread(_read)
+        raw = await asyncio.to_thread(_read_upload, file)
         return await upload_bytes_with_optional_strip(
             raw, content_type, key, produce_derivatives=produce_derivatives
         )
     return await get_storage().upload(file, key)
+
+
+def _read_upload(file: UploadFile) -> bytes:
+    file.file.seek(0)
+    return file.file.read()
+
+
+class StoredFile(NamedTuple):
+    """One file a picked upload stored, with the sanitised filename it is recorded under."""
+
+    result: UploadResult
+    original_filename: str | None
+
+
+def stored_file_count(file: UploadFile) -> int:
+    """How many files ``file`` stores as: a GIF's frame count, else 1.
+
+    Sync (a GIF is read and its frame headers walked), so run it in a thread. Raises
+    ``EvidenceProcessingError`` for an unreadable GIF or one past ``MAX_GIF_FRAMES``.
+    """
+    if file.content_type != GIF_CONTENT_TYPE:
+        return 1
+    from app.services.evidence_processing import count_gif_frames
+
+    return count_gif_frames(_read_upload(file))
+
+
+def _gif_frame_filename(name: str | None, index: int, count: int) -> str | None:
+    """``scan.gif`` gives ``scan-1.png``, ``scan-2.png``, or ``scan.png`` for a lone frame."""
+    safe = safe_original_filename(name)
+    if safe is None:
+        return None
+    suffix = f"-{index + 1}.png" if count > 1 else ".png"
+    return PurePosixPath(safe).stem[: ORIGINAL_FILENAME_MAX_LEN - len(suffix)] + suffix
+
+
+def _prepare_gif_frames(data: bytes, *, produce_derivatives: bool) -> list[PreparedMedia]:
+    """Split a GIF and prepare each frame as a PNG upload. Sync and CPU-bound.
+
+    Every frame is prepared before any is stored, so a refused frame stores nothing. Raises
+    ``EvidenceProcessingError``, also for a frame over ``max_image_size`` once encoded.
+    """
+    from app.services.evidence_processing import EvidenceProcessingError, split_gif
+
+    prepared: list[PreparedMedia] = []
+    for frame in split_gif(data):
+        media = prepare_media(
+            frame, GIF_FRAME_CONTENT_TYPE, produce_derivatives=produce_derivatives
+        )
+        if len(media.cleaned) > settings.max_image_size:
+            raise EvidenceProcessingError(
+                f"A frame of this GIF is {len(media.cleaned)} bytes as a PNG "
+                f"(max {settings.max_image_size})"
+            )
+        prepared.append(media)
+    return prepared
+
+
+async def _upload_picked(
+    file: UploadFile,
+    key_for: Callable[[str | None], str],
+    *,
+    produce_derivatives: bool = True,
+) -> list[StoredFile]:
+    """Store a picked file as itself, or a GIF as one PNG per frame, in frame order.
+
+    ``key_for`` mints the key of each stored file from its content type. A failed frame
+    upload sweeps the frames stored before it.
+    """
+    if file.content_type != GIF_CONTENT_TYPE:
+        result = await _upload_with_optional_strip(
+            file, key_for(file.content_type), produce_derivatives=produce_derivatives
+        )
+        return [StoredFile(result, safe_original_filename(file.filename))]
+    raw = await asyncio.to_thread(_read_upload, file)
+    frames = await asyncio.to_thread(
+        _prepare_gif_frames, raw, produce_derivatives=produce_derivatives
+    )
+    storage = get_storage()
+    stored: list[StoredFile] = []
+    try:
+        for index, frame in enumerate(frames):
+            result = await upload_prepared_media(frame, key_for(GIF_FRAME_CONTENT_TYPE))
+            stored.append(
+                StoredFile(result, _gif_frame_filename(file.filename, index, len(frames)))
+            )
+    except Exception:
+        keys = [storage.key_from_url(s.result.url) for s in stored]
+        sweep_keys(
+            [k for k in keys if k is not None]
+            + [k for s in stored for k in s.result.derivative_keys],
+            context="GIF frame upload",
+        )
+        raise
+    return stored
 
 
 def _source_file_key(content_type: str | None) -> str:
@@ -562,9 +663,12 @@ def _source_file_key(content_type: str | None) -> str:
     return f"uploads/{uuid4()}{safe_storage_extension(content_type)}"
 
 
-async def upload_source_file(file: UploadFile) -> UploadResult:
-    """A source file staged ahead of the event write (``services/uploads.stage_upload``)."""
-    return await _upload_with_optional_strip(file, _source_file_key(file.content_type))
+async def upload_source_file(file: UploadFile) -> list[StoredFile]:
+    """A source file staged ahead of the event write (``services/uploads.stage_upload``).
+
+    One stored file, or one per frame of a GIF.
+    """
+    return await _upload_picked(file, _source_file_key)
 
 
 async def upload_source_bytes(data: bytes, content_type: str) -> UploadResult:
@@ -582,16 +686,18 @@ def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
     return f"detected/{geolocation_id}/{uuid4()}{ext}"
 
 
-async def upload_proof_image(file: UploadFile, user_id: UUID) -> UploadResult:
-    """Inline image embedded in a proof body, under a per-user prefix.
+async def upload_proof_image(file: UploadFile, user_id: UUID) -> list[StoredFile]:
+    """Inline image embedded in a proof body, under a per-user prefix; a GIF stores one per frame.
 
     Always an image (intake rejects the rest). Skips derivatives: the image
     renders from the raw URL, so hero/thumb would be unfetched objects locked
     for the bucket's Object Lock retention.
     """
-    ext = safe_storage_extension(file.content_type)
-    key = f"proof/{user_id}/{uuid4()}{ext}"
-    return await _upload_with_optional_strip(file, key, produce_derivatives=False)
+
+    def key_for(content_type: str | None) -> str:
+        return f"proof/{user_id}/{uuid4()}{safe_storage_extension(content_type)}"
+
+    return await _upload_picked(file, key_for, produce_derivatives=False)
 
 
 # Objects under this prefix are profile pictures this codebase minted; it

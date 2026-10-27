@@ -48,7 +48,7 @@ from app.services.evidence_processing import (
     UNREADABLE_IMAGE_MESSAGE,
 )
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, gif_bytes
 from tests.conftest import login_as
 
 client = TestClient(app)
@@ -594,6 +594,7 @@ def test_delete_avatar_is_idempotent(local_storage, live_user):
     [
         (b"not an image at all", "text/plain"),
         (b"\x00\x00\x00\x18ftypmp42", "video/mp4"),
+        (gif_bytes(1), "image/gif"),
     ],
 )
 def test_put_avatar_rejects_non_images(local_storage, live_user, db, content, content_type):

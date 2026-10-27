@@ -218,7 +218,7 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
                     source_spec(
                         f"https://x.com/{handle}/status/{_TWEET_ID}",
                         posted_at="2025-11-12T14:33",
-                        upload_id=staged.json()["id"],
+                        upload_id=staged.json()["items"][0]["id"],
                     )
                 ),
             },

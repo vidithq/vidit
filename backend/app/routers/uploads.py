@@ -1,4 +1,4 @@
-"""``POST /uploads``: stage one source file before the event write that names it."""
+"""``POST /uploads``: stage one picked source file before the event write that names it."""
 
 import asyncio
 import logging
@@ -11,7 +11,7 @@ from app.models.upload import Upload
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
-from app.schemas.source import LinkUploadRead, UploadFromLink, UploadRead
+from app.schemas.source import LinkUploadRead, UploadFromLink, UploadList, UploadRead
 from app.services import uploads as uploads_service
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.storage import scrub_log
@@ -33,7 +33,7 @@ def _upload_read(row: Upload) -> UploadRead:
     )
 
 
-@router.post("", response_model=UploadRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UploadList, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 def create_upload(
     request: Request,
@@ -41,18 +41,18 @@ def create_upload(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> UploadRead:
-    """Stage one source file; a source of a later event write names it by ``id``.
+) -> UploadList:
+    """Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``.
 
-    The file is validated (type, size) and stored now, and the row expires
+    The file is validated (type, size) and stored now, and each row expires
     after 24 hours unless a write takes it. 400 on an invalid file, 429 past
     the per-account ceiling of staged files.
     """
     try:
-        row = asyncio.run(uploads_service.stage_upload(db, uploader=current_user, file=file))
+        rows = asyncio.run(uploads_service.stage_upload(db, uploader=current_user, file=file))
     except EvidenceIntakeError as exc:
         raise_typed_error(exc, _ERROR_STATUS)
-    return _upload_read(row)
+    return UploadList(items=[_upload_read(row) for row in rows])
 
 
 # ``def`` plus ``asyncio.run``, as ``import-from-tweet``: the chase and the download block.

@@ -26,6 +26,7 @@ import {
   type LinkPost,
   type SourceDraft,
   type SourceFile,
+  type Upload,
 } from "@/lib/sources";
 import { safeHostname } from "@/lib/format";
 import type { Tag } from "@/types";
@@ -40,8 +41,10 @@ let uploadToken = 0;
  * mounted, so one scrolled out of view keeps its upload.
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
- * event write names it. A file imported from a link stages the same way, through the link's post.
- * A file picked, imported or removed while an upload runs drops that upload's answer.
+ * event write names it. A GIF stages one file per frame: the first fills the editor that picked
+ * it, and each further frame opens a source after it. A file imported from a link stages the same
+ * way, through the link's post. A file picked, imported or removed while an upload runs drops that
+ * upload's answer.
  */
 export function SourcesField({
   sources,
@@ -138,9 +141,13 @@ export function SourcesField({
  * The writers a form's source editors take: `update(key)` patches one draft, `pickFile(key)`
  * uploads a picked file at once, on its own request, and `importLink(key)` stages the file of a
  * link's post the same way. The answer lands on the draft only while that same request is still
- * its file, so a file picked, imported or removed while a request runs drops the answer.
+ * its file, so a file picked, imported or removed while a request runs drops the answer. The
+ * frames of a GIF past the first land as new drafts (`placeUploads`), within `maxSources`.
  */
-export function sourceDraftUpdaters(setSources: Dispatch<SetStateAction<SourceDraft[]>>) {
+export function sourceDraftUpdaters(
+  setSources: Dispatch<SetStateAction<SourceDraft[]>>,
+  maxSources = MAX_SOURCES_PER_EVENT
+) {
   const update = (key: string) => (patch: Partial<SourceDraft>) =>
     setSources((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)));
 
@@ -156,11 +163,14 @@ export function sourceDraftUpdaters(setSources: Dispatch<SetStateAction<SourceDr
   const pickFile = (key: string) => async (file: File) => {
     const token = ++uploadToken;
     update(key)({ file: { state: "uploading", file, token } });
+    let uploads: Upload[];
     try {
-      settle(key, token, { state: "staged", upload: await uploadSourceFile(file) });
+      uploads = await uploadSourceFile(file);
     } catch (err) {
       settle(key, token, { state: "failed", name: file.name, error: uploadError(err) });
+      return;
     }
+    setSources((prev) => placeUploads(prev, key, token, uploads, file.name, maxSources));
   };
 
   const importLink = (key: string) => async (post: LinkPost) => {
@@ -175,6 +185,44 @@ export function sourceDraftUpdaters(setSources: Dispatch<SetStateAction<SourceDr
   };
 
   return { update, pickFile, importLink };
+}
+
+/** The drafts once a pick's staged files land: the first fills the draft that picked it, and each
+ *  further frame of a GIF a new draft after it, with the same level and kind. When the frames would
+ *  pass `maxSources`, the picking draft fails with why instead. */
+function placeUploads(
+  drafts: SourceDraft[],
+  key: string,
+  token: number,
+  uploads: Upload[],
+  name: string,
+  maxSources: number
+): SourceDraft[] {
+  const index = drafts.findIndex(
+    (d) => d.key === key && fileRunning(d.file) && d.file.token === token
+  );
+  if (index < 0) return drafts;
+  const picked = drafts[index];
+  const [first, ...rest] = uploads;
+  const room = maxSources - drafts.length + 1;
+  if (rest.length >= room) {
+    const error = `This GIF holds ${uploads.length} frames, one file each, and the form has room for ${room}.`;
+    return drafts.map((d, i) => (i === index ? { ...d, file: { state: "failed", name, error } } : d));
+  }
+  const added = rest.map(
+    (upload): SourceDraft => ({
+      ...newSourceDraft(),
+      level: picked.level,
+      kind: picked.kind,
+      file: { state: "staged", upload },
+    })
+  );
+  return [
+    ...drafts.slice(0, index),
+    { ...picked, file: { state: "staged", upload: first } },
+    ...added,
+    ...drafts.slice(index + 1),
+  ];
 }
 
 /** An editor's red trash button: the first click arms it, the second removes the source. */

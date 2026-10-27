@@ -59,7 +59,7 @@ export function SiteSourceEditor({
 }) {
   const { drafts, setDrafts, note, setNote } = state;
   const draft = drafts[0];
-  const { update, pickFile, importLink } = sourceDraftUpdaters(setDrafts);
+  const { update, pickFile, importLink } = sourceDraftUpdaters(setDrafts, 1);
   const noteTooLong = note.length > SITE_SOURCE_NOTE_MAX_LEN;
   return (
     <SourceEditor

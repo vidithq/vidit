@@ -19,10 +19,13 @@ from app.services.evidence_processing import (
     THUMBNAIL_MAX_DIM,
     UNREADABLE_IMAGE_MESSAGE,
     EvidenceProcessingError,
+    count_gif_frames,
     make_jpeg_derivative,
+    split_gif,
     strip_metadata,
 )
-from app.services.storage import ALLOWED_IMAGE_TYPES
+from app.services.storage import ALLOWED_IMAGE_TYPES, MAX_GIF_FRAMES
+from tests._fixtures import gif_bytes
 
 
 def _jpeg_with_exif() -> bytes:
@@ -462,3 +465,32 @@ def test_at_most_max_concurrent_decodes_run_at_once(monkeypatch):
         list(pool.map(lambda _: strip_metadata(png, "image/png"), range(uploads)))
 
     assert most == MAX_CONCURRENT_DECODES
+
+
+@pytest.mark.parametrize("frames", [1, 2, MAX_GIF_FRAMES])
+def test_split_gif_yields_one_png_per_frame_in_order(frames):
+    pngs = split_gif(gif_bytes(frames))
+
+    assert count_gif_frames(gif_bytes(frames)) == frames
+    assert [Image.open(BytesIO(png)).format for png in pngs] == ["PNG"] * frames
+    assert [Image.open(BytesIO(png)).convert("RGB").getpixel((0, 0)) for png in pngs] == [
+        (40 * i, 0, 0) for i in range(frames)
+    ]
+
+
+def test_split_gif_refuses_more_frames_than_the_cap():
+    with pytest.raises(EvidenceProcessingError, match="Upload it as an MP4 video, or as a GIF of"):
+        split_gif(gif_bytes(MAX_GIF_FRAMES + 1))
+
+
+def test_split_gif_checks_the_canvas_against_the_pixel_cap(monkeypatch):
+    from app.services import evidence_processing as ep
+
+    monkeypatch.setattr(ep, "MAX_DECODED_PIXELS", 63)
+    with pytest.raises(EvidenceProcessingError, match="pixel cap"):
+        split_gif(gif_bytes(2, size=(8, 8)))
+
+
+def test_split_gif_refuses_bytes_that_are_not_a_gif():
+    with pytest.raises(EvidenceProcessingError, match="valid GIF"):
+        split_gif(_encoded("PNG"))
