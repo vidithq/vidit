@@ -639,7 +639,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<MapControlButton>" usage="A square icon button drawn like the MapLibre controls beside it: 29px, the panel paint and border of the zoom buttons, the native title as its tooltip like theirs, so a control the app adds to the map reads as one of the map's own. active paints the accent while what it opens is open; the rest of the button props pass through (aria-expanded, aria-controls, a ref for an anchored panel). The map's basemap control (components/map/BasemapControl.tsx) is the one use: MapLibre places the control's element in the bottom-left corner beside the zoom buttons, and the button opens a wide PopoverPanel above it.">
+          <Item name="<MapControlButton>" usage="A square icon button drawn like the MapLibre controls beside it: 29px, the panel paint and border of the zoom buttons, the native title as its tooltip like theirs, so a control the app adds to the map reads as one of the map's own. active paints the accent while what it opens is open; the rest of the button props pass through (aria-expanded, aria-controls, a ref for an anchored panel). components/map/MapPopoverControl.tsx is the one use, behind the basemap control and the go-to-coordinates control: MapLibre places the control's element in the bottom-left corner beside the zoom buttons, and the button opens a PopoverPanel above it.">
             <PaletteMapControlButton />
           </Item>
 

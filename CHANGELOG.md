@@ -17,6 +17,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Two map overlays, off by default, show NASA data of the day before on every basemap: true-colour satellite imagery and fire detections ([#709](https://github.com/vidithq/vidit/pull/709)).
 - An instance can serve the basemap tiles, icons and relief from its own S3-compatible bucket: the backend's `update-map` command copies them there on a schedule, and `NEXT_PUBLIC_MAP_ASSETS_URL` points the map at them ([#709](https://github.com/vidithq/vidit/pull/709)).
 - You can attach a GIF as a source file or a proof image: each of its frames is stored as a PNG image of its own, up to 6 frames; a longer GIF is refused with a request for a video or fewer frames ([#744](https://github.com/vidithq/vidit/pull/744)).
+- Type a latitude and a longitude, or paste a Google Maps link, to centre the map there: from a map control beside the basemap control on the map, and above the contour map of the site forms; a pair out of bounds says why ([#729](https://github.com/vidithq/vidit/issues/729)).
 - The tag field of the event and source forms suggests your most used tags, or the platform's, in one line of one-click chips under the search; `GET /tags/suggested` lists them ([#725](https://github.com/vidithq/vidit/pull/742)).
 
 ### Changed

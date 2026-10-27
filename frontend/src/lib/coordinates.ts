@@ -7,7 +7,7 @@ export const LAT_MAX = 90;
 export const LNG_MIN = -180;
 export const LNG_MAX = 180;
 
-interface CoordinatePair {
+export interface CoordinatePair {
   lat: number;
   lng: number;
 }
@@ -60,11 +60,8 @@ const MAPS_QUERY = new RegExp(
 // Google Maps `@lat,lng,17z`: the viewport centre a copied map URL carries.
 const MAPS_CENTER = new RegExp(String.raw`@(${DECIMAL}),(${DECIMAL})`);
 
-/**
- * Read a "lat, lng" pair from pasted text: a bare decimal pair, or a Google Maps URL when the
- * paste is only a URL. `null` lets the paste land as text. Out-of-bounds values are rejected.
- */
-export function parsePastedCoordinates(text: string): CoordinatePair | null {
+// The numbers of a bare pair, or of a Google Maps URL when the text is only a URL; bounds unchecked.
+function matchPair(text: string): CoordinatePair | null {
   const trimmed = text.trim();
   const match = IS_URL.test(trimmed)
     ? (MAPS_QUERY.exec(trimmed) ?? MAPS_CENTER.exec(trimmed))
@@ -73,8 +70,37 @@ export function parsePastedCoordinates(text: string): CoordinatePair | null {
   const lat = Number(match[1]);
   const lng = Number(match[2]);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (!inBounds(lat, lng)) return null;
   return { lat, lng };
+}
+
+/**
+ * Read a "lat, lng" pair from pasted text: a bare decimal pair, or a Google Maps URL when the
+ * paste is only a URL. `null` lets the paste land as text. Out-of-bounds values are rejected.
+ */
+export function parsePastedCoordinates(text: string): CoordinatePair | null {
+  const pair = matchPair(text);
+  return pair !== null && inBounds(pair.lat, pair.lng) ? pair : null;
+}
+
+/** Read a typed pair, in the forms a paste takes, or say why it is not one. The bound sentences
+ *  are the backend's. */
+export function readCoordinates(text: string): { pair: CoordinatePair } | { error: string } {
+  if (text.trim() === "") return { error: "Type a latitude and a longitude." };
+  const pair = matchPair(text);
+  if (pair === null) {
+    return {
+      error: "Type the latitude, a comma, then the longitude, in decimal degrees: 48.015883, 37.802411.",
+    };
+  }
+  const { lat, lng } = pair;
+  if (lat < LAT_MIN || lat > LAT_MAX) {
+    const swapped = inBounds(lng, lat) ? " The latitude comes first." : "";
+    return { error: `Latitude must be between ${LAT_MIN} and ${LAT_MAX}.${swapped}` };
+  }
+  if (lng < LNG_MIN || lng > LNG_MAX) {
+    return { error: `Longitude must be between ${LNG_MIN} and ${LNG_MAX}.` };
+  }
+  return { pair };
 }
 
 /** The one coordinate rendering, shared by the detail page and the copy button so a copied

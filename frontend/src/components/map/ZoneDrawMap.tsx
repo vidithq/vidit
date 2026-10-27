@@ -15,6 +15,7 @@ import {
   moveVertex,
   type DrawState,
 } from "@/lib/siteZone";
+import type { CoordinatePair } from "@/lib/coordinates";
 import type { Zone } from "@/lib/sites";
 import type { MapBounds } from "@/lib/viewport";
 import Map from "./Map";
@@ -265,6 +266,7 @@ export default function ZoneDrawMap({
   reference = null,
   bounds,
   center,
+  goTo,
   onBoundsChange,
 }: {
   state: DrawState;
@@ -275,6 +277,8 @@ export default function ZoneDrawMap({
   /** Frames the map on a zone being edited; `center` is used otherwise. */
   bounds?: MapBounds;
   center?: { lat: number; lng: number; zoom: number };
+  /** A coordinate typed beside the map. */
+  goTo?: CoordinatePair | null;
 }) {
   return (
     <Map
@@ -283,6 +287,7 @@ export default function ZoneDrawMap({
       fitMaxZoom={DRAW_FIT_MAX_ZOOM}
       center={center ? { lat: center.lat, lng: center.lng } : undefined}
       zoom={center?.zoom}
+      goTo={goTo}
       onBoundsChange={onBoundsChange}
       embedded
     >

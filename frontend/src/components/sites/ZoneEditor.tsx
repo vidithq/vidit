@@ -6,9 +6,11 @@ import { Check, Eraser, Minus, RotateCcw, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
+import { GoToCoordinates } from "@/components/map/GoToCoordinates";
 import type { DrawChange } from "@/components/map/ZoneDrawMap";
 import type { MapSite } from "@/components/map/SiteLayers";
 import { cn } from "@/lib/cn";
+import type { CoordinatePair } from "@/lib/coordinates";
 import {
   EMPTY_DRAW,
   MIN_ZONE_VERTICES,
@@ -54,8 +56,8 @@ function hint(state: DrawState): string {
 }
 
 /**
- * The contour field of a site form: the draw canvas with its toolbar above and the contour's
- * size below, one module like the event page's Location block. **Start over** clears the ring;
+ * The contour field of a site form: the draw canvas with its toolbar and the go-to-coordinates
+ * field above and the contour's size below, one module like the event page's Location block. **Start over** clears the ring;
  * with a `reference` (the contour being redrawn), **Back to the current contour** restores it.
  */
 export function ZoneEditor({
@@ -83,6 +85,7 @@ export function ZoneEditor({
   label: string;
 }) {
   const { state, change, undo, canUndo } = history;
+  const [goTo, setGoTo] = useState<CoordinatePair | null>(null);
   const { vertices, closed, selected } = state;
   const crosses = closed && zoneSelfCrosses(vertices);
   const canRemove = selected !== null && (!closed || vertices.length > MIN_ZONE_VERTICES);
@@ -137,6 +140,10 @@ export function ZoneEditor({
       <p className="border-b border-neutral-800 bg-neutral-900 px-4 py-2 text-xs text-neutral-400" aria-live="polite">
         {hint(state)}
       </p>
+      <div className="border-b border-neutral-800 bg-neutral-900 px-4 py-2">
+        {/* A new object per Go, so the same pair typed twice centres the map twice. */}
+        <GoToCoordinates onGo={(pair) => setGoTo({ ...pair })} />
+      </div>
       <div className="h-80 overflow-hidden sm:h-96">
         <ZoneDrawMap
           state={state}
@@ -145,6 +152,7 @@ export function ZoneEditor({
           reference={reference}
           bounds={bounds}
           center={center}
+          goTo={goTo}
           onBoundsChange={onBoundsChange}
         />
       </div>

@@ -7,7 +7,47 @@ import {
   inBounds,
   mapsUrl,
   parsePastedCoordinates,
+  readCoordinates,
 } from "./coordinates";
+
+describe("readCoordinates", () => {
+  it("reads a typed pair and a Google Maps URL", () => {
+    expect(readCoordinates(" 48.015883, 37.802411 ")).toEqual({
+      pair: { lat: 48.015883, lng: 37.802411 },
+    });
+    expect(readCoordinates("-33.9 151.2")).toEqual({ pair: { lat: -33.9, lng: 151.2 } });
+    expect(readCoordinates("https://www.google.com/maps/@48.5,37.8,17z")).toEqual({
+      pair: { lat: 48.5, lng: 37.8 },
+    });
+  });
+
+  it("accepts the bounds themselves", () => {
+    expect(readCoordinates("-90, -180")).toEqual({ pair: { lat: -90, lng: -180 } });
+    expect(readCoordinates("90, 180")).toEqual({ pair: { lat: 90, lng: 180 } });
+  });
+
+  it("asks for a pair when the field is blank", () => {
+    expect(readCoordinates("  ")).toEqual({ error: "Type a latitude and a longitude." });
+  });
+
+  it("names the expected form for text that is not a pair", () => {
+    for (const text of ["48.01", "48.01, 37.80, 12", "Kyiv", "48.0abc, 37"]) {
+      const result = readCoordinates(text);
+      expect("error" in result && result.error).toMatch(/^Type the latitude, a comma/);
+    }
+  });
+
+  it("gives the backend's bound for an out-of-range latitude or longitude", () => {
+    expect(readCoordinates("90.5, 200")).toEqual({ error: "Latitude must be between -90 and 90." });
+    expect(readCoordinates("48, 180.5")).toEqual({ error: "Longitude must be between -180 and 180." });
+  });
+
+  it("points at a swapped pair", () => {
+    expect(readCoordinates("151.2, -33.9")).toEqual({
+      error: "Latitude must be between -90 and 90. The latitude comes first.",
+    });
+  });
+});
 
 describe("cleanNumber", () => {
   it("parses a whole numeric string", () => {
