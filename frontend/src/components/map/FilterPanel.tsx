@@ -10,7 +10,6 @@ import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilt
 import { rangeSummary } from "@/components/ui/FilterSection";
 import { Dot } from "@/components/ui/Dot";
 import { buttonClasses } from "@/components/ui/Button";
-import { FieldHelp } from "@/components/ui/FieldHelp";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDate } from "@/lib/format";
@@ -43,8 +42,9 @@ interface FilterPanelProps {
 
 /**
  * The map's filter overlay: header button, `ActiveFilterPills`, and the shared
- * `EventFilterSections`, with the two timeline scrubbers as date sections. Filter state lives in
- * MapStateContext so it survives navigation.
+ * `EventFilterSections`, with the sites layer as its lead section and the two timeline scrubbers as
+ * date sections. The sites layer counts as one active filter with its own pill, so the collapsed
+ * panel shows it. Filter state lives in MapStateContext so it survives navigation.
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
@@ -96,6 +96,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   };
 
   const clearFilters = () => {
+    setSitesShown(false);
     setFilters(EMPTY_EVENT_FILTERS);
     setDateWindows(EMPTY_DATE_WINDOWS);
     setEventPlaying(false);
@@ -110,6 +111,9 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   );
 
   const activeFilters: ActiveFilter[] = [
+    ...(sitesShown
+      ? [{ key: "sites", label: "Sites", onRemove: () => setSitesShown(false) }]
+      : []),
     ...buildActiveFilterPills(filters, onPatch),
     ...buildDateWindowPills(dateWindows, clearEventWindow, clearAddedWindow),
   ];
@@ -154,25 +158,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
         </div>
       )}
 
-      {/* The layers strip: the sites layer and the date its zones are read at. */}
-      <div className="mt-1 bg-neutral-900 rounded-lg border border-neutral-700 px-2.5 max-sm:shrink-0 max-sm:pointer-events-auto">
-        <ToggleRow label="Sites" on={sitesShown} onToggle={() => setSitesShown(!sitesShown)} />
-        {sitesShown && (
-          <div className="flex items-center justify-between gap-2 py-1.5">
-            <span className="inline-flex items-center gap-1 text-[11px] text-neutral-500">
-              Zones as of {asOf ? formatDate(asOf) : "today"}
-              <FieldHelp concept="sites_layer" size={12} />
-            </span>
-            {user && (
-              <Link href={NEW_SITE_HREF} className={buttonClasses("ghost")}>
-                <Plus size={14} />
-                New site
-              </Link>
-            )}
-          </div>
-        )}
-      </div>
-
       {filtersOpen && (
         // The one block that shrinks: `min-h-0` lets it go below its content height, and overflow makes
         // cut sections reachable by scroll.
@@ -182,6 +167,30 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             conflicts={conflicts}
             values={filters}
             onPatch={onPatch}
+            leadSections={[
+              {
+                title: "Sites",
+                concept: "sites_layer",
+                summary: sitesShown ? "On" : "Off",
+                active: sitesShown,
+                children: (
+                  <>
+                    <ToggleRow
+                      label="Show sites"
+                      description={`Zones as of ${asOf ? formatDate(asOf) : "today"}`}
+                      on={sitesShown}
+                      onToggle={() => setSitesShown(!sitesShown)}
+                    />
+                    {user && (
+                      <Link href={NEW_SITE_HREF} className={buttonClasses("ghost", { className: "mt-1" })}>
+                        <Plus size={14} />
+                        New site
+                      </Link>
+                    )}
+                  </>
+                ),
+              },
+            ]}
             dateSections={[
               {
                 title: "Event date",
