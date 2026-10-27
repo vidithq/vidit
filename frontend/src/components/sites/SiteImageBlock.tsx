@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { MapPinned } from "lucide-react";
 
 import type { SourceBlockExtras } from "@/components/sources/SourceBlock";
@@ -15,6 +16,15 @@ import type { SiteContour, SiteImage } from "@/lib/sites";
 /** An image's name, by its capture day: *Image of 7 Sep 2026*. */
 export function imageName(image: Pick<SiteImage, "captured_at" | "created_at">): string {
   return `Image of ${formatInstantDate(image.captured_at ?? image.created_at)}`;
+}
+
+/** The name of an image's Remove control, which says why it is off while the image carries a
+ *  contour. */
+export function removeImageLabel(image: Pick<SiteImage, "captured_at" | "created_at">, carriesContour: boolean): string {
+  const name = imageName(image).replace("Image", "image");
+  return carriesContour
+    ? `The ${name} carries a contour: redraw it on another image before you remove it`
+    : `Remove the ${name}`;
 }
 
 /** The names the contour form's image picker shows, by image id: the capture day and the
@@ -41,27 +51,26 @@ function creditFor(credit: string, capturedAt: string | null): string {
 /**
  * What one image adds to the event page's source block in a site's imagery history: its name
  * by capture day, the control that shows that day's zone on the site map (an accent *On the map*
- * pill and border on the image on show), and the rows for the provider, the note, who filed it
- * and when, and the contour the owner drew from it.
+ * pill and border on the image on show), then `controls` (its filer's Remove), and the rows for
+ * the provider, the note, who filed it and when, and the contour drawn on it.
  */
 export function siteImageExtras({
   image,
   contour,
   shown,
   onShow,
+  controls,
 }: {
   image: SiteImage;
-  /** The contour drawn from this image, if any. */
-  contour: SiteContour | null;
+  /** The contour drawn on this image, if any. */
+  contour: Pick<SiteContour, "zone"> | null;
   /** Its day's zone is the one on the map. */
   shown: boolean;
   onShow: () => void;
+  controls?: ReactNode;
 }): SourceBlockExtras {
   const name = imageName(image);
-  return {
-    name,
-    className: cn(shown && "border-orange-500/50"),
-    actions: shown ? (
+  const show = shown ? (
       // As tall as the icon button it replaces, so every card's rows start level.
       <span className="flex h-8 items-center">
         <Pill tone="accent" icon={<MapPinned size={11} />}>
@@ -77,6 +86,15 @@ export function siteImageExtras({
       >
         <MapPinned size={14} />
       </Button>
+    );
+  return {
+    name,
+    className: cn(shown && "border-orange-500/50"),
+    actions: (
+      <>
+        {show}
+        {controls}
+      </>
     ),
     children: (
       <>
@@ -105,7 +123,7 @@ export function siteImageExtras({
           <DetailRow
             label="Contour"
             concept="site_zone"
-            value={`Drawn from this image, ${zoneAreaKm2(zoneVertices(contour.zone)).toFixed(2)} km²`}
+            value={`Drawn on this image, ${zoneAreaKm2(zoneVertices(contour.zone)).toFixed(2)} km²`}
           />
         )}
       </>

@@ -2,54 +2,44 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Eye, EyeOff, ImagePlus, Link2, PenTool, SquarePen } from "lucide-react";
+import { Eye, EyeOff, ImagePlus, Link2, SquarePen } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/contexts/AdminContext";
 import { useMutation } from "@/hooks/useMutation";
 import { setSiteModeration } from "@/lib/admin";
 import { apiFetch } from "@/lib/api";
-import { searchPickableEvents } from "@/lib/collections";
-import { formatDate, formatInstant } from "@/lib/format";
+import { formatInstant } from "@/lib/format";
 import {
-  SITE_KIND_LABELS,
-  SITE_KINDS,
-  SITE_NAME_MAX_LEN,
+  contourFromImage,
   linkEventToSite,
   ownsSite,
-  siteContourHref,
+  removeSiteImage,
+  siteEditHref,
   siteFileImageHref,
   siteHref,
+  siteVersioned,
   unlinkEventFromSite,
-  updateSite,
   type Site,
-  type SiteKind,
+  type SiteImage,
   type SiteLinkedEvent,
 } from "@/lib/sites";
 import type { EventDetail } from "@/types";
+import { VersionSelector } from "@/components/event/VersionSelector";
 import { ShareControl } from "@/components/share/ShareControl";
 import { useReportContent } from "@/components/report/useReportContent";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { CharCounter } from "@/components/ui/CharCounter";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { FieldLabel } from "@/components/ui/FieldLabel";
-import { Input, Select } from "@/components/ui/Input";
 import { RemoveButton } from "@/components/ui/RemoveButton";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
-import { CHANGE_EFFECT_COPY, LinkDialog, type LinkCandidate } from "./LinkDialog";
+import { CHANGE_EFFECT_COPY, LinkDialog } from "./LinkDialog";
 import { SatelliteImagesOffer, fileOffered, useSatelliteOffer } from "./SatelliteImagesOffer";
+import { imageName, removeImageLabel } from "./SiteImageBlock";
+import { OWN_EVENT_LINK_COPY, eventCandidate, searchOwnEvents } from "./SiteLinksField";
 import { useApiResource } from "@/hooks/useApiResource";
-
-function eventCandidate(event: { id: string; title: string; occurred_date: string | null }): LinkCandidate {
-  return {
-    id: event.id,
-    label: event.title,
-    meta: event.occurred_date ? formatDate(event.occurred_date) : "Undated",
-  };
-}
 
 /** The picked event's satellite sources, read once it is picked. */
 function PickedEventOffer({
@@ -70,70 +60,38 @@ function PickedEventOffer({
   );
 }
 
-function EditSiteDialog({
+function RemoveImageDialog({
   site,
-  onSaved,
+  image,
+  onDone,
   onClose,
 }: {
   site: Site;
-  onSaved: () => void;
+  image: SiteImage;
+  onDone: () => void;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(site.name);
-  const [kind, setKind] = useState<SiteKind>(site.kind);
-  const trimmed = name.trim();
-  const save = useMutation(
-    () =>
-      updateSite(site.id, {
-        ...(trimmed !== site.name ? { name: trimmed } : {}),
-        ...(kind !== site.kind ? { kind } : {}),
-      }),
-    {
-      fallback: "The edit failed. Try again.",
-      onSuccess: () => {
-        onSaved();
-        onClose();
-      },
+  const remove = useMutation(() => removeSiteImage(site.id, image.id), {
+    fallback: "The image was not removed. Try again.",
+    onSuccess: () => {
+      onDone();
+      onClose();
     },
-  );
-  const unchanged = trimmed === site.name && kind === site.kind;
+  });
   return (
     <ConfirmDialog
-      title="Edit the site"
-      confirmLabel="Save"
-      busyLabel="Saving…"
-      busy={save.loading}
-      confirmDisabled={!trimmed || unchanged}
-      error={save.error}
-      onConfirm={() => void save.run()}
+      title={`Remove the ${imageName(image).replace("Image", "image")}?`}
+      confirmLabel="Remove"
+      busyLabel="Removing…"
+      busy={remove.loading}
+      error={remove.error}
+      onConfirm={() => void remove.run()}
       onCancel={onClose}
     >
-      <p>The site keeps its earlier name and kind on record.</p>
-      <div className="space-y-1.5 pt-1">
-        <FieldLabel
-          label="Name"
-          htmlFor="site-edit-name"
-          invalid={!trimmed}
-          trailing={<CharCounter length={name.length} max={SITE_NAME_MAX_LEN} />}
-        />
-        <Input
-          id="site-edit-name"
-          value={name}
-          maxLength={SITE_NAME_MAX_LEN}
-          invalid={!trimmed}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </div>
-      <div className="space-y-1.5 pt-1">
-        <FieldLabel label="Kind" concept="site_kind" htmlFor="site-edit-kind" />
-        <Select id="site-edit-kind" value={kind} onChange={(e) => setKind(e.target.value as SiteKind)}>
-          {SITE_KINDS.map((value) => (
-            <option key={value} value={value}>
-              {SITE_KIND_LABELS[value]}
-            </option>
-          ))}
-        </Select>
-      </div>
+      <p>
+        The image leaves the site and the site saves a new version. Its earlier versions keep the
+        image.
+      </p>
     </ConfirmDialog>
   );
 }
@@ -175,17 +133,18 @@ function ModerationDialog({
 }
 
 type Dialog =
-  | { kind: "edit" }
+  | { kind: "remove"; image: SiteImage }
   | { kind: "moderate" }
   | { kind: "link" }
   | { kind: "effect"; event: SiteLinkedEvent };
 
 /**
  * The controls of one site, assembled once like `useEventActions` and in its order: one icon
- * row (Edit and Redraw the contour for the owner, Share for every reader, File an image and Link
- * one of my events for any signed-in analyst, Withhold or Restore for an admin, Report last for
- * every reader but the owner); and the panels they open. `linkControls` gives a linked event's
- * author the effect change and the unlink on its row.
+ * row (the version selector for every reader, Edit for the owner, Share for every reader, File an
+ * image and Link one of my events for any signed-in analyst, Withhold or Restore for an admin,
+ * Report last for every reader but the owner); and the panels they open. `linkControls` gives a
+ * linked event's author the effect change and the unlink on its row, and `imageControls` gives an
+ * image's filer its Remove, off while the image carries a contour.
  */
 export function useSiteActions({
   site,
@@ -197,6 +156,7 @@ export function useSiteActions({
   pinned: ReactNode;
   panels: ReactNode;
   linkControls: (event: SiteLinkedEvent) => ReactNode;
+  imageControls: (image: SiteImage) => ReactNode;
 } {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
@@ -208,7 +168,7 @@ export function useSiteActions({
     onSuccess: onChanged,
   });
 
-  if (!site) return { pinned: null, panels: null, linkControls: () => null };
+  if (!site) return { pinned: null, panels: null, linkControls: () => null, imageControls: () => null };
 
   const owner = ownsSite(site, user?.id);
   const withheld = site.hidden_at !== null;
@@ -233,20 +193,26 @@ export function useSiteActions({
       </>
     );
 
+  const imageControls = (image: SiteImage) =>
+    user?.id === image.author?.id && (
+      <RemoveButton
+        label={removeImageLabel(image, contourFromImage(site.contours, image.id) !== null)}
+        confirms
+        disabled={contourFromImage(site.contours, image.id) !== null}
+        onClick={() => setDialog({ kind: "remove", image })}
+      />
+    );
+
   const icons = [
+    <VersionSelector key="versions" record={siteVersioned(site)} selected={site.version_no} />,
     owner && (
-      <Button key="edit" icon variant="ghost" aria-label="Edit the name and kind" onClick={() => setDialog({ kind: "edit" })}>
-        <SquarePen size={14} />
-      </Button>
-    ),
-    owner && (
-      <Tooltip key="contour" label="Redraw the contour">
+      <Tooltip key="edit" label="Edit (saves a new version)">
         <Link
-          href={siteContourHref(site.id)}
+          href={siteEditHref(site.id)}
           className={buttonClasses("ghost", { icon: true })}
-          aria-label="Redraw the contour"
+          aria-label="Edit"
         >
-          <PenTool size={14} />
+          <SquarePen size={14} />
         </Link>
       </Tooltip>
     ),
@@ -296,25 +262,21 @@ export function useSiteActions({
       )}
       {!owner && report.panel}
       {unlink.error && <p className={FORM_ERROR_BANNER}>{unlink.error}</p>}
-      {dialog?.kind === "edit" && (
-        <EditSiteDialog site={site} onSaved={onChanged} onClose={() => setDialog(null)} />
+      {dialog?.kind === "remove" && (
+        <RemoveImageDialog
+          site={site}
+          image={dialog.image}
+          onDone={onChanged}
+          onClose={() => setDialog(null)}
+        />
       )}
       {dialog?.kind === "moderate" && (
         <ModerationDialog site={site} onDone={onChanged} onClose={() => setDialog(null)} />
       )}
       {dialog?.kind === "link" && user && (
         <LinkDialog
-          title="Link one of my events"
-          intro="Pick one of your published events, then say what it shows at this site. The link holds even when the event lies outside the zone."
-          pickLabel="Event"
-          searchLabel="Search your events by title"
-          searchPlaceholder="Search your events by title"
-          search={async (q) => {
-            const { items } = await searchPickableEvents(user.username, q);
-            return items
-              .filter((e) => e.status === "geolocated" && !linked.has(e.id))
-              .map(eventCandidate);
-          }}
+          {...OWN_EVENT_LINK_COPY}
+          search={async (q) => (await searchOwnEvents(user.username, q, linked)).map(eventCandidate)}
           extra={(picked) => <PickedEventOffer eventId={picked.id} offer={offer} />}
           onLink={async (event, effect) => {
             await linkEventToSite(event.id, site.id, effect);
@@ -331,10 +293,8 @@ export function useSiteActions({
       )}
       {dialog?.kind === "effect" && (
         <LinkDialog
+          {...OWN_EVENT_LINK_COPY}
           {...CHANGE_EFFECT_COPY}
-          pickLabel="Event"
-          searchLabel="Search your events by title"
-          searchPlaceholder="Search your events by title"
           search={async () => []}
           initial={{ candidate: eventCandidate(dialog.event), effect: dialog.event.effect }}
           onLink={(event, effect) => linkEventToSite(event.id, site.id, effect).then(onChanged)}
@@ -344,5 +304,5 @@ export function useSiteActions({
     </>
   );
 
-  return { pinned, panels, linkControls };
+  return { pinned, panels, linkControls, imageControls };
 }

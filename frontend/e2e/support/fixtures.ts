@@ -651,6 +651,7 @@ export const SITE: Site = {
     provider: { id: "copernicus_browser", name: "Copernicus Browser" },
   },
   owner: SITE_OWNER,
+  version_no: 1,
   hidden_at: null,
   latest_link_effect: { effect: "destruction", occurred_date: "2025-09-02", event_id: EVENT_ID },
   images: SITE_IMAGES,

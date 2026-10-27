@@ -10,17 +10,22 @@ import {
   latestImage,
   newSiteImageDraft,
   ownsSite,
-  siteContourHref,
+  siteChangedFields,
+  siteEditHref,
   siteImageMissing,
   siteImagePayload,
   sitesAsOf,
+  siteVersioned,
+  siteVersions,
   sortImages,
   sortLinkedEvents,
   utcDay,
   zoneEmphasis,
+  type Site,
   type SiteContour,
   type SiteImage,
   type SiteLinkedEvent,
+  type SiteVersion,
 } from "./sites";
 
 const ZONE = {
@@ -108,9 +113,8 @@ describe("contour neighbours", () => {
     expect(contourBefore([JUN, NOV], NOV)).toBeNull();
   });
 
-  it("finds the latest contour drawn from an image", () => {
-    const again = { ...JUN_REDRAWN, image_id: JUN.image_id };
-    expect(contourFromImage([JUN, again, NOV], JUN.image_id)?.id).toBe("jun2");
+  it("finds the contour an image carries", () => {
+    expect(contourFromImage([JUN, NOV], JUN.image_id)?.id).toBe("jun");
     expect(contourFromImage([NOV], "img-none")).toBeNull();
   });
 });
@@ -168,9 +172,9 @@ describe("labels", () => {
     expect(sitesAsOf("2027-01-01", "2026-10-25")).toBeNull();
   });
 
-  it("opens the contour editor on an image", () => {
-    expect(siteContourHref("s1")).toBe("/sites/s1/contour");
-    expect(siteContourHref("s1", "i1")).toBe("/sites/s1/contour?image=i1");
+  it("opens the edit page on an image", () => {
+    expect(siteEditHref("s1")).toBe("/sites/s1/edit");
+    expect(siteEditHref("s1", "i1")).toBe("/sites/s1/edit?image=i1");
   });
 });
 
@@ -232,5 +236,69 @@ describe("site image drafts", () => {
     expect(imageFromEventSource({ ...source, captured_at: null })).toBeNull();
     expect(imageFromEventSource({ ...source, media: null })).toBeNull();
     expect(imageFromEventSource({ ...source, is_graphic: true })).toBeNull();
+  });
+});
+
+describe("site versions", () => {
+  const OWNER = { id: "u1", username: "ana", avatar_url: null };
+  const EDITOR = { id: "u2", username: "ben", avatar_url: null };
+  const first = image("img-nov", "2025-11-14T10:30:00Z", "2026-01-01T00:00:00Z");
+  const second = image("img-jun", "2026-06-18T10:30:00Z", "2026-07-01T00:00:00Z");
+  const site = {
+    id: "s1",
+    name: "Depot South",
+    kind: "depot",
+    version_no: 3,
+    owner: OWNER,
+    created_at: "2026-01-01T00:00:00Z",
+    images: [first, second],
+    contours: [NOV, JUN],
+    linked_events: [linked("e1", "2026-05-01", "2026-05-02T00:00:00Z")],
+    latest_link_effect: null,
+  } as unknown as Site;
+  const row = (n: number, rest: Partial<SiteVersion>): SiteVersion =>
+    ({
+      id: `v${n}`,
+      version_no: n,
+      edited_by: EDITOR,
+      created_at: `2026-0${n + 1}-01T00:00:00Z`,
+      name: "Depot South",
+      kind: "depot",
+      zone: ZONE,
+      centroid: { lat: -25, lng: 137 },
+      contour_id: "nov",
+      last_image: null,
+      images: [first],
+      contours: [NOV],
+      ...rest,
+    }) as SiteVersion;
+  const rows = [row(2, {}), row(1, { name: "Depot North", edited_by: OWNER })];
+
+  it("addresses the live version at the site page and older ones at /vN", () => {
+    const record = siteVersioned(site);
+    expect([record.latest, record.first, record.label(2)]).toEqual([3, 1, "v2"]);
+    expect(record.href(3)).toBe("/sites/s1");
+    expect(record.href(1)).toBe("/sites/s1/v1");
+    expect(record.historyHref).toBe("/sites/s1/history");
+  });
+
+  it("credits each version to the write that produced it, version 1 to the owner", () => {
+    const versions = siteVersions(site, rows);
+    expect(versions.map((v) => v.number)).toEqual([3, 2, 1]);
+    expect(versions.map((v) => v.editor?.username)).toEqual(["ben", "ana", "ana"]);
+    expect(versions[2].createdAt).toBe(site.created_at);
+    expect(versions[0].changed).toEqual(["Sources", "Contour"]);
+    expect(versions[1].changed).toEqual(["Name"]);
+    expect(versions[2].changed).toBeNull();
+    // A version shows no linked events: links have no history.
+    expect(versions[1].view?.linked_events).toEqual([]);
+  });
+
+  it("holds back the oldest row of an unfinished walk", () => {
+    expect(siteVersions(site, [rows[0]], true).map((v) => v.number)).toEqual([3]);
+  });
+
+  it("names the kind change", () => {
+    expect(siteChangedFields({ ...site, kind: "port" }, site)).toEqual(["Kind"]);
   });
 });

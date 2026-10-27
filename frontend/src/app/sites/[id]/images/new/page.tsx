@@ -22,7 +22,7 @@ import {
   fileSiteImage,
   latestImage,
   ownsSite,
-  siteContourHref,
+  siteEditHref,
   siteHref,
   sitePath,
   type Site,
@@ -33,8 +33,9 @@ import { sourceWriteError } from "@/lib/sources";
 /**
  * Files a dated satellite image in a site's imagery history, open to any signed-in analyst. The
  * main column holds the image editor, the side column the site's current zone to match it
- * against. A filed image lands on a receipt: it says when the site already holds an image of the
- * same provider and day, and offers the owner to draw the contour from it.
+ * against. Filing saves a new version of the site. A filed image lands on a receipt: it says when
+ * the site already holds an image of the same provider and day, and offers the owner the edit
+ * page to draw a contour on it.
  */
 export default function FileSiteImagePage() {
   const params = useParams();
@@ -92,8 +93,8 @@ export default function FileSiteImagePage() {
               Open the site page
             </Link>
             {ownsSite(site, user.id) && (
-              <Link href={siteContourHref(site.id, filed.id)} className={buttonClasses("secondary")}>
-                Draw the contour from this image
+              <Link href={siteEditHref(site.id, filed.id)} className={buttonClasses("secondary")}>
+                Draw a contour on this image
               </Link>
             )}
           </div>

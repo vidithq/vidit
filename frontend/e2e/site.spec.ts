@@ -11,11 +11,12 @@ import {
 /**
  * A site's page and its three forms, read by the signed-in analyst who owns the site.
  *
- * The narrow cases: the header holds a long name; the pinned row holds the owner's five icons; an
+ * The narrow cases: the header holds a long name; the pinned row holds the version selector and
+ * the owner's icons; an
  * image's source block holds a long title and a provider credit beside its file; a
  * linked event's card holds its effect and its author's controls; the Location and Details
- * blocks follow the main column, as on the event page; the contour editor
- * stacks a toolbar over a map; and the image editor holds the link list with its archive box.
+ * blocks follow the main column, as on the event page; the edit page stacks the contour editor's
+ * toolbar over a map; and the image editor holds the link list with its archive box.
  */
 test.describe("site page", () => {
   test.beforeEach(async ({ context, page }) => {
@@ -84,18 +85,21 @@ test.describe("site page", () => {
     await expectControlInsideViewport(page, page.getByRole("button", { name: "Add a link to image" }));
   });
 
-  test("lays the contour editor out inside the column", async ({ page }) => {
-    await page.goto(`/sites/${SITE_ID}/contour`);
+  test("lays the edit page out inside the column", async ({ page }) => {
+    await page.goto(`/sites/${SITE_ID}/edit`);
 
-    await expect(page.getByRole("heading", { level: 1, name: "Redraw the contour" })).toBeVisible();
-    await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Save the contour" }));
+    await expect(page.getByRole("heading", { level: 1, name: "Edit the site" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(SITE.name);
+    await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Save" }));
     await expectControlInsideViewport(page, page.getByRole("button", { name: "Back to the current contour" }));
+    await expectControlInsideViewport(page, page.getByRole("button", { name: "Link one of my events" }));
   });
 
   test("lays the creation form out inside the column", async ({ page }) => {
     await page.goto("/sites/new");
 
     await expect(page.getByRole("heading", { level: 1, name: "New site" })).toBeVisible();
+    await expectControlInsideViewport(page, page.getByRole("button", { name: "Link one of my events" }));
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Create the site" }));
     await expectControlInsideViewport(page, page.getByRole("button", { name: "Start over" }));
   });

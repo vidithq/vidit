@@ -156,6 +156,10 @@ export const FIELD_HELP = {
     text: "The capture date and the imagery provider of the most recent image filed on the site. Vidit says when the place was last seen, never whether it is in use today.",
     label: "What is the last image?",
   },
+  site_name: {
+    text: "A short name for the place, such as the base or the depot it is. Only the site's owner renames it, and every earlier name stays in its history.",
+    label: "What makes a good site name?",
+  },
   site_kind: {
     text: "What kind of place the site is. Only its owner changes it.",
     label: "What is the site kind?",
@@ -173,15 +177,15 @@ export const FIELD_HELP = {
     label: "What goes in Details?",
   },
   site_zone: {
-    text: "The outline of the site, drawn over one dated image. A new contour holds from that image's capture date, and the earlier ones stay on record. Only the site's owner draws it.",
+    text: "The outline of the site, drawn over one dated image. A contour holds from that image's capture date, and each image carries at most one. Every earlier contour stays in the site's history. Only the site's owner draws it.",
     label: "What is the contour?",
   },
   site_image: {
-    text: "A dated satellite image of the site, filed with a link that reopens it at its date. Any analyst files one. An image states no effect: it shows the place on one date. Nothing filed is ever edited.",
+    text: "A dated satellite image of the site, filed with a link that reopens it at its date. Any analyst files one, and only that analyst removes it, once it carries no contour. An image states no effect: it shows the place on one date. It is never edited, and the site's history keeps it.",
     label: "What is a site image?",
   },
   site_contour_image: {
-    text: "The filed image the new contour is drawn from. The contour holds from its capture date, so an older image does not replace a newer zone.",
+    text: "The image the contour is drawn on. The contour holds from its capture date, so an older image does not replace a newer zone.",
     label: "Which image shows the contour?",
   },
   site_image_captured: {

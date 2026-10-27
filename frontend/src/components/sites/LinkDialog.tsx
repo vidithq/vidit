@@ -36,7 +36,7 @@ interface LinkSuggestions {
 /** The dialog's words when it changes a live link's effect, from either page. */
 export const CHANGE_EFFECT_COPY = {
   title: "Change the effect",
-  intro: "The link keeps its history: the site's page records the effect it had and the new one.",
+  intro: "Say what the event shows at the site now. The link keeps no record of its earlier effect.",
 };
 
 /**

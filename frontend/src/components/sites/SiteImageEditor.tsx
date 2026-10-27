@@ -48,10 +48,13 @@ export function SiteImageEditor({
   state,
   flagged,
   name = "Image",
+  actions,
 }: {
   state: ReturnType<typeof useSiteImageDraft>;
   flagged: boolean;
   name?: string;
+  /** Controls in the card's header (an edit form's discard). */
+  actions?: ReactNode;
 }) {
   const { drafts, setDrafts, note, setNote } = state;
   const draft = drafts[0];
@@ -64,6 +67,7 @@ export function SiteImageEditor({
       name={name}
       variant="site-image"
       wide
+      actions={actions}
       update={update(draft.key)}
       onPickFile={(file) => void pickFile(draft.key)(file)}
       onImportLink={(post) => void importLink(draft.key)(post)}
