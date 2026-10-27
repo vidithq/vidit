@@ -1,6 +1,6 @@
 import uuid
 from datetime import UTC, date, datetime
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, cast
 
 from pydantic import (
     AfterValidator,
@@ -148,6 +148,11 @@ class SiteContourChange(BaseModel):
         if (self.image_id is None) == (self.added_image is None):
             raise ValueError("A contour change names image_id or added_image, not both")
         return self
+
+    @property
+    def target(self) -> uuid.UUID | int:
+        """The image the change applies to: a live image's id, or an index into ``added_images``."""
+        return self.image_id if self.image_id is not None else cast(int, self.added_image)
 
 
 class SiteVersionCreate(BaseModel):

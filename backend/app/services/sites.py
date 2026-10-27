@@ -749,7 +749,10 @@ def _lock_own_events(db: Session, *, user: User, links: Sequence[SiteEventLinkCr
     event_ids = sorted(link.event_id for link in links)
     if not event_ids:
         return
-    owners = dict(db.query(Event.id, Event.owner_id).filter(Event.id.in_(event_ids)).all())
+    owners: dict[uuid.UUID, uuid.UUID] = {
+        row.id: row.owner_id
+        for row in db.query(Event.id, Event.owner_id).filter(Event.id.in_(event_ids)).all()
+    }
     for event_id in event_ids:
         if event_id in owners and owners[event_id] != user.id:
             raise NotEventOwnerError("Only the event's owner links it to a site")
@@ -920,17 +923,14 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
         removed = [_live_image(images, image_id) for image_id in body.removed_image_ids]
         for image in removed:
             _require_image_author(image, user)
-        changes = {
-            (change.image_id if change.image_id is not None else change.added_image): change
-            for change in body.contours
-        }
+        changes = {change.target: change for change in body.contours}
         for change in body.contours:
             if change.image_id is not None:
                 _live_image(images, change.image_id)
         for image in removed:
-            change = changes.get(image.id)
-            if (image.id in contours and change is None) or (
-                change is not None and change.zone is not None
+            pending = changes.get(image.id)
+            if (image.id in contours and pending is None) or (
+                pending is not None and pending.zone is not None
             ):
                 raise ImageCarriesContourError(
                     "An image is removed once it carries no contour: redraw it on another image first"
@@ -1152,6 +1152,7 @@ def build_version_reads(db: Session, rows: Sequence[SiteVersion]) -> list[SiteVe
         current = version_contours[-1]
         centroid = Polygon(current.zone.coordinates[0], current.zone.coordinates[1:]).centroid
         last = max(version_images, key=lambda image: (image.captured_at, image.created_at))
+        assert last.captured_at is not None  # ck_sources_site_image
         reads.append(
             SiteVersionRead(
                 id=row.id,
