@@ -137,4 +137,22 @@ describe("<ActionMenu>", () => {
     expect(screen.queryByRole("menu")).toBeNull();
     expect(trigger).toHaveFocus();
   });
+
+  it("takes the primary paint and a disabled state for a page's main action", () => {
+    render(
+      <ActionMenu
+        label="Approve as…"
+        text="Approve"
+        icon={<span aria-hidden>▾</span>}
+        variant="primary"
+        disabled
+        items={[{ key: "me", label: "Me", onSelect: () => {} }]}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "Approve as…" });
+    expect(trigger).toBeDisabled();
+    expect(trigger.className).toContain("bg-orange-500/10");
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
 });

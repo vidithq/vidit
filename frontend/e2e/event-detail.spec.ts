@@ -81,6 +81,29 @@ test.describe("shared event link", () => {
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Send report" }));
   });
 
+  // Approving is an action of the page: it sits in the actions row, which wraps on a phone.
+  test("puts Approve in the actions row for a reader who may approve", async ({ page, context }) => {
+    await grantSession(context);
+    await mockApi(page);
+    // Someone else's event, so the signed-in analyst may approve as themselves and as each of
+    // their organizations: one Approve that opens the menu of them.
+    await answerWith(page, `/events/${EVENT_ID}`, {
+      ...EVENT,
+      owner: { id: "33333333-3333-4333-8333-333333333333", username: "other", avatar_url: null },
+    });
+    await answerWith(page, `/events/${EVENT_ID}/approvals`, { items: [], viewer_can_approve: true });
+    await page.goto(`/events/${EVENT_ID}`);
+
+    const row = page.getByRole("group", { name: "Event actions" });
+    const approve = row.getByRole("button", { name: "Approve as…" });
+    await expect(approve).toBeVisible();
+    await expect(page.getByRole("region", { name: "Approvals" })).toHaveCount(0);
+    await expectNarrowViewportLayout(page, approve);
+    await approve.click();
+    await expect(page.getByRole("menu", { name: "Approve as" }).getByRole("menuitem")).toHaveCount(7);
+    await expectNarrowViewportLayout(page, page.getByRole("menuitem").last());
+  });
+
   test("stacks the approvals under the actions, before the sources", async ({ page }) => {
     await mockApi(page);
     await page.goto(`/events/${EVENT_ID}`);

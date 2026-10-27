@@ -45,6 +45,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The profile's source origin counts a platform's aliases as one host: `twitter.com` links count under `x.com`, `youtu.be` under `youtube.com`, and `telegram.me` under `t.me` ([#743](https://github.com/vidithq/vidit/pull/743)).
 - In the event form, the fold under each source that holds the capture time, capture position, tags and graphic flag reads Capture details instead of More details ([#741](https://github.com/vidithq/vidit/pull/741)).
 - More page actions sit in the top right action bar: Post request on the Requests board, Geolocate on a request, Link to a site on your event, New collection and Sign out on your profile, and Create the detection and Import archive on Submit ([#751](https://github.com/vidithq/vidit/pull/751)).
+- You approve, decline an approval request, and answer a geolocator or organization invitation from the page's top right action bar; with several identities to approve as, one Approve opens a menu of them ([#753](https://github.com/vidithq/vidit/pull/753)).
 
 ### Fixed
 

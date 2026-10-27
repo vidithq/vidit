@@ -157,13 +157,21 @@ describe("OrganizationPage", () => {
     expect(screen.queryByText("Skyline matches")).toBeNull();
   });
 
-  it("lets an invited analyst accept from the rail", async () => {
+  it("lets an invited analyst accept from the header's actions", async () => {
     signIn("bo");
     const refetch = serve({ ...ORG, viewer_invited: true });
     render(<OrganizationPage />);
 
-    const rail = screen.getByRole("complementary", { name: "Invitation" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Accept" }));
+    expect(screen.getByText(/You are invited to join/)).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Invitation" })).toBeNull();
+    const accept = screen.getByRole("button", { name: "Accept" });
+    expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    // In the title's action cluster, before the page's first section.
+    expect(
+      accept.compareDocumentPosition(screen.getByText(/You are invited to join/)) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(accept);
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invite/accept", {
         method: "POST",

@@ -59,6 +59,8 @@ export function ActionMenu({
   menuLabel = label,
   items,
   matchTriggerWidth = false,
+  variant = "ghost",
+  disabled = false,
 }: {
   /** The trigger's accessible name and tooltip. With `text`, it starts with that text. */
   label: string;
@@ -70,6 +72,10 @@ export function ActionMenu({
   items: ActionMenuItem[];
   /** Spans the list over the trigger's width, for a compact picker. */
   matchTriggerWidth?: boolean;
+  /** The trigger's `<Button>` variant: `primary` when the menu is the page's main action (the
+   *  event page's **Approve** with several identities). */
+  variant?: "ghost" | "primary";
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -173,7 +179,8 @@ export function ActionMenu({
       <Button
         ref={triggerRef}
         icon={!text}
-        variant="ghost"
+        variant={variant}
+        disabled={disabled}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}

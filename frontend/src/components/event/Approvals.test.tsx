@@ -66,14 +66,19 @@ function serve(rows: Approval[], extra: Record<string, unknown> = {}) {
 
 function Panel({ geo = event }: { geo?: EventDetail }) {
   const approvals = useApiResource<ApprovalList>(allApprovalsPath(geo.id));
-  const { summary, requestAction } = useEventApprovals(geo, approvals);
+  const { summary, answer, requestAction } = useEventApprovals(geo, approvals);
   return (
     <>
+      <div role="group" aria-label="Event actions">
+        {requestAction}
+        {answer}
+      </div>
       {summary}
-      {requestAction}
     </>
   );
 }
+
+const row = () => screen.getByRole("group", { name: "Event actions" });
 
 /** The stamps under the actions, as who signed each: the link name before *approved vN on*. */
 const stampNames = async () =>
@@ -177,11 +182,12 @@ describe("useEventApprovals", () => {
     render(<Panel />);
 
     const approve = await screen.findByRole("button", { name: "Approve" });
+    // Approve is an action of the page: it sits in the actions row, the stamps' section absent.
+    expect(row()).toContainElement(approve);
+    expect(screen.queryByRole("region", { name: "Approvals" })).toBeNull();
     expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull();
     // The help sits beside Approve while no stamp shows.
-    expect(approve.parentElement).toContainElement(
-      screen.getByRole("button", { name: "What is an approval?" }),
-    );
+    expect(row()).toContainElement(screen.getByRole("button", { name: "What is an approval?" }));
     fireEvent.click(approve);
     // Nothing is sent before the reader confirms: an approval is final.
     const dialog = screen.getByRole("dialog", { name: "Approve this version?" });
@@ -338,7 +344,7 @@ describe("useEventApprovals", () => {
     expect(await stampNames()).toEqual(["bo"]);
   });
 
-  it("lets a member approve as each organization they belong to, whatever their role", async () => {
+  it("lets a member approve as each organization they belong to, whatever their role, from one menu", async () => {
     api.viewer = CY;
     const OSINT = { slug: "osint-lab", name: "OSINT Lab", avatar_url: null };
     serve([], {
@@ -349,13 +355,18 @@ describe("useEventApprovals", () => {
     });
     render(<Panel />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Approve as Bellingcat" }));
+    // Several identities: one Approve opens the menu of them, the reader first.
+    fireEvent.click(await within(row()).findByRole("button", { name: "Approve as…" }));
+    expect(
+      within(screen.getByRole("menu", { name: "Approve as" }))
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["cy", "Bellingcat", "OSINT Lab"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Bellingcat" }));
     expect(screen.getByRole("dialog", { name: "Approve as Bellingcat?" })).toHaveTextContent(
       "in the name of Bellingcat",
     );
     confirmApproval();
-    expect(screen.getByRole("button", { name: "Approve as OSINT Lab" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals", {
         method: "POST",

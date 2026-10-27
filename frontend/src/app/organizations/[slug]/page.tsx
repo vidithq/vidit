@@ -35,7 +35,7 @@ import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 
 /** An organization's public page: the analyst profile's header (name, picture, bio, links), then
  * the members, the approvals placed in its name, its approval requests for members, and its
- * invites for org managers. An invited viewer answers the invite in the right rail. Org managers
+ * invites for org managers. An invited viewer answers the invite in the header's actions. Org managers
  * edit the bio, links and picture in place, as an analyst edits their profile. */
 export default function OrganizationPage() {
   const params = useParams();
@@ -81,26 +81,26 @@ export default function OrganizationPage() {
       subtitle={edit.editing ? undefined : <IdentityLines bio={org.bio} segments={segments} />}
       actions={
         !edit.editing && (
-          <ProfileActions links={org.external_links} canEdit={org.viewer_can_manage} edit={edit} />
+          <ProfileActions links={org.external_links} canEdit={org.viewer_can_manage} edit={edit}>
+            {org.viewer_invited && (
+              <InviteAnswerButtons
+                answer={(choice) => answerOrganizationInvite(slug, choice)}
+                onAnswered={reload}
+              />
+            )}
+          </ProfileActions>
         )
       }
       stickyActions={edit.editing ? <ProfileEditActions edit={edit} /> : undefined}
-      rail={
-        org.viewer_invited && !edit.editing ? (
-          <Card as="section">
-            <p className="text-sm text-neutral-200">
-              You are invited to join {org.name}.
-            </p>
-            <InviteAnswerButtons
-              answer={(choice) => answerOrganizationInvite(slug, choice)}
-              onAnswered={reload}
-            />
-          </Card>
-        ) : null
-      }
-      railLabel="Invitation"
-      headerInColumn
     >
+      {org.viewer_invited && !edit.editing && (
+        <Card as="section">
+          <p className="text-sm text-neutral-200">
+            You are invited to join {org.name}. Accept or decline it at the top of the page.
+          </p>
+        </Card>
+      )}
+
       <ProfileHeaderEditFields name={org.name} edit={edit} />
 
       <BioField edit={edit} owner="organization" />

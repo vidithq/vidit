@@ -11,7 +11,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { eventVersioned, hasPublishedRecord } from "@/lib/events";
-import { creditedAuthors, removeGeolocator } from "@/lib/geolocatorCredit";
+import { answerGeolocatorInvite, creditedAuthors, removeGeolocator } from "@/lib/geolocatorCredit";
 import { eventEditHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { AuthorByline } from "@/components/ui/AuthorByline";
@@ -22,7 +22,7 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { EventShare } from "@/components/event/EventShare";
-import { GeolocatorInviteCard } from "@/components/event/GeolocatorCredit";
+import { GeolocatorInviteCard, InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import type { EventShellActions } from "@/components/event/EventShell";
 import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
@@ -74,9 +74,10 @@ interface EventActionsOptions {
 }
 
 interface EventActions {
-  /** The report form, a dialog, and the receipt a sent report leaves, for under the header. */
+  /** The geolocator invitation's card, the report form, a dialog, and the receipt a sent report
+   *  leaves, for under the header. */
   panels: ReactNode;
-  /** The actions block: the row, pinned; the approvals and an invitation under it. */
+  /** The actions block: the row, pinned; the approvals under it. */
   actions: EventShellActions | undefined;
   /** The event page's Sites block, for the side column. */
   sites: ReactNode;
@@ -174,6 +175,17 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       <Fragment key="request-approval">{eventApprovals.requestAction}</Fragment>
     ),
     canReport && <Fragment key="report">{report.trigger}</Fragment>,
+    eventApprovals.answer && <Fragment key="approve">{eventApprovals.answer}</Fragment>,
+    invited && (
+      <InviteAnswerButtons
+        key="invite"
+        answer={(choice) => answerGeolocatorInvite(event.id, choice)}
+        onAnswered={() => {
+          setAnsweredFor(event.id);
+          onChanged?.();
+        }}
+      />
+    ),
     // `max-sm:pr-2`: the `?` grows its tap area 8px past its glyph on a phone, which stays inside
     // the row's right edge.
     tiers.flow && isOpenRequest && (
@@ -188,7 +200,12 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   ].filter(Boolean);
 
   return {
-    panels: canReport && report.panel,
+    panels: (invited || canReport) && (
+      <>
+        {invited && <GeolocatorInviteCard event={event} />}
+        {canReport && report.panel}
+      </>
+    ),
     actions: {
       pinned: controls.length > 0 && (
         <div
@@ -199,20 +216,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
           {controls}
         </div>
       ),
-      below: (eventApprovals.summary || invited) && (
-        <div className="space-y-4">
-          {eventApprovals.summary}
-          {invited && (
-            <GeolocatorInviteCard
-              event={event}
-              onAnswered={() => {
-                setAnsweredFor(event.id);
-                onChanged?.();
-              }}
-            />
-          )}
-        </div>
-      ),
+      below: eventApprovals.summary,
     },
     sites: sites.block,
   };
