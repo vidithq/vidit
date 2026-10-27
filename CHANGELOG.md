@@ -26,6 +26,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - In search, you can check your own geolocations, or select every match, and add them to one of your collections at once or open a new collection with them, up to 500 events; `POST /collections/{id}/events` takes event ids or a search ([#702](https://github.com/vidithq/vidit/pull/702)).
 
 - The map's Sites switch moves into the filter panel as its first section; while sites show, the Filters button counts them and a Sites pill turns them off ([#720](https://github.com/vidithq/vidit/pull/720)).
+- The map filter panel no longer carries a New site link: you create a site from Submit ([#730](https://github.com/vidithq/vidit/issues/730)).
 - Search, feed and requests show the active filters at the top of the filter panel on a wide screen, and search puts the result count at the head of the list ([#702](https://github.com/vidithq/vidit/pull/702)).
 - The feed's Kind filter offers Detections as a third chip beside Geolocations and Requests, in place of the Show detections switch; no chip still lists all three ([#702](https://github.com/vidithq/vidit/pull/702)).
 - Search loads every matching geolocation: **Load more** under the Geolocations group appends the next page, and `GET /search` pages that group with `geolocations_cursor` ([#696](https://github.com/vidithq/vidit/pull/696)).
