@@ -9,7 +9,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Search loads every matching geolocation: **Load more** under the Geolocations group appends the next page, and `GET /search` pages that group with `geolocations_cursor` ([#696](https://github.com/vidithq/vidit/pull/696)).
 - Sites: map an area of interest such as a depot with its dated satellite images and contours, link your events to it with their effect, and read its history on its page; sites show on the map and can be reported ([#644](https://github.com/vidithq/vidit/pull/644)).
 - In the event form, a source link row imports the file of an X, public Telegram or TikTok post in one click, and a post with several files lets you pick one; `POST /uploads/from-link` stages it like an upload ([#697](https://github.com/vidithq/vidit/pull/697)).
-- Submit offers a Site and a Collection tile, and the new-site page lays out its source, contour and details like the site page ([#718](https://github.com/vidithq/vidit/pull/718)).
+- Sites work like events: each image, removal or owner edit saves a version you browse in the history, the owner edits name, kind, images, contours and links on one page, and Submit offers Site and Collection tiles ([#718](https://github.com/vidithq/vidit/pull/718)).
 
 ### Fixed
 

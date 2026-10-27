@@ -929,7 +929,7 @@ The actions row holds these controls, left to right, each shown only to the read
 | Request approval | A geolocator of a published row (the owner or a co-geolocator), on the event page | An icon button (lucide `ClipboardCheck`) that opens a dialog to ask an analyst or an organization to approve the live version. See **Approval requests** below. |
 | Report | Every reader but the owner, signed out included | The red flag ([`useReportContent`](../frontend/src/components/report/useReportContent.tsx)) that opens the report form, a [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx) holding the reason `<Select>` and the details `<Textarea>`, each label with its `?` (`report_reason`, `report_details`). Once a report lands, the receipt takes the flag's place at the top of the main column. Reporting your own event says nothing an edit or a close could not. |
 
-[`VersionSelector`](../frontend/src/components/event/VersionSelector.tsx) lists the versions from the live version number and the event's `version_zero`, so it reads nothing. It is not an owner control: the other controls act on the record, and this one reads it. Every reader gets it, because a corrected record is auditable only when anyone can walk the corrections. The map panel and the forms show one version by construction and carry none.
+[`VersionSelector`](../frontend/src/components/event/VersionSelector.tsx) lists the versions of a `VersionedRecord` ([`lib/versions.ts`](../frontend/src/lib/versions.ts)): for an event, the live version number and the event's `version_zero` (`eventVersioned`), so it reads nothing. A site's pages use it too (`siteVersioned`). It is not an owner control: the other controls act on the record, and this one reads it. Every reader gets it, because a corrected record is auditable only when anyone can walk the corrections. The map panel and the forms show one version by construction and carry none.
 
 **Geolocate.** The request page renders its actions like the event page, with no card around them: the actions row (Edit for the asker, Share, Report), then **Geolocate** under it, the one filled button, aligned to the same right edge and pinned with the row, which opens the [edit form](#the-owner-edit-form) on the request, with a `?` saying what publishing does. On a phone the `?` keeps its tap area inside the row's right edge. A closed request keeps its row and has no **Geolocate**.
 
@@ -1137,7 +1137,7 @@ The page titles itself *Version history* and names the event under it as plain t
 
 **The list is one row per version, newest first.** A row states which version it is, what its edit changed, and who made that edit when: a neutral `v3` [`<Pill>`](../frontend/src/components/ui/Pill.tsx), or `Detection` or `Request` for version 0, an accent `Current` beside it on the live version, the changed fields as a short line (*Title, Coordinates, Proof*), then the editor's byline, the date and their note. The whole row is one click, the model every catalogue row uses: a past version opens its own address, and the current version opens `/events/{id}`, because that is where the record as it stands is read. The byline is [`<AuthorByline link={false}>`](../frontend/src/components/ui/AuthorByline.tsx), the handle as plain text: an anchor under the stretched link is a target the mouse reaches by z-order and the keyboard reaches as its own stop, so the two would disagree about what the row does. The profile stays one tap away from the version the row opens. A version an admin redacted carries a danger `Redacted` pill and keeps its number, its byline and its link.
 
-**A row is credited to the edit that produced it.** The API files that credit on the version the edit superseded, so version *n* takes its content from version row *n* and its byline, date and note from row *n - 1* ([`eventVersions`](../frontend/src/lib/events.ts)). Version 0 is the request or the detection the event was published from: it reads *Requested* or *Detected* and carries the asker, or the owner of a detection, and the date the row was opened. Version 1 was published rather than edited, so it reads *Published*; it takes its byline and date from row 0 when there is one, and otherwise carries the record's own author and publication date. The changed fields are computed on the client from the two adjacent versions, since the API serves what each version held rather than what an edit did, and they print under the names the event page already uses for the same values. Two versions that cannot be compared, a redacted one on either side, print nothing rather than an empty edit.
+**A row is credited to the edit that produced it.** The API files that credit on the version the edit superseded, so version *n* takes its content from version row *n* and its byline, date and note from row *n - 1* ([`versionSteps`](../frontend/src/lib/versions.ts), which `eventVersions` and `siteVersions` read). Version 0 is the request or the detection the event was published from: it reads *Requested* or *Detected* and carries the asker, or the owner of a detection, and the date the row was opened. Version 1 was published rather than edited, so it reads *Published*; it takes its byline and date from row 0 when there is one, and otherwise carries the record's own author and publication date. The changed fields are computed on the client from the two adjacent versions, since the API serves what each version held rather than what an edit did, and they print under the names the event page already uses for the same values. Two versions that cannot be compared, a redacted one on either side, print nothing rather than an empty edit.
 
 What version 0 was lives in one table, `VERSION_ZERO_META` in [`lib/events.ts`](../frontend/src/lib/events.ts): its name (*Request* or *Detection*), the status it reads with, the verb of its banner (*asked* or *imported*) and the field that credits it (`requested_by` or `owner`). The version selector, the history row, the banner and the version page read it, and the history row's *Requested* or *Detected* is that status's badge label.
 
@@ -1500,7 +1500,7 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 ### Sites
 
-A site is a named area analysts monitor through dated satellite imagery (see [`api.md`](api.md#sites)). Its page reads like an event page and its forms like an event form, on the same shell and the same source components: a site image is a source, so the page shows it in the source block and the forms edit it in the source editor.
+A site is a named area analysts monitor through dated satellite imagery (see [`api.md`](api.md#sites)). Its pages read like the event pages and its forms like the event forms, on the same shell and the same source and version components: a site image is a source, so the pages show it in the source block and the forms edit it in the source editor, and a site has versions, so its pages carry the event page's version selector, history and version view.
 
 ```mermaid
 flowchart LR
@@ -1517,72 +1517,89 @@ flowchart LR
   end
 
   page["`**/sites/{id}**
-  PageShell and PageColumns, the side column after the main column below lg`"]:::spec
+  PageShell, the pinned row, SiteBody`"]:::spec
+  version["`**/sites/{id}/vN**
+  VersionBanner, SiteBody of the version`"]:::spec
+  history["`**/sites/{id}/history**
+  VersionHistory, one VersionRow per version`"]:::spec
+  edit["`**/sites/{id}/edit**
+  the owner only, SiteEditForm`"]:::spec
+  file["`**/sites/{id}/images/new**
+  any signed-in analyst`"]:::spec
+  create["`**/sites/new**
+  from the map's Sites switch and the submit chooser`"]:::spec
   actions["`**useSiteActions**
   the pinned row, the dialogs`"]:::core
+  body["`**SiteBody**
+  Sources, then Location and Details, on PageColumns`"]:::shared
+  selector["`**VersionSelector**
+  the event page's version menu`"]:::shared
   card["`**siteImageExtras**
   the event page's SourceBlocks, with the site's rows`"]:::shared
   zone["`**SiteLocation**
   the event page's EventLocation, with SiteMap`"]:::shared
-  details["`**SiteDetails**
-  the event page's Details card`"]:::shared
   linked["`**LinkedEvents**
   the catalogue's EntityCard per event`"]:::shared
   dialog["`**LinkDialog**
   on ConfirmDialog, both directions`"]:::shared
-  offer["`**SatelliteImagesOffer**
-  file the event's satellite sources`"]:::shared
-  file["`**/sites/{id}/images/new**
-  any signed-in analyst`"]:::spec
-  contour["`**/sites/{id}/contour**
-  the owner only`"]:::spec
-  create["`**/sites/new**
-  from the map's Sites switch and the submit chooser`"]:::spec
+  fields["`**SiteNameField**, **SiteKindCard**, **SiteLinksField**
+  the name in the title, the kind, the creator's links`"]:::shared
   imageed["`**SiteImageEditor**
   SourceEditor variant site-image`"]:::shared
-  zoneed["`**ZoneEditor**
+  zoneed["`**ZoneEditor**, **ContourDraft**
   ZoneDrawMap and its toolbar`"]:::shared
   event["`**EventSitesBlock**
   the event page's sites slot`"]:::shared
 
   page --> actions
-  page --> card
-  page --> zone
-  page --> details
-  page --> linked
+  page --> body
+  version --> body
+  body --> card
+  body --> zone
   card -->|"Show on the map"| zone
+  actions --> selector
   actions -->|"Change the effect, Unlink"| linked
+  actions -->|"Remove an image"| card
   actions --> dialog
   event --> dialog
-  dialog --> offer
+  selector --> version
+  selector --> history
+  actions -->|"Edit"| edit
   actions -->|"File an image"| file
-  actions -->|"Redraw the contour"| contour
-  file --> imageed
+  edit --> fields
+  edit --> imageed
+  edit --> zoneed
+  create --> fields
   create --> imageed
   create --> zoneed
-  contour --> zoneed
+  fields --> dialog
+  file --> imageed
 ```
 
 **The site page.** [`/sites/{id}`](../frontend/src/app/sites/[id]/page.tsx) renders `PageShell` like `EventShell` does: back, the name as the title and the pinned actions, with no byline. The owner, the kind and the last image read in the Details block. No line ever says the site is active or current.
 
-- **Actions.** [`useSiteActions`](../frontend/src/components/sites/useSiteActions.tsx) assembles the pinned row of icon buttons in the event page's order: **Edit the name and kind** and **Redraw the contour** for the owner, **Share** for every reader, **File an image** and **Link one of my events** for a signed-in analyst, **Withhold the site** or **Restore the site** for an admin, then the report flag last, for every reader but the owner. An owner control never renders for another reader. The edit and the moderation each confirm in a `<ConfirmDialog>`. A withheld site, which only an admin reads, opens on an amber line that says so.
-- **Body.** `PageColumns`, which scrolls both columns with the page, as on the event page. The side column holds the event page's Location and Details blocks, each under its `EventSection` eyebrow with the site's `?` (`site_location`, `site_details`). Below `lg` it follows the main column, the event page's order, and a pick in the main column scrolls the map into view.
-- **Main column.** The Sources section, then the Linked events section, then the changes on record. Both sections list newest first by date on the ground (`sortImages`, `sortLinkedEvents` in [`lib/sites.ts`](../frontend/src/lib/sites.ts)).
-- **Sources.** The event page's [`<SourceBlocks>`](#source-blocks) under the event page's **Sources (N)** eyebrow and `?`: the same sideways row, its range and arrows, a lone image at full width, and the same rows per image (the file, the title, the level, the kind, the links with their archive marks and the imagery warnings, the capture time). [`siteImageExtras`](../frontend/src/components/sites/SiteImageBlock.tsx) adds the site's rows after them: the provider with its credit, the note, who filed it and when, and the contour the owner drew from it. It also names each block by its capture day, which `SourceHeader` shows at the top of the card with the map control: an icon button that shows that day's zone on the map, or an accent *On the map* pill on the image on show, whose card takes the accent border.
+- **Actions.** [`useSiteActions`](../frontend/src/components/sites/useSiteActions.tsx) assembles the pinned row in the event page's order: the event page's [`VersionSelector`](../frontend/src/components/event/VersionSelector.tsx) on the live version for every reader, **Edit** for the owner, whose tooltip says it saves a new version, **Share** for every reader, **File an image** and **Link one of my events** for a signed-in analyst, **Withhold the site** or **Restore the site** for an admin, then the report flag last, for every reader but the owner. An owner control never renders for another reader. An image removal and the moderation each confirm in a `<ConfirmDialog>`. A withheld site, which only an admin reads, opens on an amber line that says so.
+- **Body.** [`SiteBody`](../frontend/src/components/sites/SiteBody.tsx) lays out `PageColumns`, which scrolls both columns with the page, as on the event page. The side column holds the event page's Location and Details blocks, each under its `EventSection` eyebrow with the site's `?` (`site_location`, `site_details`). Below `lg` it follows the main column, the event page's order, and a pick in the main column scrolls the map into view.
+- **Main column.** The Sources section, then the Linked events section. Both list newest first by date on the ground (`sortImages`, `sortLinkedEvents` in [`lib/sites.ts`](../frontend/src/lib/sites.ts)).
+- **Sources.** The event page's [`<SourceBlocks>`](#source-blocks) under the event page's **Sources (N)** eyebrow and `?`: the same sideways row, its range and arrows, a lone image at full width, and the same rows per image (the file, the title, the level, the kind, the links with their archive marks and the imagery warnings, the capture time). [`siteImageExtras`](../frontend/src/components/sites/SiteImageBlock.tsx) adds the site's rows after them: the provider with its credit, the note, who filed it and when, and the contour drawn on it. It also names each block by its capture day, which `SourceHeader` shows at the top of the card with the map control: an icon button that shows that day's zone on the map, or an accent *On the map* pill on the image on show, whose card takes the accent border. The analyst who filed an image gets a red trash **Remove** beside it, off while the image carries a contour, its name saying so.
 - **Location.** [`SiteLocation`](../frontend/src/components/sites/SiteLocation.tsx) fills the event page's [`EventLocation`](../frontend/src/components/event/EventLocation.tsx) with the site map: the zone on the picked image's day (`contourOn`, the zone rule of `services/sites.zones_at`), the contour before it dashed and the linked events. Its rows read **Coordinates**, the current zone's centroid with the event page's open and copy controls, **Zone on**, the date on show, and **Contour**, the area and the source image of the contour valid then. Its footer lines explain the dashed, dotted and dimmed marks the map draws. The page opens on the latest image. On a date before the first contour the Contour row says none is drawn and the first contour shows dashed.
 - **Details.** [`SiteDetails`](../frontend/src/components/sites/SiteFacts.tsx) is the event page's Details card: **Owner**, **Kind**, **Last image** (the date and the provider), **Latest effect** (the effect pill and the event date, when a linked event has one), **Created**, then **Withheld** on a withheld site, which only an admin reads.
 - **Linked events.** [`LinkedEvents`](../frontend/src/components/sites/SiteEventLists.tsx) heads the section with a **Linked events (N)** `<SectionEyebrow>` and the `site_linked_events` `?`. Each event is the compact [`<EntityCard>`](#cards), the catalogue's row: the thumbnail, the title, the author's byline, the event date, *Inside the zone* or the distance outside it (`place`), and the effect pill as the badge. The card opens the event. The event's author also gets a ghost **Change the effect**, which opens the link dialog on that link, and a red cross **Unlink** (`actions`, from `useSiteActions`).
-- **Changes on record.** [`SiteChanges`](../frontend/src/components/sites/SiteChanges.tsx) lists what the sections do not show, from [`GET /sites/{id}/history`](api.md#get-sitesidhistory): the renames and kind changes, the unlinks and the effect changes, each with its date and who made it, newest first. It renders nothing without one.
 
-**The link dialog.** [`LinkDialog`](../frontend/src/components/sites/LinkDialog.tsx) serves both directions on `<ConfirmDialog>`: the event page's **Link to a site** picks a site, the site page's **Link one of my events** picks one of the reader's published events. On the event page the sites near the event show as `<Pill>` chips with their distance. Any other pick comes from a `<Combobox>` name search, and the pick shows as an accent chip a click removes. The effect, a full-width `<SegmentedControl>` over **Damage**, **Destruction**, **Activity** and **Other**, starts unpicked, so **Link** waits for the analyst to say what the event shows. When the event has satellite sources, [`SatelliteImagesOffer`](../frontend/src/components/sites/SatelliteImagesOffer.tsx) adds one described `<ToggleRow>` per source, off at first, which files that source's image on the site after the link (`imageFromEventSource`, sharing the stored file through `media_id`). A source without a file or a capture time, or flagged graphic, reads why and refuses.
+**Versions.** A site's version pages reuse the event's pieces, which take a `VersionedRecord` (`siteVersioned` in [`lib/sites.ts`](../frontend/src/lib/sites.ts)) in place of an event.
 
-**The event page's Sites slot.** [`EventSitesBlock`](../frontend/src/components/sites/EventSitesBlock.tsx) lists the event's live links in a `DetailCard`, *Linked to* the site's name and its effect pill. The event's owner gets a ghost **Change the effect** and a red cross **Unlink from** per row, and **Link to a site** at the foot, on a `geolocated` row only.
+- [`/sites/{id}/history`](../frontend/src/app/sites/[id]/history/page.tsx) lists every version newest first in [`VersionHistory`](../frontend/src/components/event/VersionHistory.tsx), one [`VersionRow`](../frontend/src/components/event/VersionRow.tsx) each: *v1* reads **Created**, a later version names what its write changed (**Name**, **Kind**, **Sources**, **Contour**, from `siteChangedFields`), with who made it and when. The live row carries the *Current* pill and opens the site page.
+- [`/sites/{id}/vN`](../frontend/src/app/sites/[id]/[version]/page.tsx) opens on the amber [`VersionBanner`](../frontend/src/components/event/VersionBanner.tsx), *Version 2 of 4, edited by* the analyst *on* the date, with the link to the current version, then `SiteBody` fed the version: its name, its images, removed ones included, and their contours. The version selector is its one pinned action. Links have no history, so the version shows no Linked events section. The live number forwards to `/sites/{id}`.
 
-**The forms.** The three forms pin their write in `SiteWriteActions` ([`SiteImageEditor.tsx`](../frontend/src/components/sites/SiteImageEditor.tsx)): one primary button with a `<CountBadge>` of what the write still lacks, the hidden `IncompleteFormAnnouncer`, and the error banner. A write attempt turns the missing fields red in place.
+**The link dialog.** [`LinkDialog`](../frontend/src/components/sites/LinkDialog.tsx) serves both directions on `<ConfirmDialog>`: the event page's **Link to a site** picks a site, the site page's and the site forms' **Link one of my events** picks one of the reader's published events. On the event page the sites near the event show as `<Pill>` chips with their distance. Any other pick comes from a `<Combobox>` name search, and the pick shows as an accent chip a click removes. The effect, a full-width `<SegmentedControl>` over **Damage**, **Destruction**, **Activity** and **Other**, starts unpicked, so **Link** waits for the analyst to say what the event shows. On the site page, when the event has satellite sources, [`SatelliteImagesOffer`](../frontend/src/components/sites/SatelliteImagesOffer.tsx) adds one described `<ToggleRow>` per source, off at first, which files that source's image on the site after the link (`imageFromEventSource`, sharing the stored file through `media_id`). A source without a file or a capture time, or flagged graphic, reads why and refuses.
 
-- [`/sites/{id}/images/new`](../frontend/src/app/sites/[id]/images/new/page.tsx), for any signed-in analyst, holds `SiteImageEditor`: `<SourceEditor variant="site-image">`, whose capture time is required, sits under the title and has its own `site_image_captured` `?`, whose links run the imagery provider check, and whose **More details** is replaced by the note and its `<CharCounter>`. The side column shows the current zone. A filed image lands on a receipt that names any image of the same provider and day the site already holds (`duplicate_image_ids`), and offers the owner **Draw the contour from this image**.
-- [`/sites/{id}/contour`](../frontend/src/app/sites/[id]/contour/page.tsx), for the owner, opens [`ZoneEditor`](../frontend/src/components/sites/ZoneEditor.tsx) on the current contour, with **Undo**, **Remove corner**, **Start over** and **Back to the current contour** above the map, a line of instructions under them, and the area under the map. The side column picks the image that shows the new contour in a `<Select>`, which adds who filed an image when two of one day and provider would read the same (`imageChoiceLabels`), shows it in a compact source block, and warns when the image predates the current contour.
-- [`/sites/new`](../frontend/src/app/sites/new/page.tsx) takes the site page's body. The main column holds the **Sources (1)** section, the site page's `SourcesRow` with one `SiteImageEditor` named *Source 1*, for the first source. The side column holds the site page's Location section, with `ZoneEditor` and the overlap warning under it, then its Details section, a `Card` with the name, the kind and a line that says you own the site. Both use `EventSection` with the site page's `?` (`site_location`, `site_details`), and a write attempt turns a section's eyebrow red while it lacks a field. Below `lg` the side column follows the main column. Once the ring closes, [`POST /sites/overlaps`](api.md#post-sitesoverlaps) runs after the drawing rests, and each overlapping site shows in an amber callout with its link and both shares. The warning never blocks the creation.
+**The event page's Sites slot.** [`EventSitesBlock`](../frontend/src/components/sites/EventSitesBlock.tsx) lists the event's links in a `DetailCard`, *Linked to* the site's name and its effect pill. The event's owner gets a ghost **Change the effect** and a red cross **Unlink from** per row, and **Link to a site** at the foot, on a `geolocated` row only.
+
+**The forms.** The three forms pin their write in `SiteWriteActions` ([`SiteImageEditor.tsx`](../frontend/src/components/sites/SiteImageEditor.tsx)): one primary button with a `<CountBadge>` of what the write still lacks, the hidden `IncompleteFormAnnouncer`, and the error banner. A write attempt turns the missing fields red in place. The new-site page and the edit page take the site page's body on `EventShell`, like the event forms, and type the name in the page title: [`SiteNameField`](../frontend/src/components/sites/SiteFormFields.tsx) is the event forms' `TitleField` with the label *Name* and the `site_name` `?`. Their Details section is `SiteKindCard`, the kind `<Select>` and a line that says you own the site, and their Linked events block under Sources is [`SiteLinksField`](../frontend/src/components/sites/SiteLinksField.tsx): your own events, one compact `EntityCard` each with **Change the effect** and **Unlink**, then **Link one of my events**, which opens the link dialog. Nothing in the block is written before the form's write.
+
+- [`/sites/new`](../frontend/src/app/sites/new/page.tsx): the main column holds the **Sources (1)** section, the site page's `SourcesRow` with one `SiteImageEditor` named *Source 1*, then the Linked events block. The side column holds the Location section, with `ZoneEditor` and the overlap warning under it, then the Details section. Once the ring closes, [`POST /sites/overlaps`](api.md#post-sitesoverlaps) runs after the drawing rests, and each overlapping site shows in an amber callout with its link and both shares. The warning never blocks the creation. **Create the site** sends one [`POST /sites`](api.md#post-sites), the links included.
+- [`/sites/{id}/edit`](../frontend/src/app/sites/[id]/edit/page.tsx), for the owner, renders [`SiteEditForm`](../frontend/src/components/sites/SiteEditForm.tsx). The Sources section lists the live images as the site page shows them, the map control picking the image the Location section draws on, and **Add an image** in its header opens one `SiteImageEditor` named *New image*, with a red cross that discards it. The owner's own images carry the red cross **Remove**, off while the image carries a contour; a removed image stays in the row, dimmed, with a *Removed on save* pill and a ghost control that keeps it. The Location section picks an image in a `<Select>` (`imageChoiceLabels`, which adds who filed it when two of one day and provider would read the same) and opens `ContourDraft`, the `ZoneEditor` on that image's contour, or empty with the current zone dashed: **Start over** leaves the image without a contour, and **Back to the current contour** restores it. A warning says when the image predates the current contour. **Save** sends one [`POST /sites/{id}/versions`](api.md#post-sitesidversions) and returns to the site page; its count lists a missing name, an open ring, a site left without a contour and an edit that changes nothing.
+- [`/sites/{id}/images/new`](../frontend/src/app/sites/[id]/images/new/page.tsx), for any signed-in analyst, holds `SiteImageEditor`: `<SourceEditor variant="site-image">`, whose capture time is required, sits under the title and has its own `site_image_captured` `?`, whose links run the imagery provider check, and whose **More details** is replaced by the note and its `<CharCounter>`. The side column shows the current zone. A filed image lands on a receipt that names any image of the same provider and day the site already holds (`duplicate_image_ids`), and offers the owner **Draw a contour on this image**, which opens the edit page on it.
 
 **Moderation.** Anyone reports a site through the report flag (`useReportContent("site", …)`). [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) lists a site report with the site's name as its link and its owner's byline, and offers **Hide the site** and **Dismiss**. An admin restores a withheld site from its page.
 
