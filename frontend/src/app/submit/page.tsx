@@ -7,7 +7,7 @@ import { createEvent, createEventRequest } from "@/lib/events";
 import { draftUrls } from "@/lib/sources";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
+import { ImportPostPanel, type ImportShell } from "@/components/geolocations/ImportPostPanel";
 import { MapPin, MapPinPlus } from "lucide-react";
 import { IconTile } from "@/components/ui/IconTile";
 import { CollectionIcon, newCollectionHref } from "@/lib/collections";
@@ -184,21 +184,23 @@ function SubmitForm() {
     );
   }
 
-  // Both import entries take the chooser's shell: each writes detections server side and leaves
-  // through the review queue.
+  // Both import entries take the chooser's shell, their submit pinned like the form's publishes:
+  // each writes detections server side and leaves through the review queue.
+  const importShell: ImportShell = ({ actions, body }) => (
+    <PageShell title="Submit" back onBack={backToChooser} stickyActions={actions}>
+      {body}
+    </PageShell>
+  );
+  if (mode === "xpost") return <ImportPostPanel shell={importShell} />;
+  if (mode === "bulk") return <ImportArchivePanel username={user.username} shell={importShell} />;
+
   return (
-    <PageShell title="Submit" back={mode !== null} onBack={backToChooser}>
-      {mode === null && (
-        <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CHOOSER_TILES.map(({ href, icon, title, note }) => (
-            <IconTile key={href} href={href} icon={icon} title={title} note={note} />
-          ))}
-        </div>
-      )}
-
-      {mode === "xpost" && <ImportPostPanel />}
-
-      {mode === "bulk" && <ImportArchivePanel username={user.username} />}
+    <PageShell title="Submit">
+      <div role="group" aria-label="Submission mode" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {CHOOSER_TILES.map(({ href, icon, title, note }) => (
+          <IconTile key={href} href={href} icon={icon} title={title} note={note} />
+        ))}
+      </div>
     </PageShell>
   );
 }

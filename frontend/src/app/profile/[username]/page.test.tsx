@@ -133,7 +133,6 @@ const BLOCKS: Record<string, string> = {
   // Edit mode only: this eyebrow titles the inputs.
   "Linked accounts": "linked accounts",
   "1 detection to submit": "detections queue",
-  "Sign out": "account controls",
 };
 
 /** The named blocks, in the order the document puts them. */
@@ -291,7 +290,7 @@ describe("public profile order", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the owner's queue above the work and the account controls under it", async () => {
+  it("keeps the owner's queue above the work", async () => {
     useAuth.mockReturnValue({
       user: { id: "u1", username: "ana", email: "ana@example.test" },
       loading: false,
@@ -303,15 +302,56 @@ describe("public profile order", () => {
     const { container } = mountProfile();
     await screen.findByText("Insights");
 
-    // Pending work outranks the portfolio; signing out sinks below all of it.
+    // Pending work outranks the portfolio.
     expect(blockOrder(container)).toEqual([
       "detections queue",
       "coverage",
       "insights",
       "collections",
       "recent submissions",
-      "account controls",
     ]);
+  });
+
+  it("puts New collection and Sign out in the owner's header row, after Edit profile", async () => {
+    const logout = vi.fn();
+    useAuth.mockReturnValue({
+      user: { id: "u1", username: "ana", email: "ana@example.test" },
+      loading: false,
+      logout,
+      refresh: vi.fn(),
+    });
+    mountProfile();
+    await screen.findByText("Insights");
+
+    const edit = screen.getByRole("button", { name: "Edit profile" });
+    const row = edit.parentElement!;
+    expect(
+      [...row.querySelectorAll("a, button")].map((el) => el.getAttribute("aria-label")),
+    ).toEqual([
+      "X / Twitter: @ana_osint",
+      "Website: ana.example",
+      "Edit profile",
+      "New collection",
+      "Sign out",
+    ]);
+    expect(within(row).getByRole("link", { name: "New collection" })).toHaveAttribute(
+      "href",
+      "/collections/new",
+    );
+
+    // The first click arms, the second signs out.
+    fireEvent.click(within(row).getByRole("button", { name: "Sign out" }));
+    expect(logout).not.toHaveBeenCalled();
+    fireEvent.click(within(row).getByRole("button", { name: "Confirm sign out" }));
+    expect(logout).toHaveBeenCalledOnce();
+  });
+
+  it("gives a visitor neither New collection nor Sign out", async () => {
+    mountProfile();
+    await screen.findByText("Insights");
+
+    expect(screen.queryByRole("link", { name: "New collection" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 });
 
