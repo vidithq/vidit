@@ -100,18 +100,27 @@ describe("the submit form's gate", () => {
 });
 
 describe("the submit chooser", () => {
-  it("links the three paths, then the site and collection create pages", () => {
+  it("links the six paths, Geolocation and Request to the one form", () => {
     query = "";
     render(<SubmitPage />);
 
     const tiles = within(screen.getByRole("group", { name: "Submission mode" })).getAllByRole("link");
     expect(tiles.map((tile) => [tile.querySelector("h3")?.textContent, tile.getAttribute("href")])).toEqual([
-      ["Single event", "/submit?mode=single"],
+      ["Geolocation", "/submit?mode=single"],
+      ["Request", "/submit?mode=single"],
       ["From an X post", "/submit?mode=xpost"],
       ["Bulk import", "/submit?mode=bulk"],
       ["Site", NEW_SITE_HREF],
       ["Collection", newCollectionHref()],
     ]);
-    expect(screen.queryByText(/create a site/)).toBeNull();
+  });
+
+  it("names what each path needs", () => {
+    query = "";
+    render(<SubmitPage />);
+
+    const request = screen.getByRole("link", { name: /^Request/ });
+    expect(within(request).getByText("Needs")).toBeInTheDocument();
+    expect(within(request).getByText("Source")).toBeInTheDocument();
   });
 });
