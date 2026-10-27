@@ -238,7 +238,7 @@ export function SiteLayers({
               "icon-allow-overlap": true,
               "icon-size": ["case", ["==", ["get", "selected"], 1], 1.4, 1],
               "text-field": ["get", "name"],
-              "text-font": ["Montserrat Medium", "Noto Sans Regular"],
+              "text-font": ["Montserrat Medium"],
               "text-size": 11,
               "text-anchor": "left",
               "text-offset": [1, 0],
@@ -257,7 +257,7 @@ export function SiteLayers({
           minzoom={zoneMinZoom}
           layout={{
             "text-field": ["get", "name"],
-            "text-font": ["Montserrat Medium", "Noto Sans Regular"],
+            "text-font": ["Montserrat Medium"],
             "text-size": 11,
           }}
           paint={{

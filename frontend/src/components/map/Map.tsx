@@ -35,6 +35,7 @@ import type {
   GeoJSONSource,
   MapLayerMouseEvent,
   MapMouseEvent,
+  StyleSpecification,
 } from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
 import type { MapBounds } from "@/lib/viewport";
@@ -51,12 +52,14 @@ import {
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
 import { CLUSTER_LAYER, POINT_LAYERS, STACK_LAYER, TAP_TARGET_LAYERS } from "./layers";
+import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
+import { BasemapControl } from "./BasemapControl";
+import { CoordinateGrid } from "./CoordinateGrid";
+import { SatelliteOverlays } from "./SatelliteOverlays";
+import { useBasemapSettings } from "./basemapSettings";
+import { useMapAssets } from "./mapAssets";
 
-// CARTO basemap pair. maplibre paint can't read CSS variables, so tiles swap off the theme here.
-const BASEMAP_STYLE = {
-  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-  light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-} as const;
+const POINTS_SOURCE = "points";
 
 // Hover ring: dot geometry and the grace margin (px) the pointer may roam before it collapses.
 const SPIDER_DOT_PX = 12;
@@ -197,7 +200,7 @@ function StackInteractions({
     const coincidentLeaves = async (
       clusterId: number
     ): Promise<{ zoom: number; points: SpiderPoint[] | null }> => {
-      const source = map.getSource("points") as GeoJSONSource | undefined;
+      const source = map.getSource(POINTS_SOURCE) as GeoJSONSource | undefined;
       if (!source) throw new Error("points source missing");
       const zoom = await source.getClusterExpansionZoom(clusterId);
       if (zoom <= CLUSTER_MAX_ZOOM) return { zoom, points: null };
@@ -787,6 +790,23 @@ function FlyToCamera({ target }: { target: { lat: number; lng: number } | null }
   return null;
 }
 
+/** Applies the basemap style. The map mounts on `BLANK_STYLE`; every later style swaps in with
+ *  MapLibre's diff, which keeps the overlays (`carryOverlays`) and turns an option change into
+ *  `setLayoutProperty` and `setFilter` calls. The first swap rebuilds from scratch: a diff against
+ *  a style still loading would fail and fall back to the same rebuild, with a console warning.
+ *  A null style keeps the map as it is. */
+function BasemapStyle({ style }: { style: StyleSpecification | null }) {
+  const { current: map } = useMap();
+  const applied = useRef<StyleSpecification | null>(null);
+  useEffect(() => {
+    if (!map || !style || applied.current === style) return;
+    const first = applied.current === null;
+    applied.current = style;
+    map.getMap().setStyle(style, { diff: !first, transformStyle: carryOverlays });
+  }, [map, style]);
+  return null;
+}
+
 // Dev-only camera handle for the promo recordings, whose tooling is maintained separately: exposes the
 // maplibre instance for Playwright easeTo moves. Gated at the render site, so never mounted in production.
 function DevMapHandle() {
@@ -828,8 +848,18 @@ export default function Map({
   const marker = paletteMapColors(usePalette());
   const DETECTED = marker.detected;
   const theme = useTheme();
-  // Halo around the selected point: white on the dark basemap, a dark ring on light Positron.
-  const SELECTED_STROKE = theme === "light" ? "#1a1a1a" : "#ffffff";
+  const [basemap, setBasemap] = useBasemapSettings();
+  const presetId = resolvePreset(basemap.preset, theme);
+  const { brightness } = BASEMAP_PRESETS[presetId];
+  // While the self-hosted map files load, the map waits on its blank style rather than fetch the
+  // public tiles it would then drop.
+  const mapAssets = useMapAssets();
+  const basemapStyle = useMemo(
+    () => (mapAssets === undefined ? null : applyMapAssets(BASEMAP_PRESETS[presetId].style(basemap), mapAssets)),
+    [presetId, basemap, mapAssets],
+  );
+  // Halo around the selected point: white on a dark basemap, a dark ring on a light one.
+  const SELECTED_STROKE = brightness === "light" ? "#1a1a1a" : "#ffffff";
 
   // Open hover ring. Closing is two-phase: `spiderClosing` runs the dots back to the center, then
   // the timer unmounts the ring and the hidden circle reappears.
@@ -1092,6 +1122,8 @@ export default function Map({
     <div
       className={className || ""}
       style={{ width: "100%", height: "100%", position: "relative" }}
+      // Read by the light-basemap tint in globals.css.
+      data-basemap={brightness}
     >
     <MapGL
       mapLib={guardedMaplibre}
@@ -1121,7 +1153,7 @@ export default function Map({
       onZoomStart={() => setZoomInFlight(true)}
       onZoomEnd={() => setZoomInFlight(false)}
       style={{ width: "100%", height: "100%" }}
-      mapStyle={BASEMAP_STYLE[theme]}
+      mapStyle={BLANK_STYLE}
       projection="globe"
       attributionControl={false}
       cooperativeGestures={embedded}
@@ -1137,13 +1169,23 @@ export default function Map({
       <FlyToCamera target={flyTo ?? null} />
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
+      <BasemapStyle style={basemapStyle} />
+      <BasemapControl
+        settings={basemap}
+        adjustable={BASEMAP_PRESETS[presetId].adjustable}
+        onChange={setBasemap}
+      />
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
+      {(basemap.dailyImagery || basemap.fires) && (
+        <SatelliteOverlays imagery={basemap.dailyImagery} fires={basemap.fires} brightness={brightness} />
+      )}
+      {basemap.grid && <CoordinateGrid brightness={brightness} />}
       {/* Before the points source, so on a style load these layers are added first and draw under the pins. */}
       {children}
 
       <Source
-        id="points"
+        id={POINTS_SOURCE}
         type="geojson"
         data={geojson}
         cluster={true}
@@ -1190,7 +1232,7 @@ export default function Map({
           filter={clusterFilter}
           layout={{
             "text-field": "{point_count_abbreviated}",
-            "text-font": ["Montserrat Medium", "Noto Sans Regular"],
+            "text-font": ["Montserrat Medium"],
             "text-size": [
               "step",
               ["get", "point_count"],
@@ -1281,7 +1323,7 @@ export default function Map({
           filter={stackFilter}
           layout={{
             "text-field": "{stack_count}",
-            "text-font": ["Montserrat Medium", "Noto Sans Regular"],
+            "text-font": ["Montserrat Medium"],
             "text-size": 11,
             "text-allow-overlap": true,
             "text-ignore-placement": true,

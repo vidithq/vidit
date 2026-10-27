@@ -1,7 +1,7 @@
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 DEFAULT_JWT_SECRET = "changeme-in-production"
@@ -120,6 +120,24 @@ class Settings(BaseSettings):
     # ledger, not per pass (the worker drains every few seconds).
     bot_max_replies_per_hour: int = 40
     bot_max_replies_per_author_per_hour: int = 10
+
+    # Self-hosted map files, refreshed by the `update-map` role (services/map_files.py). The bucket
+    # takes the AWS_* credentials when they are set, else the boto3 credential chain. A
+    # `file:///abs/path` value writes the same layout to a local folder instead.
+    map_bucket: str = ""
+    map_prefix: str = ""
+    # For a store other than AWS S3, such as MinIO or Cloudflare R2.
+    map_endpoint_url: str = ""
+    map_region: str = ""
+    # Never under 2: the job keeps the planet latest.json names and the one before it.
+    map_keep_planets: int = Field(default=2, ge=2)
+    # z8 is 87,381 elevation tiles, about 7 GB; each zoom more multiplies both by four.
+    map_relief_max_zoom: int = Field(default=8, ge=0, le=15)
+    map_source_url: str = "https://btrfs.openfreemap.com"
+    # The OpenFreeMap area to copy: `monaco` is a 0.5 MB extract for a test run.
+    map_area: str = "planet"
+    # A planet version to hold instead of the newest, such as one already downloaded by hand.
+    map_planet_version: str = ""
 
     model_config = {"env_file": ".env"}
 

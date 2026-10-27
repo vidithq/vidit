@@ -109,7 +109,7 @@ Every image is decoded and re-encoded before it is stored: [`evidence_processing
 | Framework | **Next.js 16** (App Router) |
 | UI runtime | **React 19** |
 | Language | **TypeScript** (`tsconfig` `target: ES2017`; Next's SWC downlevels at build regardless of the type-checker target). Code that needs GeoJSON types imports them from the `geojson` module, not the `GeoJSON.*` global. |
-| Interactive map | **MapLibre GL JS** (via `react-map-gl/maplibre`) + **CARTO Dark Matter** vector tiles |
+| Interactive map | **MapLibre GL JS** (via `react-map-gl/maplibre`) + **OpenFreeMap** vector tiles (OpenMapTiles schema), read from OpenFreeMap or from a self-hosted PMTiles archive through the **`pmtiles`** protocol |
 | Rich editor (proof, collection description) | **BlockNote** (`@blocknote/react` on its Mantine UI); the stored body is sanitized HTML, read back through **html-react-parser**. See [design.md](design.md#rich-text). |
 | Styles | **Tailwind CSS 4** (CSS-first config: `@theme` block in [`frontend/src/app/globals.css`](../frontend/src/app/globals.css), no `tailwind.config.ts`) |
 | Icons | **lucide-react** |
@@ -117,14 +117,180 @@ Every image is decoded and re-encoded before it is stored: [`evidence_processing
 | Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. Layout is not testable there (jsdom has no layout engine): `npm run test:e2e` runs the Playwright suite that measures it, after `npx playwright install chromium` once. See [Narrow-viewport smoke tests](#narrow-viewport-smoke-tests). |
 | API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `MediaType`, the source kind and level) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
 
-MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports client-side clustering. CARTO Dark Matter tiles are free for non-commercial use and match the dark theme.
+MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports client-side clustering. The tiles come from OpenFreeMap, which needs no API key and sets no request cap, or from the instance's own copy of them ([Self-hosted map files](#self-hosted-map-files)). The attribution control credits OpenMapTiles and OpenStreetMap contributors.
 
 The MapLibre web worker is served from `public/`, not from the bundle. MapLibre builds the worker URL at runtime, so the bundler never emits it, and the worker imports `maplibre-gl-shared.mjs` by its unhashed name. [`next.config.mjs`](../frontend/next.config.mjs) runs [`scripts/copy-maplibre-worker.mjs`](../frontend/scripts/copy-maplibre-worker.mjs) on every `next dev`, `next build` and `next start`, which copies both files to `public/maplibre-gl/<version>/`. [`maplibreWorker.ts`](../frontend/src/components/map/maplibreWorker.ts) calls `setWorkerUrl` with that path before the first map is created. The `proxy.ts` matcher skips `/maplibre-gl/`, so a signed-out reader gets the worker and not the login page. The `loads the map worker` test in [`e2e/map.spec.ts`](../frontend/e2e/map.spec.ts) fails when the worker request does not return JavaScript.
+
+The map's label glyphs are served from `public/map-glyphs/`, one folder per fontstack (`Montserrat Regular`, `Montserrat Medium`) of 256 PBF ranges each, 3.3 MB in all. [`scripts/build-map-glyphs.sh`](../frontend/scripts/build-map-glyphs.sh) builds them in Docker with [maplibre/font-maker](https://github.com/maplibre/font-maker), from sources pinned to a commit, so a rerun reproduces the committed files. MapLibre requests one URL per fontstack, and a static host cannot merge fonts at request time, so the script merges each fontstack at build time: Montserrat first, then Noto Sans and the Noto Sans Armenian, Georgian, Ethiopic, Thai and Lao fonts for the scripts Montserrat lacks. Two kinds of text draw no glyph from these files:
+
+- CJK ideographs render from a system font. MapLibre's `localIdeographFontFamily` defaults to `sans-serif`, so the map requests no ideograph range.
+- MapLibre cannot shape Indic scripts, and draws right-to-left scripts only with an RTL plugin, which the map does not load. The style shows such a name in its Latin form (`is-supported-script` in [`basemap.ts`](../frontend/src/components/map/basemap.ts)).
+
+The folder also holds the font licences, `OFL-Montserrat.txt` and `OFL-Noto.txt`. The `proxy.ts` matcher skips `/map-glyphs/`, so a signed-out reader gets the glyphs and not the login page.
+
+The basemap icons (place dots, airport and one-way markers, road shields) are served from `public/map-sprites/`: the OpenFreeMap sprite `ofm`, at 1x and 2x, as JSON and PNG. The Vidit and Streets styles name it by path (`/map-sprites/ofm`), and `carryOverlays` in [`basemap.ts`](../frontend/src/components/map/basemap.ts) resolves the path against the page, since MapLibre loads a sprite only from an absolute URL. `manifest.json` records the OpenFreeMap sprite URL the files were downloaded from. An instance with [self-hosted map files](#self-hosted-map-files) reads the current sprite from its bucket instead, so the vendored copy serves an instance without them. The folder holds the icon licences in `LICENSE.md`. The `proxy.ts` matcher skips `/map-sprites/`, so a signed-out reader gets the icons and not the login page.
 
 MapLibre renders only on WebGL2, with alpha, depth and stencil buffers. A browser without that context gets a message in place of the map. Two checks in [`webgl.ts`](../frontend/src/components/map/webgl.ts) produce that message:
 
 - `supportsMaplibreWebGL` requests the same context on mount, so a browser that offers WebGL1 only, or blocks WebGL entirely, never mounts the map.
 - `guardedMaplibre` is the `mapLib` that `<Map>` hands to react-map-gl. When MapLibre still fails to create its context, it fires `error` from inside its constructor, before react-map-gl attaches `onError`, and returns a map with no painter that throws on `getBounds()` and `remove()`. The guarded constructor throws `WebGLUnavailableError` instead. react-map-gl passes that error to `onError`, which switches `<Map>` to the message, and never registers a map to remove.
+
+#### Map data sources
+
+Every map source is keyless and loads straight from its host in the reader's browser. An instance can serve the rows marked *self-hostable* from its own bucket instead ([Self-hosted map files](#self-hosted-map-files)). Each source carries its own attribution, and the attribution control lists the credit of every source a visible layer draws. What each layer shows, and where it draws: [`design.md`](design.md#map).
+
+| Layer | Source | Host | Credit in the attribution control |
+|---|---|---|---|
+| Dark, Light and Streets basemaps (self-hostable) | OpenFreeMap vector tiles (OpenMapTiles schema) | `tiles.openfreemap.org` | OpenFreeMap, OpenMapTiles, OpenStreetMap contributors |
+| Streets shaded relief (self-hostable) | Natural Earth shaded relief raster tiles, to zoom 6 | `tiles.openfreemap.org` | none: Natural Earth is in the public domain |
+| Terrain basemap | OpenTopoMap raster tiles, to zoom 17 | `tile.opentopomap.org` | OpenStreetMap contributors, SRTM, OpenTopoMap (CC BY-SA) |
+| Daily satellite imagery | NASA GIBS, `VIIRS_SNPP_CorrectedReflectance_TrueColor`, Web Mercator JPEG tiles of the day before, to zoom 9 | `gibs.earthdata.nasa.gov` | Imagery: NASA GIBS / EOSDIS |
+| Fire detections | NASA GIBS, `VIIRS_SNPP_Thermal_Anomalies_375m_All`, vector tiles of the day before | `gibs.earthdata.nasa.gov` | Imagery: NASA GIBS / EOSDIS |
+| Satellite basemap | [Sentinel-2 cloudless 2016](https://s2maps.eu) by EOX, layer `s2cloudless_3857`, JPEG tiles to zoom 14 | `tiles.maps.eox.at` | Sentinel-2 cloudless 2016 by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC BY 4.0 |
+| Relief (self-hostable) | [Terrain Tiles](https://registry.opendata.aws/terrain-tiles) on AWS Open Data, Terrarium-encoded elevation PNG, to zoom 15 | `s3.amazonaws.com/elevation-tiles-prod` | Terrain Tiles: USGS, NOAA, Copernicus EU-DEM and others, linked to the full list |
+
+Terrain Tiles merges several elevation datasets, and its [attribution list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md) asks each to be credited:
+
+- ArcticDEM terrain data DEM(s) were created from DigitalGlobe, Inc., imagery and funded under National Science Foundation awards 1043681, 1559691, and 1542736.
+- Australia terrain data © Commonwealth of Australia (Geoscience Australia) 2017.
+- Austria terrain data © offene Daten Österreichs, Digitales Geländemodell (DGM) Österreich.
+- Canada terrain data contains information licensed under the Open Government Licence, Canada.
+- Europe terrain data produced using Copernicus data and information funded by the European Union, EU-DEM layers.
+- Global ETOPO1 terrain data U.S. National Oceanic and Atmospheric Administration.
+- Mexico terrain data source: INEGI, Continental relief, 2016.
+- New Zealand terrain data Copyright 2011 Crown copyright (c) Land Information New Zealand and the New Zealand Government (All rights reserved).
+- Norway terrain data © Kartverket.
+- United Kingdom terrain data © Environment Agency copyright and/or database right 2015. All rights reserved.
+- United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.
+
+The attribution control names the three largest contributors and links to that list.
+
+The 2016 Sentinel-2 cloudless mosaic is licensed CC BY 4.0. EOX licenses the 2018 and later mosaics (`s2cloudless-2018` onward) under CC BY-NC-SA 4.0, which excludes commercial use. EOX serves the layer to zoom 21, but its 10 m Sentinel-2 data adds no detail past zoom 14: a zoom 15 tile matches its enlarged zoom 14 parent within JPEG noise. The source stops at 14, and MapLibre enlarges that level beyond.
+
+GIBS lists the fire detections as Web Mercator vector tiles (`GoogleMapsCompatible_Level8`), but answers 404 to every such request. It serves them on its geographic grid (EPSG:4326, matrix set `500m`), which a MapLibre vector source cannot read, since MapLibre tiles only in Web Mercator. Level 0 of that grid holds every detection of the day in two tiles, about 2 MB gzipped together. `loadFireDetections` in [`gibs.ts`](../frontend/src/components/map/gibs.ts) fetches both once per page load and date, since GIBS marks them `no-store`, and decodes them with `@mapbox/vector-tile` and `pbf`, the decoders MapLibre itself depends on. Each feature of the `VIIRS_SNPP_Thermal_Anomalies_375m_All_v2_NRT` layer carries its position as `LATITUDE` and `LONGITUDE` properties, so the decoder places each point there, with no tile projection, and keeps `FRP` (fire radiative power, in MW) and `CONFIDENCE` (`low`, `nominal` or `high`). The other properties are `BRIGHT_TI4`, `BRIGHT_TI5`, `SCAN`, `TRACK`, `ACQ_DATE`, `ACQ_TIME`, `SATELLITE`, `DAYNIGHT`, `VERSION` and `UID`. The points feed a GeoJSON source, which a basemap swap keeps.
+
+#### Self-hosted map files
+
+An instance can serve the vector tiles, the icon sprite, the Streets shaded relief and the relief elevation from an S3-compatible bucket of its own. The `update-map` [backend role](#backend-roles) fills the bucket, and the frontend reads it when `NEXT_PUBLIC_MAP_ASSETS_URL` is set.
+
+```mermaid
+flowchart LR
+  classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+  classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef store fill:#0b5c5b,stroke:#083f3e,color:#ffffff
+
+  subgraph legend [Legend]
+    direction LR
+    l1["`outside the job: an upstream host or the reader's browser`"]:::spec
+    l2["`a step of the update-map pass`"]:::shared
+    l3["`the file the map reads first`"]:::core
+    l4[("`the map bucket`")]:::store
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
+  end
+
+  ofm["`**OpenFreeMap**
+  planet tiles.pmtiles and SHA256SUMS, icon sprite, Natural Earth relief tiles`"]:::spec
+  aws["`**AWS Terrain Tiles**
+  Terrarium elevation PNG tiles`"]:::spec
+  planet["`**update_planet**
+  streams the archive into a multipart upload, checks its SHA-256 and header`"]:::shared
+  sprite["`**update_sprite**
+  copies a sprite folder it does not hold yet`"]:::shared
+  raster["`**update_raster**
+  packs raster tiles into one PMTiles archive per max zoom, once`"]:::shared
+  bucket[("`**map bucket**
+  planet/, sprite/, natural-earth/, relief/`")]:::store
+  latest["`**latest.json**
+  written after every check passes`"]:::core
+  retention["`**apply_retention**
+  deletes planets past the keep count`"]:::shared
+  browser["`**useMapAssets**, **applyMapAssets**
+  the reader's browser`"]:::spec
+
+  ofm --> planet & sprite & raster
+  aws --> raster
+  planet & sprite & raster --> bucket
+  bucket --> latest --> retention
+  latest -- "read once per page load" --> browser
+  bucket -- "pmtiles:// range requests" --> browser
+```
+
+The Terrain basemap (OpenTopoMap), the Satellite 2016 basemap (EOX) and the NASA GIBS overlays stay on their hosts: the bucket holds no copy of them.
+
+**The frontend.** With `NEXT_PUBLIC_MAP_ASSETS_URL` set, `useMapAssets` in [`mapAssets.ts`](../frontend/src/components/map/mapAssets.ts) reads `<url>/latest.json` once per page load and registers the `pmtiles://` protocol in MapLibre. The map keeps its blank style until the read ends. `applyMapAssets` in [`basemap.ts`](../frontend/src/components/map/basemap.ts) then points the `openmaptiles`, `ne2_shaded` and `relief-dem` sources and the sprite of the Dark, Light and Streets styles at the files `latest.json` names. Each archive's header sets its source's zoom range, and MapLibre enlarges the last level beyond it. When `latest.json` cannot be read or names no valid key, the map logs one warning and draws from the public hosts. Without the variable, the map reads the public hosts and fetches nothing from a bucket.
+
+**Bucket layout.** Every key sits under `MAP_PREFIX`:
+
+| Key | Content | Written |
+|---|---|---|
+| `planet/<version>.pmtiles` | The OpenFreeMap planet of that version, about 87 GB: MVT, zooms 0 to 14 | When OpenFreeMap publishes a version, weekly |
+| `sprite/<ofm id>/ofm.json`, `ofm.png`, `ofm@2x.json`, `ofm@2x.png` | The OpenFreeMap icon sprite, in the folder OpenFreeMap names by a hash of its content | When OpenFreeMap publishes a sprite |
+| `natural-earth/ne2sr-z6.pmtiles` | The Natural Earth shaded relief of the Streets style, PNG, zooms 0 to 6: 5,461 tiles, about 320 MB | Once |
+| `relief/terrarium-z<max>.pmtiles` | Terrarium elevation tiles, PNG, zooms 0 to `MAP_RELIEF_MAX_ZOOM` | Once per max zoom |
+| `latest.json` | The keys the map reads | Last, after every check passes |
+
+**`latest.json`.** Each key is relative to the prefix:
+
+```json
+{
+  "planet": {"key": "planet/20261025_080012_pt.pmtiles", "version": "20261025_080012_pt", "area": "planet", "osm_date": "2026-10-19", "sha256": "<hex>", "bytes": 87230232932},
+  "sprite": {"key": "sprite/ofm_f384/ofm"},
+  "natural_earth": {"key": "natural-earth/ne2sr-z6.pmtiles", "max_zoom": 6},
+  "relief": {"key": "relief/terrarium-z8.pmtiles", "max_zoom": 8},
+  "attribution": {"planet": "...", "natural_earth": "...", "relief": "..."},
+  "updated_at": "2026-10-27T06:00:00+00:00"
+}
+```
+
+The map credits each source from its own style, so `attribution` is a note for the operator.
+
+**Bucket settings.** Serve the prefix to anonymous readers, from the bucket or through a CDN, and set `NEXT_PUBLIC_MAP_ASSETS_URL` to that public URL plus the prefix, with no trailing slash. MapLibre reads an archive in byte ranges, so allow cross-origin `GET` and `HEAD` from the frontend origin with the `Range` and `If-Match` request headers, and expose `ETag`. A CDN in front of the bucket must pass `Range` through and answer `206`. The job writes every key but `latest.json` once and gives it `Cache-Control: public, max-age=31536000, immutable`. `latest.json` carries `Cache-Control: no-cache`.
+
+**The `update-map` pass.** [`scripts/update_map.py`](../backend/scripts/update_map.py) runs one pass of [`services/map_files.py`](../backend/app/services/map_files.py). Each step skips work already done, so a rerun after a failure resumes where it stopped:
+
+1. **Planet.** Reads `files.txt` from the OpenFreeMap file host and takes the newest version folder of the area that lists `tiles.pmtiles`, `SHA256SUMS` and the `done` marker. `MAP_PLANET_VERSION` pins another complete version. When `latest.json` already names that version and the object exists, the step ends. When the object exists with the SHA-256 that `SHA256SUMS` lists, read from its upload metadata or, in a local folder, from the file itself, the job checks its header and copies nothing. Otherwise the job streams `tiles.pmtiles` into a multipart upload with no local copy, in parts of 64 MiB or `size / 10,000`, whichever is larger. It resumes a dropped download with a range request, up to five times. It hashes the stream and aborts the upload when the SHA-256 differs from `SHA256SUMS`. It then reads the uploaded archive's header and metadata over range requests and deletes the object unless the archive is MVT, spans zooms 0 to 14 and holds the layers the styles draw.
+2. **Sprite.** Reads the sprite URL from OpenFreeMap's published dark style and copies the four files when the bucket lacks that folder.
+3. **Streets relief and relief.** Builds each PMTiles archive from the upstream tiles when its key is missing, then checks its header. The two datasets do not change upstream.
+4. **`latest.json`.** Written when its content changed, after every step above passed.
+5. **Retention.** Deletes the planets past the newest `MAP_KEEP_PLANETS`, never the one `latest.json` names or the one it named before.
+
+On any failure, the pass logs one line that starts with `update-map failed`, reports to Sentry when `SENTRY_DSN` is set, and exits `1`, leaving the files `latest.json` names in place. Every request carries the User-Agent `Vidit-update-map/1 (+https://github.com/vidithq/vidit)`. Progress lines (bytes or tiles, and the rate) print every 30 seconds.
+
+**Settings.** The role reads these environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MAP_BUCKET` | none, required | The bucket, or `file:///<absolute path>` to write the same layout to a local folder. |
+| `MAP_PREFIX` | empty | The folder that holds every key. |
+| `MAP_ENDPOINT_URL` | empty (AWS S3) | The S3 API endpoint of another store, such as MinIO or Cloudflare R2. |
+| `MAP_REGION` | `AWS_REGION` | The bucket's region. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | the boto3 credential chain | Credentials with `GetObject`, `PutObject`, `DeleteObject`, `ListBucket` and the multipart actions on the prefix. |
+| `MAP_KEEP_PLANETS` | `2` | Planets kept, at least 2. |
+| `MAP_RELIEF_MAX_ZOOM` | `8` | The last zoom of the relief archive, 0 to 15. |
+| `MAP_SOURCE_URL` | `https://btrfs.openfreemap.com` | The OpenFreeMap file host. |
+| `MAP_AREA` | `planet` | The OpenFreeMap area. `monaco` copies a 0.5 MB extract, for a test run. |
+| `MAP_PLANET_VERSION` | empty (the newest) | A complete OpenFreeMap version to hold instead of the newest, such as one already downloaded. |
+
+**Relief max zoom.** Zoom 8 holds 87,381 tiles, about 7 GB, at 611 m per pixel at the equator, enough to shade hills and mountains at the regional scale the relief serves. Zoom 9 holds 349,525 tiles, about 30 GB, and each further zoom multiplies the tiles, the size and the time by four. Above the archive's last zoom, MapLibre enlarges the last level, so the shading softens as you zoom in. A new max zoom builds a new archive under a new key and leaves the old one in place: delete it by hand.
+
+**Resources.** The pass holds about two upload parts and one batch of 256 tiles in memory: give it 512 MB. The relief and Streets relief builds keep the tile data in a temporary file until the archive's directory is known, so the first run needs free disk in `TMPDIR` the size of the largest archive, about 7 GB at zoom 8. The planet needs no disk. The time depends on the host's bandwidth: the planet copy moves 87 GB, about 30 minutes at 50 MB/s, and the first relief build makes 87,381 requests of about 100 KB each to AWS `us-east-1`, about 3 minutes at 50 MB/s.
+
+**Run the map from local files.** A local folder with the bucket layout, served by any static HTTP server that answers byte ranges and sends CORS headers, works as the base URL:
+
+1. From `backend/`, fill the folder. Leave `MAP_PREFIX` unset, so the keys sit at the folder's root:
+
+   ```bash
+   MAP_BUCKET=file://$HOME/vidit-map-data uv run python scripts/update_map.py
+   ```
+
+   This copies the newest planet, 87 GB. To use a planet you already downloaded, place it at `planet/<version>.pmtiles` in the folder and add `MAP_PLANET_VERSION=<version>`: the pass hashes the file against the published `SHA256SUMS` instead of downloading it. For a test folder without the planet, add `MAP_AREA=monaco` and `MAP_RELIEF_MAX_ZOOM=4`; the Streets relief still takes about 320 MB. The pass needs the network for the sprite and the raster tiles. The map needs every key `latest.json` names, so build the folder with the pass rather than by hand.
+2. Serve the folder, for example with `npx http-server $HOME/vidit-map-data --cors -p 8080`. The server answers `Range` requests with `206` and allows every origin.
+3. In `frontend/.env.local`, set `NEXT_PUBLIC_MAP_ASSETS_URL=http://localhost:8080`, then restart `npm run dev`: Next.js reads `NEXT_PUBLIC_*` variables when it starts.
+
+The Dark, Light and Streets basemaps and the relief then read only the folder. The Terrain and Satellite 2016 basemaps and the NASA overlays still need the network.
+
+**Schedule.** OpenFreeMap publishes a planet each week. Run `update-map` once a week, a day or more after the publication. Configure no restart on failure: a failed pass leaves the current files, and the next scheduled pass retries.
 
 ### Hosting
 
@@ -133,8 +299,9 @@ An instance needs these pieces. [Deployment](#deployment) describes how to run t
 | Piece | Requirement |
 |-------|-------------|
 | Container host | Runs the backend image in each of its [roles](#backend-roles): `api` behind HTTPS, `worker` always on, and `migrate` once per release. |
-| Scheduler | Starts the `sync-conflicts` role daily. |
+| Scheduler | Starts the `sync-conflicts` role daily, and the `update-map` role weekly when the instance serves its own map files. |
 | Database | **PostgreSQL 16** with **PostGIS 3**, reachable from every role. |
+| Map storage (optional) | An S3-compatible bucket, or a prefix of one, that serves the [self-hosted map files](#self-hosted-map-files) to anonymous readers: about 270 GB while a third planet uploads, about 185 GB after retention. |
 | Object storage | An S3-compatible bucket for media, with versioning and Object Lock, and a CDN in front of it. A second bucket in another region holds the media replica, and off-host storage holds the database dumps ([`backups.md`](backups.md)). |
 | Frontend host | Builds and serves the Next.js app in `frontend/`. |
 | DNS | One host for the frontend and one for the API. The API sets cookies the frontend reads, so both sit under one parent domain ([Particularities](#particularities-non-obvious-behavior-found-during-development)). |
@@ -340,6 +507,7 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN` | `schemas/tag.py` name `max_length` | server refuses typed text |
 | `lib/collections.ts::COLLECTION_DESCRIPTION_MAX_LEN` | `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
 | `lib/proof.tsx::htmlText` | `sanitize.html_text` | description counter disagrees with the server cap |
+| `components/map/mapAssets.ts::FIELDS` | `map_files.LATEST_FIELDS`, the keys of `latest.json` | the map falls back to the public hosts, or reads a file the bucket does not hold |
 | `lib/proof.tsx::proofImageSrcs`, `proofHasImage` | `sanitize.extract_image_srcs`, `events._require_proof_image` | form calls a proof ready that the server refuses |
 | `lib/conflicts.ts::CONFLICT_OTHER_NAME` | the `Other` conflict row the baseline migration seeds (`alembic/versions/g5i7k9m1o3q5_baseline.py`) | the conflict picker stops offering the escape value |
 | `lib/collections.ts::COLLECTABLE_STATUSES` | `event_filters.collectable_events` | picker offers rows the add verb refuses (409) |
@@ -616,6 +784,7 @@ The backend image runs every backend role. Its entrypoint, [`backend/entrypoint.
 | `migrate` | `alembic upgrade head`, then exits. | One-shot, before each new `api` release takes traffic. A non-zero exit means the schema did not reach the head: do not start the new release. | Once per deploy |
 | `worker` | The import worker: notification emails, archive imports, the bot mention queue, the hourly bot catch-up and the hourly reaper of expired staged uploads ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
 | `sync-conflicts` | One pass of the ongoing-conflicts sync ([`conflicts.md`](conflicts.md)), then exits. | Scheduled. A missed run is harmless. | Once a day |
+| `update-map` | One pass that refreshes the [self-hosted map files](#self-hosted-map-files), then exits. Needs no database. | Scheduled. A failed or missed run leaves the current files. | Once a week |
 
 Run a role locally against the image:
 
@@ -640,7 +809,7 @@ To deploy a release tag to an instance:
 
 A code rollback is the same procedure with the previous tag and no `migrate` step. Undoing a migration is in [`backups.md`](backups.md#manual-snapshot-and-rollback).
 
-**Frontend build variables.** Next.js compiles every `NEXT_PUBLIC_*` variable into the bundle at build time, so a change takes a new build. The build reads `NEXT_PUBLIC_API_URL` (required: [`lib/api.ts`](../frontend/src/lib/api.ts) refuses to load without it), `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video), `NEXT_PUBLIC_MEDIA_HOST` (the host `next/image` loads media from and the proof-image host pin, see [Particularities](#particularities-non-obvious-behavior-found-during-development); set it to the CDN host, or to the bucket endpoint when media is served from the bucket without a CDN, since a build without it allows only the local dev media host), and the Sentry variables under [Observability](#observability-whats-wired-and-how-to-turn-it-on). The version badge reads `NEXT_PUBLIC_BUILD_VERSION`, or `git describe --tags` when it is unset ([`next.config.mjs`](../frontend/next.config.mjs)), so build from a checkout with its tags, or set the variable.
+**Frontend build variables.** Next.js compiles every `NEXT_PUBLIC_*` variable into the bundle at build time, so a change takes a new build. The build reads `NEXT_PUBLIC_API_URL` (required: [`lib/api.ts`](../frontend/src/lib/api.ts) refuses to load without it), `NEXT_PUBLIC_DEMO_VIDEO_URL` (the landing demo video), `NEXT_PUBLIC_MAP_ASSETS_URL` (the public URL of the [self-hosted map files](#self-hosted-map-files); unset, the map reads the public hosts), `NEXT_PUBLIC_MEDIA_HOST` (the host `next/image` loads media from and the proof-image host pin, see [Particularities](#particularities-non-obvious-behavior-found-during-development); set it to the CDN host, or to the bucket endpoint when media is served from the bucket without a CDN, since a build without it allows only the local dev media host), and the Sentry variables under [Observability](#observability-whats-wired-and-how-to-turn-it-on). The version badge reads `NEXT_PUBLIC_BUILD_VERSION`, or `git describe --tags` when it is unset ([`next.config.mjs`](../frontend/next.config.mjs)), so build from a checkout with its tags, or set the variable.
 
 **Database.** Give `api`, `worker`, `sync-conflicts` and `migrate` the same `DATABASE_URL`. The backend image carries no `pg_dump` or `pg_restore` client, so database dumps and restores run from a `postgres:16` image ([`backups.md`](backups.md)).
 

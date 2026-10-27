@@ -18,6 +18,7 @@ import {
   ExternalLink,
   History,
   Mail,
+  Map as MapIcon,
   MapPin,
   MessageCircle,
   Save,
@@ -32,6 +33,7 @@ import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
 import { AccountPicker, analystAccount, type Account } from "@/components/ui/AccountPicker";
 import { Popover } from "@/components/ui/Popover";
+import { MapControlButton } from "@/components/ui/MapControlButton";
 import {
   PUBLISHING_LABEL,
   PUBLISH_CONFIRM,
@@ -612,7 +614,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<Popover>" usage="An icon button that opens a small panel anchored under it (role=dialog, named by label), for a control too small to sit in the page: the account picker behind the event forms' byline add button, and the event page's Add to collection and Geolocators. The panel floats over the page in a TOOLTIP_SURFACE bubble, 18rem wide, so nothing in the page moves when it opens. It renders in a portal fixed to the viewport, starts at the trigger's left edge, shifts sideways to stay 8px inside the viewport, and follows the trigger on scroll. The trigger is the ghost icon button with label as its aria-label and tooltip, in the active-row paint while open. children is a function handed the close, so a pick can close it; a field with autoFocus takes focus when it opens, or else the panel does, so Escape always reaches it. Escape closes it and returns focus to the trigger; an outside click closes it, and a click in a list a control in the panel owns (the Combobox list, portaled out) counts as inside. compact makes the trigger a 24px square on a desktop that takes no more height than a 20px line (the byline's add button). <PopoverPanel> is the panel alone, for a caller that owns its trigger: mounted while open, anchored under anchorRef, its left edge on the anchor's or, with align=end, its right edge on the anchor's, and onClose handed whether to return focus (Escape) or not (an outside press). The edit form's Save version N opens the version note in one, through PublishActions.">
+          <Item name="<Popover>" usage="An icon button that opens a small panel anchored under it (role=dialog, named by label), for a control too small to sit in the page: the account picker behind the event forms' byline add button, and the event page's Add to collection and Geolocators. The panel floats over the page in a TOOLTIP_SURFACE bubble, 18rem wide, so nothing in the page moves when it opens. It renders in a portal fixed to the viewport, starts at the trigger's left edge, shifts sideways to stay 8px inside the viewport, and follows the trigger on scroll. The trigger is the ghost icon button with label as its aria-label and tooltip, in the active-row paint while open. children is a function handed the close, so a pick can close it; a field with autoFocus takes focus when it opens, or else the panel does, so Escape always reaches it. Escape closes it and returns focus to the trigger; an outside click closes it, and a click in a list a control in the panel owns (the Combobox list, portaled out) counts as inside. compact makes the trigger a 24px square on a desktop that takes no more height than a 20px line (the byline's add button). <PopoverPanel> is the panel alone, for a caller that owns its trigger: mounted while open, anchored under anchorRef, or above it when the room below is too short (it places itself again when its own size changes), its left edge on the anchor's or, with align=end, its right edge on the anchor's, and onClose handed whether to return focus (Escape) or not (an outside press); wide makes it 24rem for a row of choices that needs the room. The edit form's Save version N opens the version note in one, through PublishActions, and the map's basemap control opens its settings in a wide one above the button.">
             <Variant label="the byline's add button: an account picker">
               <Popover label="Invite a geolocator" icon={<UserPlus size={14} />}>
                 {(close) => (
@@ -635,6 +637,10 @@ export default function PalettePage() {
                 </Popover>
               </span>
             </Variant>
+          </Item>
+
+          <Item name="<MapControlButton>" usage="A square icon button drawn like the MapLibre controls beside it: 29px, the panel paint and border of the zoom buttons, the native title as its tooltip like theirs, so a control the app adds to the map reads as one of the map's own. active paints the accent while what it opens is open; the rest of the button props pass through (aria-expanded, aria-controls, a ref for an anchored panel). The map's basemap control (components/map/BasemapControl.tsx) is the one use: MapLibre places the control's element in the bottom-left corner beside the zoom buttons, and the button opens a wide PopoverPanel above it.">
+            <PaletteMapControlButton />
           </Item>
 
           <Item name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing, except with tapToShow (the AvatarStack pictures, the CountBadge count), where a touch's first tap pins the bubble and the second follows the link. underParent hangs the bubble under the wrapper's parent rather than under the control (a CountBadge's list under the button it counts for). Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
@@ -2477,6 +2483,19 @@ function PaletteSwatchPicker() {
       ]}
       value={value}
       onChange={setValue}
+    />
+  );
+}
+
+function PaletteMapControlButton() {
+  const [active, setActive] = useState(false);
+  return (
+    <MapControlButton
+      label="Basemap"
+      icon={<MapIcon size={15} />}
+      active={active}
+      aria-pressed={active}
+      onClick={() => setActive((v) => !v)}
     />
   );
 }

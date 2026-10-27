@@ -118,7 +118,7 @@ function ZoneLayers({
           layout={{
             "symbol-placement": "line-center",
             "text-field": ["get", "distance"],
-            "text-font": ["Montserrat Medium", "Noto Sans Regular"],
+            "text-font": ["Montserrat Medium"],
             "text-size": 11,
             "text-offset": [0, -0.8],
           }}

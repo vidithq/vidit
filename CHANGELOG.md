@@ -6,9 +6,24 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
-- In search, you can check your own geolocations, or select every match, and add them to one of your collections at once or open a new collection with them, up to 500 events; `POST /collections/{id}/events` takes event ids or a search ([#702](https://github.com/vidithq/vidit/pull/702)).
+- A map control beside the zoom buttons picks the basemap: Auto, which follows the theme, Dark, Light, Streets or Terrain; the browser keeps the choice ([#709](https://github.com/vidithq/vidit/pull/709)).
+- On the Dark and Light basemaps, the same control sets the label language (Latin, local or both), the label density, and whether region borders and roads show ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The basemap control turns building footprints on or off on the Dark and Light basemaps ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The Dark and Light basemaps highlight military areas and airports, with their runways, from zoom 10; the basemap control turns the highlight off ([#709](https://github.com/vidithq/vidit/pull/709)).
+- A coordinate grid overlay, off by default, draws latitude and longitude lines with their labels on every basemap, finer as you zoom in ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The Dark and Light basemaps draw disputed country borders dashed, and the basemap control can draw them solid ([#709](https://github.com/vidithq/vidit/pull/709)).
+- A Relief switch on the Dark and Light basemaps shades hills and mountains from open elevation data; it is off by default ([#709](https://github.com/vidithq/vidit/pull/709)).
+- A Satellite basemap draws the cloud-free Sentinel-2 mosaic of 2016 by EOX ([#709](https://github.com/vidithq/vidit/pull/709)).
+- Two map overlays, off by default, show NASA data of the day before on every basemap: true-colour satellite imagery and fire detections ([#709](https://github.com/vidithq/vidit/pull/709)).
+- An instance can serve the basemap tiles, icons and relief from its own S3-compatible bucket: the backend's `update-map` command copies them there on a schedule, and `NEXT_PUBLIC_MAP_ASSETS_URL` points the map at them ([#709](https://github.com/vidithq/vidit/pull/709)).
 
 ### Changed
+
+- The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The map labels only countries and capitals when zoomed out, hides region borders, and shows one name per label, in Latin script ([#709](https://github.com/vidithq/vidit/pull/709)).
+- Map labels use the app font, Montserrat, served with the app ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The basemap icons are served with the app, or from the instance's own map files when it serves them ([#709](https://github.com/vidithq/vidit/pull/709)).
+- In search, you can check your own geolocations, or select every match, and add them to one of your collections at once or open a new collection with them, up to 500 events; `POST /collections/{id}/events` takes event ids or a search ([#702](https://github.com/vidithq/vidit/pull/702)).
 
 - The map's Sites switch moves into the filter panel as its first section; while sites show, the Filters button counts them and a Sites pill turns them off ([#720](https://github.com/vidithq/vidit/pull/720)).
 - Search, feed and requests show the active filters at the top of the filter panel on a wide screen, and search puts the result count at the head of the list ([#702](https://github.com/vidithq/vidit/pull/702)).

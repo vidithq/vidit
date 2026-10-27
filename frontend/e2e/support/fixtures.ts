@@ -548,24 +548,6 @@ export const ORGANIZATION_APPROVAL_REQUESTS: OrganizationApprovalRequest[] = [
   },
 ];
 
-/**
- * A maplibre style with nothing in it. The map still mounts, sizes itself and
- * draws the app's own point layers; only CARTO's basemap tiles are absent, and
- * those are a network dependency a smoke suite should not carry.
- */
-export const EMPTY_BASEMAP_STYLE = {
-  version: 8,
-  name: "e2e blank basemap",
-  sources: {},
-  layers: [
-    {
-      id: "background",
-      type: "background",
-      paint: { "background-color": "#111111" },
-    },
-  ],
-};
-
 /** A 1x1 transparent PNG, so a media slot has real bytes to lay out around. */
 export const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",

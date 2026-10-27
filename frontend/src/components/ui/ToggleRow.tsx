@@ -33,10 +33,10 @@ export function PreferenceText({
  *  row is the switch (role + click live here), so `<Switch>` renders as its
  *  visual span and a tap anywhere toggles. It takes the phone tap step.
  *
- *  `description` picks the shape. Without one: the filter toggle (micro
- *  uppercase label on a divided list). With one: a preference row (label at
- *  reading size over a line saying what it does). Same control, semantics and
- *  tap target.
+ *  `variant` picks the shape, by default from `description`. `filter`: the filter
+ *  toggle (micro uppercase label on a divided list). `setting`: a preference row
+ *  (label at reading size, over a line saying what it does when there is one).
+ *  Same control, semantics and tap target.
  *
  *  The accessible name is the label alone (`aria-label`, not the text the button
  *  holds, which would fold the description in); the description is its accessible
@@ -44,6 +44,7 @@ export function PreferenceText({
 export function ToggleRow({
   label,
   description,
+  variant = description === undefined ? "filter" : "setting",
   on,
   onToggle,
   disabled = false,
@@ -52,6 +53,7 @@ export function ToggleRow({
   label: string;
   /** A line under the label; passing one moves the row to the settings shape. */
   description?: ReactNode;
+  variant?: "filter" | "setting";
   on: boolean;
   onToggle: () => void;
   /** Reads its state but refuses the toggle, dimmed. Pair it with a `description` saying why. */
@@ -61,6 +63,7 @@ export function ToggleRow({
 }) {
   const descriptionId = useId();
   const described = description !== undefined;
+  const setting = variant === "setting";
   return (
     <button
       type="button"
@@ -73,15 +76,15 @@ export function ToggleRow({
       className={cn(
         "w-full flex items-center justify-between gap-4 text-left group disabled:opacity-50 disabled:cursor-not-allowed",
         TAP_STEP,
-        !described && "py-2.5 border-b border-neutral-800 last:border-b-0",
+        !setting && "py-2.5 border-b border-neutral-800 last:border-b-0",
         className,
       )}
     >
-      {described ? (
+      {setting ? (
         <PreferenceText
           label={label}
           description={description}
-          descriptionId={descriptionId}
+          descriptionId={described ? descriptionId : undefined}
         />
       ) : (
         <span
@@ -90,7 +93,7 @@ export function ToggleRow({
           {label}
         </span>
       )}
-      <Switch as="span" size={described ? "md" : "sm"} on={on} />
+      <Switch as="span" size={setting ? "md" : "sm"} on={on} />
     </button>
   );
 }

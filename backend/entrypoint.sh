@@ -33,6 +33,9 @@ case "$role" in
     sync-conflicts)
         exec python scripts/sync_conflicts.py
         ;;
+    update-map)
+        exec python scripts/update_map.py
+        ;;
     *)
         exec "$role" "$@"
         ;;

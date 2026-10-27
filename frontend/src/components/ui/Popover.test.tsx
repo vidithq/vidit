@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { useRef } from "react";
+import { describe, expect, it, vi } from "vitest";
 
-import { Popover } from "./Popover";
+import { Popover, PopoverPanel } from "./Popover";
 
 function Demo() {
   return (
@@ -72,5 +73,41 @@ describe("<Popover>", () => {
     fireEvent.click(trigger());
     fireEvent.click(screen.getByRole("button", { name: "Pick" }));
     expect(panel()).toBeNull();
+  });
+
+  it("opens under its anchor, or above it when the room below is too short", () => {
+    function Anchored() {
+      const anchorRef = useRef<HTMLButtonElement>(null);
+      return (
+        <>
+          <button ref={anchorRef} type="button">
+            Anchor
+          </button>
+          <PopoverPanel label="Basemap" anchorRef={anchorRef} onClose={() => {}}>
+            <p>Settings</p>
+          </PopoverPanel>
+        </>
+      );
+    }
+    const placeAt = (top: number) => {
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+        top,
+        bottom: top + 30,
+        left: 10,
+        right: 39,
+      } as DOMRect);
+      const { unmount } = render(<Anchored />);
+      const placed = screen.getByRole("dialog", { name: "Basemap" }).style.top;
+      unmount();
+      return placed;
+    };
+    vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(768);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(200);
+    try {
+      expect(placeAt(20)).toBe("54px");
+      expect(placeAt(728)).toBe(`${728 - 4 - 200}px`);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

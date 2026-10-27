@@ -5,7 +5,7 @@ import { CSRF_COOKIE } from "@/lib/auth";
 import {
   API_BASE_URL,
   APP_ORIGIN,
-  BASEMAP_STYLE_URL_PATTERN,
+  BASEMAP_URL_PATTERN,
   MEDIA_ORIGIN,
 } from "./environment";
 import {
@@ -19,7 +19,6 @@ import {
   TAGS,
   UPLOAD,
   DEFAULT_PREFERENCES,
-  EMPTY_BASEMAP_STYLE,
   EMPTY_DETECTIONS,
   EMPTY_SEARCH,
   EVENT,
@@ -178,13 +177,7 @@ function servePng(route: Route): Promise<void> {
  */
 export async function mockApi(page: Page): Promise<void> {
   await page.route(`${API_BASE_URL}/**`, fulfilApiRequest);
-  await page.route(BASEMAP_STYLE_URL_PATTERN, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(EMPTY_BASEMAP_STYLE),
-    }),
-  );
+  await page.route(BASEMAP_URL_PATTERN, (route) => route.abort());
   // The media fixture, the `_hero` / `_thumb` siblings `lib/mediaUrls.ts`
   // derives from it, and the optimizer route `next/image` rewrites them to.
   await page.route(`${MEDIA_ORIGIN}/**`, servePng);
