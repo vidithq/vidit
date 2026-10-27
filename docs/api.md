@@ -99,6 +99,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/uploads` | 🔒 | Stage one source file, or each frame of a GIF, for a later event write (multipart, one file) |
 | POST | `/uploads/from-link` | 🔒 | Stage the file of an X, public Telegram or TikTok post, by its link |
+| POST | `/uploads/from-proof` | 🔒 | Stage a copy of a proof image of an event you edit |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
 | POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
@@ -260,6 +261,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /events/import-archive/{job_id}` | 60/min |
 | `POST /uploads` | 30/min |
 | `POST /uploads/from-link` | 30/min |
+| `POST /uploads/from-proof` | 30/min |
 | `POST /sources/check` | 120/min |
 | `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
 | `POST /events/{id}/versions` | 30/min |
@@ -797,6 +799,19 @@ Stage the file of a post by its link. The server reads the post through the [cha
 | 404 | `link_not_accessible` | The post or its file is gone, restricted, or unreadable without a login |
 | 404 | `link_has_no_file` | The post serves no file, or none at `index` |
 | 503 | `upstream_busy` | The post's host or its CDN throttled or did not answer once the [retries](ingestion.md#the-chase) were spent. Try again in a minute |
+
+### `POST /uploads/from-proof` 🔒
+
+Stage a copy of a stored proof image as a source file, so an event whose proof holds the footage can fill an empty source slot without a new upload. The image must be a proof image of a live event you may edit through [`POST /events/{id}/versions`](#post-eventsidversions): your own, or an open request. The proof keeps its image and its object; the copy is a new object under `uploads/`, with the same bytes and `sha256`, plus the hero and thumbnail a source image has. It stages as [`POST /uploads`](#post-uploads) does: same expiry and per-account cap.
+
+**Request body (JSON):** `event_id`, the event's id, and `url`, the image's `src` in the event's `proof` body.
+
+**Response 201:** one `UploadRead`, as an item of [`POST /uploads`](#post-uploads). `original_filename` is the proof image's.
+
+**Errors:** those of [`POST /uploads`](#post-uploads), plus:
+| Status | Code | Case |
+|---|---|---|
+| 404 | `proof_image_not_found` | `url` is not a stored proof image of `event_id`, or the event is gone, withheld, or not yours to edit |
 
 ### `POST /sources/check` 🔒
 

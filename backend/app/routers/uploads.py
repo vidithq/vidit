@@ -11,7 +11,13 @@ from app.models.upload import Upload
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers._errors import raise_typed_error
-from app.schemas.source import LinkUploadRead, UploadFromLink, UploadList, UploadRead
+from app.schemas.source import (
+    LinkUploadRead,
+    UploadFromLink,
+    UploadFromProof,
+    UploadList,
+    UploadRead,
+)
 from app.services import uploads as uploads_service
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.storage import scrub_log
@@ -76,3 +82,23 @@ def create_upload_from_link(
             logger.warning("Link import busy for %s: %s", scrub_log(body.url), exc)
         raise_typed_error(exc, _ERROR_STATUS)
     return LinkUploadRead(**_upload_read(row).model_dump(), post_media=post_media)
+
+
+@router.post("/from-proof", response_model=UploadRead, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
+def create_upload_from_proof(
+    request: Request,
+    body: UploadFromProof,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UploadRead:
+    """Stage a copy of a proof image of an event you edit, as ``POST /uploads`` stages a file."""
+    try:
+        row = asyncio.run(
+            uploads_service.stage_from_proof(
+                db, uploader=current_user, event_id=body.event_id, url=body.url
+            )
+        )
+    except EvidenceIntakeError as exc:
+        raise_typed_error(exc, _ERROR_STATUS)
+    return _upload_read(row)

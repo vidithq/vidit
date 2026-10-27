@@ -2483,6 +2483,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/uploads/from-proof": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Upload From Proof
+         * @description Stage a copy of a proof image of an event you edit, as ``POST /uploads`` stages a file.
+         */
+        post: operations["create_upload_from_proof_api_v1_uploads_from_proof_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me": {
         parameters: {
             query?: never;
@@ -5850,6 +5870,19 @@ export interface components {
              * @default 0
              */
             index: number;
+            /** Url */
+            url: string;
+        };
+        /**
+         * UploadFromProof
+         * @description A proof image to stage a copy of as a source file, for ``POST /uploads/from-proof``.
+         */
+        UploadFromProof: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
             /** Url */
             url: string;
         };
@@ -10322,6 +10355,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LinkUploadRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_upload_from_proof_api_v1_uploads_from_proof_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadFromProof"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadRead"];
                 };
             };
             /** @description Validation Error */

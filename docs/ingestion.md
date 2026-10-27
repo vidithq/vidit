@@ -277,6 +277,8 @@ A warning is not a refusal: the detection lands either way, and review answers i
 | `source_date_unknown` | The source's post date is unknown: a source off X whose chase served no date. The provisional event date anchors on the analyst's own post alone. |
 | `duplicate_media` | The row's media already exists on another event, by exact `Media.sha256` equality against every event outside the pass. |
 
+Review answers an empty source slot from the edit form: the source's post link imports its file, or a proof image that is the footage fills the slot with a copy (see [source blocks](design.md#source-blocks)).
+
 The footage and date warnings are dropped on a detection already carrying `source_ambiguous` or `source_missing`, since an empty source slot already says why there is neither footage nor date. Only created and updated rows count, so a pass that wrote nothing reports no warnings.
 
 A request the bot opened carries two of these codes, both raised by the same `_write_warnings` pass the detections run: `source_date_unknown`, when the chase for the source served no date, and `duplicate_media`, over the footage the request stored. The remaining codes cannot apply, since a request is born with a source and the footage that fills its source slot: even when the chase answered with nothing to take, the analyst's own copy backs the slot instead, so `source_fetch_failed` and `source_footage_missing` never reach the row. Each reads the same sentence from the same table, in the bot's ✅ reply.

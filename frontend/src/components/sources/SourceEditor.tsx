@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { Download } from "lucide-react";
+import { Download, ImageUp } from "lucide-react";
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { MediaManager } from "@/components/geolocations/MediaManager";
@@ -78,8 +78,9 @@ function holdsDetails(draft: SourceDraft): boolean {
  * under both.
  *
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
- * `onPickFile` hands a picked file to the list, which uploads it, and `onImportLink` hands it a
- * link whose post's file it imports. `actions` is the header's slot for the list's controls
+ * `onPickFile` hands a picked file to the list, which uploads it, `onImportLink` hands it a
+ * link whose post's file it imports, and `onCopyProofImage` one of `proofImages`, the stored proof
+ * images the slot may take a copy of while it is empty. `actions` is the header's slot for the list's controls
  * (remove).
  *
  * `variant="site-source"` is a site's satellite source: its kind and level are fixed (satellite,
@@ -92,6 +93,8 @@ export function SourceEditor({
   update,
   onPickFile,
   onImportLink,
+  proofImages = [],
+  onCopyProofImage = () => {},
   tags,
   setTags,
   suggestedTags,
@@ -108,6 +111,9 @@ export function SourceEditor({
   update: (patch: Partial<SourceDraft>) => void;
   onPickFile: (file: File) => void;
   onImportLink: (post: LinkPost) => void;
+  /** The URLs of the proof images the slot offers, in proof order; empty offers none. */
+  proofImages?: string[];
+  onCopyProofImage?: (url: string) => void;
   /** The tag catalogue the event's Details card also reads; an event source only. */
   tags?: Tag[];
   setTags?: Dispatch<SetStateAction<Tag[]>>;
@@ -143,6 +149,9 @@ export function SourceEditor({
         : null;
 
   const post = file?.state === "importing" || file?.state === "staged" ? file.post : undefined;
+  const copied = file?.state === "copying" || file?.state === "staged" ? file.proof : undefined;
+  const copiedIndex = copied === undefined ? -1 : proofImages.indexOf(copied);
+  const proofLabel = (i: number) => `Proof image ${i + 1} of ${proofImages.length}`;
 
   const describe = (i: number, url: string) =>
     linkDescription(siteSource ? name.toLowerCase() : index, safeHostname(url.trim()), i, draft.links.length);
@@ -162,6 +171,35 @@ export function SourceEditor({
         <p className="text-xs text-neutral-500" role="status">
           Uploading {file.file.name}…
         </p>
+      )}
+      {!hasFile && proofImages.length > 0 && (
+        <Button
+          variant="ghost"
+          onClick={() => onCopyProofImage(proofImages[0])}
+          aria-label={`Use a proof image as the file of ${name.toLowerCase()}`}
+        >
+          <ImageUp size={13} />
+          Use a proof image
+        </Button>
+      )}
+      {file?.state === "copying" && (
+        <p className="text-xs text-neutral-500" role="status">
+          Copying {copiedIndex >= 0 ? proofLabel(copiedIndex).toLowerCase() : "the proof image"}…
+        </p>
+      )}
+      {copiedIndex >= 0 && proofImages.length > 1 && (
+        <Select
+          aria-label={`${name} proof image`}
+          value={copiedIndex}
+          disabled={file?.state === "copying"}
+          onChange={(e) => onCopyProofImage(proofImages[Number(e.target.value)])}
+        >
+          {proofImages.map((url, i) => (
+            <option key={url} value={i}>
+              {proofLabel(i)}
+            </option>
+          ))}
+        </Select>
       )}
       {file?.state === "importing" && (
         <p className="text-xs text-neutral-500" role="status">
