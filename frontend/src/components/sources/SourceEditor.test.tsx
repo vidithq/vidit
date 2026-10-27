@@ -64,7 +64,7 @@ function Host({
 
 const kindField = () => screen.getByRole("combobox", { name: /^Kind/ });
 
-const details = () => screen.getByRole("button", { name: "More details" });
+const details = () => screen.getByRole("button", { name: "Capture details" });
 const openDetails = () => fireEvent.click(details());
 
 const draftNow = (): SourceDraft =>
@@ -232,12 +232,12 @@ describe("SourceEditor", () => {
     ).toHaveAttribute("href", "https://archive.ph/abcde");
   });
 
-  it("reads in the order of the event page's source block, the rest under More details", () => {
+  it("reads in the order of the event page's source block, the rest under Capture details", () => {
     render(<Host initial={newSourceDraft()} />);
-    // The table's order up to the links; the rest sits under More details.
+    // The table's order up to the links; the rest sits under Capture details.
     const labels = Object.values(SOURCE_FIELDS).map(({ label }) => label);
     const essentials = labels.slice(0, labels.indexOf(SOURCE_FIELDS.links.label) + 1);
-    const order = [...essentials, "More details"].map(
+    const order = [...essentials, "Capture details"].map(
       (text) => screen.getByText(text, { exact: false, selector: "span, label, button" })
     );
     for (let i = 1; i < order.length; i++) {
@@ -247,7 +247,7 @@ describe("SourceEditor", () => {
     }
   });
 
-  it("keeps the secondary fields under a closed More details on a new source", () => {
+  it("keeps the secondary fields under a closed Capture details on a new source", () => {
     render(<Host initial={newSourceDraft()} />);
     expect(details()).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("switch", { name: "Source 1 graphic content" })).toBeNull();
@@ -257,7 +257,7 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("switch", { name: "Source 1 graphic content" })).toBeVisible();
   });
 
-  it("opens More details on a source that holds one of its fields", () => {
+  it("opens Capture details on a source that holds one of its fields", () => {
     render(<Host initial={{ ...newSourceDraft(), capturedAt: "2026-01-01T10:00" }} />);
     expect(details()).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByLabelText("Captured", { selector: "input" })).toHaveValue("2026-01-01T10:00");

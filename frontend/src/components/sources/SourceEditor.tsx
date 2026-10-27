@@ -61,7 +61,7 @@ export interface SourceEditorInvalid {
   captured?: boolean;
 }
 
-/** Whether a field under **More details** holds a value. */
+/** Whether a field under **Capture details** holds a value. */
 function holdsDetails(draft: SourceDraft): boolean {
   const position =
     hasCapturePosition(draft.kind) && (draft.captureLat.trim() !== "" || draft.captureLng.trim() !== "");
@@ -72,7 +72,7 @@ function holdsDetails(draft: SourceDraft): boolean {
  * One source block of an event form, in the order the event page's source block reads: the
  * file (uploaded on its own request as soon as it is picked), the title, the level and the
  * kind, then the links with their post time and archived copy (and the imagery provider check
- * on a satellite or aircraft source). **More details** holds the capture time, the capture
+ * on a satellite or aircraft source). **Capture details** holds the capture time, the capture
  * position (none on a document kind), the tags and the graphic flag. A `wide` editor (the lone
  * source) sets the file beside the title, level and kind once the card is wide enough, the rest
  * under both.
@@ -84,7 +84,7 @@ function holdsDetails(draft: SourceDraft): boolean {
  *
  * `variant="site-source"` is a site's satellite source: its kind and level are fixed (satellite,
  * context), so neither shows, the capture time is required and sits under the title, and
- * `extra` (the source's note) closes the card in place of **More details**.
+ * `extra` (the source's note) closes the card in place of **Capture details**.
  */
 export function SourceEditor({
   draft,
@@ -188,7 +188,7 @@ export function SourceEditor({
     </div>
   );
 
-  // Required on a site source, where the zone rule reads it; optional under More details otherwise.
+  // Required on a site source, where the zone rule reads it; optional under Capture details otherwise.
   const captured = (
     <div className="space-y-1.5">
       <FieldLabel
@@ -268,7 +268,7 @@ export function SourceEditor({
 
   const details = (
     <Disclosure
-      label="More details"
+      label="Capture details"
       open={detailsOpen}
       onToggle={() => setDetailsOpen((open) => !open)}
     >
@@ -417,7 +417,7 @@ export function SourceEditor({
       <SourceHeader name={name} actions={actions} />
       {/* A lone editor reads like the event page's lone source: once the card is 42rem wide the
           file sits left of the title, level and kind, 3:2 (`DetailCard leadBeside`), and the links
-          and More details take the card's width under both, so a link keeps its one-row layout;
+          and Capture details take the card's width under both, so a link keeps its one-row layout;
           narrower, everything stacks. */}
       <div className={cn("grid gap-4", wide && cn(LEAD_BESIDE_SPLIT, "@2xl:gap-x-5"))}>
         {fileSlot}

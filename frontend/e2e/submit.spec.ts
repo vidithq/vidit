@@ -111,7 +111,7 @@ test.describe("submit", () => {
 
     // Scrolled down, the actions stay top right while the title goes. The source's extra fields
     // make the form taller than the screen.
-    await page.getByRole("region", { name: "Source 1" }).getByRole("button", { name: "More details" }).click();
+    await page.getByRole("region", { name: "Source 1" }).getByRole("button", { name: "Capture details" }).click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expect(page.getByLabel("Title", { exact: true })).not.toBeInViewport();
     const pinned = (await rail.boundingBox())!;
@@ -269,7 +269,7 @@ test.describe("submit", () => {
     const first = page.getByRole("region", { name: "Source 1" });
     await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
-    await first.getByRole("button", { name: "More details" }).click();
+    await first.getByRole("button", { name: "Capture details" }).click();
     await expect(first.getByLabel("Latitude", { exact: true })).toBeVisible();
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Add a source" }));
 
@@ -328,8 +328,8 @@ test.describe("submit", () => {
       await page.goto("/submit?mode=single");
       const source = page.getByRole("region", { name: "Source 1" });
       await source.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
-      // The capture position sits under the source's folded More details.
-      await source.getByRole("button", { name: "More details" }).click();
+      // The capture position sits under the source's folded Capture details.
+      await source.getByRole("button", { name: "Capture details" }).click();
       const location = page.getByRole("heading", { name: /^Location/ }).locator("xpath=ancestor::section[1]");
 
       for (const box of [location, source]) {
@@ -506,7 +506,7 @@ test.describe("submit", () => {
 
     // A source: a click creates the typed tag and picks it, a chip click removes it.
     const source = page.getByRole("region", { name: "Source 1" });
-    await source.getByRole("button", { name: "More details" }).click();
+    await source.getByRole("button", { name: "Capture details" }).click();
     const field = source.getByRole("combobox", { name: "Source 1 tags" });
     await field.fill("Rubble");
     const list = page.getByRole("listbox", { name: "Source 1 tags" });
@@ -532,7 +532,7 @@ test.describe("submit", () => {
       await page.goto("/submit?mode=single");
 
       const source = page.getByRole("region", { name: "Source 1" });
-      await source.getByRole("button", { name: "More details" }).click();
+      await source.getByRole("button", { name: "Capture details" }).click();
       const field = source.getByLabel(label).and(page.locator("input"));
       await expect(field).toBeVisible();
       await field.fill("2025-01-03T14:20");
