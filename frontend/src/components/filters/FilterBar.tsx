@@ -7,13 +7,13 @@ import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilt
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
-import { cn } from "@/lib/cn";
 
 /**
- * The row above a filtered list: the active-filter pills and, below `lg`, the entry to the filter
- * rail (`PageWithRail narrow="hidden"`). The "Filters (N)" button opens the same panel full screen
- * on a draft, so the list refetches once, on Apply. Clear empties the draft; closing without Apply
- * drops it.
+ * The row above a filtered list below `lg`, where the filter rail (`PageWithRail narrow="hidden"`)
+ * is gone: the entry to the rail's panel and the active-filter pills. From `lg` up the row hides,
+ * and `<FilterRail>` carries the pills at the head of the rail. The "Filters (N)" button opens the
+ * panel full screen on a draft, so the list refetches once, on Apply. Clear empties the draft;
+ * closing without Apply drops it.
  */
 export function FilterBar<S>({
   value,
@@ -38,15 +38,9 @@ export function FilterBar<S>({
   const close = () => setDraft(null);
 
   return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center gap-2",
-        pills.length === 0 && "lg:hidden",
-      )}
-    >
+    <div className="flex flex-wrap items-center gap-2 lg:hidden">
       <Button
         variant="secondary"
-        className="lg:hidden"
         aria-haspopup="dialog"
         onClick={() => setDraft({ value })}
       >

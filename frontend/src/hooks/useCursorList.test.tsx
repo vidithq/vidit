@@ -91,4 +91,31 @@ describe("useCursorList", () => {
       "/rows?cursor=c1",
     ]);
   });
+
+  it("fetches nothing for a null path", () => {
+    const { result } = renderHook(() => useCursorList<string>(() => null));
+
+    expect(apiFetchPage).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.items).toEqual([]);
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it("posts the body with every page", async () => {
+    apiFetchPage
+      .mockResolvedValueOnce({ items: ["a"], nextCursor: "c1" })
+      .mockResolvedValueOnce({ items: ["b"], nextCursor: null });
+    const body = JSON.stringify({ q: "dam" });
+    const { result } = renderHook(() =>
+      useCursorList<string>(buildPath, undefined, undefined, body),
+    );
+    await waitFor(() => expect(result.current.items).toEqual(["a"]));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toEqual(["a", "b"]));
+    expect(apiFetchPage.mock.calls.map(([path, init]) => [path, init.method, init.body])).toEqual([
+      ["/rows", "POST", body],
+      ["/rows?cursor=c1", "POST", body],
+    ]);
+  });
 });

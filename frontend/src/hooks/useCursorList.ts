@@ -18,6 +18,9 @@ const bareArray = (payload: unknown): unknown[] => payload as unknown[];
 type Page<P> = { items: P; nextCursor: string | null };
 const linkCursor = (page: Page<unknown>): string | null => page.nextCursor;
 
+const pageRequest = (body: string | undefined): RequestInit =>
+  body === undefined ? {} : { method: "POST", body };
+
 /**
  * Declarative GET for a cursor-paged list: first page on mount and path change, further pages
  * appended on `loadMore`. The counterpart of `useApiResource` for capped lists (max 100 rows):
@@ -35,15 +38,20 @@ const linkCursor = (page: Page<unknown>): string | null => page.nextCursor;
  *
  * Each new path or `reload` starts a new walk: until its first page lands the hook reports
  * `loading` with no rows and no cursor, and a page fetched for an earlier walk never appends.
+ * A `null` path is no walk: the hook fetches nothing and reports no rows.
+ *
+ * `body` makes every page a `POST` carrying it, for a read whose query is a JSON object (the
+ * collectable matches of a search); a new body starts a new walk, as a new path does.
  *
  * A failed `loadMore` keeps the rows and the cursor and sets `error`, so callers render the
  * rows beside the message. Calling `loadMore` again retries the same page and clears `error`
  * once it lands.
  */
 export function useCursorList<T, P = T[]>(
-  buildPath: (cursor: string | null) => string,
+  buildPath: (cursor: string | null) => string | null,
   rows: (payload: P) => T[] = bareArray as (payload: P) => T[],
-  next: (page: Page<P>) => string | null = linkCursor
+  next: (page: Page<P>) => string | null = linkCursor,
+  body?: string,
 ): {
   items: T[];
   error: string | null;
@@ -69,7 +77,7 @@ export function useCursorList<T, P = T[]>(
 
   // Adjusted during render, React's pattern for state that follows a prop: a new path or a
   // reload bumps the generation before the first-page effect runs.
-  const walkKey = `${reloadToken}:${firstPath}`;
+  const walkKey = `${reloadToken}:${firstPath}:${body ?? ""}`;
   const [walk, setWalk] = useState({ key: walkKey, generation: 0 });
   if (walk.key !== walkKey) {
     setWalk({ key: walkKey, generation: walk.generation + 1 });
@@ -77,8 +85,9 @@ export function useCursorList<T, P = T[]>(
   const generation = walk.generation;
 
   useEffect(() => {
+    if (firstPath === null) return;
     const controller = new AbortController();
-    apiFetchPage<P>(firstPath, { signal: controller.signal })
+    apiFetchPage<P>(firstPath, { ...pageRequest(body), signal: controller.signal })
       .then((page) => {
         if (controller.signal.aborted) return;
         setResult({
@@ -102,19 +111,20 @@ export function useCursorList<T, P = T[]>(
       moreRequest.current?.abort();
       moreRequest.current = null;
     };
-  }, [firstPath, generation, rows, next]);
+  }, [firstPath, generation, rows, next, body]);
 
   const fresh = result.generation === generation ? result : null;
   const cursor = fresh?.cursor ?? null;
 
   const loadMore = useCallback(() => {
-    if (cursor === null || loadingMore) return;
+    const path = cursor === null ? null : buildPath(cursor);
+    if (path === null || loadingMore) return;
     // Captured now: if a new walk starts before the answer lands, its rows must not append.
     const started = generation;
     const controller = new AbortController();
     moreRequest.current = controller;
     setLoadingMore(true);
-    apiFetchPage<P>(buildPath(cursor), { signal: controller.signal })
+    apiFetchPage<P>(path, { ...pageRequest(body), signal: controller.signal })
       .then((page) => {
         if (controller.signal.aborted) return;
         // Append, never replace: the walk is totally ordered.
@@ -147,14 +157,14 @@ export function useCursorList<T, P = T[]>(
         // the flag.
         setLoadingMore(false);
       });
-  }, [buildPath, cursor, generation, loadingMore, rows, next]);
+  }, [buildPath, cursor, generation, loadingMore, rows, next, body]);
 
   const reload = useCallback(() => setReloadToken((n) => n + 1), []);
 
   return {
     items: fresh?.items ?? [],
     error: fresh?.error ?? null,
-    loading: fresh === null,
+    loading: firstPath !== null && fresh === null,
     loadingMore,
     hasMore: cursor !== null,
     loadMore,

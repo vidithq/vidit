@@ -180,13 +180,13 @@ describe("EventHistoryPage", () => {
     expect(within(row(3)).queryByText("Title")).toBeNull();
   });
 
-  it("offers Load more while the walk has pages, holding the incomplete row back", () => {
+  it("offers Show more while the walk has pages, holding the incomplete row back", () => {
     walk.items = [version(2, snapshot("v2 title"))];
     walk.hasMore = true;
     render(<EventHistoryPage />);
     // Version 2's authorship is filed on version 1, which is not loaded yet.
     expect(screen.getAllByText(/^v[0-9]+$/).map((el) => el.textContent)).toEqual(["v3"]);
-    expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show more" })).toBeTruthy();
   });
 
   it("shows the one version of a record nobody has corrected", () => {

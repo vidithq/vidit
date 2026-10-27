@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LoadMoreRow } from "./LoadMoreRow";
+import { LoadMoreRow, ShowMoreLink } from "./LoadMoreRow";
 
 const walk = (extra: Partial<Parameters<typeof LoadMoreRow>[0]["walk"]> = {}) => ({
   hasMore: true,
@@ -24,7 +24,7 @@ describe("LoadMoreRow", () => {
   it("loads on click, spins while loading, and retries a failed page", () => {
     const idle = walk();
     const { rerender } = render(<LoadMoreRow walk={idle} />);
-    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(idle.loadMore).toHaveBeenCalledTimes(1);
 
     rerender(<LoadMoreRow walk={walk({ loadingMore: true })} />);
@@ -50,5 +50,14 @@ describe("LoadMoreRow", () => {
     expect(observe).not.toHaveBeenCalled();
     rerender(<LoadMoreRow walk={walk()} infinite />);
     expect(observe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ShowMoreLink", () => {
+  it("is the same Show more control, as a link to the whole list", () => {
+    render(<ShowMoreLink href="/search?type=event&author=ana" />);
+
+    const link = screen.getByRole("link", { name: "Show more" });
+    expect(link).toHaveAttribute("href", "/search?type=event&author=ana");
   });
 });

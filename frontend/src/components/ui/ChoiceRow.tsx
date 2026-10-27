@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { SegmentedControl, type SegmentedControlOption } from "./SegmentedControl";
+import { PreferenceText } from "./ToggleRow";
 
 /**
  * A pick-one preference row, the sibling of `<ToggleRow>` for a setting with a few named choices:
@@ -33,10 +34,7 @@ export function ChoiceRow<T extends string>({
         className,
       )}
     >
-      <div>
-        <p className="text-sm text-neutral-200">{label}</p>
-        <p className="text-xs text-neutral-500">{description}</p>
-      </div>
+      <PreferenceText label={label} description={description} />
       <SegmentedControl aria-label={label} options={options} value={value} onChange={onChange} />
     </div>
   );

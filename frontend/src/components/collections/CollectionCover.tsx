@@ -14,10 +14,18 @@ import type { CollectionCoverTile } from "@/lib/collections";
  * Arrangement by tile count: one fills the slot, two split it, three put the
  * earliest tall on the left, four fill a 2x2. The 2px gaps read as one picture
  * divided.
+ *
+ * `className` resizes the slot (the bulk add panel's 40px square), caller-wins through `cn`.
  */
-export function CollectionCover({ cover }: { cover: CollectionCoverTile[] }) {
+export function CollectionCover({
+  cover,
+  className,
+}: {
+  cover: CollectionCoverTile[];
+  className?: string;
+}) {
   if (cover.length === 0) {
-    return <MediaThumb className="w-full" size="hero" />;
+    return <MediaThumb className={cn("w-full", className)} size="hero" />;
   }
   return (
     <div
@@ -25,6 +33,7 @@ export function CollectionCover({ cover }: { cover: CollectionCoverTile[] }) {
         "grid aspect-video w-full gap-[2px] overflow-hidden rounded-md bg-neutral-800",
         cover.length === 1 ? "grid-cols-1" : "grid-cols-2",
         cover.length > 2 && "grid-rows-2",
+        className,
       )}
     >
       {cover.map((tile, index) => (

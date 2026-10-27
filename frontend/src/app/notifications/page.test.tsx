@@ -114,7 +114,7 @@ describe("NotificationsPage", () => {
     render(<NotificationsPage />);
 
     await waitFor(() => expect(api.refresh).toHaveBeenCalled());
-    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
     await waitFor(() => expect(api.refresh).toHaveBeenCalledTimes(2));
 
     const posted = api.apiFetch.mock.calls

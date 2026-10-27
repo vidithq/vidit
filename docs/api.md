@@ -128,6 +128,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | PATCH | `/collections/{id}` | 🔒 | Write your collection's title and description |
 | DELETE | `/collections/{id}` | 🔒 | Drop your collection; the events it held stay |
 | GET | `/collections/{id}/events` | 🌐 | Its items, oldest event first (cursor-paged) |
+| POST | `/collections/{id}/events` | 🔒 | Put many of your events on it, by id or by search (idempotent) |
+| POST | `/collections/collectable-count` | 🔒 | Count your events a search lists that a collection can hold |
+| POST | `/collections/collectable-events` | 🔒 | Page through those events, newest first (cursor-paged) |
 | PUT | `/collections/{id}/events/{event_id}` | 🔒 | Put one of your events on it (idempotent) |
 | DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
 | **Sites** | | | |
@@ -275,6 +278,8 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
 | `POST /collections/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
+| `POST /collections/{id}/events` | 10/min |
+| `POST /collections/collectable-count`, `POST /collections/collectable-events` | 60/min |
 | **Sites** | |
 | `GET /sites`, `POST /sites/overlaps` | 60/min |
 | `GET /sites/{id}`, `GET /sites/{id}/versions`, `GET /sites/{id}/versions/{version_no}` | 120/min |
@@ -2282,6 +2287,83 @@ Three refusals, in this order: the collection is not yours (403); the event does
 | 403 | The collection belongs to someone else, or the event does not credit you |
 | 404 | `collection_not_found`, or `event_not_found` |
 | 409 | `event_not_collectable` |
+
+---
+
+### `POST /collections/{id}/events` 🔒
+
+Put many events that credit you on one of your collections in one transaction. Name the events in one of two ways:
+
+- `event_ids`: the ids. Repeated ids collapse to one.
+- `match`: a search. The server lists your events that the [`GET /search`](#get-search) `geolocations` group returns for that search, whichever page a client has loaded. Only events that credit you and whose state a collection shows count. A `match` with an empty `q` and no filter names no event.
+
+`exclude_event_ids` leaves events out of a `match`, such as the ones a reader took off a list of its results. It applies to a `match` only, so sending it with `event_ids` is a 422. Repeated ids collapse to one, an id the match does not name changes nothing, and the server removes the excluded events before it counts the match against the 500 cap. More than 500 excluded ids is a 422 `too_many_events`.
+
+**Body** (exactly one of `event_ids` and `match`, else 422):
+```json
+{ "event_ids": ["7c9e6679-7425-40de-944b-e07fc1f90ae7", "3f2b8a1c-5d4e-4c6f-9a7b-2e1d0c9b8a76"] }
+```
+```json
+{
+  "match": { "q": "kakhovka", "filters": { "tag": ["dam"], "occurred_date_from": "2026-06-01" } },
+  "exclude_event_ids": ["7c9e6679-7425-40de-944b-e07fc1f90ae7"]
+}
+```
+
+`filters` takes the names and values of the `GET /search` filter set; an omitted key is no filter. A value outside its domain is a 422, as on `GET /search`.
+
+The write is idempotent. An event already on the collection is skipped and counted. With `event_ids`, an event whose state a collection does not show is skipped and counted too, while an unknown id (404) or an event that does not credit you (403) fails the whole call and writes nothing.
+
+**Response 200:**
+```json
+{ "added": 44, "skipped": { "already_in_collection": 3, "not_collectable": 0 } }
+```
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 403 | The collection belongs to someone else, or an id names an event that does not credit you |
+| 404 | `collection_not_found`, or `event_not_found` |
+| 422 | `too_many_events`: more than 500 events, or more than 500 excluded ids; neither mode, or both; `exclude_event_ids` beside `event_ids`; a filter value outside its domain |
+
+---
+
+### `POST /collections/collectable-count` 🔒
+
+Count the events [`POST /collections/{id}/events`](#post-collectionsidevents) resolves for a `match`: your events, in a state a collection shows, that the search lists in its `geolocations` group. The count ignores what any collection already holds.
+
+**Body:** the `match` object of `POST /collections/{id}/events`.
+```json
+{ "q": "kakhovka", "filters": { "tag": ["dam"] } }
+```
+
+**Response 200:** `{ "total": 47 }`
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | A filter value outside its domain |
+
+---
+
+### `POST /collections/collectable-events` 🔒
+
+The events [`POST /collections/collectable-count`](#post-collectionscollectable-count) counts, as [`EventList`](#get-events) rows, newest first (`created_at`, then `id`, both descending). The body is the same `match` object. Every read of the set goes through one server function, so the count, this list and the bulk add never disagree.
+
+**Query params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `limit` | int | Rows per page, default 20, capped at 100. |
+| `cursor` | string | The opaque cursor from a `Link: rel="next"` header. |
+
+Follow the `Link: rel="next"` cursor, sent exactly when the next page holds a row, and post the same body with it.
+
+**Response 200:** `EventList[]`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | A filter value outside its domain, or a malformed cursor |
 
 ---
 

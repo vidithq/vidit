@@ -264,7 +264,7 @@ function InviteCodeRow({
 
 export function OnboardingPanel() {
   // The invite table is capped and cursor-paged (the whole table returns only its first 100 rows),
-  // so the console walks it with Load more.
+  // so the console walks it with Show more.
   const buildPath = useCallback(
     (cursor: string | null) => inviteCodesPath(cursor),
     [],

@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import ColumnElement, cast, func, literal_column, or_, text, tuple_
+from sqlalchemy import ColumnElement, cast, false, func, literal_column, or_, text, tuple_
 from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
+from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.elements import ColumnClause
 
@@ -44,6 +46,7 @@ from app.services.collections import (
 )
 from app.services.event_filters import (
     EventFilters,
+    collectable_events,
     credited_to,
     owner_username_matches,
     visible_events,
@@ -99,6 +102,22 @@ def _event_match(q: str, tsquery: ColumnElement) -> ColumnElement[bool]:
         Event.sources.any(_source_tsvector().op("@@")(tsquery)),
         Event.sources.any(Source.links.any(SourceLink.url.icontains(q, autoescape=True))),
     )
+
+
+def _matching(stmt: SAQuery, *criteria, query: str, view: str, filters: EventFilters) -> SAQuery:
+    """Narrow ``stmt`` to the events an event group matches: ``filters`` on ``view``, the group's
+    ``criteria``, and :func:`_event_match` on a non-empty ``query`` (already stripped)."""
+    stmt = filters.apply(stmt, view=view).filter(*criteria)
+    if query:
+        stmt = stmt.filter(_event_match(query, func.plainto_tsquery(_TS_CONFIG, query)))
+    return stmt
+
+
+def _located_hits() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+    """What the Geolocations group adds to the ``located`` view: a live ``geolocated`` or
+    ``detected`` row with a subject coordinate. A ``requested`` row may carry an approximate
+    guess yet belongs to the requested view; closed rows stay out."""
+    return Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)), Event.coords.isnot(None)
 
 
 def _collection_tsvector():
@@ -163,10 +182,7 @@ def _search_events(
         rank.label("rank"),
         func.count().over().label("total_count"),
     )
-    stmt = filters.apply(stmt, view=view).filter(*extra_criteria)
-    if q:
-        stmt = stmt.filter(_event_match(q, tsquery))
-    ranked = stmt.subquery()
+    ranked = _matching(stmt, *extra_criteria, query=q, view=view, filters=filters).subquery()
 
     page = db.query(ranked)
     if after is not None:
@@ -198,15 +214,12 @@ def search_geolocations(
     """One page of located events matching ``query``, the whole match count, and the
     next page's cursor (``None`` on the last page). ``after`` is the decoded cursor.
 
-    Live ``geolocated`` / ``detected`` rows with a subject coordinate. The
-    status predicate is needed because a ``requested`` row may carry an
-    approximate guess yet belongs to the requested view. Closed rows stay out.
-    ``hits`` are dicts for the router's Pydantic schema.
+    The rows :func:`_located_hits` names. ``hits`` are dicts for the router's
+    Pydantic schema.
     """
     ids, highlight_by_id, total, next_cursor = _search_events(
         db,
-        Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)),
-        Event.coords.isnot(None),
+        *_located_hits(),
         query=query,
         limit=limit,
         view="located",
@@ -258,6 +271,32 @@ def search_geolocations(
             }
         )
     return out, total, next_cursor
+
+
+def collectable_matches(
+    db: Session, *columns: Any, query: str, filters: EventFilters, user: User
+) -> SAQuery:
+    """``columns`` (``Event.id`` when none) of each of ``user``'s events the Geolocations group
+    lists for ``query`` and ``filters`` that a collection can hold. Unordered and unlimited, so
+    the set does not depend on how many hits a page has loaded; the count, the paged read and
+    the bulk add of ``services/collections_bulk`` all read it.
+
+    The group's own matching (:func:`_matching` on :func:`_located_hits`), narrowed to the
+    events credited to ``user`` (``services/event_filters.credited_to``) and to
+    ``services/event_filters.collectable_events``. An empty ``query`` with no active filter
+    matches nothing, as in :func:`search_all`.
+    """
+    q = query.strip()
+    stmt = _matching(
+        db.query(*(columns or (Event.id,))),
+        *_located_hits(),
+        credited_to([user.id]),
+        collectable_events(),
+        query=q,
+        view="located",
+        filters=filters,
+    )
+    return stmt if q or filters.active else stmt.filter(false())
 
 
 def search_requests(

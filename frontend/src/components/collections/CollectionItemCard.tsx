@@ -10,11 +10,12 @@ import { eventHref } from "@/lib/routes";
  * lifecycle badge and without the byline (a collection is one analyst's work
  * and the block above names them).
  *
- * With `onSelect` it is the collection page's row: the compact card without the
- * height floor, which picks the player's step instead of opening the event; the
- * event's page is reached from the player panel's title. Without it, it is the
- * feed card, media under the title, linking to the event: one block of the
- * write pages' carousel of held events, whose remove control sits outside it.
+ * Both modes are the compact card without the height floor. With `onSelect` it
+ * is the collection page's row, which picks the player's step instead of
+ * opening the event; the event's page is reached from the player panel's title.
+ * Without it, it is one row of the write pages' list of held events, linking to
+ * the event, with no tag row, so the list stays one line of meta per event; its
+ * remove control sits outside it.
  */
 export function CollectionItemCard({
   item,
@@ -33,25 +34,20 @@ export function CollectionItemCard({
     media: item.media ?? undefined,
     isGraphic: item.is_graphic,
     coords: item.coords,
-    tags: item.tags,
+    date: item.occurred_date ?? undefined,
+    variant: "compact" as const,
+    uniformHeight: false,
   };
 
   return onSelect ? (
     <EntityCard
       {...slots}
-      variant="compact"
-      date={item.occurred_date ?? undefined}
-      uniformHeight={false}
+      tags={item.tags}
       onSelect={onSelect}
       selected={selected}
       selectLabel={`Read this collection from ${item.title}`}
     />
   ) : (
-    <EntityCard
-      {...slots}
-      variant="feed"
-      dates={item.occurred_date ? [{ label: "Event", date: item.occurred_date }] : undefined}
-      detailHref={eventHref(item.id)}
-    />
+    <EntityCard {...slots} detailHref={eventHref(item.id)} />
   );
 }

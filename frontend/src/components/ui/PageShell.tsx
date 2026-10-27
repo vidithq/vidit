@@ -30,6 +30,7 @@ export function PageShell({
   onBack,
   actions,
   stickyActions,
+  stickyActionsIdle = false,
   controls,
   rail,
   railLabel,
@@ -55,6 +56,10 @@ export function PageShell({
    *  the page scrolls the title goes and they stay pinned at the top right of the column. They
    *  come before the title in the DOM and the tab order. */
   stickyActions?: ReactNode;
+  /** Keeps the room of `stickyActions` but hides them: invisible, inert, and with no surface once
+   *  the page scrolls. For actions that come and go with a page state (the search page's Add to
+   *  collection, while nothing is selected), so the header does not move when they return. */
+  stickyActionsIdle?: boolean;
   /** The view controls under the title, left-aligned (a scope or sort `SegmentedControl`, a
    *  mode picker), with any companion control pushed to the row's right end. */
   controls?: ReactNode;
@@ -226,13 +231,14 @@ export function PageShell({
                 data-stuck={stuck || undefined}
                 className={cn(
                   "pointer-events-auto -m-2 max-w-[calc(100%+1rem)] lg:max-w-[calc((100%-1.5rem)*0.35+1rem)] rounded-lg border p-[7px] transition-colors",
-                  stuck
+                  stuck && !stickyActionsIdle
                     ? "border-neutral-800 bg-neutral-950/95 shadow-lg backdrop-blur-sm"
                     : "border-transparent",
+                  stickyActionsIdle && "invisible",
                 )}
               >
                 {/* The one landmark of a page's actions, so no caller spells it. */}
-                <aside ref={stickyRef} aria-label="Actions">
+                <aside ref={stickyRef} aria-label="Actions" inert={stickyActionsIdle}>
                   {stickyActions}
                 </aside>
               </div>

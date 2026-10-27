@@ -49,9 +49,10 @@ describe("CollectionItemCard", () => {
     expect(onSelect).toHaveBeenCalled();
   });
 
-  it("names the event date on the card that opens the event", () => {
-    render(<CollectionItemCard item={ITEM} />);
+  it("keeps the row that opens the event to one meta line: the date, no tags", () => {
+    render(<CollectionItemCard item={{ ...ITEM, tags: [{ id: "t1", name: "rail" }] }} />);
 
-    expect(screen.getByText(/^Event /)).toBeInTheDocument();
+    expect(screen.getByText("14 Mar 2026")).toBeInTheDocument();
+    expect(screen.queryByText("rail")).not.toBeInTheDocument();
   });
 });

@@ -23,6 +23,7 @@ vi.mock("@/hooks/useApiResource", () => ({
 }));
 
 const createCollection = vi.fn();
+const addEventsToCollection = vi.fn();
 const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
@@ -31,17 +32,30 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     description: string,
     ids: string[],
   ) => createCollection(title, description, ids),
+  addEventsToCollection: (id: string, target: unknown) => addEventsToCollection(id, target),
   searchPickableEvents: (username: string, q: string) =>
     searchPickableEvents(username, q),
 }));
 
-// The add block's list only has to render without the network (the walk is tested in `useCursorList`).
+// The add block's list and a match's pages only have to render without the network (the walk is
+// tested in `useCursorList`); the mock tells them apart by their first page's path.
 const useCursorList = vi.fn();
 vi.mock("@/hooks/useCursorList", () => ({
-  useCursorList: () => useCursorList(),
+  useCursorList: (
+    buildPath: (cursor: string | null) => string | null,
+    _rows: unknown,
+    _next: unknown,
+    body?: string,
+  ) => useCursorList(buildPath(null), body),
 }));
 
-import type { Collection } from "@/lib/collections";
+import { ApiError } from "@/lib/api";
+import {
+  newCollectionFromSelectionHref,
+  type Collection,
+  type PickableEvent,
+  type SelectionHandoff,
+} from "@/lib/collections";
 
 import NewCollectionPage from "./page";
 
@@ -65,17 +79,28 @@ const EVENT = {
 /** The same event as its detail read. */
 const EVENT_DETAIL = { ...EVENT, media: [] };
 
-/** What the add block lists (`useCursorList`'s shape). */
+/** A `useCursorList` result holding `items`. */
+const walkOf = (items: unknown[], more: Partial<{ hasMore: boolean; loadMore: () => void }> = {}) => ({
+  items,
+  error: null,
+  loading: false,
+  loadingMore: false,
+  hasMore: false,
+  loadMore: vi.fn(),
+  reload: vi.fn(),
+  ...more,
+});
+
+/** What the add block lists. */
 function mockBrowse(items: unknown[]) {
-  useCursorList.mockReturnValue({
-    items,
-    error: null,
-    loading: false,
-    loadingMore: false,
-    hasMore: false,
-    loadMore: vi.fn(),
-    reload: vi.fn(),
-  });
+  useCursorList.mockReturnValue(walkOf(items));
+}
+
+/** The pages of a search match so far, beside an empty add block. */
+function mockMatchPages(items: unknown[], more: Partial<{ hasMore: boolean; loadMore: () => void }> = {}) {
+  useCursorList.mockImplementation((path: string | null) =>
+    path?.startsWith("/collections/collectable-events") ? walkOf(items, more) : walkOf([]),
+  );
 }
 
 const created: Collection = {
@@ -111,6 +136,10 @@ beforeEach(() => {
   searchPickableEvents.mockReset();
   useCursorList.mockReset();
   searchParams.delete("event");
+  searchParams.delete("selection");
+  window.sessionStorage.clear();
+  addEventsToCollection.mockReset();
+
   useAuth.mockReturnValue({ user: USER, loading: false });
   // The hook reads nothing while the path is null (every render without `?event=`).
   useApiResource.mockImplementation((path: string | null) => ({
@@ -267,5 +296,136 @@ describe("NewCollectionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(push).toHaveBeenCalledWith("/events/e1");
+  });
+});
+
+describe("NewCollectionPage with a search selection", () => {
+  /** Park a selection the way the search page does and point the page at its token. */
+  function handOff(handoff: SelectionHandoff) {
+    const href = newCollectionFromSelectionHref(handoff);
+    const token = new URL(href, "http://localhost").searchParams.get("selection");
+    expect(token).toBeTruthy();
+    searchParams.set("selection", token as string);
+  }
+
+  it("holds the checked rows it was handed, removable, and the create sends what is left", async () => {
+    const row = (id: string, title: string): PickableEvent => ({
+      ...EVENT,
+      id,
+      title,
+      status: "geolocated",
+      media: null,
+    });
+    handOff({
+      target: { eventIds: ["e7", "e8"] },
+      rows: [row("e7", "Depot fire"), row("e8", "Bridge strike")],
+      count: 2,
+      from: "/search?q=dam",
+    });
+    render(<NewCollectionPage />);
+
+    // The rows came with the selection: nothing to read, and no count card.
+    expect(useApiResource).not.toHaveBeenCalledWith(expect.stringMatching(/^\/events\//));
+    expect(screen.getByText("Depot fire")).toBeInTheDocument();
+    expect(screen.getByText("Bridge strike")).toBeInTheDocument();
+    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
+    expect(await screen.findByText("The collection opens with 2 geolocations.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Depot fire from this collection" }));
+    expect(screen.getByText("The collection opens with 1 geolocation.")).toBeInTheDocument();
+
+    await fillForm();
+    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c9"));
+    expect(createCollection).toHaveBeenCalledWith("March strikes", expect.any(String), ["e8"]);
+    expect(addEventsToCollection).not.toHaveBeenCalled();
+    // Spent: Back to this page opens the plain form.
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("shows a match's events a page at a time, and the save adds the match less the removed", async () => {
+    const match = { q: "dam", tags: ["flood"] };
+    handOff({ target: { match }, rows: [], count: 44, from: "/search?q=dam" });
+    const loadMore = vi.fn();
+    const row = (id: string, title: string): PickableEvent => ({
+      ...EVENT,
+      id,
+      title,
+      status: "geolocated",
+      media: null,
+    });
+    mockMatchPages([row("m1", "Dam breach"), row("m2", "Flooded village")], {
+      hasMore: true,
+      loadMore,
+    });
+    addEventsToCollection.mockResolvedValue({
+      added: 43,
+      skipped: { already_in_collection: 0, not_collectable: 0 },
+    });
+    render(<NewCollectionPage />);
+
+    // The match's own search, posted as the walk's body; no count card any more.
+    expect(useCursorList).toHaveBeenCalledWith(
+      "/collections/collectable-events?limit=20",
+      JSON.stringify({ q: "dam", filters: { tag: ["flood"] } }),
+    );
+    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
+    expect(screen.getByText("Dam breach")).toBeInTheDocument();
+    expect(screen.getByText("44 events, ordered by event date, earliest first.")).toBeInTheDocument();
+    expect(screen.getByText("The collection opens with 44 geolocations.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(loadMore).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Dam breach from this collection" }));
+    expect(screen.queryByText("Dam breach")).not.toBeInTheDocument();
+    expect(screen.getByText("The collection opens with 43 geolocations.")).toBeInTheDocument();
+
+    await fillForm();
+    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c9"));
+    expect(createCollection).toHaveBeenCalledWith("March strikes", expect.any(String), []);
+    expect(addEventsToCollection).toHaveBeenCalledWith("c9", { match, excludeEventIds: ["m1"] });
+  });
+
+  it("keeps the collection it made when the match add fails, and a retry only adds", async () => {
+    handOff({ target: { match: { q: "dam" } }, rows: [], count: 600, from: "/search?q=dam" });
+    mockMatchPages([]);
+    addEventsToCollection.mockRejectedValueOnce(
+      new ApiError("Add at most 500 events at once; narrow the selection", 422, "too_many_events"),
+    );
+    render(<NewCollectionPage />);
+    await fillForm();
+    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
+
+    expect(
+      await screen.findByText(/The collection is created, but the geolocations were not added/),
+    ).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+
+    addEventsToCollection.mockResolvedValueOnce({
+      added: 1,
+      skipped: { already_in_collection: 0, not_collectable: 0 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create and add" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c9"));
+    expect(createCollection).toHaveBeenCalledOnce();
+  });
+
+  it("cancels back to the search the selection came from", () => {
+    handOff({ target: { eventIds: ["e7"] }, rows: [], count: 1, from: "/search?q=dam" });
+    render(<NewCollectionPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(push).toHaveBeenCalledWith("/search?q=dam");
+  });
+
+  it("opens the plain form on an unknown token", () => {
+    searchParams.set("selection", "gone");
+    render(<NewCollectionPage />);
+
+    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create collection" })).toBeInTheDocument();
   });
 });

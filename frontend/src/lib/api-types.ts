@@ -775,6 +775,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/collections/collectable-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count Collectable Matches
+         * @description Count your events a search lists in its Geolocations group that a collection can hold.
+         *
+         *     The set ``POST /collections/{id}/events`` shelves for the same ``match``.
+         */
+        post: operations["count_collectable_matches_api_v1_collections_collectable_count_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/collections/collectable-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List Collectable Matches
+         * @description Page through the events ``POST /collections/collectable-count`` counts, newest first.
+         *
+         *     The set ``POST /collections/{id}/events`` shelves for the same ``match``. Capped at 100
+         *     rows; follow the ``Link: rel="next"`` cursor.
+         */
+        post: operations["list_collectable_matches_api_v1_collections_collectable_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/collections/{collection_id}": {
         parameters: {
             query?: never;
@@ -827,7 +872,15 @@ export interface paths {
          */
         get: operations["list_collection_events_api_v1_collections__collection_id__events_get"];
         put?: never;
-        post?: never;
+        /**
+         * Add Events To Collection
+         * @description Put many of your events on one of your collections, by id or by search, in one write.
+         *
+         *     Idempotent: an event already on it is skipped and counted, as is one whose
+         *     state a collection does not show. 403 for someone else's collection or event,
+         *     422 ``too_many_events`` past 500 events.
+         */
+        post: operations["add_events_to_collection_api_v1_collections__collection_id__events_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3547,6 +3600,51 @@ export interface components {
             new_password: string;
         };
         /**
+         * CollectableCount
+         * @description How many of the caller's events a :class:`SearchMatch` lists in the search
+         *     Geolocations group that a collection can hold.
+         */
+        CollectableCount: {
+            /** Total */
+            total: number;
+        };
+        /**
+         * CollectionBulkAdd
+         * @description Body of ``POST /collections/{id}/events``: exactly one of ``event_ids`` or ``match``.
+         *
+         *     ``event_ids`` are de-duplicated in arrival order. ``match`` names the
+         *     caller's collectable events a search lists in its Geolocations group, less
+         *     ``exclude_event_ids`` (match only, de-duplicated). Past
+         *     :data:`MAX_CREATE_EVENTS` events, or exclusions, is a 422 ``too_many_events``,
+         *     raised by the service so every mode answers with the same code.
+         */
+        CollectionBulkAdd: {
+            /** Event Ids */
+            event_ids?: string[] | null;
+            /** Exclude Event Ids */
+            exclude_event_ids?: string[];
+            match?: components["schemas"]["SearchMatch"] | null;
+        };
+        /**
+         * CollectionBulkAddResult
+         * @description What one bulk add wrote: ``added`` new memberships and the events it skipped.
+         */
+        CollectionBulkAddResult: {
+            /** Added */
+            added: number;
+            skipped: components["schemas"]["CollectionBulkAddSkipped"];
+        };
+        /**
+         * CollectionBulkAddSkipped
+         * @description Events a bulk add left out, by reason. Neither is an error.
+         */
+        CollectionBulkAddSkipped: {
+            /** Already In Collection */
+            already_in_collection: number;
+            /** Not Collectable */
+            not_collectable: number;
+        };
+        /**
          * CollectionCoverTile
          * @description One tile of a collection's mosaic and what kind of file it is.
          *
@@ -3879,6 +3977,46 @@ export interface components {
         EventCloseRequest: {
             /** Close Reason */
             close_reason: string;
+        };
+        /**
+         * EventFilters
+         * @description The filter set as one value, threaded through layers (search router, service, event groups).
+         *
+         *     ``active`` says whether any filter narrows the view (search flips into browse mode on an
+         *     empty query).
+         */
+        EventFilters: {
+            /**
+             * Approved
+             * @default false
+             */
+            approved: boolean;
+            /** Approved By */
+            approved_by?: string | null;
+            /** Approved By Org */
+            approved_by_org?: string | null;
+            /** Author */
+            author?: string | null;
+            /** Conflict */
+            conflict?: string[] | null;
+            /** Level */
+            level?: string[] | null;
+            /** Media */
+            media?: string[] | null;
+            /** Occurred Date From */
+            occurred_date_from?: string | null;
+            /** Occurred Date To */
+            occurred_date_to?: string | null;
+            /** Source Kind */
+            source_kind?: string[] | null;
+            /** Status */
+            status?: string[] | null;
+            /** Submitted From */
+            submitted_from?: string | null;
+            /** Submitted To */
+            submitted_to?: string | null;
+            /** Tag */
+            tag?: string[] | null;
         };
         /** EventList */
         EventList: {
@@ -4723,6 +4861,23 @@ export interface components {
             title: string;
             /** Title Highlight */
             title_highlight: string;
+        };
+        /**
+         * SearchMatch
+         * @description What one search names: ``q`` and the event filters of ``GET /search``, as a JSON body.
+         *
+         *     ``filters`` takes the query parameters' names and values
+         *     (``services/event_filters.EventFilters``), checked by ``EventFilters.validate``.
+         *     The ``match`` of :class:`CollectionBulkAdd` and the body of
+         *     ``POST /collections/collectable-count``.
+         */
+        SearchMatch: {
+            filters?: components["schemas"]["EventFilters"];
+            /**
+             * Q
+             * @default
+             */
+            q: string;
         };
         /**
          * SearchOrganizationHit
@@ -7156,6 +7311,80 @@ export interface operations {
             };
         };
     };
+    count_collectable_matches_api_v1_collections_collectable_count_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchMatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectableCount"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_collectable_matches_api_v1_collections_collectable_events_post: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchMatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_collection_api_v1_collections__collection_id__get: {
         parameters: {
             query?: never;
@@ -7281,6 +7510,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventList"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_events_to_collection_api_v1_collections__collection_id__events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionBulkAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionBulkAddResult"];
                 };
             };
             /** @description Validation Error */

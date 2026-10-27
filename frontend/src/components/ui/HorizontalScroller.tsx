@@ -16,7 +16,6 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { Button } from "./Button";
-import { Dot } from "./Dot";
 import { META_LINE } from "./styles";
 
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
@@ -48,21 +47,17 @@ function shownSpan(strip: HTMLElement): Span | null {
 }
 
 /**
- * A row of same-width items that scrolls sideways, one snap point per item. In the `row` variant,
- * a lone item takes the row's full width, and two items fit side by side once the row is 32rem
- * wide; below that one fits and the next peeks. With more than one item, the header carries the shown range ("1 to 2 of 5") and previous and
- * next buttons that scroll by one item and go inert at the ends. The `carousel` variant shows one
- * item at the row's full width, the position ("2 / 3") between the buttons, and one dot per item
- * under the row.
+ * A row of same-width items that scrolls sideways, one snap point per item. A lone item takes the
+ * row's full width, and two items fit side by side once the row is 32rem wide; below that one
+ * fits and the next peeks. With more than one item, the header carries the shown range ("1 to 2
+ * of 5") and previous and next buttons that scroll by one item and go inert at the ends.
  */
 export function HorizontalScroller({
   heading,
   label,
   previousLabel,
   nextLabel,
-  variant = "row",
   actions,
-  dotLabel = (index) => `Show item ${index + 1}`,
   ref,
   children,
 }: {
@@ -73,15 +68,11 @@ export function HorizontalScroller({
   /** The previous button's accessible name, such as *Previous source*. */
   previousLabel: string;
   nextLabel: string;
-  variant?: "row" | "carousel";
   /** Header controls after the buttons, shown at any item count. */
   actions?: ReactNode;
-  /** A carousel dot's accessible name, such as *Show source 2*. */
-  dotLabel?: (index: number) => string;
   ref?: Ref<HorizontalScrollerHandle>;
   children: ReactNode;
 }) {
-  const carousel = variant === "carousel";
   const items = Children.toArray(children);
   const count = items.length;
   const strip = useRef<HTMLDivElement>(null);
@@ -116,8 +107,6 @@ export function HorizontalScroller({
     const el = strip.current;
     const item = el?.children[index] as HTMLElement | undefined;
     if (!el || !item) return;
-    // The carousel names the target at once: a smooth scroll only lands on it later.
-    if (carousel) setSpan({ first: index, last: index });
     const reduce = typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION).matches;
     el.scrollTo({ left: item.offsetLeft, behavior: reduce ? "auto" : "smooth" });
   };
@@ -138,21 +127,11 @@ export function HorizontalScroller({
     else next();
   };
 
-  const range = carousel
-    ? `${first + 1} / ${count}`
-    : first === last
-      ? `${first + 1} of ${count}`
-      : `${first + 1} to ${last + 1} of ${count}`;
+  const range =
+    first === last ? `${first + 1} of ${count}` : `${first + 1} to ${last + 1} of ${count}`;
   const position = (
-    <span className={cn(META_LINE, "tabular-nums", !carousel && "mr-1")} aria-live="polite">
-      {carousel ? (
-        <>
-          <span aria-hidden="true">{range}</span>
-          <span className="sr-only">{`${first + 1} of ${count}`}</span>
-        </>
-      ) : (
-        range
-      )}
+    <span className={cn(META_LINE, "mr-1 tabular-nums")} aria-live="polite">
+      {range}
     </span>
   );
   const previousButton = (
@@ -176,19 +155,9 @@ export function HorizontalScroller({
           <div className="flex items-center gap-1">
             {count > 1 && (
               <div className="flex items-center gap-1" onKeyDown={onArrowKey}>
-                {carousel ? (
-                  <>
-                    {previousButton}
-                    {position}
-                    {nextButton}
-                  </>
-                ) : (
-                  <>
-                    {position}
-                    {previousButton}
-                    {nextButton}
-                  </>
-                )}
+                {position}
+                {previousButton}
+                {nextButton}
               </div>
             )}
             {actions}
@@ -204,8 +173,7 @@ export function HorizontalScroller({
         aria-label={label}
         tabIndex={0}
         className={cn(
-          "relative flex snap-x snap-mandatory gap-3 overflow-x-auto rounded-md outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400",
-          carousel ? "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "pb-2",
+          "relative flex snap-x snap-mandatory gap-3 overflow-x-auto rounded-md pb-2 outline-hidden focus-visible:ring-1 focus-visible:ring-orange-400",
         )}
       >
         {items.map((item, i) => (
@@ -213,30 +181,13 @@ export function HorizontalScroller({
             key={isValidElement(item) && item.key !== null ? item.key : i}
             className={cn(
               "grid shrink-0 grid-cols-1 snap-start",
-              carousel || count === 1 ? "basis-full" : "basis-[85%] @lg:basis-[calc(50%-0.375rem)]",
+              count === 1 ? "basis-full" : "basis-[85%] @lg:basis-[calc(50%-0.375rem)]",
             )}
           >
             {item}
           </div>
         ))}
       </div>
-      {carousel && count > 1 && (
-        <div className="flex flex-wrap justify-center">
-          {items.map((_, i) => (
-            <Button
-              key={i}
-              icon
-              variant="ghost"
-              className="size-6 sm:size-6"
-              aria-label={dotLabel(i)}
-              aria-current={i === first ? "true" : undefined}
-              onClick={() => scrollTo(i)}
-            >
-              <Dot className={cn("size-2", i !== first && "bg-neutral-600")} />
-            </Button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

@@ -85,62 +85,41 @@ describe("HorizontalScroller", () => {
   });
 });
 
-function renderCarousel(count: number, ref = createRef<HorizontalScrollerHandle>()) {
-  render(
-    <HorizontalScroller
-      ref={ref}
-      variant="carousel"
-      heading={<h2>Things</h2>}
-      label="Things"
-      previousLabel="Previous thing"
-      nextLabel="Next thing"
-      dotLabel={(i) => `Show thing ${i + 1}`}
-      actions={<button type="button">Add a thing</button>}
-    >
-      {Array.from({ length: count }, (_, i) => (
-        <p key={i}>Thing {i + 1}</p>
-      ))}
-    </HorizontalScroller>,
-  );
-  const strip = screen.getByRole("region", { name: "Things" });
-  const scrollTo = vi.fn();
-  strip.scrollTo = scrollTo;
-  return { strip, scrollTo, ref };
-}
-
-describe("HorizontalScroller carousel", () => {
-  it("keeps the actions and drops the position, buttons and dots with one item", () => {
-    renderCarousel(1);
-    expect(screen.getByRole("button", { name: "Add a thing" })).toBeInTheDocument();
-    expect(screen.queryByText("1 / 1")).toBeNull();
-    expect(screen.queryByRole("button", { name: /thing 1$/ })).toBeNull();
-  });
-
-  it("shows the position and one dot per item, the current one marked", () => {
-    const { scrollTo } = renderCarousel(3);
-    expect(screen.getByText("1 / 3")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show thing 1" })).toHaveAttribute("aria-current", "true");
-
-    fireEvent.click(screen.getByRole("button", { name: "Show thing 3" }));
-    expect(scrollTo).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("3 / 3")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show thing 3" })).toHaveAttribute("aria-current", "true");
-    expect(screen.getByRole("button", { name: "Next thing" })).toBeDisabled();
-  });
-
+describe("HorizontalScroller controls", () => {
   it("steps with the left and right keys on its buttons", () => {
-    renderCarousel(3);
-    const next = screen.getByRole("button", { name: "Next thing" });
-    fireEvent.keyDown(next, { key: "ArrowRight" });
-    expect(screen.getByText("2 / 3")).toBeInTheDocument();
-    fireEvent.keyDown(next, { key: "ArrowLeft" });
-    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    const strip = renderScroller(5);
+    const scrollTo = vi.fn();
+    strip.scrollTo = scrollTo;
+    layOut(strip);
+    scrollStrip(strip, 0);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Next thing" }), { key: "ArrowRight" });
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: ITEM + GAP, behavior: "smooth" });
   });
 
   it("shows an item a parent asks for", () => {
-    const { ref, scrollTo } = renderCarousel(3);
-    act(() => ref.current?.show(1));
-    expect(scrollTo).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("2 / 3")).toBeInTheDocument();
+    const ref = createRef<HorizontalScrollerHandle>();
+    render(
+      <HorizontalScroller
+        ref={ref}
+        heading={<h2>Things</h2>}
+        label="Things"
+        previousLabel="Previous thing"
+        nextLabel="Next thing"
+        actions={<button type="button">Add a thing</button>}
+      >
+        {Array.from({ length: 3 }, (_, i) => (
+          <p key={i}>Thing {i + 1}</p>
+        ))}
+      </HorizontalScroller>,
+    );
+    const strip = screen.getByRole("region", { name: "Things" });
+    const scrollTo = vi.fn();
+    strip.scrollTo = scrollTo;
+    layOut(strip);
+
+    act(() => ref.current?.show(2));
+    expect(scrollTo).toHaveBeenLastCalledWith({ left: 2 * (ITEM + GAP), behavior: "smooth" });
+    expect(screen.getByRole("button", { name: "Add a thing" })).toBeInTheDocument();
   });
 });
