@@ -142,16 +142,35 @@ def safe_link_href(value: str) -> str | None:
 def normalised_host(value: str) -> str | None:
     """The comparable host of a stored link: lower case, no leading ``www.``.
 
-    Shared by :func:`source_archive._normalised_target` and
-    :func:`services.user_stats.get_user_stats`, so ``tiktok.com`` and
-    ``www.tiktok.com`` are one source. Returns ``None`` when no host reads,
-    malformed input included.
+    Shared by :func:`source_archive._normalised_target` and :func:`platform_host`,
+    so ``tiktok.com`` and ``www.tiktok.com`` are one source. Returns ``None`` when
+    no host reads, malformed input included.
     """
     try:
         parsed = urlparse(value)
     except ValueError:
         return None
     return (parsed.hostname or "").lower().removeprefix("www.") or None
+
+
+# The hosts of one platform, canonical first. Bare hosts: ``normalised_host``
+# folds ``www.``. ``schemas/user.SOCIAL_PROFILE_HOSTS`` reads its rows.
+PLATFORM_HOSTS: dict[str, tuple[str, ...]] = {
+    "x": ("x.com", "twitter.com", "mobile.twitter.com"),
+    "youtube": ("youtube.com", "m.youtube.com", "youtu.be"),
+    "telegram": ("t.me", "telegram.me"),
+    "tiktok": ("tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"),
+    "github": ("github.com",),
+}
+
+_CANONICAL_HOST = {alias: hosts[0] for hosts in PLATFORM_HOSTS.values() for alias in hosts}
+
+
+def platform_host(value: str) -> str | None:
+    """:func:`normalised_host`, with an alias in :data:`PLATFORM_HOSTS` folded onto
+    its platform's canonical host (``twitter.com`` reads ``x.com``)."""
+    host = normalised_host(value)
+    return _CANONICAL_HOST.get(host, host) if host else None
 
 
 def _check_size(html: str) -> None:

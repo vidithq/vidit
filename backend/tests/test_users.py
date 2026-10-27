@@ -390,6 +390,7 @@ def test_patch_me_replaces_external_links_wholesale(live_user, db):
         ("x", "ana", "ana"),
         ("x", "https://x.com/ana", "ana"),
         ("x", "https://twitter.com/ana/", "ana"),
+        ("x", "https://mobile.twitter.com/ana", "ana"),
         ("x", "https://www.x.com/ana", "ana"),
         ("github", "https://github.com/vidithq", "vidithq"),
         ("github", "@vidit-hq", "vidit-hq"),

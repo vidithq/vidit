@@ -19,7 +19,7 @@ from app.models.media import Media
 from app.models.source import Source, SourceLink, source_order
 from app.schemas.user import ActivityBucket, TagCount, UserStatsRead
 from app.services.event_filters import credited_to, visible_events
-from app.services.sanitize import normalised_host
+from app.services.sanitize import platform_host
 
 # Work the profile vouches for. ``requested`` (open call for help) and
 # ``closed`` (duplicate, rejection, retraction) are not documented work.
@@ -98,7 +98,8 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
     )
 
     # One URL per event, its first source's first link, so the hosts sum to the total. The host
-    # is folded in Python (:func:`sanitize.normalised_host`, the one home for the rule).
+    # is folded in Python (:func:`sanitize.platform_host`, the one home for the rule), before
+    # the ``TOP_N`` cut, so a platform's aliases rank as one host.
     # Grouping on the URL in SQL bounds this loop by distinct links, not event count, on a
     # public endpoint.
     first_link = (
@@ -125,7 +126,7 @@ def get_user_stats(db: Session, *, user_id: uuid.UUID) -> UserStatsRead:
         .all()
     )
     for url, url_count in url_rows:
-        host = normalised_host(url) if url else None
+        host = platform_host(url) if url else None
         if host is None:
             no_source_count += url_count
         else:

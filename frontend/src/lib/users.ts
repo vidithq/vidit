@@ -56,7 +56,7 @@ function asHttpUrl(value: string | null | undefined): string | null {
  *  to it); bare hosts only, the parser folds `www.`. Mirrors `schemas/user.SOCIAL_PROFILE_HOSTS`;
  *  change both. */
 const SOCIAL_HOSTS: Record<"x" | "github", readonly string[]> = {
-  x: ["x.com", "twitter.com"],
+  x: ["x.com", "twitter.com", "mobile.twitter.com"],
   github: ["github.com"],
 };
 
