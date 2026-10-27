@@ -21,6 +21,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- A site on the map previews when you rest the mouse on it and opens the same side panel as an event; site zones take a colour of their own, so a site on a military area or an airport stands out from the basemap highlight ([#747](https://github.com/vidithq/vidit/pull/747)).
 - `POST /uploads` answers an `UploadList` whose `items` holds one `UploadRead` per staged file, one per frame for a GIF ([#744](https://github.com/vidithq/vidit/pull/744)).
 - The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The map labels only countries and capitals when zoomed out, hides region borders, and shows one name per label, in Latin script ([#709](https://github.com/vidithq/vidit/pull/709)).
