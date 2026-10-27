@@ -13,6 +13,22 @@ describe("IconTile", () => {
     expect(link).toHaveTextContent("Your whole history, once.");
   });
 
+  it("hides the preview from assistive tech and lists the needs", () => {
+    render(
+      <IconTile
+        icon={<Archive />}
+        title="Bulk import"
+        href="/submit?mode=bulk"
+        preview={<span>drawing</span>}
+        needs={["X archive", "Linked X account"]}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: /^Bulk import/ });
+    expect(link).not.toHaveAccessibleName(/drawing/);
+    expect(link).toHaveTextContent("NeedsX archiveLinked X account");
+  });
+
   it("is inert without an href", () => {
     render(<IconTile icon={<Archive />} title="Approve" />);
 
