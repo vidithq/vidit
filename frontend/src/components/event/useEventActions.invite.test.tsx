@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { eventDetail } from "@/test/eventDetail";
@@ -25,17 +25,20 @@ function Actions({ invited }: { invited: boolean }) {
     owner: { id: "u1", username: "ana" },
     viewer_invite_pending: invited,
   };
-  const { actions } = useEventActions({ event, surface: "event" });
+  const { actions, panels } = useEventActions({ event, surface: "event" });
   return (
     <>
       {actions?.pinned}
       {actions?.below}
+      {panels}
     </>
   );
 }
 
+const row = () => screen.getByRole("group", { name: "Event actions" });
+
 describe("useEventActions invitation", () => {
-  it("shows the invitation beside the actions from the event read, without asking the invitation list", () => {
+  it("shows the invitation from the event read, without asking the invitation list", () => {
     render(<Actions invited />);
 
     expect(screen.getByText("Geolocator invitation")).toBeInTheDocument();
@@ -46,17 +49,24 @@ describe("useEventActions invitation", () => {
     expect(api.apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("geolocator-invites"));
   });
 
-  it("puts the invitation under the row of actions", () => {
+  it("puts Accept and Decline in the actions row, and what the invitation offers under it", () => {
     render(<Actions invited />);
 
-    const row = screen.getByRole("group", { name: "Event actions" });
+    expect(
+      within(row())
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label") ?? b.textContent)
+        .slice(-2),
+    ).toEqual(["Accept", "Decline"]);
     const card = screen.getByText("Geolocator invitation");
-    expect(row.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row()).not.toContainElement(card);
+    expect(row().compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows nothing to a reader without an invitation", () => {
     render(<Actions invited={false} />);
 
     expect(screen.queryByText("Geolocator invitation")).toBeNull();
+    expect(within(row()).queryByRole("button", { name: "Accept" })).toBeNull();
   });
 });

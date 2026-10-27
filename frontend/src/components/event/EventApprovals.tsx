@@ -23,14 +23,15 @@ import {
 } from "@/components/event/ApprovalRequests";
 
 /**
- * A published event's approvals, about the live version only, as two nodes that share one read of
- * the approval requests:
+ * A published event's approvals, about the live version only, as three nodes that share one read
+ * of the approval requests:
  *
  * - `summary`, under the actions row: the stamps that link to each signer's page; the reader's
- *   own outdated approval with what changed since; who asked the reader for approval; **Approve**
- *   (and **Approve as <organization>**) for a reader who may approve, with **Decline** beside it.
- *   Null when none of these applies, so an event without approvals shows nothing to a reader who
- *   cannot approve it.
+ *   own outdated approval with what changed since; who asked the reader for approval. Null when
+ *   none of these applies, so an event without approvals shows nothing there.
+ * - `answer`, for the actions row: **Approve** (a menu of identities when the reader may approve
+ *   as several) for a reader who may approve, and **Decline** for a reader someone asked. Null
+ *   for every other reader.
  * - `requestAction`, **Request approval** for a reader who may send a request (a geolocator), for
  *   the actions row: it opens the dialog holding the open requests and the picker that sends one.
  *   Null for every other reader.
@@ -42,12 +43,12 @@ export function useEventApprovals(
   event: EventDetail | null,
   /** Every version's approvals, fetched once by `useEventActions`. */
   approvals: ApiResource<ApprovalList>,
-): { summary: ReactNode; requestAction: ReactNode } {
+): { summary: ReactNode; answer: ReactNode; requestAction: ReactNode } {
   const { user } = useAuth();
   const memberOf = useMemberOrganizations();
   const [approvedCount, setApprovedCount] = useState(0);
   const incoming = useApprovalRequests(event, memberOf, approvedCount);
-  if (!event) return { summary: null, requestAction: null };
+  if (!event) return { summary: null, answer: null, requestAction: null };
 
   const rows = approvals.data?.items ?? [];
   // The live version's approvals: current, or, on a closed event, those it held when it closed.
@@ -62,7 +63,6 @@ export function useEventApprovals(
     standing.length > 0 ||
     outdatedOwn !== null ||
     incoming.mine.length > 0 ||
-    mayApprove ||
     approvals.error !== null;
 
   const summary = shows && (
@@ -74,26 +74,6 @@ export function useEventApprovals(
             <YourOutdatedApproval event={event} approvedVersion={outdatedOwn} />
           )}
           {incoming.mine.length > 0 && <IncomingRequests requests={incoming.mine} />}
-          <div className="flex flex-wrap items-center gap-2 empty:hidden lg:justify-end">
-            <ApproveButtons
-              event={event}
-              approvals={approvals.data}
-              memberOf={memberOf}
-              onApproved={() => {
-                approvals.refetch();
-                setApprovedCount((n) => n + 1);
-              }}
-            />
-            {incoming.mine.length > 0 && (
-              <DeclineRequests
-                eventId={event.id}
-                requests={incoming.mine}
-                onAnswered={incoming.requests.refetch}
-              />
-            )}
-            {/* With no stamp to sit beside, the help sits beside Approve. */}
-            {standing.length === 0 && mayApprove && <FieldHelp concept="approval" />}
-          </div>
         </>
       )}
       {approvals.error && (
@@ -103,8 +83,36 @@ export function useEventApprovals(
       )}
     </section>
   );
+  const answer = approvals.data && (mayApprove || incoming.mine.length > 0) && (
+    <>
+      <ApproveButtons
+        event={event}
+        approvals={approvals.data}
+        memberOf={memberOf}
+        onApproved={() => {
+          approvals.refetch();
+          setApprovedCount((n) => n + 1);
+        }}
+      />
+      {incoming.mine.length > 0 && (
+        <DeclineRequests
+          eventId={event.id}
+          requests={incoming.mine}
+          onAnswered={incoming.requests.refetch}
+        />
+      )}
+      {/* With no stamp to sit beside, the help sits beside Approve. */}
+      {standing.length === 0 && mayApprove && (
+        // `max-sm:pr-2`: the `?` grows its tap area 8px past its glyph on a phone, which stays
+        // inside the row's right edge.
+        <span className="inline-flex max-sm:pr-2">
+          <FieldHelp concept="approval" />
+        </span>
+      )}
+    </>
+  );
   const requestAction = canRequestApproval(event, user?.id) && (
     <RequestApprovalAction event={event} requests={incoming} />
   );
-  return { summary, requestAction };
+  return { summary, answer, requestAction };
 }
