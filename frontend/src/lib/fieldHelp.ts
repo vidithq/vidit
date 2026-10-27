@@ -152,9 +152,9 @@ export const FIELD_HELP = {
     text: "Places analysts monitor through dated satellite imagery, such as bases, depots and radars. Below zoom 10 each site is a square; from zoom 10 the map draws its zone. A zone turns amber when its latest linked event shows damage and red for destruction. Each zone is the one valid at the end of the event date window.",
     label: "What is the sites layer?",
   },
-  site_last_image: {
-    text: "The capture date and the imagery provider of the most recent image filed on the site. Vidit says when the place was last seen, never whether it is in use today.",
-    label: "What is the last image?",
+  site_last_source: {
+    text: "The capture date and the imagery provider of the most recent source filed on the site. Vidit says when the place was last seen, never whether it is in use today.",
+    label: "What is the last source?",
   },
   site_name: {
     text: "A short name for the place, such as the base or the depot it is. Only the site's owner renames it, and every earlier name stays in its history.",
@@ -173,23 +173,23 @@ export const FIELD_HELP = {
     label: "What are the coordinates?",
   },
   site_details: {
-    text: "Who documents the site, what kind of place it is, when it was last imaged, and the latest effect a linked event shows.",
+    text: "Who documents the site, what kind of place it is, when its last source was captured, and the latest effect a linked event shows.",
     label: "What goes in Details?",
   },
   site_zone: {
-    text: "The outline of the site, drawn over one dated image. A contour holds from that image's capture date, and each image carries at most one. Every earlier contour stays in the site's history. Only the site's owner draws it.",
+    text: "The outline of the site, drawn over one dated source. A contour holds from that source's capture date, and each source carries at most one. Every earlier contour stays in the site's history. Only the site's owner draws it.",
     label: "What is the contour?",
   },
-  site_image: {
-    text: "A dated satellite image of the site, filed with a link that reopens it at its date. Any analyst files one, and only that analyst removes it, once it carries no contour. An image states no effect: it shows the place on one date. It is never edited, and the site's history keeps it.",
-    label: "What is a site image?",
+  site_source: {
+    text: "A dated satellite capture of the site, filed with a link that reopens it at its date. Any analyst files one, and only that analyst removes it, once it carries no contour. A source states no effect: it shows the place on one date. It is never edited, and the site's history keeps it.",
+    label: "What is a site source?",
   },
-  site_image_captured: {
-    text: "Required. When the satellite captured the image (UTC), as the provider dates it. The zone drawn from the image holds from this date, and a reader reopens the image at it.",
-    label: "When was the image captured?",
+  site_source_captured: {
+    text: "Required. When the satellite captured the source (UTC), as the provider dates it. The zone drawn on the source holds from this date, and a reader reopens the capture at it.",
+    label: "When was the source captured?",
   },
-  site_image_note: {
-    text: "What the image shows, in plain words, such as new sheds or a burn scar. Keep your interpretation for an event.",
+  site_source_note: {
+    text: "What the source shows, in plain words, such as new sheds or a burn scar. Keep your interpretation for an event.",
     label: "What goes in the note?",
   },
   link_effect: {

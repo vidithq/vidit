@@ -72,15 +72,15 @@ export function SiteKindCard({
   );
 }
 
-/** What a contour draft says against the contour its image carries: `undefined` when it holds
+/** What a contour draft says against the contour its source carries: `undefined` when it holds
  *  that contour, `null` when it holds none, `"open"` while its ring is not closed or its edges
  *  cross, else the new zone. */
 export type ContourDraftValue = Zone | null | "open" | undefined;
 
 /**
- * The contour of one image in a site form: the `ZoneEditor` started on `start`, its changes
- * reported against `live`, the contour the image carries. Mount one per image (`key`), since the
- * editor's undo stack belongs to the image it draws on. An empty ring means no contour.
+ * The contour of one source in a site form: the `ZoneEditor` started on `start`, its changes
+ * reported against `live`, the contour the source carries. Mount one per source (`key`), since the
+ * editor's undo stack belongs to the source it draws on. An empty ring means no contour.
  */
 export function ContourDraft({
   live,

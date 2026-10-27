@@ -11,20 +11,25 @@ import { Pill } from "@/components/ui/Pill";
 import { cn } from "@/lib/cn";
 import { formatDate, formatInstantDate } from "@/lib/format";
 import { zoneAreaKm2, zoneVertices } from "@/lib/siteZone";
-import type { SiteContour, SiteImage } from "@/lib/sites";
+import type { SiteContour, SiteSource } from "@/lib/sites";
 
-/** An image's name, by its capture day: *Image of 7 Sep 2026*. */
-export function imageName(image: Pick<SiteImage, "captured_at" | "created_at">): string {
-  return `Image of ${formatInstantDate(image.captured_at ?? image.created_at)}`;
+/** A site source's name, by its capture day: *Source of 7 Sept 2026*. */
+export function siteSourceName(source: Pick<SiteSource, "captured_at" | "created_at">): string {
+  return `Source of ${formatInstantDate(source.captured_at ?? source.created_at)}`;
 }
 
-/** The name of an image's Remove control, which says why it is off while the image carries a
- *  contour. */
-export function removeImageLabel(image: Pick<SiteImage, "captured_at" | "created_at">, carriesContour: boolean): string {
-  const name = imageName(image).replace("Image", "image");
+/** A site source's name inside a sentence: *the source of 7 Sept 2026*. */
+export function siteSourceMention(source: Pick<SiteSource, "captured_at" | "created_at">): string {
+  return `the ${siteSourceName(source).replace("Source", "source")}`;
+}
+
+/** The name of a site source's Remove control, which says why it is off while the source
+ *  carries a contour. */
+export function removeSourceLabel(source: Pick<SiteSource, "captured_at" | "created_at">, carriesContour: boolean): string {
+  const name = siteSourceMention(source);
   return carriesContour
-    ? `The ${name} carries a contour: redraw it on another image before you remove it`
-    : `Remove the ${name}`;
+    ? `${name.charAt(0).toUpperCase()}${name.slice(1)} carries a contour: redraw it on another source before you remove it`
+    : `Remove ${name}`;
 }
 
 /** A provider's credit line with its `[year]` filled in from the capture date. */
@@ -32,14 +37,8 @@ function creditFor(credit: string, capturedAt: string | null): string {
   return capturedAt ? credit.replace("[year]", capturedAt.slice(0, 4)) : credit;
 }
 
-/**
- * What one image adds to the event page's source block in a site's imagery history: its name
- * by capture day, the control that shows that day's zone on the site map (an accent *On the map*
- * pill and border on the image on show), then `controls` (its filer's Remove), and the rows for
- * the provider, the note, who filed it and when, and the contour drawn on it.
- */
-/** An image card's map control: an icon button that puts the image's zone on the map, or an
- *  accent *On the map* pill on the image on show. */
+/** A site source card's map control: an icon button that puts the source's zone on the map, or
+ *  an accent *On the map* pill on the source on show. */
 export function ShowOnMap({
   name,
   shown,
@@ -68,22 +67,28 @@ export function ShowOnMap({
   );
 }
 
-export function siteImageExtras({
-  image,
+/**
+ * What one site source adds to the event page's source block: its name by capture day, the
+ * control that shows that day's zone on the site map (an accent *On the map* pill and border on
+ * the source on show), then `controls` (its filer's Remove), and the rows for the provider, the
+ * note, who filed it and when, and the contour drawn on it.
+ */
+export function siteSourceExtras({
+  source,
   contour,
   shown,
   onShow,
   controls,
 }: {
-  image: SiteImage;
-  /** The contour drawn on this image, if any. */
+  source: SiteSource;
+  /** The contour drawn on this source, if any. */
   contour: Pick<SiteContour, "zone"> | null;
   /** Its day's zone is the one on the map. */
   shown: boolean;
   onShow: () => void;
   controls?: ReactNode;
 }): SourceBlockExtras {
-  const name = imageName(image);
+  const name = siteSourceName(source);
   return {
     name,
     className: cn(shown && "border-orange-500/50"),
@@ -95,32 +100,32 @@ export function siteImageExtras({
     ),
     children: (
       <>
-        <DetailRow label="Provider" concept="site_image">
+        <DetailRow label="Provider" concept="site_source">
           <span className="text-right text-sm text-neutral-200">
-            {image.provider?.name ?? "Not a listed provider"}
-            {image.provider?.credit && (
+            {source.provider?.name ?? "Not a listed provider"}
+            {source.provider?.credit && (
               <span className="block text-xs text-neutral-500">
-                Credit: {creditFor(image.provider.credit, image.captured_at)}
+                Credit: {creditFor(source.provider.credit, source.captured_at)}
               </span>
             )}
           </span>
         </DetailRow>
-        {image.note && <DetailRow label="Note" value={image.note} />}
+        {source.note && <DetailRow label="Note" value={source.note} />}
         <DetailRow label="Filed" align="center">
           <span className="flex flex-wrap items-center justify-end gap-x-1.5 text-sm text-neutral-400">
-            {image.author ? (
-              <AuthorByline author={image.author} prefix={false} avatar size="xs" />
+            {source.author ? (
+              <AuthorByline author={source.author} prefix={false} avatar size="xs" />
             ) : (
               <span>A deleted account</span>
             )}
-            <span>on {formatDate(image.created_at)}</span>
+            <span>on {formatDate(source.created_at)}</span>
           </span>
         </DetailRow>
         {contour && (
           <DetailRow
             label="Contour"
             concept="site_zone"
-            value={`Drawn on this image, ${zoneAreaKm2(zoneVertices(contour.zone)).toFixed(2)} km²`}
+            value={`Drawn on this source, ${zoneAreaKm2(zoneVertices(contour.zone)).toFixed(2)} km²`}
           />
         )}
       </>

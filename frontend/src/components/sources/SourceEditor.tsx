@@ -82,9 +82,9 @@ function holdsDetails(draft: SourceDraft): boolean {
  * link whose post's file it imports. `actions` is the header's slot for the list's controls
  * (remove).
  *
- * `variant="site-image"` is a site's satellite image: its kind and level are fixed (satellite,
+ * `variant="site-source"` is a site's satellite source: its kind and level are fixed (satellite,
  * context), so neither shows, the capture time is required and sits under the title, and
- * `extra` (the image's note) closes the card in place of **More details**.
+ * `extra` (the source's note) closes the card in place of **More details**.
  */
 export function SourceEditor({
   draft,
@@ -115,13 +115,13 @@ export function SourceEditor({
   /** The editor owns the whole section (a lone source): the file sits left of the fields once
    *  the card is wide enough. */
   wide?: boolean;
-  variant?: "event" | "site-image";
+  variant?: "event" | "site-source";
   /** The card's heading, and the root of its fields' accessible names. */
   name?: string;
-  /** What a site image adds after its links: the note. */
+  /** What a site source adds after its links: the note. */
   extra?: ReactNode;
 }) {
-  const siteImage = variant === "site-image";
+  const siteSource = variant === "site-source";
   const id = (field: string) => `${draft.key}-${field}`;
   const file = draft.file;
   const hasFile = file !== null && file.state !== "failed";
@@ -143,7 +143,7 @@ export function SourceEditor({
   const post = file?.state === "importing" || file?.state === "staged" ? file.post : undefined;
 
   const describe = (i: number, url: string) =>
-    linkDescription(siteImage ? name.toLowerCase() : index, safeHostname(url.trim()), i, draft.links.length);
+    linkDescription(siteSource ? name.toLowerCase() : index, safeHostname(url.trim()), i, draft.links.length);
 
   const fileSlot = (
     <div className="space-y-1.5">
@@ -188,12 +188,12 @@ export function SourceEditor({
     </div>
   );
 
-  // Required on a site image, where the zone rule reads it; optional under More details otherwise.
+  // Required on a site source, where the zone rule reads it; optional under More details otherwise.
   const captured = (
     <div className="space-y-1.5">
       <FieldLabel
         {...SOURCE_FIELDS.captured_at}
-        concept={siteImage ? "site_image_captured" : SOURCE_FIELDS.captured_at.concept}
+        concept={siteSource ? "site_source_captured" : SOURCE_FIELDS.captured_at.concept}
         htmlFor={id("captured_at")}
         invalid={invalid.captured}
       />
@@ -201,7 +201,7 @@ export function SourceEditor({
         id={id("captured_at")}
         type="datetime-local"
         value={draft.capturedAt}
-        required={siteImage}
+        required={siteSource}
         invalid={invalid.captured}
         onChange={(e) => update({ capturedAt: e.target.value })}
       />
@@ -257,12 +257,12 @@ export function SourceEditor({
           maxLength={SOURCE_TITLE_MAX_LEN}
           onChange={(e) => update({ title: e.target.value })}
           placeholder={
-            siteImage ? "For example Sentinel-2 true colour" : "For example Drone footage of the strike"
+            siteSource ? "For example Sentinel-2 true colour" : "For example Drone footage of the strike"
           }
         />
       </div>
 
-      {siteImage ? captured : classification}
+      {siteSource ? captured : classification}
     </div>
   );
 
@@ -337,7 +337,7 @@ export function SourceEditor({
             addText="Add a link"
             addName={`Add a link to ${name.toLowerCase()}`}
             placeholder={
-              siteImage ? "https://browser.dataspace.copernicus.eu/?…" : "https://t.me/channel/12345"
+              siteSource ? "https://browser.dataspace.copernicus.eu/?…" : "https://t.me/channel/12345"
             }
             invalid={invalid.link}
             heading={
@@ -405,10 +405,10 @@ export function SourceEditor({
             )}
           />
         </div>
-        <SourceImageryCheck draft={draft} name={name} captureRequired={siteImage} />
+        <SourceImageryCheck draft={draft} name={name} captureRequired={siteSource} />
       </div>
 
-      {siteImage ? extra : details}
+      {siteSource ? extra : details}
     </div>
   );
 

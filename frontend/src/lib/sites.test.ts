@@ -3,27 +3,27 @@ import { describe, expect, it } from "vitest";
 import { newSourceDraft } from "./sources";
 import {
   contourBefore,
-  contourFromImage,
+  contourOfSource,
   contourOn,
   formatDistance,
-  imageFromEventSource,
-  latestImage,
-  newSiteImageDraft,
+  siteSourceFromEventSource,
+  latestSource,
+  newSiteSourceDraft,
   ownsSite,
   siteChangedFields,
   siteEditHref,
-  siteImageMissing,
-  siteImagePayload,
+  siteSourceMissing,
+  siteSourcePayload,
   sitesAsOf,
   siteVersioned,
   siteVersions,
-  sortImages,
+  sortSources,
   sortLinkedEvents,
   utcDay,
   zoneEmphasis,
   type Site,
   type SiteContour,
-  type SiteImage,
+  type SiteSource,
   type SiteLinkedEvent,
   type SiteVersion,
 } from "./sites";
@@ -41,10 +41,10 @@ const ZONE = {
 };
 
 function contour(id: string, capturedAt: string, createdAt = "2026-10-01T00:00:00Z"): SiteContour {
-  return { id, zone: ZONE, image_id: `img-${id}`, captured_at: capturedAt, created_at: createdAt, author: null };
+  return { id, zone: ZONE, source_id: `src-${id}`, captured_at: capturedAt, created_at: createdAt, author: null };
 }
 
-function image(id: string, capturedAt: string, createdAt: string): SiteImage {
+function source(id: string, capturedAt: string, createdAt: string): SiteSource {
   return {
     id,
     title: "",
@@ -83,7 +83,7 @@ function linked(id: string, occurred: string | null, linkedAt: string): SiteLink
 
 const NOV = contour("nov", "2025-11-14T10:30:00Z");
 const JUN = contour("jun", "2026-06-18T10:30:00Z");
-// Drawn later from the same image: the later contour wins the tie.
+// Drawn later from the same source: the later contour wins the tie.
 const JUN_REDRAWN = contour("jun2", "2026-06-18T10:30:00Z", "2026-10-02T00:00:00Z");
 
 describe("contourOn", () => {
@@ -113,20 +113,20 @@ describe("contour neighbours", () => {
     expect(contourBefore([JUN, NOV], NOV)).toBeNull();
   });
 
-  it("finds the contour an image carries", () => {
-    expect(contourFromImage([JUN, NOV], JUN.image_id)?.id).toBe("jun");
-    expect(contourFromImage([NOV], "img-none")).toBeNull();
+  it("finds the contour a source carries", () => {
+    expect(contourOfSource([JUN, NOV], JUN.source_id)?.id).toBe("jun");
+    expect(contourOfSource([NOV], "src-none")).toBeNull();
   });
 });
 
 describe("date on the ground order", () => {
-  const found = image("found", "2025-01-01T00:00:00Z", "2026-09-01T00:00:00Z");
-  const fresh = image("fresh", "2026-08-01T00:00:00Z", "2026-08-02T00:00:00Z");
+  const found = source("found", "2025-01-01T00:00:00Z", "2026-09-01T00:00:00Z");
+  const fresh = source("fresh", "2026-08-01T00:00:00Z", "2026-08-02T00:00:00Z");
 
-  it("sorts images newest first by capture, whenever each was filed", () => {
-    expect(sortImages([found, fresh]).map((i) => i.id)).toEqual(["fresh", "found"]);
-    expect(latestImage([found, fresh])?.id).toBe("fresh");
-    expect(latestImage([])).toBeNull();
+  it("sorts sources newest first by capture, whenever each was filed", () => {
+    expect(sortSources([found, fresh]).map((i) => i.id)).toEqual(["fresh", "found"]);
+    expect(latestSource([found, fresh])?.id).toBe("fresh");
+    expect(latestSource([])).toBeNull();
   });
 
   it("sorts linked events by event date, an undated one on the day it was linked", () => {
@@ -172,41 +172,41 @@ describe("labels", () => {
     expect(sitesAsOf("2027-01-01", "2026-10-25")).toBeNull();
   });
 
-  it("opens the edit page on an image", () => {
+  it("opens the edit page on a source", () => {
     expect(siteEditHref("s1")).toBe("/sites/s1/edit");
-    expect(siteEditHref("s1", "i1")).toBe("/sites/s1/edit?image=i1");
+    expect(siteEditHref("s1", "i1")).toBe("/sites/s1/edit?source=i1");
   });
 });
 
-describe("site image drafts", () => {
+describe("site source drafts", () => {
   it("starts as a satellite context source", () => {
-    const draft = newSiteImageDraft();
+    const draft = newSiteSourceDraft();
     expect(draft.kind).toBe("satellite");
     expect(draft.level).toBe("context");
   });
 
   it("lists the capture date and a link as missing, then a date in the future", () => {
-    const draft = newSiteImageDraft();
-    expect(siteImageMissing(draft, "", "2026-10-25")).toEqual(["Capture date", "A link"]);
+    const draft = newSiteSourceDraft();
+    expect(siteSourceMissing(draft, "", "2026-10-25")).toEqual(["Capture date", "A link"]);
     const later = {
       ...draft,
       capturedAt: "2026-11-01T10:00",
       links: [{ url: "https://example.org/a", postedAt: "", snapshotUrl: "", stored: null }],
     };
-    expect(siteImageMissing(later, "x".repeat(501), "2026-10-25")).toEqual([
+    expect(siteSourceMissing(later, "x".repeat(501), "2026-10-25")).toEqual([
       "A capture date that is not in the future",
       "A note of at most 500 characters",
     ]);
   });
 
-  it("posts the image fields with a blank note as absent", () => {
+  it("posts the source fields with a blank note as absent", () => {
     const draft = {
       ...newSourceDraft(),
       title: " Sentinel-2 ",
       capturedAt: "2026-06-01T09:30",
       links: [{ url: " https://example.org/a ", postedAt: "", snapshotUrl: "", stored: null }],
     };
-    expect(siteImagePayload(draft, "  ")).toEqual({
+    expect(siteSourcePayload(draft, "  ")).toEqual({
       title: "Sentinel-2",
       captured_at: "2026-06-01T09:30",
       links: [{ url: "https://example.org/a", posted_at: null, snapshot_url: null }],
@@ -225,25 +225,25 @@ describe("site image drafts", () => {
       media: { id: "m1" },
       links: [{ url: "https://example.org/a", archived: { url: "https://web.archive.org/x" } }],
     };
-    expect(imageFromEventSource(source)).toEqual({
+    expect(siteSourceFromEventSource(source)).toEqual({
       title: "Pass",
       captured_at: "2026-07-04T10:20:00Z",
       links: [{ url: "https://example.org/a", snapshot_url: "https://web.archive.org/x" }],
       media_id: "m1",
       note: null,
     });
-    expect(imageFromEventSource({ ...source, kind: "drone" })).toBeNull();
-    expect(imageFromEventSource({ ...source, captured_at: null })).toBeNull();
-    expect(imageFromEventSource({ ...source, media: null })).toBeNull();
-    expect(imageFromEventSource({ ...source, is_graphic: true })).toBeNull();
+    expect(siteSourceFromEventSource({ ...source, kind: "drone" })).toBeNull();
+    expect(siteSourceFromEventSource({ ...source, captured_at: null })).toBeNull();
+    expect(siteSourceFromEventSource({ ...source, media: null })).toBeNull();
+    expect(siteSourceFromEventSource({ ...source, is_graphic: true })).toBeNull();
   });
 });
 
 describe("site versions", () => {
   const OWNER = { id: "u1", username: "ana", avatar_url: null };
   const EDITOR = { id: "u2", username: "ben", avatar_url: null };
-  const first = image("img-nov", "2025-11-14T10:30:00Z", "2026-01-01T00:00:00Z");
-  const second = image("img-jun", "2026-06-18T10:30:00Z", "2026-07-01T00:00:00Z");
+  const first = source("src-nov", "2025-11-14T10:30:00Z", "2026-01-01T00:00:00Z");
+  const second = source("src-jun", "2026-06-18T10:30:00Z", "2026-07-01T00:00:00Z");
   const site = {
     id: "s1",
     name: "Depot South",
@@ -251,7 +251,7 @@ describe("site versions", () => {
     version_no: 3,
     owner: OWNER,
     created_at: "2026-01-01T00:00:00Z",
-    images: [first, second],
+    sources: [first, second],
     contours: [NOV, JUN],
     linked_events: [linked("e1", "2026-05-01", "2026-05-02T00:00:00Z")],
     latest_link_effect: null,
@@ -267,8 +267,8 @@ describe("site versions", () => {
       zone: ZONE,
       centroid: { lat: -25, lng: 137 },
       contour_id: "nov",
-      last_image: null,
-      images: [first],
+      last_source: null,
+      sources: [first],
       contours: [NOV],
       ...rest,
     }) as SiteVersion;

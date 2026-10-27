@@ -10,8 +10,8 @@ import { ownsSite, siteHref, sitePath, type Site } from "@/lib/sites";
 
 /**
  * The owner's edit of one site, `SiteEditForm`, like the event edit page. Anyone else reads why
- * and goes back to the site, where any analyst files an image. `?image=` opens the Location block
- * on that image (from the receipt of a filed image).
+ * and goes back to the site, where any analyst files a source. `?source=` opens the Location block
+ * on that source (from the receipt of a filed source).
  */
 export default function EditSitePage() {
   const params = useParams();
@@ -26,11 +26,11 @@ export default function EditSitePage() {
   if (!ownsSite(site, user.id)) {
     return (
       <PageError
-        message="Only the site's owner edits it. File an image instead."
+        message="Only the site's owner edits it. File a source instead."
         backHref={siteHref(site.id)}
         backLabel="Back to the site"
       />
     );
   }
-  return <SiteEditForm site={site} owner={user} initialImage={search.get("image")} />;
+  return <SiteEditForm site={site} owner={user} initialSource={search.get("source")} />;
 }

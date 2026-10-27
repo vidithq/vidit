@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImagePlus, RotateCcw, Save } from "lucide-react";
+import { Plus, RotateCcw, Save } from "lucide-react";
 
 import { EventSection } from "@/components/event/EventLayout";
 import { EventShell } from "@/components/event/EventShell";
@@ -20,29 +20,28 @@ import type { components } from "@/lib/api-types";
 import { formatInstantDate } from "@/lib/format";
 import { positionsBounds, zoneVertices } from "@/lib/siteZone";
 import {
-  contourFromImage,
+  contourOfSource,
   saveSiteVersion,
   siteHref,
-  sortImages,
+  sortSources,
   utcDay,
   type Site,
-  type SiteImage,
+  type SiteSource,
   type SiteKind,
   type SiteVersionCreate,
   type Zone,
 } from "@/lib/sites";
-import { sourceWriteError } from "@/lib/sources";
+import { sourceName, sourceWriteError } from "@/lib/sources";
 import { padBounds } from "@/lib/viewport";
 import { ContourDraft, SiteKindCard, SiteNameField, type ContourDraftValue } from "./SiteFormFields";
-import { ShowOnMap, imageName, removeImageLabel, siteImageExtras } from "./SiteImageBlock";
-import { SiteImageEditor, SiteWriteActions, useSiteImageDraft } from "./SiteImageEditor";
+import { ShowOnMap, removeSourceLabel, siteSourceExtras, siteSourceMention } from "./SiteSourceBlock";
+import { SiteSourceEditor, SiteWriteActions, useSiteSourceDraft } from "./SiteSourceEditor";
 import { SiteLinksField, linkPayload, type DraftLink } from "./SiteLinksField";
 
 type Author = components["schemas"]["AuthorRef"];
 
-/** The contour key of the image the form adds, beside the live images' ids. */
+/** The contour key of the source the form adds, beside the live sources' ids. */
 const ADDED = "added";
-const ADDED_NAME = "New image";
 
 function sameLinks(a: DraftLink[], b: DraftLink[]): boolean {
   const key = (links: DraftLink[]) =>
@@ -52,34 +51,34 @@ function sameLinks(a: DraftLink[], b: DraftLink[]): boolean {
 
 /**
  * The owner's edit of a site, laid out like the site page: the name typed in the page title, the
- * Sources section (each image with its filer's Remove, and **Add an image**), then the owner's
+ * Sources section (each source with its filer's Remove, and **Add a source**), then the owner's
  * Linked events, in the main column; the Location block, where the owner draws the contour of one
- * image, then the Details block with the kind, in the side column. One **Save** writes
+ * source, then the Details block with the kind, in the side column. One **Save** writes
  * everything through `POST /sites/{id}/versions`, which files one version.
  *
- * An image is removed once it carries no contour: the owner first redraws that contour on another
- * image, or clears it with **Start over**. The site keeps at least one image with a contour.
+ * A source is removed once it carries no contour: the owner first redraws that contour on another
+ * source, or clears it with **Start over**. The site keeps at least one source with a contour.
  */
 export function SiteEditForm({
   site,
   owner,
-  initialImage,
+  initialSource,
 }: {
   site: Site;
   owner: Author;
-  /** The image the Location block opens on (`?image=`). */
-  initialImage: string | null;
+  /** The source the Location block opens on (`?source=`). */
+  initialSource: string | null;
 }) {
   const router = useRouter();
   const [name, setName] = useState(site.name);
   const [kind, setKind] = useState<SiteKind | "">(site.kind);
   const [adding, setAdding] = useState(false);
-  // The new image leads the row, so adding one scrolls the row back to it.
+  // The new source leads the row, so adding one scrolls the row back to it.
   const scroller = useRef<HorizontalScrollerHandle>(null);
   useEffect(() => {
     if (adding) scroller.current?.show(0);
   }, [adding]);
-  const image = useSiteImageDraft();
+  const newSource = useSiteSourceDraft();
   const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, ContourDraftValue>>({});
   const [ownLinks] = useState<DraftLink[]>(() =>
@@ -97,19 +96,20 @@ export function SiteEditForm({
   const [links, setLinks] = useState(ownLinks);
   const [attempt, setAttempt] = useState(0);
 
-  const images = sortImages(site.images);
-  const kept = images.filter((i) => !removed.has(i.id));
+  const sources = sortSources(site.sources);
+  const addedName = sourceName(sources.length);
+  const kept = sources.filter((i) => !removed.has(i.id));
   const keys = [...kept.map((i) => i.id), ...(adding ? [ADDED] : [])];
   const current = site.contours.find((c) => c.id === site.contour_id);
   const [picked, setPicked] = useState(
-    initialImage && images.some((i) => i.id === initialImage)
-      ? initialImage
-      : (current?.image_id ?? images[0]?.id ?? ""),
+    initialSource && sources.some((i) => i.id === initialSource)
+      ? initialSource
+      : (current?.source_id ?? sources[0]?.id ?? ""),
   );
   const pickedKey = keys.includes(picked) ? picked : (keys[0] ?? "");
 
   const liveZone = (key: string): Zone | null =>
-    key === ADDED ? null : (contourFromImage(site.contours, key)?.zone ?? null);
+    key === ADDED ? null : (contourOfSource(site.contours, key)?.zone ?? null);
   const zoneOf = (key: string): Zone | null | "open" => {
     const draft = drafts[key];
     return draft === undefined ? liveZone(key) : draft;
@@ -126,7 +126,7 @@ export function SiteEditForm({
   const contours: SiteVersionCreate["contours"] = changes.flatMap(([key, value]) =>
     value === undefined || value === "open"
       ? []
-      : [key === ADDED ? { added_image: 0, zone: value } : { image_id: key, zone: value }],
+      : [key === ADDED ? { added_source: 0, zone: value } : { source_id: key, zone: value }],
   );
   const open = changes.some(([, value]) => value === "open");
   const anyContour = keys.some((key) => {
@@ -143,9 +143,9 @@ export function SiteEditForm({
     linksChanged;
   const missing = [
     ...(name.trim() ? [] : ["Name"]),
-    ...(adding ? image.missing : []),
+    ...(adding ? newSource.missing : []),
     ...(open ? ["A closed contour whose edges do not cross"] : []),
-    ...(anyContour ? [] : ["An image with a contour"]),
+    ...(anyContour ? [] : ["A source with a contour"]),
     ...(changed ? [] : ["A change to the site"]),
   ];
   const flagged = attempt > 0;
@@ -156,8 +156,8 @@ export function SiteEditForm({
         version_no: site.version_no,
         name: name.trim(),
         kind: kind as SiteKind,
-        added_images: adding ? [image.payload()] : [],
-        removed_image_ids: [...removed],
+        added_sources: adding ? [newSource.payload()] : [],
+        removed_source_ids: [...removed],
         contours,
         event_links: linksChanged ? linkPayload(links) : null,
       }),
@@ -170,43 +170,43 @@ export function SiteEditForm({
   const submit = () => {
     setAttempt((n) => n + 1);
     if (missing.length > 0) return;
-    if (adding && image.held) {
-      save.setError(image.held);
+    if (adding && newSource.held) {
+      save.setError(newSource.held);
       return;
     }
     void save.run();
   };
 
-  const imageControls = (img: SiteImage) => {
-    if (img.author?.id !== owner.id) return null;
-    if (removed.has(img.id)) {
+  const sourceControls = (source: SiteSource) => {
+    if (source.author?.id !== owner.id) return null;
+    if (removed.has(source.id)) {
       return (
         <>
           <Pill tone="danger">Removed on save</Pill>
           <Button
             icon
             variant="ghost"
-            aria-label={`Keep the ${imageName(img).replace("Image", "image")}`}
-            onClick={() => setRemoved((prev) => new Set([...prev].filter((id) => id !== img.id)))}
+            aria-label={`Keep ${siteSourceMention(source)}`}
+            onClick={() => setRemoved((prev) => new Set([...prev].filter((id) => id !== source.id)))}
           >
             <RotateCcw size={14} />
           </Button>
         </>
       );
     }
-    const carries = zoneOf(img.id) !== null;
+    const carries = zoneOf(source.id) !== null;
     return (
       <RemoveButton
-        label={removeImageLabel(img, carries)}
+        label={removeSourceLabel(source, carries)}
         disabled={carries}
-        onClick={() => setRemoved((prev) => new Set([...prev, img.id]))}
+        onClick={() => setRemoved((prev) => new Set([...prev, source.id]))}
       />
     );
   };
 
-  const pickedImage = kept.find((i) => i.id === pickedKey) ?? null;
+  const pickedSource = kept.find((i) => i.id === pickedKey) ?? null;
   const pickedZone = zoneOf(pickedKey);
-  const capturedAt = pickedKey === ADDED ? image.payload().captured_at : pickedImage?.captured_at;
+  const capturedAt = pickedKey === ADDED ? newSource.payload().captured_at : pickedSource?.captured_at;
   const olderThanCurrent =
     capturedAt && current && utcDay(capturedAt) < utcDay(current.captured_at);
   const bounds = positionsBounds(site.contours.flatMap((c) => zoneVertices(c.zone)));
@@ -237,7 +237,7 @@ export function SiteEditForm({
               <SourcesRow
                 ref={scroller}
                 count={kept.length + (adding ? 1 : 0)}
-                invalid={flagged && adding && image.missing.length > 0}
+                invalid={flagged && adding && newSource.missing.length > 0}
                 actions={
                   !adding && (
                     <Button
@@ -247,26 +247,26 @@ export function SiteEditForm({
                         setPicked(ADDED);
                       }}
                     >
-                      <ImagePlus size={13} />
-                      Add an image
+                      <Plus size={13} strokeWidth={2} />
+                      Add a source
                     </Button>
                   )
                 }
               >
                 {adding && (
-                  <SiteImageEditor
-                    state={image}
+                  <SiteSourceEditor
+                    state={newSource}
                     flagged={flagged}
-                    name={ADDED_NAME}
+                    name={addedName}
                     actions={
                       <>
                         <ShowOnMap
-                          name={ADDED_NAME}
+                          name={addedName}
                           shown={pickedKey === ADDED}
                           onShow={() => setPicked(ADDED)}
                         />
                         <RemoveButton
-                          label="Discard the new image"
+                          label="Discard the new source"
                           onClick={() => {
                             setAdding(false);
                             setDraft(ADDED, undefined);
@@ -276,25 +276,25 @@ export function SiteEditForm({
                     }
                   />
                 )}
-                {images.map((img, index) => {
-                  const zone = zoneOf(img.id);
+                {sources.map((source, index) => {
+                  const zone = zoneOf(source.id);
                   return (
                     <SourceBlock
-                      key={img.id}
-                      source={img}
+                      key={source.id}
+                      source={source}
                       index={index}
                       alt={site.name}
-                      wide={images.length === 1 && !adding}
-                      {...siteImageExtras({
-                        image: img,
+                      wide={sources.length === 1 && !adding}
+                      {...siteSourceExtras({
+                        source,
                         contour: zone && zone !== "open" ? { zone } : null,
-                        shown: img.id === pickedKey,
-                        onShow: () => setPicked(img.id),
-                        controls: imageControls(img),
+                        shown: source.id === pickedKey,
+                        onShow: () => setPicked(source.id),
+                        controls: sourceControls(source),
                       })}
                       className={cn(
-                        img.id === pickedKey && "border-orange-500/50",
-                        removed.has(img.id) && "opacity-60",
+                        source.id === pickedKey && "border-orange-500/50",
+                        removed.has(source.id) && "opacity-60",
                       )}
                     />
                   );
@@ -326,7 +326,7 @@ export function SiteEditForm({
                       )}
                       {olderThanCurrent && current && (
                         <p className={cn("rounded-md px-3 py-2 text-xs", WARNING_CALLOUT)}>
-                          This image predates the current contour, from{" "}
+                          This source predates the current contour, from{" "}
                           {formatInstantDate(current.captured_at)}. A contour drawn on it holds from{" "}
                           {formatInstantDate(capturedAt)} until then, and the current zone stays as it
                           is.

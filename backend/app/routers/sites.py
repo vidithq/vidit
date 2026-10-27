@@ -1,4 +1,4 @@
-"""The ``/sites`` endpoints: named areas of interest, their imagery history and contours, their
+"""The ``/sites`` endpoints: named areas of interest, their sources and contours, their
 versions, and the events linked to them.
 
 Rules live in ``services/sites``; this module resolves the row, hands the verb its
@@ -23,12 +23,12 @@ from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.schemas.site import (
     SiteCreate,
     SiteCreatedRead,
-    SiteImageCreate,
-    SiteImageFiledRead,
     SiteList,
     SiteOverlapCheck,
     SiteOverlapRead,
     SiteRead,
+    SiteSourceCreate,
+    SiteSourceFiledRead,
     SiteVersionCreate,
     SiteVersionList,
     SiteVersionRead,
@@ -90,7 +90,7 @@ def create_site(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SiteCreatedRead:
-    """Create a site with its first image, the contour that image shows and your linked events.
+    """Create a site with its first source, the contour that source shows and your linked events.
 
     ``overlapping_sites`` lists the visible sites whose current zone shares area with the new
     one, as a duplicate warning; it never blocks the create.
@@ -160,7 +160,7 @@ def get_site(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> SiteRead:
-    """One site: current zone and last image, images, contours and visible linked events.
+    """One site: current zone and last source, sources, contours and visible linked events.
     A withheld site is a 404 for everyone but an admin."""
     return sites_service.build_site_read(db, _resolve(db, site_id, current_user))
 
@@ -174,10 +174,10 @@ def save_site_version(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> SiteRead:
-    """Edit your site in one transaction: name, kind, added and removed images, contour changes
+    """Edit your site in one transaction: name, kind, added and removed sources, contour changes
     and your linked events. Owner only.
 
-    A change to the record, the images or a contour files the superseded state as one version;
+    A change to the record, the sources or a contour files the superseded state as one version;
     a change to your links alone files none. 409 ``version_mismatch`` when ``version_no`` names
     a version the site has moved past, 409 ``nothing_changed`` when nothing changes.
     """
@@ -241,40 +241,40 @@ def get_site_version(
 
 
 @router.post(
-    "/{site_id}/images",
-    response_model=SiteImageFiledRead,
+    "/{site_id}/sources",
+    response_model=SiteSourceFiledRead,
     status_code=status.HTTP_201_CREATED,
 )
 @limiter.limit("30/minute")
-def file_image(
+def file_site_source(
     request: Request,
     site_id: uuid.UUID,
-    body: SiteImageCreate,
+    body: SiteSourceCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> SiteImageFiledRead:
-    """File a dated satellite image in a site's imagery history, filing a version. Any signed-in
-    analyst; an image is never edited."""
+) -> SiteSourceFiledRead:
+    """File a dated satellite source on a site, filing a version. Any signed-in analyst; a site
+    source is never edited."""
     site = _resolve(db, site_id, None)
     try:
-        return sites_service.file_image(db, site=site, author=current_user, body=body)
+        return sites_service.file_site_source(db, site=site, author=current_user, body=body)
     except _WRITE_ERRORS as exc:
         _raise_site_error(exc)
 
 
-@router.delete("/{site_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{site_id}/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
-def remove_image(
+def remove_site_source(
     request: Request,
     site_id: uuid.UUID,
-    image_id: uuid.UUID,
+    source_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Remove an image you filed from the site, filing a version. 409 ``image_carries_contour``
-    while the image carries a contour."""
+    """Remove a source you filed from the site, filing a version. 409 ``source_carries_contour``
+    while the source carries a contour."""
     site = _resolve(db, site_id, None)
     try:
-        sites_service.remove_image(db, site=site, user=current_user, image_id=image_id)
+        sites_service.remove_site_source(db, site=site, user=current_user, source_id=source_id)
     except _WRITE_ERRORS as exc:
         _raise_site_error(exc)

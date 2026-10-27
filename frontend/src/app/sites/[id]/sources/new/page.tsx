@@ -11,42 +11,42 @@ import { PageColumns, PageError, PageLoading, PageShell } from "@/components/ui/
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
-import { imageName } from "@/components/sites/SiteImageBlock";
-import { SiteImageEditor, SiteWriteActions, useSiteImageDraft } from "@/components/sites/SiteImageEditor";
+import { siteSourceMention, siteSourceName } from "@/components/sites/SiteSourceBlock";
+import { SiteSourceEditor, SiteWriteActions, useSiteSourceDraft } from "@/components/sites/SiteSourceEditor";
 import { SiteLocation } from "@/components/sites/SiteLocation";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { cn } from "@/lib/cn";
 import {
-  fileSiteImage,
-  latestImage,
+  fileSiteSource,
+  latestSource,
   ownsSite,
   siteEditHref,
   siteHref,
   sitePath,
   type Site,
-  type SiteImageFiled,
+  type SiteSourceFiled,
 } from "@/lib/sites";
-import { sourceWriteError } from "@/lib/sources";
+import { sourceName, sourceWriteError } from "@/lib/sources";
 
 /**
- * Files a dated satellite image in a site's imagery history, open to any signed-in analyst. The
- * main column holds the image editor, the side column the site's current zone to match it
- * against. Filing saves a new version of the site. A filed image lands on a receipt: it says when
- * the site already holds an image of the same provider and day, and offers the owner the edit
- * page to draw a contour on it.
+ * Files a dated satellite source on a site, open to any signed-in analyst. The main column holds
+ * the source editor, the side column the site's current zone to match it against. Filing saves a
+ * new version of the site. A filed source lands on a receipt: it says when the site already holds
+ * a source of the same provider and day, and offers the owner the edit page to draw a contour on
+ * it.
  */
-export default function FileSiteImagePage() {
+export default function FileSiteSourcePage() {
   const params = useParams();
   const { user, loading } = useRequireAuth();
   const siteId = typeof params.id === "string" ? params.id : "";
   const { data: site, error } = useApiResource<Site>(siteId ? sitePath(siteId) : null);
-  const image = useSiteImageDraft();
+  const draft = useSiteSourceDraft();
   const [attempt, setAttempt] = useState(0);
-  const [filed, setFiled] = useState<SiteImageFiled | null>(null);
-  const write = useMutation(() => fileSiteImage(siteId, image.payload()), {
-    fallback: "The image was not filed. Try again.",
+  const [filed, setFiled] = useState<SiteSourceFiled | null>(null);
+  const write = useMutation(() => fileSiteSource(siteId, draft.payload()), {
+    fallback: "The source was not filed. Try again.",
     onError: sourceWriteError,
     onSuccess: setFiled,
   });
@@ -56,9 +56,9 @@ export default function FileSiteImagePage() {
 
   const submit = () => {
     setAttempt((n) => n + 1);
-    if (image.missing.length > 0) return;
-    if (image.held) {
-      write.setError(image.held);
+    if (draft.missing.length > 0) return;
+    if (draft.held) {
+      write.setError(draft.held);
       return;
     }
     void write.run();
@@ -66,7 +66,7 @@ export default function FileSiteImagePage() {
 
   const subtitle = (
     <span className="text-sm text-neutral-400">
-      In the imagery history of{" "}
+      On{" "}
       <Link href={siteHref(site.id)} className={TEXT_LINK}>
         {site.name}
       </Link>
@@ -74,18 +74,18 @@ export default function FileSiteImagePage() {
   );
 
   if (filed) {
-    const duplicates = site.images.filter((i) => filed.duplicate_image_ids.includes(i.id));
+    const duplicates = site.sources.filter((s) => filed.duplicate_source_ids.includes(s.id));
     return (
-      <PageShell back backFallback={siteHref(site.id)} title="Image filed" subtitle={subtitle}>
+      <PageShell back backFallback={siteHref(site.id)} title="Source filed" subtitle={subtitle}>
         <Card dense className="max-w-xl">
           <p className={FORM_SUCCESS_BANNER} role="status">
-            {imageName(filed)} is in the imagery history.
+            {siteSourceName(filed)} is on the site.
           </p>
           {duplicates.length > 0 && (
             <p className={cn("rounded-md px-3 py-2 text-sm", WARNING_CALLOUT)}>
-              The site already holds an image from the same provider on the same day:{" "}
-              {duplicates.map((d) => `the ${imageName(d).replace("Image", "image")}`).join(", ")}. Check that the two
-              are not the same image.
+              The site already holds a source from the same provider on the same day:{" "}
+              {duplicates.map(siteSourceMention).join(", ")}. Check that the two are not the same
+              capture.
             </p>
           )}
           <div className="flex flex-wrap gap-2">
@@ -94,7 +94,7 @@ export default function FileSiteImagePage() {
             </Link>
             {ownsSite(site, user.id) && (
               <Link href={siteEditHref(site.id, filed.id)} className={buttonClasses("secondary")}>
-                Draw a contour on this image
+                Draw a contour on this source
               </Link>
             )}
           </div>
@@ -107,15 +107,15 @@ export default function FileSiteImagePage() {
     <PageShell
       back
       backFallback={siteHref(site.id)}
-      title="File an image"
+      title="File a source"
       subtitle={subtitle}
       headerSide={null}
       stickyActions={
         <SiteWriteActions
-          label="File the image"
+          label="File the source"
           busyLabel="Filing…"
           icon={<ImagePlus size={14} />}
-          missing={image.missing}
+          missing={draft.missing}
           attempt={attempt}
           busy={write.loading}
           error={write.error}
@@ -126,14 +126,14 @@ export default function FileSiteImagePage() {
       <PageColumns
         main={
           <section>
-            <SectionEyebrow title="Satellite image" concept="site_image" besideScroller />
-            <SiteImageEditor state={image} flagged={attempt > 0} />
+            <SectionEyebrow title="Satellite source" concept="site_source" besideScroller />
+            <SiteSourceEditor state={draft} flagged={attempt > 0} name={sourceName(site.sources.length)} />
           </section>
         }
         side={
           <section>
             <SectionEyebrow title="Current zone" concept="site_zone" besideScroller />
-            <SiteLocation site={site} image={latestImage(site.images)} />
+            <SiteLocation site={site} source={latestSource(site.sources)} />
           </section>
         }
       />

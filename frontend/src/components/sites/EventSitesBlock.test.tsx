@@ -78,7 +78,7 @@ describe("EventSitesBlock", () => {
     expect(calls.some((c) => c.path.startsWith("/sites/"))).toBe(false);
   });
 
-  it("files the event's satellite image on the site when the owner asks", async () => {
+  it("files the event's satellite source on the site when the owner asks", async () => {
     viewer = { id: "u1" };
     const satellite = source({
       id: "sat",
@@ -93,10 +93,10 @@ describe("EventSitesBlock", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Site Bravo/ }));
     fireEvent.click(screen.getByRole("button", { name: "Damage" }));
-    fireEvent.click(screen.getByRole("switch", { name: "Also file source 2 in the imagery history" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Also file source 2 on the site" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Link" }));
     });
-    expect(calls).toContainEqual({ path: "/sites/s2/images", method: "POST" });
+    expect(calls).toContainEqual({ path: "/sites/s2/sources", method: "POST" });
   });
 });

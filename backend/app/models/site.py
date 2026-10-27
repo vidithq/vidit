@@ -30,11 +30,11 @@ LinkEffect = Literal["damage", "destruction", "activity", "other"]
 
 
 class Site(Base):
-    """A named area of interest that analysts monitor through dated satellite imagery.
+    """A named area of interest that analysts monitor through its sources, dated satellite captures.
 
-    The zone is not a column: each contour is a ``site_contours`` row citing a site image (a
-    ``sources`` row with ``site_id`` set), and every read derives the zone and the last image
-    (``services/sites``). The live state is this row, the images not removed and their live
+    The zone is not a column: each contour is a ``site_contours`` row citing a site source (a
+    ``sources`` row with ``site_id`` set), and every read derives the zone and the last source
+    (``services/sites``). The live state is this row, the sources not removed and their live
     contours; each write that changes it files the state it supersedes in ``site_versions``.
     ``owner_id`` cascades like ``Collection.owner_id``.
     """
@@ -76,8 +76,8 @@ class SiteVersion(Base):
     """One superseded state of a site, filed by the write that replaced it.
 
     Append-only, like ``EventVersion``: ``version_no`` is the version this row holds, and the
-    live state is ``sites.version_no``. The snapshot names its images and contours by id, and
-    neither row is ever deleted while the site stands: a removed image keeps its row with
+    live state is ``sites.version_no``. The snapshot names its sources and contours by id, and
+    neither row is ever deleted while the site stands: a removed source keeps its row with
     ``removed_at`` set, and a replaced contour keeps its row with ``superseded_at`` set.
     """
 
@@ -91,7 +91,7 @@ class SiteVersion(Base):
     edited_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    # ``schemas/site.SiteSnapshot``: the name, the kind, and each image with its contour.
+    # ``schemas/site.SiteSnapshot``: the name, the kind, and each source with its contour.
     snapshot = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -105,11 +105,11 @@ class SiteVersion(Base):
 
 
 class SiteContour(Base):
-    """One zone the site's owner drew, citing the site image that shows it.
+    """One zone the site's owner drew, citing the site source that shows it.
 
     Never edited: a redraw stamps ``superseded_at`` on the live row and inserts a new one. A live
-    image carries at most one live contour (``uq_site_contours_live_source``). The zone valid on
-    a date is the live contour whose image has the latest ``captured_at`` on or before it
+    source carries at most one live contour (``uq_site_contours_live_source``). The zone valid on
+    a date is the live contour whose source has the latest ``captured_at`` on or before it
     (``services/sites.zones_at``).
     """
 

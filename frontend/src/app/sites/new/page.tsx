@@ -11,7 +11,7 @@ import { SourcesRow } from "@/components/sources/SourcesRow";
 import { PageColumns, PageLoading } from "@/components/ui/PageShell";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import { SiteKindCard, SiteNameField } from "@/components/sites/SiteFormFields";
-import { SiteImageEditor, SiteWriteActions, useSiteImageDraft } from "@/components/sites/SiteImageEditor";
+import { SiteSourceEditor, SiteWriteActions, useSiteSourceDraft } from "@/components/sites/SiteSourceEditor";
 import { SiteLinksField, linkPayload, type DraftLink } from "@/components/sites/SiteLinksField";
 import { ZoneEditor, useDrawHistory } from "@/components/sites/ZoneEditor";
 import { useSitesInView } from "@/components/sites/useSitesInView";
@@ -90,7 +90,7 @@ export default function NewSitePage() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<SiteKind | "">("");
   const [links, setLinks] = useState<DraftLink[]>([]);
-  const image = useSiteImageDraft();
+  const source = useSiteSourceDraft();
   const [overlaps, setOverlaps] = useState<SiteOverlap[]>([]);
   const [attempt, setAttempt] = useState(0);
   const [sites, onBoundsChange] = useSitesInView();
@@ -115,7 +115,7 @@ export default function NewSitePage() {
   );
 
   const missing = [
-    ...image.missing,
+    ...source.missing,
     ...(zone ? [] : ["A closed contour"]),
     ...(name.trim() ? [] : ["Name"]),
     ...(kind ? [] : ["Kind"]),
@@ -128,7 +128,7 @@ export default function NewSitePage() {
         name: name.trim(),
         kind: kind as SiteKind,
         contour: zone!,
-        image: image.payload(),
+        source: source.payload(),
         event_links: linkPayload(links),
       }),
     {
@@ -141,8 +141,8 @@ export default function NewSitePage() {
   const submit = () => {
     setAttempt((n) => n + 1);
     if (missing.length > 0) return;
-    if (image.held) {
-      create.setError(image.held);
+    if (source.held) {
+      create.setError(source.held);
       return;
     }
     void create.run();
@@ -174,8 +174,8 @@ export default function NewSitePage() {
         <PageColumns
           main={
             <>
-              <SourcesRow count={1} invalid={flagged && image.missing.length > 0}>
-                <SiteImageEditor state={image} flagged={flagged} name={sourceName(0)} />
+              <SourcesRow count={1} invalid={flagged && source.missing.length > 0}>
+                <SiteSourceEditor state={source} flagged={flagged} name={sourceName(0)} />
               </SourcesRow>
               <SiteLinksField links={links} onChange={setLinks} author={user} />
             </>

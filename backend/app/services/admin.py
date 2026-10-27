@@ -774,9 +774,9 @@ def hard_delete_user(
        earliest of them (:func:`services.geolocator_credit.hand_over_owned_events`), with an
        ``ownership_transferred`` notification. A handed-over event keeps its media, versions
        and files, the erased user's uploads included.
-    2. Capture S3 keys of the events left (media of all roles), of the images of the account's
-       sites, plus the account's avatar: the cascade would drop those rows before we could
-       read them.
+    2. Capture S3 keys of the events left (media of all roles), of the source files of the
+       account's sites, plus the account's avatar: the cascade would drop those rows before we
+       could read them.
     3. Delete each event left manually: ``owner_id`` carries no ``ON DELETE CASCADE``. Each
        ``db.delete`` cascades to that row's media, contributor rows and tags.
     4. Hand the org manager role of each organization they were the last live org manager of
@@ -785,7 +785,7 @@ def hard_delete_user(
        step 1. Delete the analyst's own approvals; those they placed for an organization stay
        the organization's, with ``reviewer_id`` set to NULL. Delete the user.
        ``password_reset_tokens``, their collections (and memberships), their sites (with their
-       images, contours and links), their invitations and their contributor rows on other
+       sources, contours and links), their invitations and their contributor rows on other
        people's events cascade-drop;
        ``audit_log.actor_id`` and ``invite_codes.used_by_id`` flip to NULL (migration
        f1a3b5c7d9e0), as does ``invite_codes.created_by_id``, so invite-code rows outlive the
@@ -804,9 +804,9 @@ def hard_delete_user(
     # null ``owner_id`` on the rows it no longer owns.
     db.flush()
 
-    # 2. Capture every file the deleted events name, the account's staged uploads, the images
-    # of its sites (the owner cascade drops their rows), and its profile picture (personal data
-    # on the same erasure request, referenced by nothing else once the row is gone).
+    # 2. Capture every file the deleted events name, the account's staged uploads, the source
+    # files of its sites (the owner cascade drops their rows), and its profile picture (personal
+    # data on the same erasure request, referenced by nothing else once the row is gone).
     objects: list[StoredObject] = []
     for geo in geolocations:
         objects.extend(event_objects(db, geo))

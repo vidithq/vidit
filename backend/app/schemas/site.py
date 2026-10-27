@@ -27,9 +27,9 @@ from app.schemas.source import (
 )
 from app.schemas.user import AuthorRef
 
-IMAGE_NOTE_MAX_LENGTH = 500
-# Images one site write adds.
-MAX_IMAGES_PER_WRITE = 10
+SITE_SOURCE_NOTE_MAX_LENGTH = 500
+# Sources one site write adds.
+MAX_SOURCES_PER_WRITE = 10
 # Vertices across every ring of one zone; a hand-drawn site needs far fewer.
 MAX_ZONE_VERTICES = 1000
 # A zone covers a site, not a region: its geography area stays under this cap.
@@ -64,10 +64,10 @@ class ZonePolygon(BaseModel):
         return rings
 
 
-class SiteImageCreate(BaseModel):
-    """One dated satellite image filed on a site.
+class SiteSourceCreate(BaseModel):
+    """One dated satellite source filed on a site.
 
-    The links are where a reader reopens the image (``services/imagery``). The file is one of
+    The links are where a reader reopens the capture (``services/imagery``). The file is one of
     ``upload_id`` (a staged file from ``POST /uploads``) and ``media_id`` (the file of a
     satellite source of a published event), or neither.
     """
@@ -81,7 +81,7 @@ class SiteImageCreate(BaseModel):
     links: list[SourceLinkCreate] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
     upload_id: uuid.UUID | None = None
     media_id: uuid.UUID | None = None
-    note: str | None = Field(None, max_length=IMAGE_NOTE_MAX_LENGTH)
+    note: str | None = Field(None, max_length=SITE_SOURCE_NOTE_MAX_LENGTH)
 
     @field_validator("note")
     @classmethod
@@ -91,7 +91,7 @@ class SiteImageCreate(BaseModel):
     @model_validator(mode="after")
     def _one_file_and_a_past_capture(self) -> Self:
         if self.upload_id is not None and self.media_id is not None:
-            raise ValueError("An image carries one file: send upload_id or media_id, not both")
+            raise ValueError("A source carries one file: send upload_id or media_id, not both")
         if self.captured_at > datetime.now(UTC):
             raise ValueError("captured_at may not be in the future")
         return self
@@ -120,43 +120,43 @@ SiteEventLinks = Annotated[
 
 
 class SiteCreate(BaseModel):
-    """Body of ``POST /sites``: the record, the first image, the contour it shows, and your
+    """Body of ``POST /sites``: the record, the first source, the contour it shows, and your
     events linked to the site."""
 
     name: SiteName
     kind: SiteKind
     contour: ZonePolygon
-    image: SiteImageCreate
+    source: SiteSourceCreate
     event_links: SiteEventLinks = Field(default_factory=list)
 
 
 class SiteContourChange(BaseModel):
-    """The contour one image carries after the write: ``zone``, or none when ``zone`` is null.
+    """The contour one source carries after the write: ``zone``, or none when ``zone`` is null.
 
-    The image is a live image of the site (``image_id``) or one the same write adds
-    (``added_image``, an index into ``added_images``).
+    The source is a live source of the site (``source_id``) or one the same write adds
+    (``added_source``, an index into ``added_sources``).
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    image_id: uuid.UUID | None = None
-    added_image: int | None = Field(None, ge=0)
+    source_id: uuid.UUID | None = None
+    added_source: int | None = Field(None, ge=0)
     zone: ZonePolygon | None
 
     @model_validator(mode="after")
-    def _one_image(self) -> Self:
-        if (self.image_id is None) == (self.added_image is None):
-            raise ValueError("A contour change names image_id or added_image, not both")
+    def _one_source(self) -> Self:
+        if (self.source_id is None) == (self.added_source is None):
+            raise ValueError("A contour change names source_id or added_source, not both")
         return self
 
     @property
     def target(self) -> uuid.UUID | int:
-        """The image the change applies to: a live image's id, or an index into ``added_images``."""
-        return self.image_id if self.image_id is not None else cast(int, self.added_image)
+        """The source it applies to: a live source's id, or an index into ``added_sources``."""
+        return self.source_id if self.source_id is not None else cast(int, self.added_source)
 
 
 class SiteVersionCreate(BaseModel):
-    """Body of ``POST /sites/{id}/versions``: the record, the images to add and to remove, the
+    """Body of ``POST /sites/{id}/versions``: the record, the sources to add and to remove, the
     contour changes, and your events linked to the site (``null`` leaves the links as they are)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -164,26 +164,26 @@ class SiteVersionCreate(BaseModel):
     version_no: int = Field(ge=1)
     name: SiteName
     kind: SiteKind
-    added_images: list[SiteImageCreate] = Field(
-        default_factory=list, max_length=MAX_IMAGES_PER_WRITE
+    added_sources: list[SiteSourceCreate] = Field(
+        default_factory=list, max_length=MAX_SOURCES_PER_WRITE
     )
-    removed_image_ids: list[uuid.UUID] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
+    removed_source_ids: list[uuid.UUID] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
     contours: list[SiteContourChange] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
     event_links: SiteEventLinks | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
-        if len(set(self.removed_image_ids)) != len(self.removed_image_ids):
-            raise ValueError("an image appears once in removed_image_ids")
+        if len(set(self.removed_source_ids)) != len(self.removed_source_ids):
+            raise ValueError("a source appears once in removed_source_ids")
         targets = [
-            change.image_id if change.image_id is not None else change.added_image
+            change.source_id if change.source_id is not None else change.added_source
             for change in self.contours
         ]
         if len(set(targets)) != len(targets):
-            raise ValueError("an image takes one contour change")
+            raise ValueError("a source takes one contour change")
         for change in self.contours:
-            if change.added_image is not None and change.added_image >= len(self.added_images):
-                raise ValueError("added_image names no image of added_images")
+            if change.added_source is not None and change.added_source >= len(self.added_sources):
+                raise ValueError("added_source names no source of added_sources")
         return self
 
 
@@ -209,8 +209,8 @@ class SiteOverlapRead(SiteRef):
     share_of_existing_zone: float
 
 
-class SiteImageRead(SourceRead):
-    """One image of a site's imagery history: the source, its provider, analyst and note."""
+class SiteSourceRead(SourceRead):
+    """One source of a site, with its imagery provider, analyst and note."""
 
     provider: ImageryProviderRead | None
     author: AuthorRef | None
@@ -218,25 +218,25 @@ class SiteImageRead(SourceRead):
     created_at: datetime
 
 
-class SiteImageFiledRead(SiteImageRead):
-    """``POST /sites/{id}/images`` answer: the image, and the images already filed on the site
+class SiteSourceFiledRead(SiteSourceRead):
+    """``POST /sites/{id}/sources`` answer: the source, and the sources already filed on the site
     with the same provider and capture date."""
 
-    duplicate_image_ids: list[uuid.UUID]
+    duplicate_source_ids: list[uuid.UUID]
 
 
 class SiteContourRead(BaseModel):
-    """One contour the owner drew; ``captured_at`` is its image's, the date it holds from."""
+    """One contour the owner drew; ``captured_at`` is its source's, the date it holds from."""
 
     id: uuid.UUID
     zone: ZonePolygon
-    image_id: uuid.UUID
+    source_id: uuid.UUID
     captured_at: datetime
     author: AuthorRef | None
     created_at: datetime
 
 
-class SiteLastImageRead(BaseModel):
+class SiteLastSourceRead(BaseModel):
     id: uuid.UUID
     captured_at: datetime
     provider: ImageryProviderRef | None
@@ -275,7 +275,7 @@ class SiteLinkedEventRead(BaseModel):
 
 
 class SiteState(BaseModel):
-    """What every site read derives from the contours, the images and the links, at the read's
+    """What every site read derives from the contours, the sources and the links, at the read's
     date."""
 
     id: uuid.UUID
@@ -284,7 +284,7 @@ class SiteState(BaseModel):
     zone: ZonePolygon
     centroid: CoordsRead
     contour_id: uuid.UUID
-    last_image: SiteLastImageRead | None
+    last_source: SiteLastSourceRead | None
     latest_link_effect: LatestLinkEffect | None
 
 
@@ -295,14 +295,14 @@ class SiteList(SiteState):
 
 
 class SiteRead(SiteState):
-    """The full site: its current state, its images and their contours, oldest capture first,
+    """The full site: its current state, its sources and their contours, oldest capture first,
     and every visible linked event, oldest first. ``version_no`` is the live version.
     ``hidden_at`` is set only on a withheld site, which only an admin reads."""
 
     owner: AuthorRef
     version_no: int
     hidden_at: datetime | None
-    images: list[SiteImageRead]
+    sources: list[SiteSourceRead]
     contours: list[SiteContourRead]
     linked_events: list[SiteLinkedEventRead]
     created_at: datetime
@@ -334,24 +334,24 @@ class EventSiteLinkRead(BaseModel):
     linked_at: datetime
 
 
-class SiteSnapshotImage(BaseModel):
+class SiteSnapshotSource(BaseModel):
     id: uuid.UUID
     contour_id: uuid.UUID | None
 
 
 class SiteSnapshot(BaseModel):
-    """What ``site_versions.snapshot`` stores: the name, the kind, and each image of the version,
+    """What ``site_versions.snapshot`` stores: the name, the kind, and each source of the version,
     oldest capture first, with the contour it carried."""
 
     name: str
     kind: SiteKind
-    images: list[SiteSnapshotImage]
+    sources: list[SiteSnapshotSource]
 
 
 class SiteVersionRead(BaseModel):
-    """One superseded version of a site: its record, its images and their contours, and the
-    state they give now (the zone of the latest captured image with a contour, its centroid,
-    and the last image).
+    """One superseded version of a site: its record, its sources and their contours, and the
+    state they give now (the zone of the latest captured source with a contour, its centroid,
+    and the last source).
 
     ``edited_by`` and ``created_at`` belong to the write that superseded this version, as on an
     event version. ``edited_by`` is null once that account is soft-deleted or erased.
@@ -366,8 +366,8 @@ class SiteVersionRead(BaseModel):
     zone: ZonePolygon
     centroid: CoordsRead
     contour_id: uuid.UUID
-    last_image: SiteLastImageRead | None
-    images: list[SiteImageRead]
+    last_source: SiteLastSourceRead | None
+    sources: list[SiteSourceRead]
     contours: list[SiteContourRead]
 
 

@@ -11,17 +11,17 @@ import { setSiteModeration } from "@/lib/admin";
 import { apiFetch } from "@/lib/api";
 import { formatInstant } from "@/lib/format";
 import {
-  contourFromImage,
+  contourOfSource,
   linkEventToSite,
   ownsSite,
-  removeSiteImage,
+  removeSiteSource,
   siteEditHref,
-  siteFileImageHref,
+  siteFileSourceHref,
   siteHref,
   siteVersioned,
   unlinkEventFromSite,
   type Site,
-  type SiteImage,
+  type SiteSource,
   type SiteLinkedEvent,
 } from "@/lib/sites";
 import type { EventDetail } from "@/types";
@@ -36,8 +36,8 @@ import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 import { CHANGE_EFFECT_COPY, LinkDialog } from "./LinkDialog";
-import { SatelliteImagesOffer, fileOffered, useSatelliteOffer } from "./SatelliteImagesOffer";
-import { imageName, removeImageLabel } from "./SiteImageBlock";
+import { SatelliteSourcesOffer, fileOffered, useSatelliteOffer } from "./SatelliteSourcesOffer";
+import { removeSourceLabel, siteSourceMention } from "./SiteSourceBlock";
 import { OWN_EVENT_LINK_COPY, eventCandidate, searchOwnEvents } from "./SiteLinksField";
 import { useApiResource } from "@/hooks/useApiResource";
 
@@ -52,7 +52,7 @@ function PickedEventOffer({
   const { data } = useApiResource<EventDetail>(`/events/${encodeURIComponent(eventId)}`);
   if (!data) return null;
   return (
-    <SatelliteImagesOffer
+    <SatelliteSourcesOffer
       sources={data.sources}
       picked={offer.forEvent(eventId)}
       onToggle={(id) => offer.toggle(eventId, id)}
@@ -60,19 +60,19 @@ function PickedEventOffer({
   );
 }
 
-function RemoveImageDialog({
+function RemoveSourceDialog({
   site,
-  image,
+  source,
   onDone,
   onClose,
 }: {
   site: Site;
-  image: SiteImage;
+  source: SiteSource;
   onDone: () => void;
   onClose: () => void;
 }) {
-  const remove = useMutation(() => removeSiteImage(site.id, image.id), {
-    fallback: "The image was not removed. Try again.",
+  const remove = useMutation(() => removeSiteSource(site.id, source.id), {
+    fallback: "The source was not removed. Try again.",
     onSuccess: () => {
       onDone();
       onClose();
@@ -80,7 +80,7 @@ function RemoveImageDialog({
   });
   return (
     <ConfirmDialog
-      title={`Remove the ${imageName(image).replace("Image", "image")}?`}
+      title={`Remove ${siteSourceMention(source)}?`}
       confirmLabel="Remove"
       busyLabel="Removing…"
       busy={remove.loading}
@@ -89,8 +89,8 @@ function RemoveImageDialog({
       onCancel={onClose}
     >
       <p>
-        The image leaves the site and the site saves a new version. Its earlier versions keep the
-        image.
+        The source leaves the site and the site saves a new version. Its earlier versions keep the
+        source.
       </p>
     </ConfirmDialog>
   );
@@ -133,18 +133,18 @@ function ModerationDialog({
 }
 
 type Dialog =
-  | { kind: "remove"; image: SiteImage }
+  | { kind: "remove"; source: SiteSource }
   | { kind: "moderate" }
   | { kind: "link" }
   | { kind: "effect"; event: SiteLinkedEvent };
 
 /**
  * The controls of one site, assembled once like `useEventActions` and in its order: one icon
- * row (the version selector for every reader, Edit for the owner, Share for every reader, File an
- * image and Link one of my events for any signed-in analyst, Withhold or Restore for an admin,
+ * row (the version selector for every reader, Edit for the owner, Share for every reader, File a
+ * source and Link one of my events for any signed-in analyst, Withhold or Restore for an admin,
  * Report last for every reader but the owner); and the panels they open. `linkControls` gives a
- * linked event's author the effect change and the unlink on its row, and `imageControls` gives an
- * image's filer its Remove, off while the image carries a contour.
+ * linked event's author the effect change and the unlink on its row, and `sourceControls` gives a
+ * source's filer its Remove, off while the source carries a contour.
  */
 export function useSiteActions({
   site,
@@ -156,7 +156,7 @@ export function useSiteActions({
   pinned: ReactNode;
   panels: ReactNode;
   linkControls: (event: SiteLinkedEvent) => ReactNode;
-  imageControls: (image: SiteImage) => ReactNode;
+  sourceControls: (source: SiteSource) => ReactNode;
 } {
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
@@ -168,7 +168,7 @@ export function useSiteActions({
     onSuccess: onChanged,
   });
 
-  if (!site) return { pinned: null, panels: null, linkControls: () => null, imageControls: () => null };
+  if (!site) return { pinned: null, panels: null, linkControls: () => null, sourceControls: () => null };
 
   const owner = ownsSite(site, user?.id);
   const withheld = site.hidden_at !== null;
@@ -193,13 +193,13 @@ export function useSiteActions({
       </>
     );
 
-  const imageControls = (image: SiteImage) =>
-    user?.id === image.author?.id && (
+  const sourceControls = (source: SiteSource) =>
+    user?.id === source.author?.id && (
       <RemoveButton
-        label={removeImageLabel(image, contourFromImage(site.contours, image.id) !== null)}
+        label={removeSourceLabel(source, contourOfSource(site.contours, source.id) !== null)}
         confirms
-        disabled={contourFromImage(site.contours, image.id) !== null}
-        onClick={() => setDialog({ kind: "remove", image })}
+        disabled={contourOfSource(site.contours, source.id) !== null}
+        onClick={() => setDialog({ kind: "remove", source })}
       />
     );
 
@@ -218,11 +218,11 @@ export function useSiteActions({
     ),
     <ShareControl key="share" path={siteHref(site.id)} title={site.name} />,
     user && !withheld && (
-      <Tooltip key="file" label="File an image">
+      <Tooltip key="file" label="File a source">
         <Link
-          href={siteFileImageHref(site.id)}
+          href={siteFileSourceHref(site.id)}
           className={buttonClasses("ghost", { icon: true })}
-          aria-label="File an image"
+          aria-label="File a source"
         >
           <ImagePlus size={14} />
         </Link>
@@ -263,9 +263,9 @@ export function useSiteActions({
       {!owner && report.panel}
       {unlink.error && <p className={FORM_ERROR_BANNER}>{unlink.error}</p>}
       {dialog?.kind === "remove" && (
-        <RemoveImageDialog
+        <RemoveSourceDialog
           site={site}
-          image={dialog.image}
+          source={dialog.source}
           onDone={onChanged}
           onClose={() => setDialog(null)}
         />
@@ -304,5 +304,5 @@ export function useSiteActions({
     </>
   );
 
-  return { pinned, panels, linkControls, imageControls };
+  return { pinned, panels, linkControls, sourceControls };
 }

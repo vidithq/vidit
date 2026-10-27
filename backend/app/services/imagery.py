@@ -6,7 +6,7 @@ through ``POST /sources/check``, every ``SourceRead`` carries the warnings it co
 import's context hosts (``tweet_ingest.urls.CONTEXT_HOSTS``) take their imagery rows from it.
 
 A check never refuses an event's source: :func:`source_warnings` describes what keeps a reader
-from reopening the image, and the write goes through. A site image is refused when no link
+from reopening the image, and the write goes through. A site source is refused when no link
 reopens it (:func:`can_reopen`, read by ``services/sites``). Pure string work, no I/O, no app
 import, so the ingest vocabulary can read it.
 """

@@ -22,7 +22,7 @@ export function DetailCard({
   children,
   className = "",
 }: {
-  /** A full-width row heading the card, above `lead` (a site image's date and its map toggle). */
+  /** A full-width row heading the card, above `lead` (a site source's date and its map toggle). */
   header?: ReactNode;
   /** A full-width slot above the rows, such as a source's file. */
   lead?: ReactNode;

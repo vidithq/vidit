@@ -13,17 +13,17 @@ import { Textarea } from "@/components/ui/Input";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { missingSummary } from "@/lib/events";
 import {
-  SITE_IMAGE_NOTE_MAX_LEN,
-  newSiteImageDraft,
-  siteImageMissing,
-  siteImagePayload,
+  SITE_SOURCE_NOTE_MAX_LEN,
+  newSiteSourceDraft,
+  siteSourceMissing,
+  siteSourcePayload,
   todayUtc,
 } from "@/lib/sites";
 import type { SourceDraft } from "@/lib/sources";
 
-/** A site image form's state: the one source draft and the note. */
-export function useSiteImageDraft() {
-  const [drafts, setDrafts] = useState<SourceDraft[]>(() => [newSiteImageDraft()]);
+/** A site source form's state: the one source draft and the note. */
+export function useSiteSourceDraft() {
+  const [drafts, setDrafts] = useState<SourceDraft[]>(() => [newSiteSourceDraft()]);
   const [note, setNote] = useState("");
   const draft = drafts[0];
   return {
@@ -31,41 +31,42 @@ export function useSiteImageDraft() {
     setDrafts,
     note,
     setNote,
-    /** What the image still lacks, as labels. */
-    missing: siteImageMissing(draft, note, todayUtc()),
+    /** What the source still lacks, as labels. */
+    missing: siteSourceMissing(draft, note, todayUtc()),
     /** A running upload or a refused archived copy, which hold the write. */
     held: sourcesBlockWrite(drafts),
-    payload: () => siteImagePayload(draft, note),
+    payload: () => siteSourcePayload(draft, note),
   };
 }
 
 /**
- * The image of a site form: the event form's source editor in its site image shape (the file,
+ * The source of a site form: the event form's source editor in its site source shape (the file,
  * the title, the required capture time, the links with their archive and the imagery provider
  * check), closed by the note. `flagged` turns the fields a write attempt found missing red.
  */
-export function SiteImageEditor({
+export function SiteSourceEditor({
   state,
   flagged,
-  name = "Image",
+  name,
   actions,
 }: {
-  state: ReturnType<typeof useSiteImageDraft>;
+  state: ReturnType<typeof useSiteSourceDraft>;
   flagged: boolean;
-  name?: string;
+  /** The card's heading: *Source N*, numbered after the site's sources. */
+  name: string;
   /** Controls in the card's header (an edit form's discard). */
   actions?: ReactNode;
 }) {
   const { drafts, setDrafts, note, setNote } = state;
   const draft = drafts[0];
   const { update, pickFile, importLink } = sourceDraftUpdaters(setDrafts);
-  const noteTooLong = note.length > SITE_IMAGE_NOTE_MAX_LEN;
+  const noteTooLong = note.length > SITE_SOURCE_NOTE_MAX_LEN;
   return (
     <SourceEditor
       draft={draft}
       index={0}
       name={name}
-      variant="site-image"
+      variant="site-source"
       wide
       actions={actions}
       update={update(draft.key)}
@@ -79,10 +80,10 @@ export function SiteImageEditor({
         <div className="space-y-1.5">
           <FieldLabel
             label="Note"
-            concept="site_image_note"
+            concept="site_source_note"
             htmlFor={`${draft.key}-note`}
             invalid={noteTooLong}
-            trailing={<CharCounter length={note.length} max={SITE_IMAGE_NOTE_MAX_LEN} />}
+            trailing={<CharCounter length={note.length} max={SITE_SOURCE_NOTE_MAX_LEN} />}
           />
           <Textarea
             id={`${draft.key}-note`}

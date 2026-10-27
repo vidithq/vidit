@@ -48,10 +48,10 @@ geolocations_cursor  # schemas/search.py SearchResponse
 in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
 share_of_existing_zone  # schemas/site.py SiteOverlapRead
-duplicate_image_ids  # schemas/site.py SiteImageFiledRead
+duplicate_source_ids  # schemas/site.py SiteSourceFiledRead
 inside_zone  # schemas/site.py SiteLinkedEventRead
 measured_contour_id  # schemas/site.py SiteLinkedEventRead
-last_image  # schemas/site.py SiteState
+last_source  # schemas/site.py SiteState
 latest_link_effect  # schemas/site.py SiteState
 linked_events  # schemas/site.py SiteRead
 overlapping_sites  # schemas/site.py SiteCreatedRead

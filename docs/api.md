@@ -135,15 +135,15 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/collections/{id}/events/{event_id}` | 🔒 | Take one event off it (idempotent) |
 | **Sites** | | | |
 | GET | `/sites` | 🌐 | The sites whose zone valid on a date meets a bounding box |
-| POST | `/sites` | 🔒 | Create a site with its first image, its contour and your linked events; answers with the sites its zone overlaps |
+| POST | `/sites` | 🔒 | Create a site with its first source, its contour and your linked events; answers with the sites its zone overlaps |
 | POST | `/sites/overlaps` | 🔒 | List the sites whose current zone shares area with a drawn zone |
 | POST | `/sites/{id}/report` | 🌐 | Report a site for moderation (anonymous allowed) |
-| GET | `/sites/{id}` | 🌐 | One site: current zone, last image, images, contours, linked events |
+| GET | `/sites/{id}` | 🌐 | One site: current zone, last source, sources, contours, linked events |
 | POST | `/sites/{id}/versions` | 🔒 | Edit your site in one transaction, filing one version |
 | GET | `/sites/{id}/versions` | 🌐 | The site's superseded versions, newest first (cursor-paged) |
 | GET | `/sites/{id}/versions/{version_no}` | 🌐 | One superseded version of a site |
-| POST | `/sites/{id}/images` | 🔒 | File a dated satellite image in a site's imagery history, filing a version |
-| DELETE | `/sites/{id}/images/{image_id}` | 🔒 | Remove an image you filed, once it carries no contour, filing a version |
+| POST | `/sites/{id}/sources` | 🔒 | File a dated satellite source on a site, filing a version |
+| DELETE | `/sites/{id}/sources/{source_id}` | 🔒 | Remove a source you filed, once it carries no contour, filing a version |
 | GET | `/events/{id}/site-links` | 🌐 | The sites an event is linked to |
 | POST | `/events/{id}/site-links` | 🔒 | Link your published event to a site, or change the effect of its link (idempotent) |
 | DELETE | `/events/{id}/site-links/{site_id}` | 🔒 | Unlink your event from a site (idempotent) |
@@ -283,7 +283,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Sites** | |
 | `GET /sites`, `POST /sites/overlaps` | 60/min |
 | `GET /sites/{id}`, `GET /sites/{id}/versions`, `GET /sites/{id}/versions/{version_no}` | 120/min |
-| `POST /sites`, `POST /sites/{id}/versions`, `POST /sites/{id}/images`, `DELETE /sites/{id}/images/{image_id}` | 30/min |
+| `POST /sites`, `POST /sites/{id}/versions`, `POST /sites/{id}/sources`, `DELETE /sites/{id}/sources/{source_id}` | 30/min |
 | `POST /sites/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
 | `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
@@ -697,7 +697,7 @@ flowchart LR
 | `upload_id` | A file you staged through [`POST /uploads`](#post-uploads). The write consumes it: the staged row becomes the source's file |
 | `media_id` | A stored file of one of this event's sources. The source's own file keeps it; another source's file is copied: a new file row on the same stored object, and the source takes that source's `is_graphic`. A file of another event is `source_media_not_found` |
 
-A source names one file, through `upload_id` or `media_id`, or none; both is a 422. Every other field outside this table is a 422 too. `/openapi.json` lists `SourceCreate` and `SourceLinkCreate` among its component schemas.
+A site source names one file, through `upload_id` or `media_id`, or none; both is a 422. Every other field outside this table is a 422 too. `/openapi.json` lists `SourceCreate` and `SourceLinkCreate` among its component schemas.
 
 **The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while another file row or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The order is derived (level, then `captured_at`), so the posted order is not stored.
 
@@ -705,7 +705,7 @@ A source names one file, through `upload_id` or `media_id`, or none; both is a 4
 
 ### Imagery warnings
 
-A source of kind `satellite` or `aircraft` carries `warnings`: what keeps a reader from reopening its image at its date, checked against the [imagery providers](imagery.md). Each warning is `{code, message, url}`; `url` names the link it is about, `null` the whole source, and `message` is the sentence the form shows. A warning never blocks a write or a publication of an event. A site image is refused instead when no link reopens it ([`POST /sites/{id}/images`](#post-sitesidimages)). Every other kind carries `[]`.
+A source of kind `satellite` or `aircraft` carries `warnings`: what keeps a reader from reopening its image at its date, checked against the [imagery providers](imagery.md). Each warning is `{code, message, url}`; `url` names the link it is about, `null` the whole source, and `message` is the sentence the form shows. A warning never blocks a write or a publication of an event. A site's source is refused instead when no link reopens it ([`POST /sites/{id}/sources`](#post-sitesidsources)). Every other kind carries `[]`.
 
 | Code | Case |
 |---|---|
@@ -2383,7 +2383,7 @@ Take one event off your collection. Owner only. Idempotent: an event the collect
 
 ## Sites
 
-A site is a named area of interest that analysts monitor through dated satellite imagery, such as a base, a depot or a radar. Any signed-in analyst files images in its imagery history, its owner edits its name and kind and draws its contours on its images, and event owners link their published events to it with the effect each shows. [`data-model.md`](data-model.md#sites) describes the tables behind it. Every read computes the zone and the last image from the live images and contours, and every write that changes them files one version.
+A site is a named area of interest that analysts monitor through dated satellite imagery, such as a base, a depot or a radar. Any signed-in analyst files sources on it, its owner edits its name and kind and draws its contours on its sources, and event owners link their published events to it with the effect each shows. [`data-model.md`](data-model.md#sites) describes the tables behind it. Every read computes the zone and the last source from the live sources and contours, and every write that changes them files one version.
 
 **Zone.** A zone is a GeoJSON `Polygon` in WGS84 with `[lng, lat]` positions, the exterior ring first, every ring closed:
 ```json
@@ -2397,7 +2397,7 @@ A site is a named area of interest that analysts monitor through dated satellite
 - **Content (400 `invalid_zone`):** a position outside the event coordinate bounds, a self-crossing polygon, or a polygon without area.
 - **Size (400 `zone_too_wide`, `zone_too_large`):** a zone spans less than 180 degrees of longitude and covers at most 10,000 km², measured on the spheroid. The caps keep a zone from wrapping the antimeridian or covering a continent. The longitude span is checked first.
 
-**Image fields.** A site image is a [source](#sources) of kind `satellite` and level `context` that states no effect. Every write that files one takes `SiteImageCreate`:
+**Site source fields.** A site source is a [source](#sources) of kind `satellite` and level `context` that states no effect. Every write that files one takes `SiteSourceCreate`:
 
 ```json
 {
@@ -2415,13 +2415,13 @@ A site is a named area of interest that analysts monitor through dated satellite
 | Field | Rule |
 |---|---|
 | `title` | Optional, at most 255 characters, stripped. `""` is no title |
-| `captured_at` | Required, read as UTC: when the image was captured. A time after now is a 422 |
+| `captured_at` | Required, read as UTC: when the source was captured. A time after now is a 422 |
 | `links` | 1 to 10 links, each `{url, posted_at, snapshot_url}`, on the rules of a source's [`links`](#sources) |
 | `upload_id` | A file you staged through [`POST /uploads`](#post-uploads), consumed by the write |
-| `media_id` | The file of a `satellite` source of a published, visible event, not flagged graphic. The image takes a new file row on the same stored object. Any other id is `source_media_not_found` |
-| `note` | Optional plain text of up to 500 characters on what the image shows. A blank string reads as absent |
+| `media_id` | The file of a `satellite` source of a published, visible event, not flagged graphic. The source takes a new file row on the same stored object. Any other id is `source_media_not_found` |
+| `note` | Optional plain text of up to 500 characters on what the source shows. A blank string reads as absent |
 
-An image names one file, through `upload_id` or `media_id`, or none; both is a 422, and so is any other field. The image must let a reader reopen it at its date: at least one link on a reopenable [imagery provider](imagery.md), or on an unlisted host with an archived copy. Otherwise the write is refused with `imagery_not_reopenable`. A filed image carries the [imagery warnings](#imagery-warnings) of an event's satellite source.
+A site source names one file, through `upload_id` or `media_id`, or none; both is a 422, and so is any other field. The source must let a reader reopen it at its date: at least one link on a reopenable [imagery provider](imagery.md), or on an unlisted host with an archived copy. Otherwise the write is refused with `imagery_not_reopenable`. A filed source carries the [imagery warnings](#imagery-warnings) of an event's satellite source.
 
 **Site kinds.** `kind` is one of `airbase`, `military_base`, `depot`, `port`, `air_defence_position`, `artillery_position`, `radar`, `fortification`, `unknown` or `other`. `name` is 1 to 255 characters after stripping whitespace.
 
@@ -2429,11 +2429,11 @@ An image names one file, through `upload_id` or `media_id`, or none; both is a 4
 
 **Rules.**
 
-- **Who writes:** any signed-in analyst files an image, and only the analyst who filed an image removes it (403 `not_image_author`). Only the site's owner saves a version: the name, the kind and the contours (403 `not_site_owner`). Only an event's owner links or unlinks the event (403 `not_event_owner`).
-- **Versions:** filing an image, removing one and the owner's edit each file the state they supersede as one version, at most 100 per site (409 `version_limit`). A version holds the name, the kind and each image with the contour it carries. Links have no history and file no version.
-- **Contours:** each image carries at most one contour, which holds from the image's capture date. A redraw replaces it, and the replaced contour stays in the versions. An image is removed only once it carries no contour (409 `image_carries_contour`), and a site keeps at least one image with a contour (409 `site_contour_required`).
-- **Zone selection:** the zone valid on a date is the live contour whose image has the latest `captured_at` on or before that date. The current zone is the one valid now. A site has no zone before the capture day of its earliest live contour's image.
-- **Never edited:** an image and a contour are never edited. A removed image and a replaced contour keep their rows, so every version stays readable. A link is live state: an unlink deletes it, and an effect change rewrites it.
+- **Who writes:** any signed-in analyst files a source, and only the analyst who filed a source removes it (403 `not_source_author`). Only the site's owner saves a version: the name, the kind and the contours (403 `not_site_owner`). Only an event's owner links or unlinks the event (403 `not_event_owner`).
+- **Versions:** filing a source, removing one and the owner's edit each file the state they supersede as one version, at most 100 per site (409 `version_limit`). A version holds the name, the kind and each source with the contour it carries. Links have no history and file no version.
+- **Contours:** each source carries at most one contour, which holds from the source's capture date. A redraw replaces it, and the replaced contour stays in the versions. A source is removed only once it carries no contour (409 `source_carries_contour`), and a site keeps at least one source with a contour (409 `site_contour_required`).
+- **Zone selection:** the zone valid on a date is the live contour whose source has the latest `captured_at` on or before that date. The current zone is the one valid now. A site has no zone before the capture day of its earliest live contour's source.
+- **Never edited:** a source and a contour are never edited. A removed source and a replaced contour keep their rows, so every version stays readable. A link is live state: an unlink deletes it, and an effect change rewrites it.
 - **What a site shows of an event:** a linked event counts only while it is `geolocated` and neither soft-deleted nor withheld. The linked event list and `latest_link_effect` both use this one predicate. An event that closes or is taken down leaves them with no write to its link.
 - **Visibility:** a withheld site, or one whose owner is soft-deleted, answers 404 `site_not_found` on every endpoint and leaves the map, the event's site links, the suggestions and the overlap check. An admin also reads a withheld site on `GET /sites/{id}` and its versions.
 
@@ -2458,7 +2458,7 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
     "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
     "centroid": { "lat": 47.475, "lng": 34.6 },
     "contour_id": "uuid",
-    "last_image": {
+    "last_source": {
       "id": "uuid",
       "captured_at": "2026-06-01T09:30:00Z",
       "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" }
@@ -2472,7 +2472,7 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
 | Field | Meaning |
 |---|---|
 | `zone`, `centroid`, `contour_id` | The zone valid on `as_of`, its centroid and its contour |
-| `last_image` | The image with the latest `captured_at` on or before `as_of`, and the provider its links open. `provider` is `null` when no link opens a listed provider |
+| `last_source` | The source with the latest `captured_at` on or before `as_of`, and the provider its links open. `provider` is `null` when no link opens a listed provider |
 | `latest_link_effect` | The `effect` of the linked event with the latest `occurred_date` on or before `as_of`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries such a date |
 | `owner_id` | The id of the site's owner |
 
@@ -2485,7 +2485,7 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
 
 ### `POST /sites` 🔒
 
-Create a site at version 1, its first image, the contour that image shows and your linked events, in one transaction. The creator owns the site.
+Create a site at version 1, its first source, the contour that source shows and your linked events, in one transaction. The creator owns the site.
 
 **Body:**
 ```json
@@ -2493,12 +2493,12 @@ Create a site at version 1, its first image, the contour that image shows and yo
   "name": "Saky airbase",
   "kind": "airbase",
   "contour": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
-  "image": { "captured_at": "2026-06-01T09:30:00Z", "links": [{ "url": "https://browser.dataspace.copernicus.eu/?…" }] },
+  "source": { "captured_at": "2026-06-01T09:30:00Z", "links": [{ "url": "https://browser.dataspace.copernicus.eu/?…" }] },
   "event_links": [{ "event_id": "uuid", "effect": "damage" }]
 }
 ```
 
-`image` takes the [image fields](#sites). `event_links` is optional: your published events to link to the site, each with its [effect](#sites), on the rules of [`POST /events/{id}/site-links`](#post-eventsidsite-links).
+`source` takes the [source fields](#sites). `event_links` is optional: your published events to link to the site, each with its [effect](#sites), on the rules of [`POST /events/{id}/site-links`](#post-eventsidsite-links).
 
 **Response 201:** a [`SiteRead`](#get-sitesid) plus `overlapping_sites`, the overlap check of [`POST /sites/overlaps`](#post-sitesoverlaps) run on the new zone before the write. The check warns about a possible duplicate and never blocks the create.
 
@@ -2570,7 +2570,7 @@ The report lands in the [`GET /admin/reports`](#get-adminreports) queue. A site 
 
 ### `GET /sites/{id}` 🌐
 
-One site: its current state, its live images and contours, and the events linked to it.
+One site: its current state, its live sources and contours, and the events linked to it.
 
 **Response 200:** a `SiteRead`: the state fields of [`GET /sites`](#get-sites) read now, then the fields below.
 ```json
@@ -2581,12 +2581,12 @@ One site: its current state, its live images and contours, and the events linked
   "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
   "centroid": { "lat": 47.475, "lng": 34.6 },
   "contour_id": "uuid",
-  "last_image": { "id": "uuid", "captured_at": "2026-06-01T09:30:00Z", "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" } },
+  "last_source": { "id": "uuid", "captured_at": "2026-06-01T09:30:00Z", "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" } },
   "latest_link_effect": { "effect": "damage", "occurred_date": "2026-07-09", "event_id": "uuid" },
   "owner": { "id": "uuid", "username": "analyst", "avatar_url": null },
   "version_no": 3,
   "hidden_at": null,
-  "images": [
+  "sources": [
     {
       "id": "uuid",
       "title": "",
@@ -2615,7 +2615,7 @@ One site: its current state, its live images and contours, and the events linked
     {
       "id": "uuid",
       "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
-      "image_id": "uuid",
+      "source_id": "uuid",
       "captured_at": "2026-06-01T09:30:00Z",
       "author": { "id": "uuid", "username": "analyst", "avatar_url": null },
       "created_at": "2026-08-01T09:12:00Z"
@@ -2647,8 +2647,8 @@ One site: its current state, its live images and contours, and the events linked
 | `owner` | The site's owner, in place of `owner_id` |
 | `version_no` | The live version. [`GET /sites/{id}/versions`](#get-sitesidversions) serves the earlier ones |
 | `hidden_at` | `null`, or the takedown time on a withheld site, which only an admin reads |
-| `images` | Every live image, oldest `captured_at` first: a [`SourceRead`](#get-eventsid) plus `provider` (the [imagery provider](imagery.md) its links open, or `null`), `author`, `note` and `created_at`. `author` is `null` once that account is soft-deleted or erased |
-| `contours` | The contour each live image carries, if any, by the `captured_at` of its image, oldest first. `image_id` names the image it is drawn on and `captured_at` is that image's, the date the contour holds from |
+| `sources` | Every live source, oldest `captured_at` first: a [`SourceRead`](#get-eventsid) plus `provider` (the [imagery provider](imagery.md) its links open, or `null`), `author`, `note` and `created_at`. `author` is `null` once that account is soft-deleted or erased |
+| `contours` | The contour each live source carries, if any, by the `captured_at` of its source, oldest first. `source_id` names the source it is drawn on and `captured_at` is that source's, the date the contour holds from |
 | `linked_events` | The linked events that are `geolocated` and neither soft-deleted nor withheld, oldest `occurred_date` first, an event without a date last |
 | `linked_events[].media`, `linked_events[].is_graphic` | The event's card thumbnail and graphic flag, on the rule of [`GET /events`](#get-events) |
 | `linked_events[].inside_zone` | `true` when the event's point lies in the measured zone |
@@ -2665,7 +2665,7 @@ One site: its current state, its live images and contours, and the events linked
 
 ### `POST /sites/{id}/versions` 🔒
 
-Edit your site in one transaction. Owner only. The body states the record and the changes to the images, the contours and your linked events, and the call files the state it supersedes as one version ([`site_versions`](data-model.md#site_versions)).
+Edit your site in one transaction. Owner only. The body states the record and the changes to the sources, the contours and your linked events, and the call files the state it supersedes as one version ([`site_versions`](data-model.md#site_versions)).
 
 **Body:**
 ```json
@@ -2673,11 +2673,11 @@ Edit your site in one transaction. Owner only. The body states the record and th
   "version_no": 3,
   "name": "Saky air base",
   "kind": "airbase",
-  "added_images": [{ "captured_at": "2026-08-01T09:30:00Z", "links": [{ "url": "https://browser.dataspace.copernicus.eu/?…" }] }],
-  "removed_image_ids": ["uuid"],
+  "added_sources": [{ "captured_at": "2026-08-01T09:30:00Z", "links": [{ "url": "https://browser.dataspace.copernicus.eu/?…" }] }],
+  "removed_source_ids": ["uuid"],
   "contours": [
-    { "image_id": "uuid", "zone": null },
-    { "added_image": 0, "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.66, 47.5], [34.66, 47.45], [34.55, 47.45], [34.55, 47.5]]] } }
+    { "source_id": "uuid", "zone": null },
+    { "added_source": 0, "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.66, 47.5], [34.66, 47.45], [34.55, 47.45], [34.55, 47.5]]] } }
   ],
   "event_links": [{ "event_id": "uuid", "effect": "damage" }]
 }
@@ -2687,14 +2687,14 @@ Edit your site in one transaction. Owner only. The body states the record and th
 |---|---|
 | `version_no` | Required: the version the edit was prepared on. A site that moved past it answers 409 `version_mismatch` |
 | `name`, `kind` | Required: the record after the edit, on the rules of [`POST /sites`](#post-sites) |
-| `added_images` | 0 to 10 images to file, each on the [image fields](#sites). You are their analyst |
-| `removed_image_ids` | Live images of the site to remove. Each must be one you filed |
-| `contours` | The contour each listed image carries after the edit: `zone`, or none when `zone` is `null`. Each entry names `image_id` (a live image of the site) or `added_image` (an index into `added_images`), not both, and an image takes one entry. A `zone` replaces the image's contour; an unlisted image keeps its own |
+| `added_sources` | 0 to 10 sources to file, each on the [source fields](#sites). You are their analyst |
+| `removed_source_ids` | Live sources of the site to remove. Each must be one you filed |
+| `contours` | The contour each listed source carries after the edit: `zone`, or none when `zone` is `null`. Each entry names `source_id` (a live source of the site) or `added_source` (an index into `added_sources`), not both, and a source takes one entry. A `zone` replaces the source's contour; an unlisted source keeps its own |
 | `event_links` | Your events linked to the site after the edit, each with its effect, on the rules of [`POST /events/{id}/site-links`](#post-eventsidsite-links). A link of yours the list leaves out is deleted, a new effect rewrites a link, and links to other analysts' events stay. `null` or absent leaves your links as they are |
 
-- **One version:** a change to the name, the kind, the images or a contour files one version for all of them. A change to `event_links` alone files none.
-- **Removal:** an image is removed only once it carries no contour after the edit: drop its contour in `contours` or draw it on another image in the same call. The image's row stays, so the versions that list it stay readable.
-- **At least one contour:** the site keeps at least one image with a contour.
+- **One version:** a change to the name, the kind, the sources or a contour files one version for all of them. A change to `event_links` alone files none.
+- **Removal:** a source is removed only once it carries no contour after the edit: drop its contour in `contours` or draw it on another source in the same call. The source's row stays, so the versions that list it stay readable.
+- **At least one contour:** the site keeps at least one source with a contour.
 - **Nothing changed:** an edit that changes nothing answers 409 `nothing_changed`.
 
 **Response 200:** the [`SiteRead`](#get-sitesid) after the edit.
@@ -2702,11 +2702,11 @@ Edit your site in one transaction. Owner only. The body states the record and th
 **Errors:**
 | Code | Case |
 |------|------|
-| 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large`; the image codes of [`POST /sites`](#post-sites) for an added image |
-| 403 | `not_site_owner`; `not_image_author`: a removed image you did not file; `not_event_owner`: an event of `event_links` you do not own |
-| 404 | `site_not_found`; `site_image_not_found`: a removed image or a contour's `image_id` is not a live image of the site |
-| 409 | `version_mismatch`; `image_carries_contour`: a removed image keeps a contour; `site_contour_required`: no image would carry a contour; `event_not_linkable`: an event of `event_links` is not `geolocated` or not visible; `nothing_changed`; `version_limit`: the site carries 100 versions |
-| 422 | A field breaks the table above; a malformed zone or image; an event twice in `event_links` |
+| 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large`; the source codes of [`POST /sites`](#post-sites) for an added source |
+| 403 | `not_site_owner`; `not_source_author`: a removed source you did not file; `not_event_owner`: an event of `event_links` you do not own |
+| 404 | `site_not_found`; `site_source_not_found`: a removed source or a contour's `source_id` is not a live source of the site |
+| 409 | `version_mismatch`; `source_carries_contour`: a removed source keeps a contour; `site_contour_required`: no source would carry a contour; `event_not_linkable`: an event of `event_links` is not `geolocated` or not visible; `nothing_changed`; `version_limit`: the site carries 100 versions |
+| 422 | A field breaks the table above; a malformed zone or source; an event twice in `event_links` |
 
 ---
 
@@ -2730,8 +2730,8 @@ Paged like [`GET /events/{id}/versions`](#get-eventsidversions): 50 rows by defa
       "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
       "centroid": { "lat": 47.475, "lng": 34.6 },
       "contour_id": "uuid",
-      "last_image": { "id": "uuid", "captured_at": "2026-06-01T09:30:00Z", "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" } },
-      "images": [],
+      "last_source": { "id": "uuid", "captured_at": "2026-06-01T09:30:00Z", "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" } },
+      "sources": [],
       "contours": []
     }
   ],
@@ -2744,8 +2744,8 @@ Paged like [`GET /events/{id}/versions`](#get-eventsidversions): 50 rows by defa
 | `version_no` | The version this row holds. A site at version 3 lists versions 2 and 1 |
 | `edited_by`, `created_at` | The analyst whose write superseded this version, and when, as on an event version. `edited_by` is `null` once that account is soft-deleted or erased. Version 1 was produced by the site's creation |
 | `name`, `kind` | The record at this version |
-| `images`, `contours` | The images of this version, in the shape of [`GET /sites/{id}`](#get-sitesid), removed ones included, and the contour each carried |
-| `zone`, `centroid`, `contour_id`, `last_image` | The state this version gives now: the contour of its latest captured image with a contour, that zone's centroid, and its latest captured image |
+| `sources`, `contours` | The sources of this version, in the shape of [`GET /sites/{id}`](#get-sitesid), removed ones included, and the contour each carried |
+| `zone`, `centroid`, `contour_id`, `last_source` | The state this version gives now: the contour of its latest captured source with a contour, that zone's centroid, and its latest captured source |
 
 **Errors:**
 | Code | Case |
@@ -2765,19 +2765,19 @@ One superseded version, by its number, in the shape of a [`GET /sites/{id}/versi
 
 ---
 
-### `POST /sites/{id}/images` 🔒
+### `POST /sites/{id}/sources` 🔒
 
-File a dated satellite image in a site's imagery history. Any signed-in analyst may, not only the owner. The call files the state it supersedes as one version. An image is never edited afterwards, and it never moves a contour: the owner draws one on it through [`POST /sites/{id}/versions`](#post-sitesidversions).
+File a dated satellite source on a site. Any signed-in analyst may, not only the owner. The call files the state it supersedes as one version. A source is never edited afterwards, and it never moves a contour: the owner draws one on it through [`POST /sites/{id}/versions`](#post-sitesidversions).
 
-**Body:** the [image fields](#sites).
+**Body:** the [source fields](#sites).
 
-**Response 201:** a `SiteImageFiledRead`: the new image, in the shape of an `images` entry of [`GET /sites/{id}`](#get-sitesid), plus `duplicate_image_ids`.
+**Response 201:** a `SiteSourceFiledRead`: the new source, in the shape of a `sources` entry of [`GET /sites/{id}`](#get-sitesid), plus `duplicate_source_ids`.
 
 ```json
-{ "id": "uuid", "kind": "satellite", "captured_at": "2026-06-01T09:30:00Z", "duplicate_image_ids": ["uuid"] }
+{ "id": "uuid", "kind": "satellite", "captured_at": "2026-06-01T09:30:00Z", "duplicate_source_ids": ["uuid"] }
 ```
 
-`duplicate_image_ids` lists the live images of the site with the same provider and the same capture day (UTC). The write goes through either way. An image whose links open no listed provider is never flagged.
+`duplicate_source_ids` lists the live sources of the site with the same provider and the same capture day (UTC). The write goes through either way. A source whose links open no listed provider is never flagged.
 
 **Errors:**
 | Code | Case |
@@ -2789,20 +2789,20 @@ File a dated satellite image in a site's imagery history. Any signed-in analyst 
 
 ---
 
-### `DELETE /sites/{id}/images/{image_id}` 🔒
+### `DELETE /sites/{id}/sources/{source_id}` 🔒
 
-Remove an image you filed from the site. Only the analyst who filed the image may, the owner included. The call files the state it supersedes as one version, and the image's row stays, so the versions that list it stay readable.
+Remove a source you filed from the site. Only the analyst who filed the source may, the owner included. The call files the state it supersedes as one version, and the source's row stays, so the versions that list it stay readable.
 
-The image must carry no contour: the owner first draws that contour on another image, or drops it, through [`POST /sites/{id}/versions`](#post-sitesidversions).
+The source must carry no contour: the owner first draws that contour on another source, or drops it, through [`POST /sites/{id}/versions`](#post-sitesidversions).
 
 **Response 204:** no body.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 403 | `not_image_author` |
-| 404 | `site_not_found`; `site_image_not_found`: not a live image of the site, or already removed |
-| 409 | `image_carries_contour`; `version_limit`: the site carries 100 versions |
+| 403 | `not_source_author` |
+| 404 | `site_not_found`; `site_source_not_found`: not a live source of the site, or already removed |
+| 409 | `source_carries_contour`; `version_limit`: the site carries 100 versions |
 
 ---
 

@@ -34,7 +34,7 @@ export default function SitePage() {
       {actions.panels}
       <SiteBody
         site={site}
-        imageControls={actions.imageControls}
+        sourceControls={actions.sourceControls}
         linked={<LinkedEvents events={site.linked_events} controls={actions.linkControls} />}
       />
     </PageShell>

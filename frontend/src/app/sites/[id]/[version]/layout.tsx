@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { siteHref } from "@/lib/sites";
 
-// `[version]` is a dynamic segment beside static `edit`, `history` and `images` (static wins);
+// `[version]` is a dynamic segment beside static `edit`, `history` and `sources` (static wins);
 // `parseVersionSegment` refuses anything not `v<number>` via `notFound()`. `/sites/{id}` is
 // canonical, so this layout keeps crawlers off the superseded copy.
 

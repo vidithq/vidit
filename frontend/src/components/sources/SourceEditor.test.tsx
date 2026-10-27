@@ -339,20 +339,20 @@ describe("SourceEditor", () => {
   });
 });
 
-describe("SourceEditor as a site image", () => {
+describe("SourceEditor as a site source", () => {
   it("explains the required capture time, not the optional one of an event source", () => {
     render(
       <SourceEditor
         draft={{ ...newSourceDraft(), kind: "satellite", level: "context" }}
         index={0}
-        variant="site-image"
-        name="Image"
+        variant="site-source"
+        name="Source 1"
         update={() => {}}
         onPickFile={() => {}}
         onImportLink={() => {}}
       />,
     );
-    expect(screen.getByRole("button", { name: "When was the image captured?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "When was the source captured?" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "What is the capture time?" })).not.toBeInTheDocument();
   });
 
@@ -364,8 +364,8 @@ describe("SourceEditor as a site image", () => {
       <SourceEditor
         draft={{ ...draft, kind: "satellite", level: "context", links: [{ ...draft.links[0], url }] }}
         index={0}
-        variant="site-image"
-        name="Image"
+        variant="site-source"
+        name="Source 1"
         update={() => {}}
         onPickFile={() => {}}
         onImportLink={onImportLink}

@@ -8,16 +8,16 @@ import { eventHref } from "@/lib/routes";
 import type { Site } from "@/lib/sites";
 import { LinkEffectPill, SiteKindPill } from "./SiteBadges";
 
-/** "7 Sep 2026, Copernicus Browser": when the site was last imaged and by which provider. */
-export function lastImageText(site: Pick<Site, "last_image">): string {
-  const image = site.last_image;
-  if (!image) return "No image";
-  const date = formatInstantDate(image.captured_at);
-  return image.provider ? `${date}, ${image.provider.name}` : date;
+/** "7 Sep 2026, Copernicus Browser": when the site was last captured and by which provider. */
+export function lastSourceText(site: Pick<Site, "last_source">): string {
+  const source = site.last_source;
+  if (!source) return "No source";
+  const date = formatInstantDate(source.captured_at);
+  return source.provider ? `${date}, ${source.provider.name}` : date;
 }
 
-export function LastImageValue({ site }: { site: Pick<Site, "last_image"> }) {
-  return <span className="text-right text-neutral-200">{lastImageText(site)}</span>;
+export function LastSourceValue({ site }: { site: Pick<Site, "last_source"> }) {
+  return <span className="text-right text-neutral-200">{lastSourceText(site)}</span>;
 }
 
 /** The latest linked event's effect, then its date, which opens the event. */
@@ -43,7 +43,7 @@ export function SiteDetails({ site }: { site: Site }) {
       <DetailRow label="Kind" concept="site_kind" align="center">
         <SiteKindPill kind={site.kind} />
       </DetailRow>
-      <DetailRow label="Last image" concept="site_last_image" value={lastImageText(site)} />
+      <DetailRow label="Last source" concept="site_last_source" value={lastSourceText(site)} />
       {site.latest_link_effect && (
         <DetailRow label="Latest effect" concept="link_effect" align="center">
           <LatestEffectValue effect={site.latest_link_effect} />

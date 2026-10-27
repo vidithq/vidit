@@ -4,22 +4,22 @@ Revision ID: 5b8d2e7f9c41
 Revises: 1a47ba7bbcb5
 Create Date: 2026-10-27 09:00:00.000000
 
-A site version is now the whole state of the site: its name, its kind, and its images, each with
+A site version is now the whole state of the site: its name, its kind, and its sources, each with
 the contour drawn on it.
 
-* ``sources.removed_at`` removes a site image from the live state and keeps its row, so every
+* ``sources.removed_at`` removes a site source from the live state and keeps its row, so every
   version that names it stays readable. ``ck_sources_site_fields`` keeps it NULL on an event's
   source.
 * ``site_contours.superseded_at`` retires a redrawn or dropped contour and keeps its row. A live
-  image carries at most one live contour (``uq_site_contours_live_source``): of several contours
-  on one image, the latest stays live and each earlier one is superseded when the next was drawn.
-* ``site_versions.snapshot`` gains ``images``: each image with ``id`` and ``contour_id``. An
-  existing row is rebuilt from the images filed and the contours drawn up to its ``created_at``,
+  source carries at most one live contour (``uq_site_contours_live_source``): of several contours
+  on one source, the latest stays live and each earlier one is superseded when the next was drawn.
+* ``site_versions.snapshot`` gains ``sources``: each source with ``id`` and ``contour_id``. An
+  existing row is rebuilt from the sources filed and the contours drawn up to its ``created_at``,
   the moment it was superseded.
 * ``event_site_links`` keeps the live links only: an unlinked row is deleted, and the unlink and
   attribution columns go. ``uq_event_site_links_event_site`` replaces the partial index.
 
-The downgrade deletes the removed images and the links' history is not restored.
+The downgrade deletes the removed sources and the links' history is not restored.
 """
 
 import json
@@ -41,7 +41,7 @@ def _rebuild_snapshots() -> None:
         sa.text("SELECT id, site_id, created_at, snapshot FROM site_versions")
     ).mappings()
     for row in list(rows):
-        images = bind.execute(
+        sources = bind.execute(
             sa.text(
                 """
                 SELECT s.id AS id,
@@ -58,12 +58,12 @@ def _rebuild_snapshots() -> None:
         snapshot = {
             "name": row["snapshot"]["name"],
             "kind": row["snapshot"]["kind"],
-            "images": [
+            "sources": [
                 {
-                    "id": str(image["id"]),
-                    "contour_id": str(image["contour_id"]) if image["contour_id"] else None,
+                    "id": str(source["id"]),
+                    "contour_id": str(source["contour_id"]) if source["contour_id"] else None,
                 }
-                for image in images
+                for source in sources
             ],
         }
         bind.execute(
@@ -147,7 +147,7 @@ def downgrade() -> None:
         postgresql_where=sa.text("unlinked_at IS NULL"),
     )
 
-    op.execute("UPDATE site_versions SET snapshot = snapshot - 'images'")
+    op.execute("UPDATE site_versions SET snapshot = snapshot - 'sources'")
 
     op.drop_index("uq_site_contours_live_source", table_name="site_contours")
     op.drop_column("site_contours", "superseded_at")

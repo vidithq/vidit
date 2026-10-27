@@ -10,7 +10,7 @@
 import type { components } from "@/lib/api-types";
 import type { Approval, OrganizationApproval } from "@/lib/approvals";
 import type { Collection } from "@/lib/collections";
-import type { Site, SiteContour, SiteImage } from "@/lib/sites";
+import type { Site, SiteContour, SiteSource } from "@/lib/sites";
 import type { Notification, UnreadCount } from "@/lib/notifications";
 import type {
   InviteCandidate,
@@ -572,8 +572,8 @@ export const ONE_PIXEL_PNG = Buffer.from(
   "base64",
 );
 
-/** A site with a long name, three images on two contours and an event linked outside its zone:
- *  the site page's header, image blocks and Location block at their widest. Fictional desert
+/** A site with a long name, three sources on two contours and an event linked outside its zone:
+ *  the site page's header, source blocks and Location block at their widest. Fictional desert
  *  coordinates. */
 export const SITE_ID = "88888888-8888-4888-8888-888888888881";
 
@@ -592,7 +592,7 @@ const SITE_ZONE = {
 
 const SITE_OWNER = { id: SIGNED_IN_USER.id, username: SIGNED_IN_USER.username, avatar_url: null };
 
-const SITE_IMAGES: SiteImage[] = ["2025-03-10", "2025-11-14", "2026-06-18"].map((day, i) => ({
+const SITE_SOURCES: SiteSource[] = ["2025-03-10", "2025-11-14", "2026-06-18"].map((day, i) => ({
   id: `88888888-8888-4888-8888-88888888889${i}`,
   title: i === 2 ? "Sentinel-2 true colour pass over the northern apron and the fuel bund" : "",
   level: "context",
@@ -629,11 +629,11 @@ const SITE_IMAGES: SiteImage[] = ["2025-03-10", "2025-11-14", "2026-06-18"].map(
   created_at: "2026-10-01T10:00:00Z",
 }));
 
-const SITE_CONTOURS: SiteContour[] = [SITE_IMAGES[1], SITE_IMAGES[2]].map((image, i) => ({
+const SITE_CONTOURS: SiteContour[] = [SITE_SOURCES[1], SITE_SOURCES[2]].map((source, i) => ({
   id: `88888888-8888-4888-8888-8888888888a${i}`,
   zone: SITE_ZONE,
-  image_id: image.id,
-  captured_at: image.captured_at!,
+  source_id: source.id,
+  captured_at: source.captured_at!,
   author: SITE_OWNER,
   created_at: "2026-10-01T10:00:00Z",
 }));
@@ -645,16 +645,16 @@ export const SITE: Site = {
   zone: SITE_ZONE,
   centroid: { lat: -25.425, lng: 137.185 },
   contour_id: SITE_CONTOURS[1].id,
-  last_image: {
-    id: SITE_IMAGES[2].id,
-    captured_at: SITE_IMAGES[2].captured_at!,
+  last_source: {
+    id: SITE_SOURCES[2].id,
+    captured_at: SITE_SOURCES[2].captured_at!,
     provider: { id: "copernicus_browser", name: "Copernicus Browser" },
   },
   owner: SITE_OWNER,
   version_no: 1,
   hidden_at: null,
   latest_link_effect: { effect: "destruction", occurred_date: "2025-09-02", event_id: EVENT_ID },
-  images: SITE_IMAGES,
+  sources: SITE_SOURCES,
   contours: SITE_CONTOURS,
   linked_events: [
     {
