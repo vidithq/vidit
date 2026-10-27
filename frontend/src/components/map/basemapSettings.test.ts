@@ -1,4 +1,7 @@
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { setTheme } from "@/lib/theme";
 
 type SettingsModule = typeof import("./basemapSettings");
 
@@ -108,5 +111,19 @@ describe("basemap settings", () => {
     expect(getBasemapSettings().preset).toBe("auto");
     saveBasemapSettings({ preset: "streets" });
     expect(getBasemapSettings().preset).toBe("streets");
+  });
+});
+
+describe("basemap brightness", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("follows the theme on Auto and the preset otherwise", async () => {
+    const { saveBasemapSettings, useBasemapBrightness } = await load();
+    act(() => setTheme("light"));
+    const { result } = renderHook(() => useBasemapBrightness());
+    expect(result.current).toBe("light");
+
+    act(() => saveBasemapSettings({ preset: "vidit-dark" }));
+    expect(result.current).toBe("dark");
   });
 });

@@ -6,7 +6,7 @@ import type { MapLayerMouseEvent, MapLayerTouchEvent, MapMouseEvent, MapTouchEve
 import type { Feature, FeatureCollection } from "geojson";
 
 import { usePalette } from "@/hooks/usePalette";
-import { useTheme } from "@/hooks/useTheme";
+import { useBasemapBrightness } from "./basemapSettings";
 import { SITE_MAP_COLORS, paletteMapColors } from "@/lib/palette";
 import {
   MIN_ZONE_VERTICES,
@@ -139,7 +139,7 @@ function DrawInteractions({ state, onChange }: { state: DrawState; onChange: Dra
 
 function DrawLayers({ state, reference }: { state: DrawState; reference: Zone | null }) {
   const accent = paletteMapColors(usePalette()).base;
-  const colors = SITE_MAP_COLORS[useTheme()];
+  const colors = SITE_MAP_COLORS[useBasemapBrightness()];
   const { vertices, closed, selected } = state;
 
   const shape = useMemo<FeatureCollection>(() => {

@@ -1,12 +1,16 @@
 "use client";
 
 import { useClientPreference } from "@/hooks/useClientPreference";
+import { useTheme } from "@/hooks/useTheme";
 
 import {
+  BASEMAP_PRESETS,
   BASEMAP_PRESET_IDS,
   DEFAULT_BASEMAP_OPTIONS,
+  resolvePreset,
   type BasemapOptions,
   type BasemapPresetId,
+  type Brightness,
   type LabelDensity,
   type LabelLanguage,
 } from "./basemap";
@@ -106,4 +110,10 @@ export function saveBasemapSettings(patch: Partial<BasemapSettings>): void {
 export function useBasemapSettings(): [BasemapSettings, (patch: Partial<BasemapSettings>) => void] {
   const settings = useClientPreference(getBasemapSettings, EVENT, () => DEFAULT_BASEMAP_SETTINGS);
   return [settings, saveBasemapSettings];
+}
+
+/** The brightness of the basemap on show, which the overlays drawn over it read their colours by. */
+export function useBasemapBrightness(): Brightness {
+  const [settings] = useBasemapSettings();
+  return BASEMAP_PRESETS[resolvePreset(settings.preset, useTheme())].brightness;
 }

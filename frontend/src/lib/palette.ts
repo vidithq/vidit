@@ -114,16 +114,18 @@ export function paletteMapColors(id: PaletteId): PaletteOption["map"] {
   return (PALETTES.find((p) => p.id === id) ?? PALETTES[0]).map;
 }
 
-/** Site zone paints on the map, by theme: the neutral text-secondary grey (`neutral-400`) for
- *  every zone, and the semantic warning (`amber-500`) and danger (`red-500`) for a zone whose
- *  latest linked event shows damage or destruction; `halo` is the canvas (`neutral-950`) behind a
- *  label. Hex of the `globals.css` stops; change both. */
+/** Site zone paints on the map, by basemap brightness: Tailwind fuchsia for every zone, the `400`
+ *  stop on a dark basemap and the `700` stop on a light one, a hue no marker palette and no basemap
+ *  highlight below uses, so a site on a military area or an airport stays its own shape. The
+ *  semantic warning (`amber-500`) and danger (`red-500`) paint a zone whose latest linked event
+ *  shows damage or destruction. `halo` is the canvas (`neutral-950`) behind a label, hex of the
+ *  `globals.css` stops; change both. */
 export const SITE_MAP_COLORS: Record<
   ThemeId,
   { zone: string; damage: string; destruction: string; halo: string }
 > = {
-  dark: { zone: "#a3a3a3", damage: "#f59e0b", destruction: "#ef4444", halo: "#0a0a0a" },
-  light: { zone: "#585858", damage: "#f59e0b", destruction: "#ef4444", halo: "#eae8e4" },
+  dark: { zone: "#e879f9", damage: "#f59e0b", destruction: "#ef4444", halo: "#0a0a0a" },
+  light: { zone: "#a21caf", damage: "#f59e0b", destruction: "#ef4444", halo: "#eae8e4" },
 };
 
 /** Basemap highlights, relief shading, fire detections and the coordinate grid, by basemap

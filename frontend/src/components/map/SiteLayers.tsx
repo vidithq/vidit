@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Layer, Source, useMap } from "react-map-gl/maplibre";
 import type { ExpressionSpecification, MapLayerMouseEvent } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
 
-import { useTheme } from "@/hooks/useTheme";
 import { SITE_MAP_COLORS } from "@/lib/palette";
+import { isCoarsePointer } from "@/lib/pointer";
 import type { Zone } from "@/lib/sites";
+import { useBasemapBrightness } from "./basemapSettings";
 import { CLUSTER_LAYER, TAP_TARGET_LAYERS } from "./layers";
+import { MapPreviewCard, PREVIEW_INTENT_MS } from "./MapPreviewCard";
 
 /** From this zoom the map draws zones; below it each site is one square. */
 export const ZONE_MIN_ZOOM = 10;
@@ -82,23 +84,41 @@ function squareIcon(color: string) {
   return { width: ICON_PX, height: ICON_PX, data };
 }
 
+/** A hovered site: its id and the pointer in map-container px. */
+interface HoverTarget {
+  id: string;
+  x: number;
+  y: number;
+}
+
 /**
  * The sites layer of a map, mounted as `<Map>` children: zones from `zoneMinZoom`, one square per
  * site below it, names beside both. Every layer sits under the event pins.
+ *
+ * With `onSelect`, a site takes the pointer like an event pin: the hand cursor, a click selects it,
+ * and with `renderPreview` a mouse resting on it shows that content in the map's preview card after
+ * the same hover intent. A pin over the site takes the click and the hover instead.
  */
 export function SiteLayers({
   sites,
   selectedId,
   onSelect,
+  renderPreview,
   zoneMinZoom = ZONE_MIN_ZOOM,
 }: {
   sites: MapSite[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  /** The preview of a hovered site, or null for none. */
+  renderPreview?: (id: string) => ReactNode;
   zoneMinZoom?: number;
 }) {
   const { current: map } = useMap();
-  const colors = SITE_MAP_COLORS[useTheme()];
+  const colors = SITE_MAP_COLORS[useBasemapBrightness()];
+  const [hover, setHover] = useState<HoverTarget | null>(null);
+  // The hover whose intent delay ran out; a new hover object restarts the delay.
+  const [shownHover, setShownHover] = useState<HoverTarget | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
   // One square per paint a zone can take, so a marker wears its zone's emphasis.
   const icons = useMemo(
     () => ({ zone: colors.zone, damage: colors.damage, destruction: colors.destruction }),
@@ -133,27 +153,58 @@ export function SiteLayers({
 
   useEffect(() => {
     if (!map || !onSelect) return;
-    const click = (e: MapLayerMouseEvent) => {
+    const overPin = (point: MapLayerMouseEvent["point"]) => {
       const pins = TAP_TARGET_LAYERS.filter((id) => map.getLayer(id));
-      if (pins.length > 0 && map.queryRenderedFeatures(e.point, { layers: pins }).length > 0) return;
+      return pins.length > 0 && map.queryRenderedFeatures(point, { layers: pins }).length > 0;
+    };
+    const clearHover = () => {
+      hoveredIdRef.current = null;
+      setHover(null);
+    };
+    const click = (e: MapLayerMouseEvent) => {
+      if (overPin(e.point)) return;
       const id = e.features?.[0]?.properties?.id;
-      if (typeof id === "string") onSelect(id);
+      if (typeof id !== "string") return;
+      clearHover();
+      onSelect(id);
     };
-    const pointerOn = () => {
+    // `mousemove`, not `mouseenter` alone: leaving a pin inside a zone resets the cursor while the
+    // zone, never left, fires no new enter.
+    const move = (e: MapLayerMouseEvent) => {
       map.getCanvas().style.cursor = "pointer";
+      // A tap's compatibility `mousemove` would open the card over the panel the tap opens.
+      if (isCoarsePointer() || map.isMoving() || overPin(e.point)) {
+        clearHover();
+        return;
+      }
+      const id = e.features?.[0]?.properties?.id;
+      if (typeof id !== "string" || id === hoveredIdRef.current) return;
+      hoveredIdRef.current = id;
+      setHover({ id, x: e.point.x, y: e.point.y });
     };
-    const pointerOff = () => {
+    const leave = () => {
       map.getCanvas().style.cursor = "";
+      clearHover();
     };
     map.on("click", CLICK_LAYERS, click);
-    map.on("mouseenter", CLICK_LAYERS, pointerOn);
-    map.on("mouseleave", CLICK_LAYERS, pointerOff);
+    map.on("mousemove", CLICK_LAYERS, move);
+    map.on("mouseleave", CLICK_LAYERS, leave);
+    map.on("movestart", clearHover);
     return () => {
       map.off("click", CLICK_LAYERS, click);
-      map.off("mouseenter", CLICK_LAYERS, pointerOn);
-      map.off("mouseleave", CLICK_LAYERS, pointerOff);
+      map.off("mousemove", CLICK_LAYERS, move);
+      map.off("mouseleave", CLICK_LAYERS, leave);
+      map.off("movestart", clearHover);
     };
   }, [map, onSelect]);
+
+  // The card waits out the event pins' hover intent, so a sweep across the map flashes nothing.
+  useEffect(() => {
+    if (!hover) return;
+    const timer = setTimeout(() => setShownHover(hover), PREVIEW_INTENT_MS);
+    return () => clearTimeout(timer);
+  }, [hover]);
+  const preview = hover && shownHover === hover && renderPreview ? renderPreview(hover.id) : null;
 
   const zones = useMemo<FeatureCollection>(
     () => ({
@@ -206,7 +257,7 @@ export function SiteLayers({
           minzoom={zoneMinZoom}
           paint={{
             "fill-color": color,
-            "fill-opacity": ["case", ["==", ["get", "selected"], 1], 0.14, 0.08],
+            "fill-opacity": ["case", ["==", ["get", "selected"], 1], 0.22, 0.12],
           }}
         />
         <Layer
@@ -245,7 +296,7 @@ export function SiteLayers({
               "text-optional": true,
             }}
             paint={{
-              "text-color": colors.zone,
+              "text-color": color,
               "text-halo-color": colors.halo,
               "text-halo-width": 1.2,
             }}
@@ -261,12 +312,17 @@ export function SiteLayers({
             "text-size": 11,
           }}
           paint={{
-            "text-color": colors.zone,
+            "text-color": color,
             "text-halo-color": colors.halo,
             "text-halo-width": 1.2,
           }}
         />
       </Source>
+      {hover && preview && (
+        <MapPreviewCard x={hover.x} y={hover.y}>
+          {preview}
+        </MapPreviewCard>
+      )}
     </>
   );
 }
