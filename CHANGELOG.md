@@ -16,6 +16,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A Satellite basemap draws the cloud-free Sentinel-2 mosaic of 2016 by EOX ([#709](https://github.com/vidithq/vidit/pull/709)).
 - Two map overlays, off by default, show NASA data of the day before on every basemap: true-colour satellite imagery and fire detections ([#709](https://github.com/vidithq/vidit/pull/709)).
 - An instance can serve the basemap tiles, icons and relief from its own S3-compatible bucket: the backend's `update-map` command copies them there on a schedule, and `NEXT_PUBLIC_MAP_ASSETS_URL` points the map at them ([#709](https://github.com/vidithq/vidit/pull/709)).
+- The tag field of the event and source forms suggests your most used tags, or the platform's, in one line of one-click chips under the search; `GET /tags/suggested` lists them ([#725](https://github.com/vidithq/vidit/pull/742)).
 
 ### Changed
 
