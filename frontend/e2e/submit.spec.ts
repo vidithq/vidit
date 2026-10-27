@@ -246,6 +246,10 @@ test.describe("submit", () => {
     await expect(page.getByRole("group", { name: "Submission mode" })).toHaveCount(0);
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Back" }));
     await expect(page.getByText("Upload it here")).toBeVisible();
+    // The import is the page's action, held until a file is picked.
+    await expect(
+      page.getByRole("complementary", { name: "Actions" }).getByRole("button", { name: "Import archive" }),
+    ).toBeDisabled();
   });
 
   test("reads an X post on a narrow column", async ({ page }) => {
@@ -257,9 +261,10 @@ test.describe("submit", () => {
       .click();
     await expect(page).toHaveURL(/\/submit\?mode=xpost$/);
 
-    const createDetection = page.getByRole("button", {
-      name: "Create the detection",
-    });
+    // The page's action, top right, outside the form it submits.
+    const createDetection = page
+      .getByRole("complementary", { name: "Actions" })
+      .getByRole("button", { name: "Create the detection" });
     await expectNarrowViewportLayout(page, createDetection);
   });
 

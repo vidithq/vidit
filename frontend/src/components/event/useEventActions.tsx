@@ -27,6 +27,7 @@ import type { EventShellActions } from "@/components/event/EventShell";
 import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
+import { useEventSites } from "@/components/sites/useEventSites";
 import type { EventDetail } from "@/types";
 
 /**
@@ -45,8 +46,8 @@ export type ActionSurface = "event" | "request";
 // One flag per control family per surface. `utilities` is Share and Report, which any reader of
 // the record may use. `flow` is geolocating an open request. `edit` is the owner's way to the edit
 // page. `collect` shelves the row on one of the reader's collections. `history` (the version
-// selector), `credit` and `approvals` (the approvals under the row) belong to the event page, the one
-// surface serving the published record.
+// selector), `credit`, `approvals` (the approvals under the row) and `sites` (the Sites block and
+// Link to a site) belong to the event page, the one surface serving the published record.
 const TIERS: Record<
   ActionSurface,
   {
@@ -57,10 +58,11 @@ const TIERS: Record<
     utilities: boolean;
     credit: boolean;
     approvals: boolean;
+    sites: boolean;
   }
 > = {
-  event:   { flow: false, edit: true,  collect: true,  history: true,  utilities: true,  credit: true,  approvals: true },
-  request: { flow: true,  edit: true,  collect: false, history: false, utilities: true,  credit: false, approvals: false },
+  event:   { flow: false, edit: true,  collect: true,  history: true,  utilities: true,  credit: true,  approvals: true,  sites: true },
+  request: { flow: true,  edit: true,  collect: false, history: false, utilities: true,  credit: false, approvals: false, sites: false },
 };
 
 interface EventActionsOptions {
@@ -74,9 +76,10 @@ interface EventActionsOptions {
 interface EventActions {
   /** The report form, a dialog, and the receipt a sent report leaves, for under the header. */
   panels: ReactNode;
-  /** The actions block: the row and Geolocate on a request, pinned; the approvals and an
-   *  invitation under them. */
+  /** The actions block: the row, pinned; the approvals and an invitation under it. */
   actions: EventShellActions | undefined;
+  /** The event page's Sites block, for the side column. */
+  sites: ReactNode;
 }
 
 export function useEventActions({ event, surface, onChanged }: EventActionsOptions): EventActions {
@@ -97,9 +100,10 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     showsApprovals ? allApprovalsPath(event.id) : null,
   );
   const eventApprovals = useEventApprovals(showsApprovals ? event : null, approvals);
+  const sites = useEventSites(tiers?.sites ? event : null);
 
   if (!event || !tiers) {
-    return { panels: null, actions: undefined };
+    return { panels: null, actions: undefined, sites: null };
   }
 
   const isOpenRequest = event.status === "requested";
@@ -155,6 +159,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         )}
       </Popover>
     ),
+    sites.linkAction && <Fragment key="link-site">{sites.linkAction}</Fragment>,
     canSeeCredit && (
       <Popover key={`credit-${event.id}`} label="Geolocators" icon={<Users size={14} />}>
         {() => (
@@ -169,35 +174,29 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
       <Fragment key="request-approval">{eventApprovals.requestAction}</Fragment>
     ),
     canReport && <Fragment key="report">{report.trigger}</Fragment>,
+    // `max-sm:pr-2`: the `?` grows its tap area 8px past its glyph on a phone, which stays inside
+    // the row's right edge.
+    tiers.flow && isOpenRequest && (
+      <span key="geolocate" className="inline-flex items-center gap-1.5 max-sm:pr-2">
+        <Link href={eventEditHref(event.id)} className={buttonClasses("primary")}>
+          <MapPin size={14} />
+          Geolocate
+        </Link>
+        <FieldHelp concept="geolocate_request" />
+      </span>
+    ),
   ].filter(Boolean);
-
-  // `max-sm:pr-2`: the `?` grows its tap area 8px past its glyph on a phone, which stays inside
-  // the row's right edge.
-  const geolocate = tiers.flow && isOpenRequest && (
-    <span className="inline-flex items-center gap-1.5 max-sm:pr-2">
-      <Link href={eventEditHref(event.id)} className={buttonClasses("primary")}>
-        <MapPin size={14} />
-        Geolocate
-      </Link>
-      <FieldHelp concept="geolocate_request" />
-    </span>
-  );
 
   return {
     panels: canReport && report.panel,
     actions: {
-      pinned: (controls.length > 0 || geolocate) && (
-        <div className="flex flex-col items-end gap-3">
-          {controls.length > 0 && (
-            <div
-              role="group"
-              aria-label="Event actions"
-              className="flex flex-wrap items-center justify-end gap-1.5"
-            >
-              {controls}
-            </div>
-          )}
-          {geolocate}
+      pinned: controls.length > 0 && (
+        <div
+          role="group"
+          aria-label="Event actions"
+          className="flex flex-wrap items-center justify-end gap-1.5"
+        >
+          {controls}
         </div>
       ),
       below: (eventApprovals.summary || invited) && (
@@ -215,6 +214,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         </div>
       ),
     },
+    sites: sites.block,
   };
 }
 

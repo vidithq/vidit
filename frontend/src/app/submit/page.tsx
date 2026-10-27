@@ -7,7 +7,7 @@ import { createEvent, createEventRequest } from "@/lib/events";
 import { draftUrls } from "@/lib/sources";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { ImportPostPanel } from "@/components/geolocations/ImportPostPanel";
+import { ImportPostPanel, type ImportShell } from "@/components/geolocations/ImportPostPanel";
 import { SubmitChooser } from "@/components/geolocations/SubmitChooser";
 import { EventFormShell, useEventForm } from "@/components/geolocations/EventFormFields";
 import {
@@ -138,20 +138,19 @@ function SubmitForm() {
     );
   }
 
-  // Both import entries take the chooser's shell: each writes detections server side and leaves
-  // through the review queue.
+  // Both import entries take the chooser's shell, their submit pinned like the form's publishes:
+  // each writes detections server side and leaves through the review queue.
+  const importShell: ImportShell = ({ actions, body }) => (
+    <PageShell title="Submit" back onBack={backToChooser} stickyActions={actions}>
+      {body}
+    </PageShell>
+  );
+  if (mode === "xpost") return <ImportPostPanel shell={importShell} />;
+  if (mode === "bulk") return <ImportArchivePanel username={user.username} shell={importShell} />;
+
   return (
-    <PageShell
-      title="Submit"
-      back={mode !== null}
-      onBack={backToChooser}
-      column={mode === null ? "wide" : undefined}
-    >
-      {mode === null && <SubmitChooser />}
-
-      {mode === "xpost" && <ImportPostPanel />}
-
-      {mode === "bulk" && <ImportArchivePanel username={user.username} />}
+    <PageShell title="Submit" column="wide">
+      <SubmitChooser />
     </PageShell>
   );
 }

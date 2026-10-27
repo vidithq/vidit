@@ -98,22 +98,22 @@ export default function RequestsPage() {
       }
       railLabel="Filters"
       narrowRail="hidden"
+      actions={
+        <Link
+          href={submitHref("single")}
+          className={buttonClasses("primary", { className: "whitespace-nowrap" })}
+        >
+          <Megaphone size={14} strokeWidth={2} />
+          Post request
+        </Link>
+      }
       controls={
-        <>
-          <SegmentedControl
-            aria-label="Sort requests"
-            options={SORT_OPTIONS}
-            value={sort}
-            onChange={setSort}
-          />
-          <Link
-            href={submitHref("single")}
-            className={buttonClasses("primary", { className: "whitespace-nowrap" })}
-          >
-            <Megaphone size={14} strokeWidth={2} />
-            Post request
-          </Link>
-        </>
+        <SegmentedControl
+          aria-label="Sort requests"
+          options={SORT_OPTIONS}
+          value={sort}
+          onChange={setSort}
+        />
       }
     >
       <FilterBar

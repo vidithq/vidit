@@ -10,7 +10,6 @@ import { PageError, PageLoading } from "@/components/ui/PageShell";
 import { eventPageSlots } from "@/components/event/EventDetailBody";
 import { eventLocation } from "@/components/event/EventLocation";
 import { EventShell } from "@/components/event/EventShell";
-import { EventSitesBlock } from "@/components/sites/EventSitesBlock";
 import { useEventActions, type ActionSurface } from "@/components/event/useEventActions";
 
 /** An event's page byline, from the row: the owner, then every co-geolocator as a picture. */
@@ -29,7 +28,7 @@ export function EventReadPage({ surface }: { surface: ActionSurface }) {
   const id = typeof params.id === "string" ? params.id : "";
   const { data: geo, error, refetch } = useApiResource<EventDetail>(id ? `/events/${id}` : null);
   // Called before the early returns.
-  const { panels, actions } = useEventActions({ event: geo, surface, onChanged: refetch });
+  const { panels, actions, sites } = useEventActions({ event: geo, surface, onChanged: refetch });
 
   if (error) return <PageError message={error} />;
   if (!geo) return <PageLoading />;
@@ -42,7 +41,7 @@ export function EventReadPage({ surface }: { surface: ActionSurface }) {
       panels={panels}
       body={
         surface === "event"
-          ? { ...eventPageSlots(geo, eventLocation(geo)), sites: <EventSitesBlock event={geo} /> }
+          ? { ...eventPageSlots(geo, eventLocation(geo)), sites }
           : eventPageSlots(geo, null)
       }
     />

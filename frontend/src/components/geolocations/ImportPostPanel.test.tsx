@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const push = vi.fn();
@@ -32,6 +32,20 @@ function outcome(overrides: Partial<TweetImportOutcome> = {}): TweetImportOutcom
   };
 }
 
+/** The panel in a stand-in page: its submit in the actions, outside the form. */
+function renderPanel() {
+  return render(
+    <ImportPostPanel
+      shell={({ actions, body }) => (
+        <>
+          <aside aria-label="Actions">{actions}</aside>
+          {body}
+        </>
+      )}
+    />
+  );
+}
+
 function paste() {
   fireEvent.change(screen.getByPlaceholderText("https://x.com/handle/status/…"), {
     target: { value: POST_URL },
@@ -45,9 +59,35 @@ describe("ImportPostPanel", () => {
     vi.mocked(importFromPost).mockReset();
   });
 
+  it("puts Create the detection in the page's actions, held until a URL is pasted", () => {
+    renderPanel();
+
+    const create = within(screen.getByRole("complementary", { name: "Actions" })).getByRole(
+      "button",
+      { name: "Create the detection" }
+    );
+    expect(create.closest("form")).toBeNull();
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText("https://x.com/handle/status/…"), {
+      target: { value: POST_URL },
+    });
+    expect(create).toBeEnabled();
+  });
+
+  it("reads the post on Enter in the field", async () => {
+    vi.mocked(importFromPost).mockResolvedValue(outcome({ created: ["d1"] }));
+    renderPanel();
+
+    const field = screen.getByPlaceholderText("https://x.com/handle/status/…");
+    fireEvent.change(field, { target: { value: POST_URL } });
+    fireEvent.submit(field.closest("form")!);
+
+    await waitFor(() => expect(importFromPost).toHaveBeenCalledWith(POST_URL));
+  });
+
   it("opens the review of the detection a clean run created", async () => {
     vi.mocked(importFromPost).mockResolvedValue(outcome({ created: ["d1"] }));
-    render(<ImportPostPanel />);
+    renderPanel();
 
     paste();
 
@@ -66,7 +106,7 @@ describe("ImportPostPanel", () => {
         ],
       })
     );
-    render(<ImportPostPanel />);
+    renderPanel();
 
     paste();
 
@@ -84,7 +124,7 @@ describe("ImportPostPanel", () => {
     vi.mocked(importFromPost).mockResolvedValue(
       outcome({ reason: { code: "coords_missing", message: "No coordinate in the post" } })
     );
-    render(<ImportPostPanel />);
+    renderPanel();
 
     paste();
 
@@ -95,7 +135,7 @@ describe("ImportPostPanel", () => {
 
   it("reads a post nothing could be stored from as a failure too", async () => {
     vi.mocked(importFromPost).mockResolvedValue(outcome({ failed: 2 }));
-    render(<ImportPostPanel />);
+    renderPanel();
 
     paste();
 
@@ -106,7 +146,7 @@ describe("ImportPostPanel", () => {
   it("says a matched row was left as it is, and offers no review link for it", async () => {
     // A skipped row is not the import's to edit, so no review link.
     vi.mocked(importFromPost).mockResolvedValue(outcome({ skipped: ["d9"] }));
-    render(<ImportPostPanel />);
+    renderPanel();
 
     paste();
 
@@ -124,7 +164,7 @@ describe("ImportPostPanel", () => {
         warnings: [{ code: "source_missing", message: "No footage link in the post. Add one at review" }],
       })
     );
-    render(<ImportPostPanel />);
+    renderPanel();
 
     paste();
 
@@ -137,7 +177,7 @@ describe("ImportPostPanel", () => {
 
   it("falls back to its own line when the run named no refusal at all", async () => {
     vi.mocked(importFromPost).mockResolvedValue(outcome());
-    render(<ImportPostPanel />);
+    renderPanel();
 
     paste();
 
@@ -152,7 +192,7 @@ describe("ImportPostPanel", () => {
         "not_your_post"
       )
     );
-    render(<ImportPostPanel />);
+    renderPanel();
 
     paste();
 

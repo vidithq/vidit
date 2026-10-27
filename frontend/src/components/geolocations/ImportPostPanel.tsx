@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -15,6 +15,9 @@ import { importFromPost } from "@/lib/events";
 import { eventEditHref } from "@/lib/routes";
 import type { TweetImportOutcome } from "@/types";
 import { countLabel } from "@/lib/format";
+
+/** How an import entry fills its page: the submit button for the actions, the entry for the body. */
+export type ImportShell = (slots: { actions: ReactNode; body: ReactNode }) => ReactNode;
 
 function outcomeSummary(outcome: TweetImportOutcome): string {
   const parts: string[] = [];
@@ -67,8 +70,12 @@ function outcomeLine(outcome: TweetImportOutcome): string {
  *
  * Warning and refusal sentences come with their code from the backend table the
  * bot's reply and the archive email also read, so this page holds no copy.
+ *
+ * `shell` lays the page out: **Create the detection** for the page's actions,
+ * the form for its body.
  */
-export function ImportPostPanel() {
+export function ImportPostPanel({ shell }: { shell: ImportShell }) {
+  const formId = useId();
   const router = useRouter();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [url, setUrl] = useState("");
@@ -89,8 +96,9 @@ export function ImportPostPanel() {
   const detectionId = outcome === null ? undefined : firstDetectionId(outcome);
   const warnings = outcome?.warnings ?? [];
 
-  return (
+  const body = (
     <form
+      id={formId}
       onSubmit={(e) => {
         e.preventDefault();
         setOutcome(null);
@@ -107,26 +115,14 @@ export function ImportPostPanel() {
             Import guide
           </Link>
         </p>
-        {/* Stacks below `sm`: at 320px the one-line button leaves the field
-            about 100px. */}
-        <div className="flex max-sm:flex-col gap-2">
-          <Input
-            type="url"
-            aria-label="X post URL"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://x.com/handle/status/…"
-            disabled={loading}
-          />
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={loading || !url.trim()}
-            className="whitespace-nowrap"
-          >
-            {loading ? "Reading…" : "Create the detection"}
-          </Button>
-        </div>
+        <Input
+          type="url"
+          aria-label="X post URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://x.com/handle/status/…"
+          disabled={loading}
+        />
       </div>
 
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
@@ -154,4 +150,20 @@ export function ImportPostPanel() {
       )}
     </form>
   );
+
+  // In the page's actions, outside the form: `form` ties it back, and Enter in the field still
+  // submits.
+  const actions = (
+    <Button
+      type="submit"
+      form={formId}
+      variant="primary"
+      disabled={loading || !url.trim()}
+      className="whitespace-nowrap"
+    >
+      {loading ? "Reading…" : "Create the detection"}
+    </Button>
+  );
+
+  return shell({ actions, body });
 }

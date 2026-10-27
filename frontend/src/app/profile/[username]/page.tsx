@@ -1,19 +1,17 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { eventListPath } from "@/lib/events";
 import { userOrganizationsPath, type OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile } from "@/lib/users";
 import type { EventListItem } from "@/types";
-import { Button } from "@/components/ui/Button";
 import { CollectionsSection } from "@/components/collections/CollectionsSection";
 import { BioField } from "@/components/profile/BioField";
 import { LinkedAccountsFields } from "@/components/profile/LinkedAccounts";
 import {
+  OwnProfileActions,
   ProfileActions,
   ProfileEditActions,
   ProfileHeaderEditFields,
@@ -35,7 +33,7 @@ import { useDetectionsCount } from "@/contexts/DetectionsContext";
 
 export default function ProfilePage() {
   const params = useParams();
-  const { user: currentUser, loading: authLoading, logout, refresh } = useAuth();
+  const { user: currentUser, loading: authLoading, refresh } = useAuth();
 
   // Public read surface (`GET /users/{username}` is anonymous); only owner affordances gate on `currentUser`.
   const username = typeof params.username === "string" ? params.username : "";
@@ -75,14 +73,6 @@ export default function ProfilePage() {
     refetchProfile,
   });
 
-  // Two-click confirm against accidental taps; reverts after 3s. Signing out re-renders the anonymous profile, no redirect.
-  const signOut = useConfirmAction(
-    () => {
-      logout();
-    },
-    { timeoutMs: 3000 }
-  );
-
   // Wait for auth so owner affordances do not pop in after an anonymous-looking first paint.
   if (authLoading) {
     return <PageLoading />;
@@ -99,8 +89,8 @@ export default function ProfilePage() {
   const isOwn = !!currentUser && profile.username === currentUser.username;
 
   // Portfolio order: identity block (`ProfileIdentity`, organization logos included) and linked-account
-  // icons in the header actions (`ProfileActions`), then the coverage map, Insights, recent submissions,
-  // open requests, sign out.
+  // icons in the header actions (`ProfileActions`, with New collection and Sign out on your own), then
+  // the coverage map, Insights, collections, recent submissions, open requests.
   // The detections entry is the exception: pending work, so it stays above the fold on the owner's profile.
   // Editing collapses the page to the form alone, with Cancel and Save pinned in the sticky actions.
   return (
@@ -110,7 +100,12 @@ export default function ProfilePage() {
       subtitle={edit.editing ? undefined : <ProfileIdentity profile={profile} organizations={organizations} />}
       actions={
         !edit.editing && (
-          <ProfileActions links={profile.external_links} canEdit={isOwn} edit={edit}>
+          <ProfileActions
+            links={profile.external_links}
+            canEdit={isOwn}
+            edit={edit}
+            icons={isOwn && <OwnProfileActions />}
+          >
             {!isOwn && (
               <FollowButton
                 username={profile.username}
@@ -150,18 +145,6 @@ export default function ProfilePage() {
             <OpenRequests profile={profile} requests={openRequests} />
           )}
         </>
-      )}
-
-      {!edit.editing && isOwn && (
-        <div className="pt-4 border-t border-neutral-800 flex justify-center">
-          <Button
-            variant={signOut.armed ? "danger" : "secondary"}
-            onClick={signOut.trigger}
-          >
-            <LogOut size={14} strokeWidth={1.8} />
-            {signOut.armed ? "Confirm sign out" : "Sign out"}
-          </Button>
-        </div>
       )}
     </PageShell>
   );

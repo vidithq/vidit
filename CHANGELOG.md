@@ -43,6 +43,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Sites work like events: each source filed or removed and each owner edit saves a version you browse in the history, the owner edits name, kind, sources, contours and links on one page, and Submit offers Site and Collection tiles ([#718](https://github.com/vidithq/vidit/pull/718)).
 - The profile's source origin counts a platform's aliases as one host: `twitter.com` links count under `x.com`, `youtu.be` under `youtube.com`, and `telegram.me` under `t.me` ([#743](https://github.com/vidithq/vidit/pull/743)).
 - In the event form, the fold under each source that holds the capture time, capture position, tags and graphic flag reads Capture details instead of More details ([#741](https://github.com/vidithq/vidit/pull/741)).
+- More page actions sit in the top right action bar: Post request on the Requests board, Geolocate on a request, Link to a site on your event, New collection and Sign out on your profile, and Create the detection and Import archive on Submit ([#751](https://github.com/vidithq/vidit/pull/751)).
 
 ### Fixed
 
