@@ -37,8 +37,6 @@ import {
   ONE_PIXEL_PNG,
   REQUESTED_EVENT,
   SECOND_COLLECTED_EVENT,
-  SECOND_COLLECTED_EVENT_DETAIL,
-  SECOND_COLLECTED_EVENT_ID,
   SIGNED_IN_USER,
   SITE,
   SITE_ID,
@@ -88,13 +86,8 @@ const ROUTES: [RegExp, unknown][] = [
   [new RegExp(`^/events/${EVENT_ID}/site-links$`), []],
   // The owner's pending invitations, which the edit page's Geolocators card reads.
   [new RegExp(`^/events/${EVENT_ID}/geolocator-invites$`), []],
-  [
-    new RegExp(`^/events/${SECOND_COLLECTED_EVENT_ID}$`),
-    SECOND_COLLECTED_EVENT_DETAIL,
-  ],
-  // The collection page: its header, then the one page of items the player,
-  // the map and the list all read. Each item's own read answers above, which
-  // is what the player's panel renders on the step it stands on.
+  // The collection page: its header, then the one page of items the map and
+  // the list both read.
   [new RegExp(`^/collections/${COLLECTION_ID}$`), COLLECTION],
   [
     new RegExp(`^/collections/${COLLECTION_ID}/events$`),

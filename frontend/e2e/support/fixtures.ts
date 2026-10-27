@@ -293,7 +293,7 @@ export const SECOND_COLLECTED_EVENT_ID = "11111111-1111-4111-8111-111111111112";
 /**
  * The collection's second item.
  *
- * Two items and not one, because the page's step player is what the spec
+ * Two items and not one, because the Coverage section's two moves are what the spec
  * measures: with a single item both step controls are disabled and the run
  * never says whether a reader on a phone can actually reach the next event.
  */
@@ -302,15 +302,6 @@ export const SECOND_COLLECTED_EVENT: EventListItem = {
   id: SECOND_COLLECTED_EVENT_ID,
   title: "Damaged locomotive shed at the yard's western end",
   coords: { lat: 48.4712, lng: 35.0588 },
-  occurred_date: "2025-01-04",
-};
-
-/** That item's own read, which the player's panel renders on step 2. */
-export const SECOND_COLLECTED_EVENT_DETAIL: EventDetail = {
-  ...EVENT,
-  id: SECOND_COLLECTED_EVENT_ID,
-  title: SECOND_COLLECTED_EVENT.title,
-  coords: SECOND_COLLECTED_EVENT.coords,
   occurred_date: "2025-01-04",
 };
 

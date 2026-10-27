@@ -8,6 +8,10 @@ export const FIELD_HELP = {
     text: "A short, factual description of the place and what happened (e.g. “Strike on a depot, Donetsk”). Not a caption or commentary.",
     label: "What makes a good title?",
   },
+  collection_title: {
+    text: "A short name for the set, such as the operation or the place it reconstructs (e.g. “Kupiansk rail corridor: three days of strikes”). The description says what it holds.",
+    label: "What makes a good collection title?",
+  },
   conflict: {
     text: "Which armed conflict this event belongs to. The list mirrors Wikipedia's list of ongoing armed conflicts (synced daily), and historical conflicts since 1914 are available via “Include ended conflicts”. Pick “Other” for anything not listed.",
     label: "What is the conflict?",
