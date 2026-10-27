@@ -16,11 +16,11 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A Satellite basemap draws the cloud-free Sentinel-2 mosaic of 2016 by EOX ([#709](https://github.com/vidithq/vidit/pull/709)).
 - Two map overlays, off by default, show NASA data of the day before on every basemap: true-colour satellite imagery and fire detections ([#709](https://github.com/vidithq/vidit/pull/709)).
 - An instance can serve the basemap tiles, icons and relief from its own S3-compatible bucket: the backend's `update-map` command copies them there on a schedule, and `NEXT_PUBLIC_MAP_ASSETS_URL` points the map at them ([#709](https://github.com/vidithq/vidit/pull/709)).
-- You can attach a GIF as a source file or a proof image: each of its frames is stored as a PNG image of its own, up to 6 frames; a longer GIF is refused with a request for a video or fewer frames ([#PRNUM](https://github.com/vidithq/vidit/pull/PRNUM)).
+- You can attach a GIF as a source file or a proof image: each of its frames is stored as a PNG image of its own, up to 6 frames; a longer GIF is refused with a request for a video or fewer frames ([#744](https://github.com/vidithq/vidit/pull/744)).
 
 ### Changed
 
-- `POST /uploads` answers an `UploadList` whose `items` holds one `UploadRead` per staged file, one per frame for a GIF ([#PRNUM](https://github.com/vidithq/vidit/pull/PRNUM)).
+- `POST /uploads` answers an `UploadList` whose `items` holds one `UploadRead` per staged file, one per frame for a GIF ([#744](https://github.com/vidithq/vidit/pull/744)).
 - The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The map labels only countries and capitals when zoomed out, hides region borders, and shows one name per label, in Latin script ([#709](https://github.com/vidithq/vidit/pull/709)).
 - Map labels use the app font, Montserrat, served with the app ([#709](https://github.com/vidithq/vidit/pull/709)).
