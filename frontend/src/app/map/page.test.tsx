@@ -1,14 +1,40 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MapStateProvider } from "@/contexts/MapStateContext";
 import { ApiError } from "@/lib/api";
+import type { Site, SiteListItem } from "@/lib/sites";
 import { eventDetail } from "@/test/eventDetail";
 
-// MapLibre touches `window` at module scope; the stub offers one button per pin.
+// MapLibre touches `window` at module scope. One stub stands for both dynamic imports: the map
+// offers one button per pin and one that reports a viewport, and mounts its children; the sites
+// layer offers one button and the preview of site s1.
 vi.mock("next/dynamic", () => ({
   default: () =>
-    function MapStub({ onPointClick }: { onPointClick?: (id: string) => void }) {
+    function MapStub({
+      onPointClick,
+      onBoundsChange,
+      onSelect,
+      renderPreview,
+      children,
+    }: {
+      onPointClick?: (id: string) => void;
+      onBoundsChange?: (bounds: { south: number; west: number; north: number; east: number }) => void;
+      onSelect?: (id: string) => void;
+      renderPreview?: (id: string) => ReactNode;
+      children?: ReactNode;
+    }) {
+      if (onSelect) {
+        return (
+          <>
+            <button type="button" onClick={() => onSelect("s1")}>
+              site s1
+            </button>
+            <div data-testid="site preview">{renderPreview?.("s1")}</div>
+          </>
+        );
+      }
       return (
         <>
           <button type="button" onClick={() => onPointClick?.("a")}>
@@ -17,6 +43,13 @@ vi.mock("next/dynamic", () => ({
           <button type="button" onClick={() => onPointClick?.("b")}>
             pin b
           </button>
+          <button
+            type="button"
+            onClick={() => onBoundsChange?.({ south: 9, west: 29, north: 11, east: 31 })}
+          >
+            report viewport
+          </button>
+          {children}
         </>
       );
     },
@@ -166,6 +199,70 @@ describe("map detail panel", () => {
 describe("map sites layer", () => {
   const filtersButton = () => screen.getByRole("button", { name: /^Filters/ });
   const sitesSwitch = () => screen.getByRole("switch", { name: "Show sites" });
+
+  const SITE_NAME = "Rail depot";
+  const ROW = {
+    id: "s1",
+    name: SITE_NAME,
+    kind: "depot",
+    last_source: {
+      id: "i1",
+      captured_at: "2026-09-07T10:30:00Z",
+      provider: { id: "copernicus_browser", name: "Copernicus Browser" },
+    },
+    latest_link_effect: { effect: "damage", occurred_date: "2026-09-05", event_id: "e1" },
+    zone: { type: "Polygon", coordinates: [[[30, 10], [30.01, 10], [30.01, 10.01], [30, 10]]] },
+    centroid: { lat: 10.003, lng: 30.006 },
+  } as unknown as SiteListItem;
+  const SITE = {
+    ...ROW,
+    owner: { id: "u1", username: "mira", avatar_url: null },
+    sources: [],
+    linked_events: [],
+  } as unknown as Site;
+
+  async function showSites() {
+    fireEvent.click(filtersButton());
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sites" }));
+    fireEvent.click(sitesSwitch());
+    fireEvent.click(screen.getByRole("button", { name: "report viewport" }));
+    // The list read is debounced on the viewport.
+    const list = await waitFor(() => {
+      const read = reads.find((r) => r.path.startsWith("/sites?"));
+      if (!read) throw new Error("no sites read yet");
+      return read;
+    });
+    await act(async () => list.resolve([ROW]));
+  }
+
+  it("previews a site from its list row", async () => {
+    renderMap();
+    await showSites();
+    const preview = screen.getByTestId("site preview");
+    expect(preview).toHaveTextContent(SITE_NAME);
+    expect(preview).toHaveTextContent("Depot");
+    expect(preview).toHaveTextContent("Damage");
+    expect(preview).toHaveTextContent("Last source: 7 Sept 2026, Copernicus Browser");
+  });
+
+  it("opens a site in the event's side panel slot, one record at a time", async () => {
+    renderMap();
+    await showSites();
+
+    fireEvent.click(pin("a"));
+    await act(async () => readOf("a").resolve(eventDetail("a", TITLE_A)));
+    expect(heading(TITLE_A)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "site s1" }));
+    expect(heading(TITLE_A)).not.toBeInTheDocument();
+    await act(async () => reads.findLast((r) => r.path === "/sites/s1")?.resolve(SITE));
+    expect(heading(SITE_NAME)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: SITE_NAME })).toHaveAttribute("href", "/sites/s1");
+
+    fireEvent.click(pin("b"));
+    expect(heading(SITE_NAME)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Close detail panel" })).toHaveLength(1);
+  });
 
   it("turns the layer on from the filter panel and counts it as an active filter", () => {
     renderMap();

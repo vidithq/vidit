@@ -1,4 +1,7 @@
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { setTheme } from "@/lib/theme";
 
 type SettingsModule = typeof import("./basemapSettings");
 
@@ -12,7 +15,7 @@ describe("basemap settings", () => {
   beforeEach(() => window.localStorage.clear());
   afterEach(() => vi.restoreAllMocks());
 
-  it("defaults to Auto, Latin labels, sparse density, every layer but region borders and relief on, and no overlay", async () => {
+  it("defaults to Auto, Latin labels, sparse density, roads and buildings on, the other layers off, and no overlay", async () => {
     const { getBasemapSettings } = await load();
     expect(getBasemapSettings()).toEqual({
       preset: "auto",
@@ -21,7 +24,7 @@ describe("basemap settings", () => {
       regionBorders: false,
       roads: true,
       buildings: true,
-      militaryAndAirports: true,
+      militaryAndAirports: false,
       relief: false,
       disputedDashed: true,
       grid: false,
@@ -82,13 +85,24 @@ describe("basemap settings", () => {
       regionBorders: true,
       roads: false,
       buildings: true,
-      militaryAndAirports: true,
+      militaryAndAirports: false,
       relief: false,
       disputedDashed: true,
       grid: false,
       dailyImagery: false,
       fires: false,
     });
+  });
+
+  it("stores only the reader's choices, so a field never set follows its default", async () => {
+    const { getBasemapSettings, saveBasemapSettings } = await load();
+    saveBasemapSettings({ roads: false });
+    saveBasemapSettings({ militaryAndAirports: true });
+    expect(JSON.parse(window.localStorage.getItem("vidit:basemap") ?? "")).toEqual({
+      roads: false,
+      militaryAndAirports: true,
+    });
+    expect(getBasemapSettings()).toMatchObject({ roads: false, militaryAndAirports: true, buildings: true });
   });
 
   it("reads an unparsable value as the defaults", async () => {
@@ -108,5 +122,19 @@ describe("basemap settings", () => {
     expect(getBasemapSettings().preset).toBe("auto");
     saveBasemapSettings({ preset: "streets" });
     expect(getBasemapSettings().preset).toBe("streets");
+  });
+});
+
+describe("basemap brightness", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("follows the theme on Auto and the preset otherwise", async () => {
+    const { saveBasemapSettings, useBasemapBrightness } = await load();
+    act(() => setTheme("light"));
+    const { result } = renderHook(() => useBasemapBrightness());
+    expect(result.current).toBe("light");
+
+    act(() => saveBasemapSettings({ preset: "vidit-dark" }));
+    expect(result.current).toBe("dark");
   });
 });

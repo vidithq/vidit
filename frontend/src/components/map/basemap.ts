@@ -60,7 +60,7 @@ export const DEFAULT_BASEMAP_OPTIONS: BasemapOptions = {
   regionBorders: false,
   roads: true,
   buildings: true,
-  militaryAndAirports: true,
+  militaryAndAirports: false,
   relief: false,
   disputedDashed: true,
 };

@@ -6,8 +6,8 @@ import { sitesPath, type SiteListItem } from "@/lib/sites";
 import { VIEWPORT_DEBOUNCE_MS, padBounds, toBboxParam, type MapBounds } from "@/lib/viewport";
 import type { MapSite } from "@/components/map/SiteLayers";
 
-export function toMapSite(site: Pick<SiteListItem, "id" | "name" | "zone" | "centroid">): MapSite {
-  return { id: site.id, name: site.name, zone: site.zone, centroid: site.centroid };
+export function toMapSite(site: Pick<SiteListItem, "id" | "zone" | "centroid">): MapSite {
+  return { id: site.id, zone: site.zone, centroid: site.centroid };
 }
 
 /** The current zones around a map's viewport, for a map that shows sites as context (the zone

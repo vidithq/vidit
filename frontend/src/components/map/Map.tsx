@@ -3,7 +3,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   useMemo,
@@ -25,7 +24,6 @@ import { useTheme } from "@/hooks/useTheme";
 import { paletteMapColors } from "@/lib/palette";
 import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
-import { Card } from "@/components/ui/Card";
 import { MediaThumb } from "@/components/ui/EntityCard";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { StatusBadge } from "@/components/event/StatusBadge";
@@ -60,6 +58,7 @@ import type { CoordinatePair } from "@/lib/coordinates";
 import { SatelliteOverlays } from "./SatelliteOverlays";
 import { useBasemapSettings } from "./basemapSettings";
 import { useMapAssets } from "./mapAssets";
+import { MapPreviewCard, PREVIEW_INTENT_MS } from "./MapPreviewCard";
 
 const POINTS_SOURCE = "points";
 
@@ -68,9 +67,6 @@ const SPIDER_DOT_PX = 12;
 const SPIDER_GRACE_PX = 18;
 // The CSS transition runs 150 ms; 10 ms of slack so the ring unmounts after the dots land.
 const SPIDER_MERGE_MS = 160;
-// Hover-intent delay before a preview shows and its detail fetch fires, so sweeping a dense
-// field flashes nothing and sends no requests.
-const PREVIEW_INTENT_MS = 150;
 // The oldest entry is evicted past this size.
 const PREVIEW_CACHE_MAX = 50;
 
@@ -444,9 +440,7 @@ function StackInteractions({
   return null;
 }
 
-/** Hover preview for map pins (normal pins and ring dots). Anchored at the pin center in
- * map-container px and clamped after measuring so it stays inside the map: flips left when the
- * right lacks room, shifts vertically at the edges. */
+/** Hover preview for map pins (normal pins and ring dots), on `MapPreviewCard`. */
 function PinPreviewCard({
   entry,
   error,
@@ -460,64 +454,34 @@ function PinPreviewCard({
   x: number;
   y: number;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    const parent = el?.parentElement;
-    if (!el || !parent) return;
-    const margin = 8;
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    const maxLeft = parent.clientWidth - w - margin;
-    const maxTop = parent.clientHeight - h - margin;
-    let left = x + SPIDER_DOT_PX;
-    if (left > maxLeft) left = x - w - SPIDER_DOT_PX;
-    left = Math.min(Math.max(left, margin), Math.max(maxLeft, margin));
-    const top = Math.min(Math.max(y - 10, margin), Math.max(maxTop, margin));
-    setPos({ left, top });
-  }, [x, y, entry, error]);
-
   // Backend-picked card thumbnail (source media, else proof image): the rule lives in services/thumbnails.
   const media = entry?.thumbnail ?? undefined;
   return (
-    // Above the detail and filter overlays (z-1000) so a preview near a panel edge stays readable.
-    <div
-      ref={ref}
-      className="absolute z-[1100] w-64 pointer-events-none"
-      style={{
-        left: pos?.left ?? x + SPIDER_DOT_PX,
-        top: pos?.top ?? y - 10,
-        visibility: pos ? "visible" : "hidden",
-      }}
-    >
-      <Card className="p-3 space-y-1.5 shadow-lg">
-        {entry ? (
-          <>
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-xs font-medium text-neutral-100 line-clamp-2">
-                {entry.title}
-              </p>
-              <StatusBadge status={entry.status} />
-            </div>
-            <MediaThumb
-              media={media}
-              isGraphic={entry.is_graphic}
-              className="w-full"
-            />
-            <p className="text-[11px] text-neutral-500">
-              {entry.occurred_date && <>{formatDate(entry.occurred_date)} </>}
-              <AuthorByline {...creditProps(entry)} size="xs" />
+    <MapPreviewCard x={x} y={y}>
+      {entry ? (
+        <>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-medium text-neutral-100 line-clamp-2">
+              {entry.title}
             </p>
-          </>
-        ) : error ? (
-          <p className="text-xs text-neutral-500">Preview unavailable</p>
-        ) : (
-          <p className="text-xs text-neutral-500">Loading...</p>
-        )}
-      </Card>
-    </div>
+            <StatusBadge status={entry.status} />
+          </div>
+          <MediaThumb
+            media={media}
+            isGraphic={entry.is_graphic}
+            className="w-full"
+          />
+          <p className="text-[11px] text-neutral-500">
+            {entry.occurred_date && <>{formatDate(entry.occurred_date)} </>}
+            <AuthorByline {...creditProps(entry)} size="xs" />
+          </p>
+        </>
+      ) : error ? (
+        <p className="text-xs text-neutral-500">Preview unavailable</p>
+      ) : (
+        <p className="text-xs text-neutral-500">Loading...</p>
+      )}
+    </MapPreviewCard>
   );
 }
 

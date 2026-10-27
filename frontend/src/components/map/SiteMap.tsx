@@ -5,7 +5,7 @@ import { Layer, Source } from "react-map-gl/maplibre";
 import type { FeatureCollection } from "geojson";
 
 import type { MapPoint } from "@/types";
-import { useTheme } from "@/hooks/useTheme";
+import { useBasemapBrightness } from "./basemapSettings";
 import { SITE_MAP_COLORS } from "@/lib/palette";
 import { formatDistance, type SiteContour, type SiteLinkedEvent, type Zone } from "@/lib/sites";
 import { nearestPointOnZone } from "@/lib/siteZone";
@@ -63,7 +63,7 @@ function ZoneLayers({
   emphasis: "damage" | "destruction" | null;
   connectors: FeatureCollection;
 }) {
-  const colors = SITE_MAP_COLORS[useTheme()];
+  const colors = SITE_MAP_COLORS[useBasemapBrightness()];
   const color = emphasis ? colors[emphasis] : colors.zone;
   useUnderEventPins(LAYERS);
 

@@ -16,7 +16,7 @@ import {
 } from "@/lib/viewport";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
-import { SitePanel } from "@/components/map/SitePanel";
+import { SitePanel, SitePreview } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
@@ -146,6 +146,14 @@ export default function HomePage() {
     [sites, sitesShown],
   );
 
+  const renderSitePreview = useCallback(
+    (id: string) => {
+      const site = sites.find((s) => s.id === id);
+      return site ? <SitePreview site={site} /> : null;
+    },
+    [sites],
+  );
+
   // One panel at a time: a pin closes the site panel, a site closes the event panel.
   const selectEvent = useCallback(
     (id: string | null) => {
@@ -225,7 +233,12 @@ export default function HomePage() {
         goToControl
       >
         {sitesShown && (
-          <SiteLayers sites={mapSites} selectedId={selectedSiteId} onSelect={selectSite} />
+          <SiteLayers
+            sites={mapSites}
+            selectedId={selectedSiteId}
+            onSelect={selectSite}
+            renderPreview={renderSitePreview}
+          />
         )}
       </Map>
 
@@ -237,18 +250,17 @@ export default function HomePage() {
         loading={loading}
       />
 
-      {selectedId && (
+      {/* One side panel slot: the event or the site selected, both on `MapSidePanel`. */}
+      {selectedId ? (
         <DetailSidePanel
           // Keyed by event so per-event state (report form, optimistic flags) starts clean.
           key={selectedId}
           resource={detail}
           onClose={() => setSelectedId(null)}
         />
-      )}
-
-      {sitesShown && selectedSiteId && !selectedId && (
+      ) : sitesShown && selectedSiteId ? (
         <SitePanel resource={siteDetail} onClose={() => setSelectedSiteId(null)} />
-      )}
+      ) : null}
     </div>
   );
 }
