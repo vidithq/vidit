@@ -472,7 +472,7 @@ The caps keep notification email inside the provider's daily quota. The boot che
 
 Each validation rule has one backend home: the upload MIME allowlist in `services/storage.py` (the EXIF-strip set derives from the image allowlist), coordinate bounds in `services/events.validate_coordinates`, and password length in `schemas/auth.NewPassword` (`PASSWORD_MIN_LENGTH` characters, `PASSWORD_MAX_BYTES` UTF-8 bytes, the bcrypt input limit). Frontend enum types are generated from the OpenAPI spec into `lib/api-types.ts`. So is `SourceCreate`, the entry of the event writes' `sources` JSON form field: no route names it, so `main._FORM_FIELD_MODELS` adds it to the spec's components.
 
-Every other frontend copy of a backend rule or of the issue tracker is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`. [`backend/tests/test_frontend_mirrors.py`](../backend/tests/test_frontend_mirrors.py) reads the value mirrors (the caps, the evidence levels, the document kinds, the snapshot hosts, the coordinate bounds and the status filter list) out of the frontend files and fails when one differs from its backend value.
+Every other frontend copy of a backend rule is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`. [`backend/tests/test_frontend_mirrors.py`](../backend/tests/test_frontend_mirrors.py) reads the value mirrors (the caps, the evidence levels, the document kinds, the snapshot hosts, the coordinate bounds and the status filter list) out of the frontend files and fails when one differs from its backend value.
 
 | Frontend | Backend source | Drift breaks |
 |---|---|---|
@@ -525,7 +525,6 @@ Every other frontend copy of a backend rule or of the issue tracker is hand-kept
 | `lib/approvals.ts::canApprove` | `approvals.approve` (published only, never a geolocator, one approval per analyst and version, one approval per organization and version) | the event page offers an approval the API refuses (403 or 409); the API's `viewer_can_approve` covers former geolocators, whom the event's credit no longer lists |
 | `hooks/useMemberOrganizations.ts` (each organization `canApprove` checks in the reader's name) | `organizations.is_organization_member` (any member approves in the organization's name) | the event page hides **Approve as** from a member the API accepts, or offers one the API refuses |
 | `lib/approvalRequests.ts::canRequestApproval` | `approval_requests._require_requester` (published only, a geolocator of the event) | the event page offers **Request approval** where the API refuses a request (403 or 409) |
-| `app/page.tsx::ROADMAP` | the [open issues of type Epic](https://github.com/vidithq/vidit/issues?q=is%3Aissue%20state%3Aopen%20type%3AEpic) except Future considerations: title, outcome (the epic's first line) and whether work has started | landing roadmap promises an outcome no epic plans, or leaves out one that an epic plans |
 | `lib/palette.ts::DEFAULT_PALETTE`, `lib/theme.ts::DEFAULT_THEME`, `lib/helpPreference.ts` (help shown when unset) | `schemas/preferences.DISPLAY_DEFAULTS` | first paint on a new device differs from the account's default until the preferences load |
 | `lib/palette.ts::PALETTES`, `lib/theme.ts::isThemeId` and the `data-palette` / `data-theme` blocks in `app/globals.css` | `schemas/preferences.PaletteId`, `ThemeId` (the id types are generated; the lists and CSS are not) | Settings offers no control for a value the API accepts, or the value repaints nothing |
 | the default `orange-*` scale in `app/globals.css`, the `/icon/android-192` route of `app/icon.tsx` | `services/email_layout.py` accent hex and `_LOGO_PATH` | emails wear another accent than the site, or show a broken header image |
@@ -798,7 +797,7 @@ Start `api` only after `migrate` succeeds. `worker` and `sync-conflicts` wait fo
 
 ### Deployment
 
-The source is [`github.com/vidithq/vidit`](https://github.com/vidithq/vidit): public, AGPL-3.0. The landing roadmap card, the `/about` AGPL paragraph, and the sidebar header (next to the X and Discord shortcuts) link to it. `main` is branch-protected, and every change lands through a PR.
+The source is [`github.com/vidithq/vidit`](https://github.com/vidithq/vidit): public, AGPL-3.0. The landing page hero, the `/about` AGPL paragraph, and the sidebar header (next to the X and Discord shortcuts) link to it. `main` is branch-protected, and every change lands through a PR.
 
 To deploy a release tag to an instance:
 

@@ -27,7 +27,7 @@ CI enforces a floor: every PR to `main` must touch `docs/`. See the `docs-pairin
 ## Doc writing rules
 
 1. **One fact, one home.** If it lives elsewhere, link; don't restate.
-2. **No tracker content in reference docs or code.** No `(current)`, `Status:`, version milestones (`v0.4`, `v0.5`…), or their names (e.g. *Open beta*) in `docs/*.md` or source files. Roadmap tracking lives in the issues, `CHANGELOG.md`, and contributor-facing meta (README, AGENTS, CONTRIBUTING, issue templates). The reader-facing roadmap on the public landing is the one sanctioned projection, hand-kept from the open epics (see [hand-kept mirrors](docs/engineering.md#hand-kept-mirrors)).
+2. **No tracker content in reference docs or code.** No `(current)`, `Status:`, version milestones (`v0.4`, `v0.5`…), or their names (e.g. *Open beta*) in `docs/*.md` or source files. Roadmap tracking lives in the issues, `CHANGELOG.md`, and contributor-facing meta (README, AGENTS, CONTRIBUTING, issue templates).
 3. **No hedge prose in reference docs.** "We should consider…", "may want to…", "it's important to…": make it a decision or an issue.
 4. **No "for context" / "for clarity" intros.** State the thing.
 5. **Adjectives → consequences or delete.** "Critical" → "fails the deploy if missing". "Important" → delete. "Complex" → describe or drop.

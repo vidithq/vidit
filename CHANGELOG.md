@@ -50,6 +50,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - More page actions sit in the top right action bar: Post request on the Requests board, Geolocate on a request, Link to a site on your event, New collection and Sign out on your profile, and Create the detection and Import archive on Submit ([#751](https://github.com/vidithq/vidit/pull/751)).
 - You approve, decline an approval request, and answer a geolocator or organization invitation from the page's top right action bar; with several identities to approve as, one Approve opens a menu of them ([#753](https://github.com/vidithq/vidit/pull/753)).
 
+### Removed
+
+- The landing page no longer shows a roadmap; the open epics on GitHub list what is planned ([#767](https://github.com/vidithq/vidit/pull/770)).
+
 ### Fixed
 
 - A Telegram post whose text holds a custom emoji now imports with its photo instead of the date alone ([#697](https://github.com/vidithq/vidit/pull/697)).
