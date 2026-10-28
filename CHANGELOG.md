@@ -25,9 +25,11 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The sidebar's GitHub, X and Discord icons show in the accent colour, in the rail and in the phone drawer ([#764](https://github.com/vidithq/vidit/pull/766)).
 - A collection's page and its create and edit forms share the event page's layout: the description and events on the left, 20 at a time, and the map with the current event and the details on the right, in view while you scroll ([#732](https://github.com/vidithq/vidit/pull/754)).
 - The Submit page opens on six tiles across the full width: Geolocation, Request, From an X post, Bulk import, Site and Collection, each with a drawing of the result, when to pick it and what it needs ([#728](https://github.com/vidithq/vidit/pull/752)).
 - The filter panel groups its filters under labels (Layers, Event, Source and people), and filters that belong together share one row, so the map shows five rows for its eleven filters; search, the Requests board and the feed group the same way ([#750](https://github.com/vidithq/vidit/pull/750)).
+- On the map, Sites is one more filter chip after Requested, Detected and Geolocated, in a row now labelled Show, counted, removed and cleared like the other filters; the filter panel drops its group headings and its New site link ([#763](https://github.com/vidithq/vidit/pull/768)).
 - On a wide screen, the About page keeps the prose in its main column and moves Guides, Stay in touch and Legal to the right rail, which stays in view while you read; on a phone the links follow the prose ([#735](https://github.com/vidithq/vidit/pull/749)).
 - The map draws sites in the event point colour: below zoom 10 each site is a triangle, and a cluster shows its sites as a counted triangle beside its event count; from zoom 10 the zones show ([#756](https://github.com/vidithq/vidit/pull/760)).
 - A site on the map previews its name when you rest the mouse on it and opens the same side panel as an event; the map draws sites without names ([#747](https://github.com/vidithq/vidit/pull/747)).
