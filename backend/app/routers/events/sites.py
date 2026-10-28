@@ -76,7 +76,7 @@ def unlink_site(
 def list_site_suggestions(
     request: Request,
     geolocation_id: uuid.UUID,
-    margin_m: float = Query(2000, ge=0, le=sites_service.MAX_MARGIN_M),
+    margin_m: float = Query(sites_service.DEFAULT_MARGIN_M, ge=0, le=sites_service.MAX_MARGIN_M),
     q: str | None = Query(None, min_length=1, max_length=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

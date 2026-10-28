@@ -892,6 +892,23 @@ def test_site_suggestions_near_a_point_by_distance_and_by_name(users):
     assert client.get(path, params={"q": "Depot"}).status_code == 401
 
 
+def test_site_suggestions_reach_10_km_by_default(db, users):
+    owner = users()
+    lat = LAT - 0.35
+    site = _create_site(owner, _square(0.01, lat=lat), name=f"Depot {uuid.uuid4().hex[:6]}")
+    headers = login_as(client, owner)
+
+    # About 5 km and 11 km east of the zone's edge.
+    for lng, suggested in ((LNG + 0.055, True), (LNG + 0.11, False)):
+        near_point = client.get(
+            f"{SITES}/suggestions", params={"lat": lat, "lng": lng}, headers=headers
+        )
+        assert (site["id"] in {row["id"] for row in near_point.json()}) is suggested
+        event = _event(db, owner, lat=lat, lng=lng)
+        near_event = client.get(f"/api/v1/events/{event.id}/site-suggestions", headers=headers)
+        assert (site["id"] in {row["id"] for row in near_event.json()}) is suggested
+
+
 def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, users):
     owner, admin = users(), users(is_admin=True)
     lat = LAT + 0.55

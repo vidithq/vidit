@@ -289,6 +289,20 @@ input.picker-glyph::-webkit-calendar-picker-indicator {
   order: 2 !important;
 }
 
+/* A small map (`<Map embedded>`, stamped `data-embedded`) sets its credits in 10px on one line.
+   Beside the buttons when the line fits there, else on its own line under them, along the
+   bottom edge, so a credit never wraps over the subject. Only a map narrower than the line
+   itself wraps it. */
+[data-embedded] .maplibregl-ctrl-bottom-left {
+  flex-wrap: wrap !important;
+  column-gap: 8px !important;
+  row-gap: 0 !important;
+}
+[data-embedded] .maplibregl-ctrl-attrib {
+  font-size: 10px;
+  line-height: 14px;
+}
+
 /* Offset the controls past the sidebar on the full-screen map only. The rail
    only occupies the left edge from `sm` up; below it, it is a drawer, so the
    controls keep the map's own bottom-left corner. `@variant` takes the

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Layer, Source } from "react-map-gl/maplibre";
 import type { FeatureCollection } from "geojson";
 
+import type { CoordinatePair } from "@/lib/coordinates";
 import type { MapPoint } from "@/types";
 import { useBasemapBrightness } from "./basemapSettings";
 import { SITE_MAP_COLORS } from "@/lib/palette";
@@ -149,6 +150,7 @@ export default function SiteMap({
   emphasis,
   events,
   bounds,
+  goTo = null,
   onEventClick,
 }: {
   zone: Zone | null;
@@ -160,6 +162,8 @@ export default function SiteMap({
   emphasis: "damage" | "destruction" | null;
   events: SiteLinkedEvent[];
   bounds: MapBounds;
+  /** A coordinate typed beside the map. */
+  goTo?: CoordinatePair | null;
   onEventClick: (id: string) => void;
 }) {
   const points = useMemo<MapPoint[]>(
@@ -182,6 +186,7 @@ export default function SiteMap({
       fitBounds={bounds}
       fitMaxZoom={SITE_FIT_MAX_ZOOM}
       dimmedIds={dimmed}
+      goTo={goTo}
       embedded
     >
       <ZoneLayers
