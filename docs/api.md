@@ -1493,11 +1493,13 @@ Your collections, each saying whether this event is already on it. Only an analy
 ```json
 {
   "items": [
-    { "id": "uuid", "title": "Zaporizhzhia plant", "event_count": 12, "in_collection": true },
-    { "id": "uuid", "title": "March strikes", "event_count": 0, "in_collection": false }
+    { "id": "uuid", "title": "Zaporizhzhia plant", "cover": [{ "url": "…", "kind": "image", "role": "source" }], "event_count": 12, "in_collection": true },
+    { "id": "uuid", "title": "March strikes", "cover": [], "event_count": 0, "in_collection": false }
   ]
 }
 ```
+
+`cover` is the collection's mosaic, as on [`GET /collections/{id}`](#get-collectionsid).
 
 Thinner than [`CollectionRead`](#get-collectionsid): no description, mosaic or date range. `event_count` uses the same predicate as the collection reads. Unpaged, newest first, and capped at 100 rows (`MAX_POPOVER_COLLECTIONS` in [`services/collections.py`](../backend/app/services/collections.py)); older collections past the cap are absent with nothing marking the cut.
 
@@ -1979,6 +1981,8 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 - Any active filter empties the users and organizations groups.
 - The collections group reads two filters. `author` narrows it to that analyst's collections, and `tag` to the collections whose [`tags`](#get-collectionsid) hold one of the values. Any other active filter empties it. With an empty `q`, `author` or `tag` lists the matching collections newest first.
 - An event hit matches on its title, on a source's title, or on a source URL that contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. The title highlight and the rank read the event title only.
+- A word of `q` that is a live analyst's exact username (case-insensitive, with or without a leading `@`) also matches the events credited to that analyst, as the `author` filter does; a username that holds a space counts only as the whole `q`. The other words narrow those events by text, and only they feed the rank. `osint_analyst` lists that analyst's events, and `strike osint_analyst` lists those whose text matches `strike`.
+- A user hit matches on its username and bio together, or on a word of `q` that is its exact username. An exact username match ranks first.
 - A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable are absent.
 - An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no approval request audience and no creator. `member_count` counts live members.
 - Ranking is `ts_rank` descending, then `created_at` descending, then `id` descending. In browse mode every row ranks equal, so the order is newest first.

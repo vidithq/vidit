@@ -24,12 +24,14 @@ const MEMBERSHIPS: CollectionMemberships = {
     {
       id: "c1",
       title: "Kupiansk rail corridor",
+      cover: [],
       event_count: 1,
       in_collection: false,
     },
     {
       id: "c2",
       title: "Zaporizhzhia plant perimeter",
+      cover: [{ url: "https://media.example.com/plant.jpg", kind: "image", role: "proof" }],
       event_count: 12,
       in_collection: true,
     },
@@ -197,6 +199,38 @@ describe("AddToCollectionPanel", () => {
     expect(
       screen.getByRole("link", { name: "New collection" }),
     ).toHaveAttribute("href", "/collections/new?event=e1");
+  });
+
+  it("leads each row with the collection's cover, as the bulk add does", () => {
+    const { container } = render(<AddToCollectionPanel eventId="e1" />);
+
+    expect(container.querySelector('img[src*="plant.jpg"]')).not.toBeNull();
+    expect(screen.getByText("no media")).toBeInTheDocument();
+  });
+
+  it("narrows a long list by title, as the bulk add does", () => {
+    const titles = ["Avdiivka", "Bakhmut", "Chasiv Yar", "Dam breach", "Kupiansk", "Pokrovsk"];
+    useApiResource.mockReturnValue({
+      data: {
+        items: titles.map((title, i) => ({
+          id: `c${i}`,
+          title,
+          cover: [],
+          event_count: i,
+          in_collection: false,
+        })),
+      },
+      error: null,
+    });
+    render(<AddToCollectionPanel eventId="e1" />);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find a collection" }), {
+      target: { value: "ba" },
+    });
+
+    expect(screen.getAllByRole("switch").map((s) => s.getAttribute("aria-label"))).toEqual([
+      "Bakhmut",
+    ]);
   });
 
   it("says so when the read itself fails", () => {
