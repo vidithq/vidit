@@ -10,13 +10,14 @@ import { Combobox } from "@/components/ui/Combobox";
 import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
 import { FieldLabel } from "@/components/ui/FieldLabel";
+import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { EVENT_FIELDS } from "@/lib/events";
 import { FieldError } from "./ErrorNotice";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
 const TAG_NAME_MAX_LEN = 100;
-// Few enough that the row stays one line on a wide form; the row clips the rest.
-const SUGGESTED_TAGS_SHOWN = 8;
+// How many suggested tags show before **Show more**.
+const SUGGESTED_TAGS_SHOWN = 6;
 
 interface TagPickerProps {
   /** Live tags (referenced by at least one event or source) plus the ones created here: the
@@ -154,7 +155,7 @@ type TagChipsProps = {
   | {
       filter?: false;
       setTags: Dispatch<SetStateAction<Tag[]>>;
-      /** Offered as one line of one-click chips under the search, the picked ones left out. */
+      /** Offered as one-click chips under the search, the picked ones left out. */
       suggested?: Tag[];
     }
   /** Picks by name from the catalogue it is given, with no Create row and no suggestions. */
@@ -164,8 +165,8 @@ type TagChipsProps = {
 /**
  * The tags picked from the one catalogue that serves events and sources: the picks as removable
  * chips over a combobox that suggests the other tags matching the typed text and, on a form, when
- * no tag bears that exact name, offers to create it. On a form, one line of suggested tags follows
- * the search. The event's Details card, each source editor and the event filter panel render it.
+ * no tag bears that exact name, offers to create it. On a form, the suggested tags follow the
+ * search: the first few, then one **Show more**. The event's Details card, each source editor and the event filter panel render it.
  */
 export function TagChips({
   tags,
@@ -178,6 +179,7 @@ export function TagChips({
 }: TagChipsProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [allSuggested, setAllSuggested] = useState(false);
   const name = query.trim();
   const key = (tag: Tag) => (filter ? tag.name : tag.id);
 
@@ -222,9 +224,8 @@ export function TagChips({
     ...(canCreate ? [{ create: name }] : []),
   ];
   const label = owner ? `${owner} tags` : "Tags";
-  const offered = suggested
-    .filter((t) => !selected.includes(t.id))
-    .slice(0, SUGGESTED_TAGS_SHOWN);
+  const unpicked = suggested.filter((t) => !selected.includes(t.id));
+  const offered = allSuggested ? unpicked : unpicked.slice(0, SUGGESTED_TAGS_SHOWN);
 
   return (
     <div className="space-y-2">
@@ -274,21 +275,28 @@ export function TagChips({
       />
       <FieldError alert>{create.error}</FieldError>
       {offered.length > 0 && (
-        // The clipped chips must not widen the page: `relative` makes the row clip their absolute
-        // `sr-only` text, and `contain-inline-size` keeps the unwrapped row out of the min-content
-        // width of an auto grid track or a block around it.
-        <div
-          role="group"
-          aria-label={owner ? `Suggested tags for ${owner}` : "Suggested tags"}
-          className="relative flex gap-2 overflow-hidden whitespace-nowrap contain-inline-size"
-        >
-          {offered.map((tag) => (
-            <Pill key={tag.id} onClick={() => adopt(tag)} icon={<Plus size={12} aria-hidden />}>
-              <span className="sr-only">Add {tag.name}</span>
-              <span aria-hidden>{tag.name}</span>
-            </Pill>
-          ))}
-        </div>
+        <>
+          <div
+            role="group"
+            aria-label={owner ? `Suggested tags for ${owner}` : "Suggested tags"}
+            className="flex flex-wrap gap-2"
+          >
+            {offered.map((tag) => (
+              <Pill key={tag.id} onClick={() => adopt(tag)} icon={<Plus size={12} aria-hidden />}>
+                <span className="sr-only">Add {tag.name}</span>
+                <span aria-hidden>{tag.name}</span>
+              </Pill>
+            ))}
+          </div>
+          <LoadMoreRow
+            walk={{
+              hasMore: offered.length < unpicked.length,
+              loadingMore: false,
+              loadMore: () => setAllSuggested(true),
+              error: null,
+            }}
+          />
+        </>
       )}
     </div>
   );

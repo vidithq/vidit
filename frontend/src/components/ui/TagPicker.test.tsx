@@ -289,10 +289,20 @@ describe("TagPicker suggested tags", () => {
     expect(screen.getByRole("button", { name: "Remove convoy" })).toBeInTheDocument();
   });
 
-  it("shows at most eight suggestions", () => {
+  it("wraps six suggestions, then shows the rest behind one Show more", () => {
     const many = Array.from({ length: 12 }, (_, i) => ({ id: `s${i}`, name: `tag${i}` }));
     render(<Host initialTags={many} suggestedTags={many} />);
-    expect(screen.getAllByRole("button", { name: /^Add tag/ })).toHaveLength(8);
+    expect(suggestions()).toHaveClass("flex-wrap");
+    expect(screen.getAllByRole("button", { name: /^Add tag/ })).toHaveLength(6);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(screen.getAllByRole("button", { name: /^Add tag/ })).toHaveLength(12);
+    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+  });
+
+  it("offers no Show more while every suggestion shows", () => {
+    render(<Host initialTags={TAGS} suggestedTags={TAGS} />);
+    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
   });
 
   it("draws no row without suggestions", () => {

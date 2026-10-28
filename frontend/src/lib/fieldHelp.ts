@@ -69,7 +69,7 @@ export const FIELD_HELP = {
     label: "What is the capture position?",
   },
   source_links: {
-    text: "Where the file was posted: the original post or channel first, then each mirror of the same file. Not your own geolocation post. Each link takes its post time (UTC) when known. The archive mark beside a link is its archived copy, so the evidence survives the post being deleted: orange opens the stored copy, grey means there is none yet. On a form, Archive opens a field that offers the Wayback Machine with the link filled in and accepts a snapshot from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive. On a satellite or aircraft source, link the full permalink of a listed imagery provider that reopens the same image at its capture date, not a short link, or archive the publication that shows the image: the form names the provider, how to reopen it and its credit.",
+    text: "Where the file was posted: the original post first, then each mirror, never your own geolocation post. The archive mark beside a link opens its archived copy, which keeps the evidence once the post is deleted, and greys out while there is none.",
     label: "What are the source links?",
   },
   coordinates: {
