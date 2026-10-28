@@ -50,6 +50,7 @@ vi.mock("@/lib/events", async (importOriginal) => ({
   createEventRequest: vi.fn(),
 }));
 
+import { apiFetch } from "@/lib/api";
 import { newCollectionHref } from "@/lib/collections";
 import { createEvent, createEventRequest } from "@/lib/events";
 import { NEW_SITE_HREF } from "@/lib/sites";
@@ -63,6 +64,7 @@ beforeEach(() => {
   conflictsLoaded = true;
   vi.mocked(createEvent).mockReset();
   vi.mocked(createEventRequest).mockReset();
+  vi.mocked(apiFetch).mockResolvedValue([]);
 });
 
 describe("the submit form's gate", () => {
@@ -96,6 +98,27 @@ describe("the submit form's gate", () => {
     fireEvent.click(screen.getByRole("button", { name: "Publish request" }));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(announced()).toHaveTextContent("Title");
+  });
+});
+
+describe("the submit form's Linked sites", () => {
+  it("picks a site by name, then asks what the event shows there", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) =>
+      path.startsWith("/sites/suggestions?q=")
+        ? [{ id: "s2", name: "Bravo depot", kind: "depot", distance_m: null }]
+        : [],
+    );
+    render(<SubmitPage />);
+
+    const search = screen.getByRole("combobox", { name: "Search a site by name" });
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: "Bravo" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Bravo depot/ }));
+
+    expect(screen.getByRole("button", { name: "Bravo depot" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Effect at Bravo depot" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Publish geolocation" }));
+    expect(announced()).toHaveTextContent(/Effect at a linked site\.$/);
   });
 });
 

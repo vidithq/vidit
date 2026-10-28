@@ -138,6 +138,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/sites` | 🌐 | The sites whose zone valid on a date meets a bounding box |
 | POST | `/sites` | 🔒 | Create a site with its first source, its contour and your linked events; answers with the sites its zone overlaps |
 | POST | `/sites/overlaps` | 🔒 | List the sites whose current zone shares area with a drawn zone |
+| GET | `/sites/suggestions` | 🔒 | Sites a point may link to, nearest first or by name |
 | POST | `/sites/{id}/report` | 🌐 | Report a site for moderation (anonymous allowed) |
 | GET | `/sites/{id}` | 🌐 | One site: current zone, last source, sources, contours, linked events |
 | POST | `/sites/{id}/versions` | 🔒 | Edit your site in one transaction, filing one version |
@@ -288,7 +289,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /sites/{id}`, `GET /sites/{id}/versions`, `GET /sites/{id}/versions/{version_no}` | 120/min |
 | `POST /sites`, `POST /sites/{id}/versions`, `POST /sites/{id}/sources`, `DELETE /sites/{id}/sources/{source_id}` | 30/min |
 | `POST /sites/{id}/report` | 10/hour (per IP only, anonymous allowed) |
-| `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
+| `GET /sites/suggestions`, `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
 | `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/authors` | 60/min |
@@ -332,7 +333,7 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 **1000/hour per account.** One bucket is shared across these 30 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
@@ -2580,6 +2581,31 @@ Each share is the area of the intersection over the area of one zone, computed o
 |------|------|
 | 400 | `invalid_zone`; `zone_too_wide`; `zone_too_large` |
 | 422 | A malformed zone |
+
+---
+
+### `GET /sites/suggestions` 🔒
+
+The sites a point may link to, nearest first, for an event form whose event is not written yet. It ranks like [`GET /events/{id}/site-suggestions`](#get-eventsidsite-suggestions), measured from `lat`, `lng` instead of the event's point. Any signed-in analyst may call it. Capped at 20.
+
+**Query params:**
+
+| Param | Rule |
+|---|---|
+| `lat`, `lng` | The point, both or neither, in the event coordinate bounds |
+| `margin_m` | Metres from the point to a site's current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
+| `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
+
+- **Without `q`:** the visible sites whose current zone lies within `margin_m` of the point. No point gets an empty array.
+- **With `q`:** the visible sites whose name matches, at any distance. `margin_m` is ignored.
+
+**Response 200:** an array of `SiteSuggestionRead`, as `GET /events/{id}/site-suggestions` returns it. `distance_m` is `null` without a point.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 400 | `invalid_coordinates`: one of `lat` and `lng` alone, or a value out of range |
+| 422 | `margin_m` outside 0 to 10000, or `q` empty or over 100 characters |
 
 ---
 

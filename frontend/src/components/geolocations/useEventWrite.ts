@@ -15,6 +15,10 @@ export const WRITE_FALLBACK = {
   saveRequest: "Couldn't save this request.",
 } as const;
 
+/** Why a request write with Linked sites holds. */
+export const REQUEST_SITE_LINKS =
+  "A request links to no site. Remove the linked sites, or publish a geolocation.";
+
 /** One write of an event form, as `PublishActions` and `writeGroup` read it. */
 interface EventWrite {
   action: PublishAction;
@@ -33,11 +37,12 @@ interface EventWrite {
  * 2. A publish floor waits for the conflict options: before they load, a missing conflict cannot
  *    be told from one still loading, so the banner says which.
  * 3. The floor: every missing field turns red at once.
- * 4. The sources' hold (`sourcesBlockWrite`): a running upload, or a pasted snapshot that cannot
+ * 4. A request write with Linked sites: only a published event links to a site.
+ * 5. The sources' hold (`sourcesBlockWrite`): a running upload, or a pasted snapshot that cannot
  *    be one. An upload usually clears itself, so it never hides a field the reader has to fill.
- * 5. `extraCheck`, the surface's own refusal.
+ * 6. `extraCheck`, the surface's own refusal.
  *
- * A refusal at 2, 4 or 5 prints in the banner.
+ * A refusal at 2, 4, 5 or 6 prints in the banner.
  */
 export function useEventWrite<R>(
   form: EventFormState,
@@ -92,6 +97,9 @@ export function useEventWrite<R>(
       if (missing.length) {
         form.flagIncomplete(missing);
         return false;
+      }
+      if (floor === "request" && form.siteLinks.links.length > 0) {
+        return hold(REQUEST_SITE_LINKS);
       }
       const blocked = sourcesBlockWrite(form.sources) ?? extraCheck?.() ?? null;
       return blocked === null || hold(blocked);

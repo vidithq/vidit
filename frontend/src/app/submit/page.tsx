@@ -73,7 +73,13 @@ function SubmitForm() {
   // share one error banner; each click clears the other's.
   const geolocation = useEventWrite(form, {
     floor: "publish",
-    post: () => createEvent(form.publishInput(geolocators.invitees)),
+    post: async () => {
+      const created = await createEvent(form.publishInput(geolocators.invitees));
+      // The event is published: a refused link must not hold the redirect, or a retry would
+      // publish it twice. The event page lists the links that hold.
+      await form.siteLinks.save(created.id).catch(() => undefined);
+      return created;
+    },
     fallback: WRITE_FALLBACK.publish,
     onSuccess: (result) => router.push(eventHref(result.id)),
     confirm: PUBLISH_CONFIRM,
