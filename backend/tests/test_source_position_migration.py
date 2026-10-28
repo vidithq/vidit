@@ -68,7 +68,14 @@ def test_upgrade_keeps_the_order_each_event_read_in(pre_position_db):
             cur.execute(
                 "INSERT INTO sources (id, event_id, title, level, kind, captured_at, created_at, "
                 "updated_at) VALUES (%s, %s, %s, %s, 'other', %s, %s, now())",
-                (str(uuid.uuid4()), event, f"{level} {captured_at}", level, captured_at, created_at),
+                (
+                    str(uuid.uuid4()),
+                    event,
+                    f"{level} {captured_at}",
+                    level,
+                    captured_at,
+                    created_at,
+                ),
             )
         cur.execute(
             "INSERT INTO sources (id, event_id, title, level, kind, created_at, updated_at) "
