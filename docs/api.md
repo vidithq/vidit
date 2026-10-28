@@ -2076,7 +2076,7 @@ The last word of `q` also matches as a prefix, so a word you are still typing fi
 
 - `type` tells the hits apart; each type carries its own fields.
 - An event hit's `lat` and `lng` are its subject coordinate, `null` on a request. `media` holds at most one row, the card thumbnail of [`GET /events`](#get-events).
-- A site hit's `last_source` is its live source with the latest capture, and `media` holds the file of the latest live source that has one, never a graphic file.
+- A site hit's `last_source` is its live source with the latest capture, and `media` holds the site's picture, the [`media` of `GET /sites`](#get-sites).
 - A collection hit is the full [`CollectionRead`](#get-collectionsid) with `type`.
 - `bio_highlight` is `null` when only the username, or an organization's name or slug, matched.
 - `total` is the whole match count, before the `limit` cut. On a page read with `cursor` it is still the whole count.
@@ -2540,6 +2540,7 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
       "provider": { "id": "copernicus_browser", "name": "Copernicus Browser" }
     },
     "latest_link_effect": { "effect": "damage", "occurred_date": "2026-07-09", "event_id": "uuid" },
+    "media": { "…": "MediaRead, as in sources[].media on GET /events/{id}" },
     "owner_id": "uuid"
   }
 ]
@@ -2550,6 +2551,7 @@ The sites whose zone valid on a date meets a bounding box, for the map. Newest s
 | `zone`, `centroid`, `contour_id` | The zone valid on `as_of`, its centroid and its contour |
 | `last_source` | The source with the latest `captured_at` on or before `as_of`, and the provider its links open. `provider` is `null` when no link opens a listed provider |
 | `latest_link_effect` | The `effect` of the linked event with the latest `occurred_date` on or before `as_of`, with that date and the event's id. The later link wins a tie. `null` when no linked event carries such a date |
+| `media` | The site's picture: the image of its first live source, in the order of [`GET /sites/{id}`](#get-sitesid), that carries one. A graphic source is skipped. `null` when no source qualifies. Every read that lists a site carries the same picture: the site links and the suggestions as `media` on the site, and a search hit as its one `media` row |
 | `owner_id` | The id of the site's owner |
 
 **Errors:**
@@ -2919,7 +2921,7 @@ The sites an event is linked to now, oldest link first. A withheld site is absen
 ```json
 [
   {
-    "site": { "id": "uuid", "name": "Saky airbase", "kind": "airbase" },
+    "site": { "id": "uuid", "name": "Saky airbase", "kind": "airbase", "media": null },
     "effect": "damage",
     "linked_at": "2026-08-02T10:00:00Z"
   }
@@ -2996,7 +2998,7 @@ Results sort by `distance_m`, then by name. A suggestion with a `null` `distance
 **Response 200:** an array of `SiteSuggestionRead`:
 ```json
 [
-  { "id": "uuid", "name": "Saky airbase", "kind": "airbase", "distance_m": 420.7 }
+  { "id": "uuid", "name": "Saky airbase", "kind": "airbase", "media": null, "distance_m": 420.7 }
 ]
 ```
 

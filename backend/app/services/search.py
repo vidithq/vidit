@@ -74,7 +74,7 @@ from app.services.event_filters import (
 )
 from app.services.geolocator_credit import CREDIT_LOAD, live_geolocators
 from app.services.pagination import encode_ranked_cursor
-from app.services.sites import last_sources, latest_images, live_sources, visible_sites
+from app.services.sites import last_sources, live_sources, site_images, visible_sites
 from app.services.thumbnails import pick_thumbnail, thumbnail_loads
 
 # ``ts_headline`` sentinels: STX / ETX, not an ASCII marker like ``[[HL]]``,
@@ -601,7 +601,7 @@ def _site_hits(db: Session, ids: list[uuid.UUID], parsed: _Query | None) -> list
         .all()
     )
     last = last_sources(db, ids, None)
-    images = latest_images(db, ids)
+    images = site_images(db, ids)
     return [
         {
             "type": "site",

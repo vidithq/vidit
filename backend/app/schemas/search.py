@@ -50,7 +50,7 @@ class SearchEventHit(BaseModel):
 
 
 class SearchSiteHit(BaseModel):
-    """A visible site with its latest source, and the file of its latest source that has one."""
+    """A visible site with its latest source and its picture (``SiteItem.media``)."""
 
     type: Literal["site"] = "site"
     id: uuid.UUID
@@ -59,7 +59,7 @@ class SearchSiteHit(BaseModel):
     kind: SiteKind
     owner: AuthorRef
     last_source: SiteLastSourceRead | None
-    # At most one row, never a graphic file.
+    # At most one row.
     media: list[MediaRead]
 
     model_config = {"from_attributes": True}

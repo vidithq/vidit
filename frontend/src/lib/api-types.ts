@@ -4242,7 +4242,7 @@ export interface components {
              * Format: date-time
              */
             linked_at: string;
-            site: components["schemas"]["SiteRef"];
+            site: components["schemas"]["SiteItem"];
         };
         /**
          * EventVersionList
@@ -5099,7 +5099,7 @@ export interface components {
         };
         /**
          * SearchSiteHit
-         * @description A visible site with its latest source, and the file of its latest source that has one.
+         * @description A visible site with its latest source and its picture (``SiteItem.media``).
          */
         SearchSiteHit: {
             /**
@@ -5243,6 +5243,7 @@ export interface components {
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
             /** Linked Events */
             linked_events: components["schemas"]["SiteLinkedEventRead"][];
+            media: components["schemas"]["MediaRead"] | null;
             /** Name */
             name: string;
             /** Overlapping Sites */
@@ -5274,6 +5275,26 @@ export interface components {
              * Format: uuid
              */
             event_id: string;
+        };
+        /**
+         * SiteItem
+         * @description A site as a list shows it: the reference and its picture
+         *     (``services/sites.site_images``).
+         */
+        SiteItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            media: components["schemas"]["MediaRead"] | null;
+            /** Name */
+            name: string;
         };
         /** SiteLastSourceRead */
         SiteLastSourceRead: {
@@ -5356,6 +5377,7 @@ export interface components {
             kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
             last_source: components["schemas"]["SiteLastSourceRead"] | null;
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
+            media: components["schemas"]["MediaRead"] | null;
             /** Name */
             name: string;
             /**
@@ -5432,6 +5454,7 @@ export interface components {
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
             /** Linked Events */
             linked_events: components["schemas"]["SiteLinkedEventRead"][];
+            media: components["schemas"]["MediaRead"] | null;
             /** Name */
             name: string;
             owner: components["schemas"]["AuthorRef"];
@@ -5445,21 +5468,6 @@ export interface components {
             /** Version No */
             version_no: number;
             zone: components["schemas"]["ZonePolygon"];
-        };
-        /** SiteRef */
-        SiteRef: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
-            /** Name */
-            name: string;
         };
         /**
          * SiteSourceCreate
@@ -5597,6 +5605,7 @@ export interface components {
              * @enum {string}
              */
             kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            media: components["schemas"]["MediaRead"] | null;
             /** Name */
             name: string;
         };
