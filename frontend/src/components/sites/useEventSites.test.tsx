@@ -54,7 +54,9 @@ beforeEach(() => {
 describe("useEventSites", () => {
   it("shows a reader the live link and its effect, with no controls", async () => {
     await renderBlock();
+    expect(screen.getByRole("heading", { name: /^Linked sites/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Site Alpha" })).toBeInTheDocument();
+    expect(screen.queryByText(/Linked to/)).not.toBeInTheDocument();
     expect(screen.getByText("Damage")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Link to a site" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Unlink from Site Alpha" })).not.toBeInTheDocument();
@@ -63,7 +65,7 @@ describe("useEventSites", () => {
   it("renders nothing for a reader when the event has no link", async () => {
     links = [];
     await renderBlock();
-    expect(screen.queryByText("Sites")).not.toBeInTheDocument();
+    expect(screen.queryByText("Linked sites")).not.toBeInTheDocument();
   });
 
   it("gives the owner Link to a site in the actions row, and no block before a link exists", async () => {
@@ -71,7 +73,7 @@ describe("useEventSites", () => {
     links = [];
     await renderBlock();
     expect(row()).toContainElement(screen.getByRole("button", { name: "Link to a site" }));
-    expect(screen.queryByText("Sites")).not.toBeInTheDocument();
+    expect(screen.queryByText("Linked sites")).not.toBeInTheDocument();
   });
 
   it("offers no link on an event that is not published", async () => {
@@ -80,13 +82,11 @@ describe("useEventSites", () => {
     expect(screen.queryByRole("button", { name: "Link to a site" })).not.toBeInTheDocument();
   });
 
-  it("lets the owner unlink", async () => {
+  it("leaves the owner's rows without controls: the edit form changes the links", async () => {
     viewer = { id: "u1" };
     await renderBlock();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Unlink from Site Alpha" }));
-    });
-    expect(calls).toContainEqual({ path: "/events/e1/site-links/s1", method: "DELETE" });
+    expect(screen.getByRole("link", { name: "Site Alpha" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Unlink|Change the effect/ })).not.toBeInTheDocument();
   });
 
   it("links the owner's event to a suggested site with the picked effect", async () => {

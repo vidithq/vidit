@@ -248,6 +248,7 @@ _QUOTA_ROUTES = [
     "/api/v1/collections/{collection_id}",
     "/api/v1/collections/{collection_id}/events",
     "/api/v1/sites",
+    "/api/v1/sites/suggestions",
     "/api/v1/sites/{site_id}",
     "/api/v1/sites/{site_id}/versions",
     "/api/v1/sites/{site_id}/versions/{version_no}",
@@ -646,6 +647,7 @@ _DOCUMENTED_LIMITS = [
     ),
     _Case("delete", f"/api/v1/events/{_MISSING_ID}/site-links/{_MISSING_ID}", 60),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/site-suggestions", 120),
+    _Case("get", "/api/v1/sites/suggestions", 120),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/geolocator-invites", 120),
     _Case(
         "post",

@@ -285,7 +285,12 @@ test.describe("submit", () => {
     const tile = (await first.boundingBox())!;
     const controls = first.locator("input:visible, select:visible, button:visible");
     for (const control of await controls.all()) {
-      const box = (await control.boundingBox())!;
+      // The suggested tags row clips its last chips, so the row is measured instead of its chips.
+      const suggested = await control.evaluate(
+        (el) => el.closest('[aria-label^="Suggested tags"]') !== null,
+      );
+      const measured = suggested ? first.getByRole("group", { name: /^Suggested tags/ }) : control;
+      const box = (await measured.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(tile.x);
       expect(box.x + box.width).toBeLessThanOrEqual(tile.x + tile.width + 0.5);
     }

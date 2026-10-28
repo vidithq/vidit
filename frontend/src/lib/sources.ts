@@ -15,9 +15,7 @@ type UploadList = components["schemas"]["UploadList"];
 type LinkUpload = components["schemas"]["LinkUploadRead"];
 export type SourceLevel = Source["level"];
 export type SourceKind = Source["kind"];
-/** What keeps a reader from reopening a satellite or aircraft image (`services/imagery`). */
-export type SourceWarning = Source["warnings"][number];
-/** `POST /sources/check`: the provider each link opens and the warnings the source would carry. */
+/** `POST /sources/check`: the provider each link opens. */
 export type SourceCheck = components["schemas"]["SourceCheckRead"];
 export type ImageryProvider = components["schemas"]["ImageryProviderRead"];
 type ImageryKind = components["schemas"]["SourceCheck"]["kind"];

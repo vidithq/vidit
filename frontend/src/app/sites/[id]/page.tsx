@@ -35,7 +35,7 @@ export default function SitePage() {
       <SiteBody
         site={site}
         sourceControls={actions.sourceControls}
-        linked={<LinkedEvents events={site.linked_events} controls={actions.linkControls} />}
+        linked={<LinkedEvents events={site.linked_events} />}
       />
     </PageShell>
   );

@@ -11,6 +11,7 @@ export const EVENT_SECTIONS = {
   proof: { title: "Proof", concept: "section_proof" },
   location: { title: "Location", concept: "section_location" },
   details: { title: "Details", concept: "section_details" },
+  sites: { title: "Linked sites", concept: "event_sites" },
 } as const satisfies Record<string, { title: string; concept: Concept }>;
 
 type EventSectionName = keyof typeof EVENT_SECTIONS;
@@ -30,8 +31,8 @@ export interface EventLayoutSlots {
   proof: EventSlot;
   details: EventSlot;
   location?: EventSlot | null;
-  /** The event page's Sites block (`useEventSites`), which heads itself, last in the side
-   *  column. */
+  /** The Linked sites block, which heads itself, last in the side column: the event page's
+   *  (`useEventSites`) or the forms' (`LinkedSitesField`). */
   sites?: ReactNode;
   form?: ComponentProps<"form">;
 }
