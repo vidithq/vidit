@@ -5,8 +5,8 @@
  * The accent reaches the screen two ways, kept in step from here:
  *  - UI chrome: `data-palette` on <html> remaps the Tailwind `orange-*` scale (see
  *    `globals.css`).
- *  - Map markers: maplibre paint expressions can't read CSS variables, so `Map.tsx` reads the
- *    hex values below through `usePalette`.
+ *  - Map markers: maplibre paint expressions can't read CSS variables, so the event points and the
+ *    sites read the hex values below through `usePalette`.
  *
  * Other entries are Tailwind's scales at the same shade stops. `detected` is the `300` stop:
  * same family as a submitted point, distinct by lightness.
@@ -114,9 +114,9 @@ export function paletteMapColors(id: PaletteId): PaletteOption["map"] {
   return (PALETTES.find((p) => p.id === id) ?? PALETTES[0]).map;
 }
 
-/** Site zone paints on the map, by basemap brightness: Tailwind fuchsia for every zone, the `400`
- *  stop on a dark basemap and the `700` stop on a light one, a hue no marker palette and no basemap
- *  highlight below uses, so a site on a military area or an airport stays its own shape. The
+/** Site zone paints on the site page's map and in the contour editor, by basemap brightness:
+ *  Tailwind fuchsia, the `400` stop on a dark basemap and the `700` stop on a light one, a hue no
+ *  marker palette and no basemap highlight below uses, so a zone stays apart from the accent. The
  *  semantic warning (`amber-500`) and danger (`red-500`) paint a zone whose latest linked event
  *  shows damage or destruction. `halo` is the canvas (`neutral-950`) behind a label, hex of the
  *  `globals.css` stops; change both. */

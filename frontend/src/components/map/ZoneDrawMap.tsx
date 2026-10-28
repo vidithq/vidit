@@ -280,6 +280,8 @@ export default function ZoneDrawMap({
   /** A coordinate typed beside the map. */
   goTo?: CoordinatePair | null;
 }) {
+  // The drawing takes the accent, so the neighbours keep the site zone colour to stay apart from it.
+  const neighbours = SITE_MAP_COLORS[useBasemapBrightness()].zone;
   return (
     <Map
       points={[]}
@@ -291,7 +293,7 @@ export default function ZoneDrawMap({
       onBoundsChange={onBoundsChange}
       embedded
     >
-      <SiteLayers sites={sites} zoneMinZoom={0} />
+      <SiteLayers sites={sites} zoneMinZoom={0} zoneColor={neighbours} />
       <DrawLayers state={state} reference={reference} />
       <DrawInteractions state={state} onChange={onChange} />
     </Map>

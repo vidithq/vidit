@@ -26,7 +26,6 @@ import {
   sitesAsOf,
   sitesPath,
   todayUtc,
-  zoneEmphasis,
   type Site,
   type SiteListItem,
 } from "@/lib/sites";
@@ -135,16 +134,7 @@ export default function HomePage() {
     VIEWPORT_DEBOUNCE_MS,
   );
 
-  const mapSites = useMemo(
-    () =>
-      sitesShown
-        ? sites.map((site) => ({
-            ...toMapSite(site),
-            emphasis: zoneEmphasis(site),
-          }))
-        : [],
-    [sites, sitesShown],
-  );
+  const mapSites = useMemo(() => (sitesShown ? sites.map(toMapSite) : []), [sites, sitesShown]);
 
   const renderSitePreview = useCallback(
     (id: string) => {

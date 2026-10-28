@@ -49,7 +49,22 @@ import {
   ringRadius,
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
-import { CLUSTER_LAYER, POINT_LAYERS, STACK_LAYER, TAP_TARGET_LAYERS } from "./layers";
+import {
+  CLUSTER_COUNT_COLOR,
+  CLUSTER_COUNT_LAYOUT,
+  CLUSTER_LAYER,
+  CLUSTER_OPACITY,
+  CLUSTER_RADIUS,
+  CLUSTER_SOURCE,
+  POINT_LAYERS,
+  POINT_RADIUS,
+  SELECTED_POINT_RADIUS,
+  SELECTED_STROKE,
+  SELECTED_STROKE_WIDTH,
+  STACK_LAYER,
+  TAP_TARGET_LAYERS,
+  clusterColor,
+} from "./layers";
 import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
 import { BasemapControl } from "./BasemapControl";
 import { CoordinateGrid } from "./CoordinateGrid";
@@ -839,8 +854,7 @@ export default function Map({
     () => (mapAssets === undefined ? null : applyMapAssets(BASEMAP_PRESETS[presetId].style(basemap), mapAssets)),
     [presetId, basemap, mapAssets],
   );
-  // Halo around the selected point: white on a dark basemap, a dark ring on a light one.
-  const SELECTED_STROKE = brightness === "light" ? "#1a1a1a" : "#ffffff";
+  const selectedStroke = SELECTED_STROKE[brightness];
 
   // Open hover ring. Closing is two-phase: `spiderClosing` runs the dots back to the center, then
   // the timer unmounts the ring and the hidden circle reappears.
@@ -1171,41 +1185,24 @@ export default function Map({
         id={POINTS_SOURCE}
         type="geojson"
         data={geojson}
-        cluster={true}
-        clusterMaxZoom={CLUSTER_MAX_ZOOM}
-        clusterRadius={50}
+        {...CLUSTER_SOURCE}
       >
         <Layer
           id="clusters"
           type="circle"
           filter={clusterFilter}
           paint={{
-            "circle-color": [
-              "step",
-              ["get", "point_count"],
-              marker.base,
-              1000, marker.rampMid,
-              10000, marker.rampHigh,
-            ],
+            "circle-color": clusterColor(marker),
             // Ease the ceiling handoff: clusters thin out approaching it, replacements fade in from the same
             // level. Zoom-interpolated, only while a zoom is in flight (`zoomInFlight`).
             "circle-opacity": zoomInFlight
               ? [
                   "interpolate", ["linear"], ["zoom"],
-                  FADE_OUT_START, 0.85,
+                  FADE_OUT_START, CLUSTER_OPACITY,
                   POINTS_ZOOM, 0.35,
                 ]
-              : 0.85,
-            "circle-radius": [
-              "step",
-              ["get", "point_count"],
-              12,       // < 50
-              50, 16,   // 50-199
-              200, 20,  // 200-999
-              1000, 26, // 1k-4999
-              5000, 34, // 5k-9999
-              10000, 42, // 10k+
-            ],
+              : CLUSTER_OPACITY,
+            "circle-radius": CLUSTER_RADIUS,
           }}
         />
 
@@ -1213,22 +1210,9 @@ export default function Map({
           id="cluster-count"
           type="symbol"
           filter={clusterFilter}
-          layout={{
-            "text-field": "{point_count_abbreviated}",
-            "text-font": ["Montserrat Medium"],
-            "text-size": [
-              "step",
-              ["get", "point_count"],
-              11,
-              1000, 13,
-              10000, 15,
-            ],
-            // Skip symbol placement and its collision fade: a count must appear and vanish with its circle.
-            "text-allow-overlap": true,
-            "text-ignore-placement": true,
-          }}
+          layout={CLUSTER_COUNT_LAYOUT}
           paint={{
-            "text-color": "#ffffff",
+            "text-color": CLUSTER_COUNT_COLOR,
             // Mirrors the cluster circle's ceiling fade above.
             "text-opacity": zoomInFlight
               ? [
@@ -1245,10 +1229,10 @@ export default function Map({
           type="circle"
           filter={pointFilter(1)}
           paint={{
-            "circle-radius": 7,
+            "circle-radius": SELECTED_POINT_RADIUS,
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
-            "circle-stroke-color": SELECTED_STROKE,
-            "circle-stroke-width": 2,
+            "circle-stroke-color": selectedStroke,
+            "circle-stroke-width": SELECTED_STROKE_WIDTH,
             // No crossfade dip: the selected pin keeps full prominence through the handoff.
             "circle-opacity": 1,
           }}
@@ -1259,7 +1243,7 @@ export default function Map({
           type="circle"
           filter={pointFilter(0)}
           paint={{
-            "circle-radius": 6,
+            "circle-radius": POINT_RADIUS,
             // Lighter accent shade for a machine detection, full accent for a submitted row.
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
@@ -1292,11 +1276,11 @@ export default function Map({
               ? [
                   "interpolate", ["linear"], ["zoom"],
                   POINTS_ZOOM, 0.35,
-                  FADE_IN_END, 0.85,
+                  FADE_IN_END, CLUSTER_OPACITY,
                 ]
-              : 0.85,
-            "circle-stroke-color": SELECTED_STROKE,
-            "circle-stroke-width": ["case", ["==", ["get", "stack_selected"], 1], 2, 0],
+              : CLUSTER_OPACITY,
+            "circle-stroke-color": selectedStroke,
+            "circle-stroke-width": ["case", ["==", ["get", "stack_selected"], 1], SELECTED_STROKE_WIDTH, 0],
           }}
         />
 
@@ -1312,7 +1296,7 @@ export default function Map({
             "text-ignore-placement": true,
           }}
           paint={{
-            "text-color": "#ffffff",
+            "text-color": CLUSTER_COUNT_COLOR,
             // Mirrors the stack circle's fade-in above.
             "text-opacity": zoomInFlight
               ? [
@@ -1334,7 +1318,7 @@ export default function Map({
         colors={{
           base: marker.base,
           detected: DETECTED,
-          stroke: SELECTED_STROKE,
+          stroke: selectedStroke,
         }}
         collapsing={spiderClosing}
         onSelect={selectFromSpider}
