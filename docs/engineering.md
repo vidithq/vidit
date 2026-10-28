@@ -400,6 +400,20 @@ flowchart LR
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
 | **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |
 
+### Eager-load sets
+
+A query that builds a read model loads every relationship the assembler reads, or each row costs one lazy query per relationship. Each load set has one definition; import it rather than restate it.
+
+| Set | Home | What it loads | Read by |
+|-----|------|---------------|---------|
+| `DETAIL_LOADS` | [`routers/events/_common.py`](../backend/app/routers/events/_common.py) | Everything `build_event_read` reads | The event page, the detection queue |
+| `SOURCE_LOAD` | [`routers/events/_common.py`](../backend/app/routers/events/_common.py) | Sources with their links, tags and files | `DETAIL_LOADS` |
+| `CREDIT_LOAD` | [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py) | Geolocator rows and their users | Every surface that prints the byline |
+| `thumbnail_loads()` | [`services/thumbnails.py`](../backend/app/services/thumbnails.py) | The candidates of the card thumbnail pick | Every card surface |
+| `_HIT_LOADS` | [`services/search.py`](../backend/app/services/search.py) | Owner, thumbnail and tags of a search hit | Both event groups of `GET /search` |
+
+A paged query loads a one-to-many or many-to-many set with `selectinload`: a `joinedload` multiplies rows against `LIMIT` and truncates the page. `joinedload` is safe for a many-to-one relationship, such as the owner, and on a query without `LIMIT`.
+
 ### Request concurrency
 
 The API runs as one uvicorn process with one event loop (the `CMD` in [`backend/Dockerfile`](../backend/Dockerfile)). A blocking call on that loop stalls every in-flight request, `/health` included. Route handlers follow three rules:

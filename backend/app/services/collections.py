@@ -190,17 +190,19 @@ def visible_collections() -> tuple[ColumnElement[bool], ...]:
     )
 
 
-def has_showable_item() -> ColumnElement[bool]:
-    """Correlated EXISTS: this collection holds at least one showable event.
+def has_showable_item(*criteria: ColumnElement[bool]) -> ColumnElement[bool]:
+    """Correlated EXISTS: this collection holds at least one showable event, matching
+    ``criteria`` when given.
 
     Applied to rows and ``total`` alike so a pager never counts a dropped
-    collection. ``services/search.search_collections`` reads it too.
+    collection. ``services/search.search_collections`` reads it too, with the
+    tag predicate, so a tag matches the collections whose :func:`tags_for` holds it.
     """
     return (
         select(1)
         .select_from(CollectionEvent)
         .join(Event, Event.id == CollectionEvent.event_id)
-        .where(CollectionEvent.collection_id == Collection.id, collectable_events())
+        .where(CollectionEvent.collection_id == Collection.id, collectable_events(), *criteria)
         .correlate(Collection)
         .exists()
     )
@@ -767,10 +769,10 @@ def list_memberships(
 ) -> list[CollectionMembershipRead]:
     """Every collection ``owner`` holds, and whether ``event_id`` is on each.
 
-    The add-to-collection popover's payload, in three statements: collections
-    newest first, memberships of this event, and counts from :func:`stats_for`
-    (so the number matches the collection's own page). Empty collections are
-    included.
+    The add-to-collection popover's payload: collections newest first,
+    memberships of this event, counts from :func:`stats_for` (so the number
+    matches the collection's own page) and covers from :func:`cover_tiles_for`
+    (the profile card's mosaic). Empty collections are included.
     """
     collections = (
         db.query(Collection)
@@ -792,10 +794,12 @@ def list_memberships(
             .all()
         }
     stats = stats_for(db, collection_ids)
+    tiles = cover_tiles_for(db, collection_ids)
     return [
         CollectionMembershipRead(
             id=collection.id,
             title=collection.title,
+            cover=tiles.get(collection.id, []),
             event_count=stats.get(collection.id, _EMPTY_STATS).event_count,
             in_collection=collection.id in member_ids,
         )

@@ -660,12 +660,44 @@ def test_author_filter_narrows_collections_to_that_owner(db, caller, other_autho
 
 
 def test_event_filter_empties_the_collections_group(caller, seed_collection):
-    """Every filter but ``author`` is an event predicate, so it empties the group."""
+    """Every filter but ``author`` and ``tag`` is an event predicate, so it empties the group."""
     token = _unique_token()
     seed_collection(f"Shelf {token}", "One shelf.")
     response = client.get(f"/api/v1/search?q={token}&status=geolocated")
     assert response.json()["collections"] == []
     assert response.json()["total"]["collections"] == 0
+
+
+def test_tag_filter_narrows_the_collections_group(db, caller, seed_collection):
+    """A collection's tags are its items' and their sources', so a tag keeps the collections
+    holding one, in a search and in browse mode."""
+    token = _unique_token()
+    on_event = seed_collection(f"Event tag {token}", "One shelf.")
+    on_source = seed_collection(f"Source tag {token}", "One shelf.")
+    untagged = seed_collection(f"No tag {token}", "One shelf.")
+    tag = Tag(name=f"tag-{token}")
+    db.add(tag)
+
+    def item(collection_id):
+        event_id = db.query(CollectionEvent.event_id).filter_by(collection_id=collection_id)
+        return db.query(Event).filter(Event.id == event_id.scalar_subquery()).one()
+
+    event_tagged, source_tagged = item(on_event), item(on_source)
+    event_tagged.tags.append(tag)
+    source_tagged.sources[0].tags.append(tag)
+    db.commit()
+    try:
+        for q in (token, ""):
+            body = client.get(
+                "/api/v1/search", params={"q": q, "type": "collection", "tag": tag.name}
+            ).json()
+            ids = {c["id"] for c in body["collections"]}
+            assert ids >= {str(on_event), str(on_source)}
+            assert str(untagged) not in ids
+            assert body["total"]["collections"] == len(ids)
+    finally:
+        db.delete(tag)
+        db.commit()
 
 
 def test_browse_lists_the_authors_collections_newest_first(caller, seed_collection):
@@ -1299,6 +1331,36 @@ def test_author_filter_is_exact_on_search(db, caller):
         assert [h["id"] for h in response.json()["geolocations"]] == [str(geo)]
     finally:
         db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_a_handle_in_the_query_matches_the_analysts_credited_events(db, caller, other_author):
+    """Regression: on `type=all` an analyst's handle found their profile but none of their work,
+    and a handle beside another word matched nothing at all."""
+    token = _unique_token()
+    mine = _seed_geo(db, caller, f"Strike {token} east")
+    untitled = _seed_geo(db, caller, "Convoy at the bridge")
+    theirs = _seed_geo(db, other_author, f"Strike {token} west")
+    try:
+        body = client.get(
+            "/api/v1/search", params={"q": f"@{caller.username.upper()}", "type": "all"}
+        ).json()
+        assert {h["id"] for h in body["geolocations"]} == {str(mine), str(untitled)}
+        assert [u["username"] for u in body["users"]] == [caller.username]
+
+        body = client.get(
+            "/api/v1/search", params={"q": f"{token} {caller.username}", "type": "all"}
+        ).json()
+        assert [h["id"] for h in body["geolocations"]] == [str(mine)]
+        assert (
+            f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}"
+            in body["geolocations"][0]["title_highlight"]
+        )
+        assert [u["username"] for u in body["users"]] == [caller.username]
+    finally:
+        db.query(Event).filter(Event.id.in_([mine, untitled, theirs])).delete(
+            synchronize_session=False
+        )
         db.commit()
 
 

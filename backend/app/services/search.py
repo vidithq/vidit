@@ -18,11 +18,23 @@ parameter) or Postgres falls back to a sequential scan: ``_geo_tsvector``,
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, cast, false, func, literal_column, or_, text, tuple_
-from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
+from sqlalchemy import (
+    ColumnElement,
+    String,
+    bindparam,
+    cast,
+    false,
+    func,
+    literal_column,
+    or_,
+    text,
+    tuple_,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.elements import ColumnClause
@@ -49,6 +61,7 @@ from app.services.event_filters import (
     collectable_events,
     credited_to,
     owner_username_matches,
+    taxonomy_predicates,
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD, live_geolocators
@@ -104,12 +117,67 @@ def _event_match(q: str, tsquery: ColumnElement) -> ColumnElement[bool]:
     )
 
 
-def _matching(stmt: SAQuery, *criteria, query: str, view: str, filters: EventFilters) -> SAQuery:
+def _handle_candidates(query: str) -> list[str]:
+    """The lowercased spellings of ``query`` (already stripped) that could be an analyst's handle:
+    each word and the whole query (a handle may hold a space), without a leading ``@``."""
+    words = query.split()
+    candidates = [w.lstrip("@").lower() for w in words]
+    if len(words) > 1:
+        candidates.append(" ".join(words).lstrip("@").lower())
+    return [c for c in dict.fromkeys(candidates) if c]
+
+
+@dataclass(frozen=True)
+class _EventTerms:
+    """A query split for the event groups: ``handles`` pairs each word naming a live analyst with
+    that analyst's id, ``text`` holds the other words."""
+
+    text: str
+    handles: tuple[tuple[str, uuid.UUID], ...] = ()
+
+
+def _event_terms(db: Session, query: str) -> _EventTerms:
+    """Split ``query`` (already stripped) into the words that are a live analyst's exact handle
+    (case-insensitive, optional ``@``) and the rest. A handle holding a space names the analyst
+    only as the whole query."""
+    candidates = _handle_candidates(query)
+    if not candidates:
+        return _EventTerms(text=query)
+    ids = dict(
+        db.query(func.lower(User.username), User.id)
+        .filter(User.deleted_at.is_(None), func.lower(User.username).in_(candidates))
+        .all()
+    )
+    whole = " ".join(query.split()).lstrip("@").lower()
+    if " " in whole and whole in ids:
+        return _EventTerms(text="", handles=((whole, ids[whole]),))
+    text_words: list[str] = []
+    handles: list[tuple[str, uuid.UUID]] = []
+    for word in query.split():
+        handle = word.lstrip("@").lower()
+        if handle in ids:
+            handles.append((handle, ids[handle]))
+        else:
+            text_words.append(word)
+    return _EventTerms(text=" ".join(text_words), handles=tuple(handles))
+
+
+def _matching(
+    stmt: SAQuery, *criteria, terms: _EventTerms, view: str, filters: EventFilters
+) -> SAQuery:
     """Narrow ``stmt`` to the events an event group matches: ``filters`` on ``view``, the group's
-    ``criteria``, and :func:`_event_match` on a non-empty ``query`` (already stripped)."""
+    ``criteria``, and :func:`_event_match` on the words of ``terms``. A word naming an analyst
+    also matches the events credited to them (``services/event_filters.credited_to``)."""
     stmt = filters.apply(stmt, view=view).filter(*criteria)
-    if query:
-        stmt = stmt.filter(_event_match(query, func.plainto_tsquery(_TS_CONFIG, query)))
+    if terms.text:
+        stmt = stmt.filter(_event_match(terms.text, func.plainto_tsquery(_TS_CONFIG, terms.text)))
+    for handle, user_id in terms.handles:
+        stmt = stmt.filter(
+            or_(
+                credited_to([user_id]),
+                _event_match(handle, func.plainto_tsquery(_TS_CONFIG, handle)),
+            )
+        )
     return stmt
 
 
@@ -133,6 +201,11 @@ def _collection_tsvector():
         .op("||")(func.coalesce(Collection.description_text, literal_column("''")))
     )
     return func.to_tsvector(_TS_CONFIG, document)
+
+
+# What both event groups' hits read: the owner, the card thumbnail and the tags. Hydration runs
+# on an id list without ``LIMIT``, so ``joinedload`` on the tags cannot truncate it.
+_HIT_LOADS = (joinedload(Event.owner), *thumbnail_loads(), joinedload(Event.tags))
 
 
 def _search_events(
@@ -165,16 +238,22 @@ def _search_events(
     ``extra_criteria`` narrow the view further (closed rows stay out of search).
     """
     q = query.strip()
+    terms = _event_terms(db, q)
     # Sentinel-stripped in browse mode too: planted STX/ETX must not render fake <mark>s.
     title = func.translate(Event.title, literal_column("chr(2) || chr(3)"), literal_column("''"))
     rank: ColumnElement[float] = literal_column("0", DOUBLE_PRECISION)
     if q:
-        tsquery = func.plainto_tsquery(_TS_CONFIG, q)
-        title = func.ts_headline(_TS_CONFIG, title, tsquery, _HEADLINE_OPTS_FULL)
+        title = func.ts_headline(
+            _TS_CONFIG, title, func.plainto_tsquery(_TS_CONFIG, q), _HEADLINE_OPTS_FULL
+        )
+        # Ranked on the words that are not a handle, which a credited event's title need not hold.
         # ``real`` widened to ``double precision``: a ``real`` reaches Python as its
         # shortest float4 text, a different double than the one Postgres compares
         # against the cursor, so the walk would skip the cursor row's rank ties.
-        rank = cast(func.ts_rank(_geo_tsvector(), tsquery), DOUBLE_PRECISION)
+        rank = cast(
+            func.ts_rank(_geo_tsvector(), func.plainto_tsquery(_TS_CONFIG, terms.text or q)),
+            DOUBLE_PRECISION,
+        )
     stmt = db.query(
         Event.id,
         Event.created_at,
@@ -182,7 +261,7 @@ def _search_events(
         rank.label("rank"),
         func.count().over().label("total_count"),
     )
-    ranked = _matching(stmt, *extra_criteria, query=q, view=view, filters=filters).subquery()
+    ranked = _matching(stmt, *extra_criteria, terms=terms, view=view, filters=filters).subquery()
 
     page = db.query(ranked)
     if after is not None:
@@ -236,12 +315,7 @@ def search_geolocations(
             func.ST_Y(Event.coords).label("lat"),
             func.ST_X(Event.coords).label("lng"),
         )
-        .options(
-            joinedload(Event.owner),
-            *thumbnail_loads(),
-            joinedload(Event.tags),
-            CREDIT_LOAD,
-        )
+        .options(*_HIT_LOADS, CREDIT_LOAD)
         .filter(Event.id.in_(ids))
         .all()
     )
@@ -292,7 +366,7 @@ def collectable_matches(
         *_located_hits(),
         credited_to([user.id]),
         collectable_events(),
-        query=q,
+        terms=_event_terms(db, q),
         view="located",
         filters=filters,
     )
@@ -319,12 +393,7 @@ def search_requests(
 
     geos = (
         db.query(Event)
-        .options(
-            joinedload(Event.owner),
-            *thumbnail_loads(),
-            selectinload(Event.sources).selectinload(Source.links),
-            joinedload(Event.tags),
-        )
+        .options(*_HIT_LOADS, selectinload(Event.sources).selectinload(Source.links))
         .filter(Event.id.in_(ids))
         .all()
     )
@@ -354,7 +423,12 @@ def search_requests(
 
 
 def search_collections(
-    db: Session, *, query: str, limit: int, author: str | None = None
+    db: Session,
+    *,
+    query: str,
+    limit: int,
+    author: str | None = None,
+    tags: list[str] | None = None,
 ) -> tuple[list[CollectionRead], int]:
     """Top-N collections matching ``query`` + the pre-LIMIT total.
 
@@ -366,24 +440,29 @@ def search_collections(
     so a hit never opens on an empty shelf.
 
     ``author`` scopes to one owner, with the same exact case-insensitive match
-    as the event groups. No highlights: the card prints the collection's own
-    text.
+    as the event groups. ``tags`` keeps the collections holding a showable
+    event tagged with any of them, on the event or a source: the tags the card
+    prints (``services/collections.tags_for``). No highlights: the card prints
+    the collection's own text.
 
-    With an empty ``query`` and an ``author`` the FTS predicate drops (browse
-    mode, newest first; the profile's Collections "Show more" lands here). An
-    empty query with no author returns nothing: that is a listing, not a search.
+    With an empty ``query`` and an ``author`` or ``tags`` the FTS predicate
+    drops (browse mode, newest first; the profile's Collections "Show more"
+    lands here). An empty query with neither returns nothing: that is a
+    listing, not a search.
 
     One statement selects the collection with its owner, already in rank
     order: there are no per-hit highlights to key back onto, so no id re-fetch.
     """
     q = query.strip()
-    if not q and not author:
+    if not q and not author and not tags:
         return [], 0
     stmt = (
         db.query(Collection, func.count().over().label("total_count"))
         .options(joinedload(Collection.owner))
         .filter(*visible_collections(), has_showable_item())
     )
+    if tags:
+        stmt = stmt.filter(has_showable_item(*taxonomy_predicates(tag=tags)))
     if author:
         stmt = stmt.filter(Collection.owner.has(owner_username_matches(author)))
     if q:
@@ -401,15 +480,29 @@ def search_collections(
 
 
 def _search_profiles(
-    db: Session, *, table: str, tsvector: str, name_col: str, live: str, query: str, limit: int
+    db: Session,
+    *,
+    table: str,
+    tsvector: str,
+    name_col: str,
+    live: str,
+    query: str,
+    limit: int,
+    handle_col: str | None = None,
 ) -> tuple[list[uuid.UUID], dict[uuid.UUID, tuple[str, str | None]], int]:
     """Rank one profile table (analysts or organizations) for ``query``.
 
     Returns the ranked ids, each id's ``(name highlight, bio highlight)``, and
     the pre-LIMIT total. The bio highlight is ``None`` unless the bio
-    contributed a fragment. ``table``, ``tsvector``, ``name_col`` and ``live``
-    are module constants, never caller input.
+    contributed a fragment. A row whose ``handle_col`` a word of ``query`` names
+    exactly (:func:`_handle_candidates`) matches whatever the other words are,
+    and ranks first. ``table``, ``tsvector``, ``name_col``, ``live`` and
+    ``handle_col`` are module constants, never caller input.
     """
+    named_or, named_first = "", ""
+    if handle_col:
+        named = f"lower({handle_col}) = ANY(:handles)"
+        named_or, named_first = f"OR {named}", f"{named} DESC,"
     sql = text(
         f"""
         SELECT id,
@@ -430,15 +523,18 @@ def _search_profiles(
                COUNT(*) OVER () AS total_count
         FROM {table}
         WHERE {live}
-          AND {tsvector} @@ plainto_tsquery('simple', :q)
-        ORDER BY rank DESC, created_at DESC
+          AND ({tsvector} @@ plainto_tsquery('simple', :q) {named_or})
+        ORDER BY {named_first} rank DESC, created_at DESC
         LIMIT :lim
         """
     )
+    if handle_col:
+        sql = sql.bindparams(bindparam("handles", type_=ARRAY(String)))
     rows = db.execute(
         sql,
         {
             "q": query,
+            "handles": _handle_candidates(query.strip()),
             "lim": limit,
             "opts_full": _HEADLINE_OPTS_FULL,
             "opts_fragment": _HEADLINE_OPTS_FRAGMENT,
@@ -469,6 +565,7 @@ def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], in
         live="deleted_at IS NULL",
         query=query,
         limit=limit,
+        handle_col="username",
     )
     if not ids:
         return [], 0
@@ -555,9 +652,10 @@ def search_all(
     ``filters`` scopes the two event groups. While any filter is active the
     users and organizations groups empty, since the filters are event
     predicates. The
-    collections group follows the same rule except for ``author``, which
-    narrows it (and enables browse mode); any other filter names an event
-    property and empties it (``EventFilters.active_beyond_author``).
+    collections group follows the same rule except for ``author`` and ``tag``,
+    which narrow it (and enable browse mode); any other filter names an event
+    property a collection has no reading of, and empties it
+    (``EventFilters.active_beyond``).
 
     ``after`` pages the geolocations group (``search_geolocations``).
 
@@ -585,9 +683,9 @@ def search_all(
     if "request" in types:
         hits, total = search_requests(db, query=query, limit=limit, filters=filters)
         result["requests"] = {"hits": hits, "total": total}
-    if "collection" in types and not filters.active_beyond_author:
+    if "collection" in types and not filters.active_beyond("author", "tag"):
         collection_hits, total = search_collections(
-            db, query=query, limit=limit, author=filters.author
+            db, query=query, limit=limit, author=filters.author, tags=filters.tag
         )
         result["collections"] = {"hits": collection_hits, "total": total}
     if "user" in types and not filters.active:

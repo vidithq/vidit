@@ -105,9 +105,9 @@ const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request
 // Approvals stay off too: a request carries none.
 const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "status" && s !== "approval");
 
-// The backend narrows collections on `author` and empties the group on every other event
-// predicate, so that scope offers the Author section alone.
-const COLLECTION_SECTIONS: ReadonlyArray<EventFilterSectionName> = ["author"];
+// The backend narrows collections on `author` and `tag` (a collection's tags are its items') and
+// empties the group on every other event predicate, so that scope offers those two sections.
+const COLLECTION_SECTIONS: ReadonlyArray<EventFilterSectionName> = ["tags", "author"];
 
 interface SearchFilters {
   values: EventFilterValues;
@@ -369,14 +369,14 @@ function SearchPageBody() {
   const onChipClick = (t: SearchType) => {
     // Filters are event predicates: leaving Events with some active would silently keep
     // constraining the event groups, so they clear with the scope. Collections keep the author
-    // (the one predicate that narrows that group), so stepping from an analyst's events to
-    // their shelf stays on them. The snapshot updates in the same render: waiting for the
+    // and the tags (the predicates that narrow that group), so stepping from an analyst's events
+    // to their shelf stays on them. The snapshot updates in the same render: waiting for the
     // 300 ms debounce would fire one request with stale filters first (`type=user&conflict=…`
     // flashing "No matches").
     if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
       const kept: EventFilterValues =
-        t === "collection" && values.author.trim()
-          ? { ...EMPTY_EVENT_FILTERS, author: values.author.trim() }
+        t === "collection"
+          ? { ...EMPTY_EVENT_FILTERS, author: values.author.trim(), tags: values.tags }
           : EMPTY_EVENT_FILTERS;
       setValues(kept);
       setDates(EMPTY_DATE_WINDOWS);
