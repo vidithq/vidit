@@ -10,7 +10,7 @@ import {
 } from "@/lib/events";
 
 interface DetectionsValue {
-  /** Count of the signed-in user's `detected` events awaiting submission; 0 when logged out or none. */
+  /** Count of the signed-in user's detections to review (`detected` events); 0 when logged out or none. */
   count: number;
   /** Re-fetch after a submit or reject so the sidebar dot and profile entry update. */
   refresh: () => void;

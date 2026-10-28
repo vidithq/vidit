@@ -123,7 +123,7 @@ interface EntityCardBaseProps {
    *  2026`), since it carries more than one. */
   dates?: { label: string; date: string }[];
   coords?: { lat: number; lng: number } | null;
-  /** `url` is null on a sourceless machine detection ("To confirm" label). */
+  /** `url` is null on an event that declares no source link. */
   source?: { url: string | null };
   /** A tag with a `label` renders as a key/value pill (`lib/cardTags.ts`). */
   tags?: { id: string; name: string; label?: string }[];

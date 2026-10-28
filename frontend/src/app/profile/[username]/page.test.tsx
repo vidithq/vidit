@@ -133,7 +133,7 @@ const BLOCKS: Record<string, string> = {
   Coverage: "coverage",
   // Edit mode only: this eyebrow titles the inputs.
   "Linked accounts": "linked accounts",
-  "1 detection to submit": "detections queue",
+  "1 detection to review": "detections queue",
 };
 
 /** The named blocks, in the order the document puts them. */

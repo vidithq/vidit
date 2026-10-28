@@ -35,8 +35,16 @@ interface StrippedArchive {
 const anchoredTweetsMatch = (name: string) =>
   name === TWEETS_FILE || name.endsWith(`/${TWEETS_FILE}`);
 
-const malformed = () =>
-  new ApiError("That file isn't a valid .zip archive.", 0, "archive_malformed");
+export const NOT_A_ZIP_MESSAGE = "That file isn't a valid .zip archive.";
+
+const malformed = () => new ApiError(NOT_A_ZIP_MESSAGE, 0, "archive_malformed");
+
+const ZIP_TYPES = new Set(["application/zip", "application/x-zip-compressed"]);
+
+/** Whether a picked or dropped file is a zip by name or type; a drop skips the picker's `accept`. */
+export function isZipFile(file: Pick<File, "name" | "type">): boolean {
+  return file.name.toLowerCase().endsWith(".zip") || ZIP_TYPES.has(file.type);
+}
 
 interface CdEntry {
   name: string;

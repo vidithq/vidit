@@ -212,6 +212,17 @@ describe("DetectionsPage queue filter", () => {
     expect(screen.queryByText(/on this page/)).not.toBeInTheDocument();
   });
 
+  it("names the queue in the filter's words only, with no helper line under the title", () => {
+    useApiResource.mockReturnValue({
+      data: payload({ total: 40, ready_total: 12, incomplete_total: 28 }),
+      error: null,
+    });
+    render(<DetectionsPage />);
+
+    expect(screen.getByText("1 of 40 detections")).toBeInTheDocument();
+    expect(screen.queryByText(/awaiting|pending|to submit|To confirm|Missing/)).toBeNull();
+  });
+
   it("counts the loaded rows against the filtered total, and names it", () => {
     useApiResource.mockReturnValue({
       data: payload({ total: 12, ready_total: 12, incomplete_total: 28 }),
