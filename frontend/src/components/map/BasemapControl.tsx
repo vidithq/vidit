@@ -86,11 +86,14 @@ function SettingsGroup({ title, children }: { title: string; children: ReactNode
 export function BasemapControl({
   settings,
   adjustable,
+  overlaysLoading = false,
   onChange,
 }: {
   settings: BasemapSettings;
   /** Whether the current preset takes the detail settings. */
   adjustable: boolean;
+  /** Whether the daily imagery or the fire detections are still loading (`<SatelliteOverlays>`). */
+  overlaysLoading?: boolean;
   onChange: (patch: Partial<BasemapSettings>) => void;
 }) {
   const switches = (toggles: SwitchSetting[]) =>
@@ -105,7 +108,12 @@ export function BasemapControl({
     ));
 
   return (
-    <MapPopoverControl label="Basemap" icon={<MapIcon size={15} />} wide>
+    <MapPopoverControl
+      label="Basemap"
+      icon={<MapIcon size={15} />}
+      wide
+      busy={overlaysLoading ? "Loading satellite overlays" : undefined}
+    >
       {/* Stops short of the map's top-left filter overlay and scrolls when the settings do not fit. */}
       {() => (
         <div className="max-h-[calc(100dvh-12rem)] space-y-2 overflow-y-auto">

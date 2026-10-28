@@ -830,6 +830,7 @@ export default function Map({
   const DETECTED = marker.detected;
   const theme = useTheme();
   const [basemap, setBasemap] = useBasemapSettings();
+  const [overlaysLoading, setOverlaysLoading] = useState(false);
   const presetId = resolvePreset(basemap.preset, theme);
   const { brightness } = BASEMAP_PRESETS[presetId];
   // While the self-hosted map files load, the map waits on its blank style rather than fetch the
@@ -1155,13 +1156,19 @@ export default function Map({
       <BasemapControl
         settings={basemap}
         adjustable={BASEMAP_PRESETS[presetId].adjustable}
+        overlaysLoading={overlaysLoading}
         onChange={setBasemap}
       />
       {goToControl && <GoToCoordinatesControl />}
       <NavigationControl position="bottom-left" showCompass={false} />
       <AttributionControl position="bottom-left" compact={false} />
       {(basemap.dailyImagery || basemap.fires) && (
-        <SatelliteOverlays imagery={basemap.dailyImagery} fires={basemap.fires} brightness={brightness} />
+        <SatelliteOverlays
+          imagery={basemap.dailyImagery}
+          fires={basemap.fires}
+          brightness={brightness}
+          onLoadingChange={setOverlaysLoading}
+        />
       )}
       {basemap.grid && <CoordinateGrid brightness={brightness} />}
       {/* Before the points source, so on a style load these layers are added first and draw under the pins. */}

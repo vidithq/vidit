@@ -81,6 +81,17 @@ describe("<BasemapControl>", () => {
     expect(onChange).toHaveBeenLastCalledWith({ fires: true });
   });
 
+  it("shows the loading dot above the closed control while the overlays load", () => {
+    const { rerender } = render(
+      <BasemapControl settings={SETTINGS} adjustable overlaysLoading onChange={vi.fn()} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading satellite overlays");
+    expect(screen.getByRole("button", { name: "Basemap" }).parentElement?.querySelector(".animate-pulse")).not.toBeNull();
+    rerender(<BasemapControl settings={SETTINGS} adjustable onChange={vi.fn()} />);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(document.querySelector(".animate-pulse")).toBeNull();
+  });
+
   it("hides the label and layer settings on a third-party basemap and keeps the overlays", () => {
     open({ preset: "streets" }, false);
     expect(screen.queryByRole("group", { name: "Label language" })).toBeNull();
