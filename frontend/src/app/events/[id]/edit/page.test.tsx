@@ -704,7 +704,7 @@ describe("editing a published geolocation", () => {
     render(<EditEventPage />);
 
     expect(screen.getByRole("heading", { name: /^Linked sites/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Depot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Depot" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(push).toHaveBeenCalled());

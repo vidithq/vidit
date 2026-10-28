@@ -204,7 +204,8 @@ describe("the submit form's Linked sites", () => {
     fireEvent.change(search, { target: { value: "Bravo" } });
     fireEvent.click(await screen.findByRole("option", { name: /Bravo depot/ }));
 
-    expect(screen.getByRole("button", { name: "Bravo depot" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Bravo depot" })).toHaveAttribute("href", "/sites/s2");
+    expect(screen.getByRole("button", { name: "Remove Bravo depot" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Effect at Bravo depot" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Publish geolocation" }));
     expect(announced()).toHaveTextContent(/Effect at a linked site\.$/);

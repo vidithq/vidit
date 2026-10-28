@@ -63,7 +63,7 @@ export const SIGNED_IN_USER: User = {
  * The backend accepts it: `schemas/tag.py` caps the name's length and nothing
  * else, so this is a tag an analyst can actually create.
  */
-export const LONG_TAG_NAME = "counterbatteryradarreconnaissance";
+const LONG_TAG_NAME = "counterbatteryradarreconnaissance";
 
 export const TAGS: Tag[] = [
   { id: "33333333-3333-4333-8333-333333333331", name: "Drone" },
@@ -634,6 +634,7 @@ export const SITE: Site = {
   version_no: 1,
   hidden_at: null,
   latest_link_effect: { effect: "destruction", occurred_date: "2025-09-02", event_id: EVENT_ID },
+  media: SITE_SOURCES.find((source) => source.media?.kind === "image" && !source.is_graphic)?.media ?? null,
   sources: SITE_SOURCES,
   contours: SITE_CONTOURS,
   linked_events: [

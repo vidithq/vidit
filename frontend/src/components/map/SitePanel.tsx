@@ -1,11 +1,19 @@
 "use client";
 
 import type { ApiResource } from "@/hooks/useApiResource";
-import { latestSource, siteHref, type Site, type SiteListItem } from "@/lib/sites";
+import {
+  LINK_EFFECT_LABELS,
+  latestSource,
+  siteHref,
+  type Site,
+  type SiteListItem,
+} from "@/lib/sites";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailRow } from "@/components/ui/DetailRow";
-import { LinkEffectPill, SiteKindPill } from "@/components/sites/SiteBadges";
-import { LastSourceValue, LatestEffectValue, lastSourceText } from "@/components/sites/SiteFacts";
+import { Item } from "@/components/ui/Item";
+import { SiteKindPill } from "@/components/sites/SiteBadges";
+import { LastSourceValue, LatestEffectValue } from "@/components/sites/SiteFacts";
+import { siteItem } from "@/lib/items";
 import { MapSidePanel, type MapPanelContent } from "./MapSidePanel";
 
 /** The site panel's filling, the event panel's blocks: the owner under the name, the latest
@@ -57,21 +65,15 @@ export function SitePanel({
   );
 }
 
-/** The hover preview of a site on the map, from the list row it already holds: the name, the kind,
- *  the latest effect and the last capture. */
-export function SitePreview({
-  site,
-}: {
-  site: Pick<SiteListItem, "name" | "kind" | "latest_link_effect" | "last_source">;
-}) {
+/** The hover preview of a site on the map, from the list row it already holds: the compact
+ *  `<Item>`, with the latest effect after its last capture. */
+export function SitePreview({ site }: { site: SiteListItem }) {
   return (
-    <>
-      <p className="text-xs font-medium text-neutral-100 line-clamp-2">{site.name}</p>
-      <div className="flex flex-wrap gap-1.5">
-        <SiteKindPill kind={site.kind} />
-        {site.latest_link_effect && <LinkEffectPill effect={site.latest_link_effect.effect} />}
-      </div>
-      <p className="text-[11px] text-neutral-500">Last source: {lastSourceText(site)}</p>
-    </>
+    <Item
+      variant="compact"
+      {...siteItem(site)}
+      href={undefined}
+      extra={[site.latest_link_effect && LINK_EFFECT_LABELS[site.latest_link_effect.effect]]}
+    />
   );
 }

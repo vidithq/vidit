@@ -46,6 +46,8 @@ const page = (items: Collection[]) => ({ items, total: items.length, page: 1, pe
 const PAGE = page([shelf("c1", "Kupiansk rail corridor", 1), shelf("c2", "Dam breach", 0)]);
 
 const row = (title: string) => screen.getByRole("button", { name: `Add to ${title}` });
+/** The item that names a collection, its count and its action. */
+const itemOf = (title: string) => screen.getByText(title).parentElement!.parentElement!;
 const ids = { eventIds: ["e1", "e2"] };
 const pickable = (id: string, title: string): PickableEvent => ({
   id,
@@ -74,7 +76,8 @@ describe("BulkAddToCollectionPanel", () => {
     // The search page's head row already says how many are selected.
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     expect(useApiResource).toHaveBeenCalledWith("/users/ana/collections?per_page=100");
-    expect(row("Kupiansk rail corridor")).toHaveTextContent("1 event");
+    expect(itemOf("Kupiansk rail corridor")).toHaveTextContent("1 event");
+    expect(itemOf("Kupiansk rail corridor")).toContainElement(row("Kupiansk rail corridor"));
     expect(row("Dam breach")).toBeEnabled();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     // Two collections need no finder.
@@ -120,10 +123,10 @@ describe("BulkAddToCollectionPanel", () => {
       "href",
       "/collections/c1",
     );
-    const done = screen.getByRole("button", { name: /Kupiansk rail corridor/ });
+    const done = itemOf("Kupiansk rail corridor");
     expect(done).toHaveTextContent("Added 44");
     expect(done).toHaveTextContent("45 events");
-    expect(done).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Add to Kupiansk rail corridor" })).toBeNull();
     expect(row("Dam breach")).toBeEnabled();
   });
 

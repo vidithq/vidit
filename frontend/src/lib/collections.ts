@@ -127,7 +127,7 @@ export function readerStep(raw: string | null, total: number): number {
  *  would invite a tick the add verb refuses with a 409. */
 export const COLLECTABLE_STATUSES: EventStatus[] = ["geolocated", "detected"];
 
-/** One row of the event picker: the slots a compact `<EntityCard>` fills. */
+/** One row of the event picker: the slots a compact `<Item>` fills. */
 export type PickableEvent = Pick<
   EventListItem,
   | "id"

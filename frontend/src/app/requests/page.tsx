@@ -20,13 +20,13 @@ import {
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { FilterRail } from "@/components/filters/FilterRail";
-import { EntityCard } from "@/components/ui/EntityCard";
-import { StatusBadge } from "@/components/event/StatusBadge";
+import { Item } from "@/components/ui/Item";
+import { eventItem } from "@/lib/items";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
-import { requestHref, submitHref } from "@/lib/routes";
+import { submitHref } from "@/lib/routes";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -144,19 +144,11 @@ export default function RequestsPage() {
         <>
           <div className="space-y-3">
             {requests.map((r) => (
-              <EntityCard
+              <Item
                 key={r.id}
-                variant="compact"
-                detailHref={requestHref(r.id)}
-                title={r.title}
-                badge={<StatusBadge status={r.status} />}
-                media={r.media ?? undefined}
-                isGraphic={r.is_graphic}
-                author={r.owner}
-                date={r.occurred_date ?? undefined}
-                age={r.requested_at ? formatOpenAge(r.requested_at) : undefined}
-                coords={r.coords}
-                tags={r.tags}
+                variant="list"
+                {...eventItem(r)}
+                extra={[r.requested_at && formatOpenAge(r.requested_at)]}
               />
             ))}
           </div>

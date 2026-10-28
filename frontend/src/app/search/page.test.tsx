@@ -133,6 +133,8 @@ const toggle = (title: string) => screen.queryByRole("button", { name: `Toggle $
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
 const chip = (name: string) => within(rail()).getByRole("button", { name });
 const linkTo = (href: string) => document.querySelector<HTMLAnchorElement>(`a[href="${href}"]`)!;
+/** The item a link is stretched over. */
+const rowOf = (href: string) => linkTo(href).parentElement!;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -156,30 +158,30 @@ describe("the search page's list", () => {
 
     render(<SearchPage />);
 
-    const event = (await screen.findByText("Kakhovka spillway")).closest("a")!;
-    expect(event).toHaveAttribute("href", "/events/e1");
-    expect(event).toHaveTextContent("Geolocated · 6 Jun 2026 · ana");
+    await screen.findByText("Kakhovka spillway");
+    expect(screen.getByRole("link", { name: "Kakhovka spillway" })).toHaveAttribute(
+      "href",
+      "/events/e1",
+    );
+    expect(rowOf("/events/e1")).toHaveTextContent(/Event·6 Jun 2026·A?anaGeolocated/);
 
-    const site = linkTo("/sites/s1");
+    const site = rowOf("/sites/s1");
     expect(site.querySelector("mark")).toHaveTextContent("Kakhovka");
-    expect(site).toHaveTextContent("Site · Depot · 8 Jun 2026 · ana");
+    expect(site).toHaveTextContent(/Site·8 Jun 2026·A?anaDepot/);
 
-    const shelf = screen.getByText("Nova Kakhovka dam").closest("a")!;
-    expect(shelf).toHaveAttribute("href", "/collections/c1");
-    expect(shelf).toHaveTextContent(/^Nova Kakhovka damCollection · 5 events/);
+    expect(rowOf("/collections/c1")).toHaveTextContent(/^Nova Kakhovka damCollection·.*5 events$/);
+    expect(rowOf("/profile/kakhovka_watch")).toHaveTextContent(/kakhovka_watchAnalyst$/);
+    expect(rowOf("/organizations/kakhovka-watch")).toHaveTextContent(
+      "Kakhovka WatchOrganization1 member",
+    );
 
-    expect(screen.getByText("kakhovka_watch").closest("a")).toHaveTextContent("Analyst");
-    expect(linkTo("/organizations/kakhovka-watch")).toHaveTextContent("Organization · 1 member");
-
-    const request = screen.getByText("Open call").closest("a")!;
-    expect(request).toHaveAttribute("href", "/requests/r1");
-    expect(request).toHaveTextContent("Requested · ana");
+    expect(rowOf("/requests/r1")).toHaveTextContent(/Open callRequest·A?anaRequested/);
 
     expect(screen.queryByText(/result/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Geolocations/)).not.toBeInTheDocument();
   });
 
-  it("leaves a graphic picture out of the row", async () => {
+  it("covers a graphic picture with the gate", async () => {
     const media = {
       id: "m1",
       role: "source" as const,
@@ -199,7 +201,10 @@ describe("the search page's list", () => {
     const { container } = render(<SearchPage />);
 
     await screen.findByText("Graphic");
-    expect(container.querySelectorAll("img")).toHaveLength(1);
+    expect(container.querySelectorAll("img")).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Show graphic content (18 or older)" }),
+    ).toHaveLength(1);
   });
 });
 
@@ -591,7 +596,8 @@ describe("the shortcut under the search field", () => {
     search.mockResolvedValue(response({ query: "@KAKHOVKA_WATCH", hits: [userHit()] }));
     render(<SearchPage />);
 
-    const rows = await screen.findAllByRole("link", { name: /kakhovka_watch\s*Analyst/ });
+    const rows = await screen.findAllByRole("link", { name: "kakhovka_watch" });
+    expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveAttribute("href", "/profile/kakhovka_watch");
   });
 
@@ -600,7 +606,8 @@ describe("the shortcut under the search field", () => {
     search.mockResolvedValue(response({ query: "kakhovka watch", hits: [orgHit()] }));
     render(<SearchPage />);
 
-    const rows = await screen.findAllByRole("link", { name: /Kakhovka Watch\s*Organization/ });
+    const rows = await screen.findAllByRole("link", { name: "Kakhovka Watch" });
+    expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveAttribute("href", "/organizations/kakhovka-watch");
   });
 });

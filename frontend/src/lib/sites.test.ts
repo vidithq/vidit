@@ -317,9 +317,9 @@ describe("site versions", () => {
 });
 
 describe("saveSiteLinks", () => {
-  const alpha = { id: "s1", name: "Alpha", kind: "airbase" as const };
-  const bravo = { id: "s2", name: "Bravo", kind: "depot" as const };
-  const charlie = { id: "s3", name: "Charlie", kind: "port" as const };
+  const alpha = { id: "s1", name: "Alpha", kind: "airbase" as const, media: null };
+  const bravo = { id: "s2", name: "Bravo", kind: "depot" as const, media: null };
+  const charlie = { id: "s3", name: "Charlie", kind: "port" as const, media: null };
 
   it("unlinks a dropped site, links a new one, rewrites a new effect and leaves the rest", async () => {
     calls.length = 0;
@@ -333,7 +333,7 @@ describe("saveSiteLinks", () => {
       [
         { site: bravo, effect: "destruction" },
         { site: charlie, effect: "other" },
-        { site: { id: "s4", name: "Delta", kind: "port" }, effect: "damage" },
+        { site: { id: "s4", name: "Delta", kind: "port", media: null }, effect: "damage" },
       ],
     );
     expect(calls).toEqual([

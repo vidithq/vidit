@@ -35,7 +35,7 @@ const TITLE_MAX = 64;
 
 const HANDLE_MAX = 24;
 
-/** Mosaic panel: 16:9; `gap` matches `<CollectionCover>`. */
+/** Mosaic panel: 16:9; `gap` matches the mosaic of `<ItemMedia>`. */
 const PANEL = { width: 480, height: 270, gap: 2 };
 
 /** One mosaic tile. A clip, or a picture whose fetch was refused, falls back to the panel colour. */
@@ -46,7 +46,7 @@ type MosaicTile =
 
 /**
  * Reads one cover tile for the card: pictures are inlined through the guarded
- * fetch at the `_hero` or `_thumb` derivative `<CollectionCover>` picks (a proof
+ * fetch at the `_hero` or `_thumb` derivative `<ItemMedia>` picks (a proof
  * tile uses its original, by `role`); a clip fetches nothing.
  */
 async function readTile(tile: CollectionCoverTile, lone: boolean): Promise<MosaicTile> {
@@ -97,7 +97,7 @@ function MosaicTileBox({ tile, box }: { tile: MosaicTile; box: OgMosaicBox }) {
   );
 }
 
-/** The mosaic in `<CollectionCover>`'s arrangement (`ogMosaicBoxes`); empty collections draw the placeholder wording. */
+/** The mosaic in `<ItemMedia>`'s arrangement (`ogMosaicBoxes`); empty collections draw the placeholder wording. */
 function MosaicPanel({ tiles }: { tiles: MosaicTile[] }) {
   const boxes = ogMosaicBoxes(tiles.length, PANEL);
   return (

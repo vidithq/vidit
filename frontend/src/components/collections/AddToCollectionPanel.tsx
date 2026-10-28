@@ -2,24 +2,21 @@
 
 import { useEffect, useState } from "react";
 
-import {
-  CollectionPicker,
-  PICKER_ROW,
-  PickerCover,
-} from "@/components/collections/CollectionPicker";
-import { ToggleRow } from "@/components/ui/ToggleRow";
+import { CollectionPicker } from "@/components/collections/CollectionPicker";
+import { Item } from "@/components/ui/Item";
+import { Switch } from "@/components/ui/Switch";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
   addEventToCollection,
   eventCollectionsPath,
-  eventCountLabel,
   newCollectionHref,
   removeEventFromCollection,
   type CollectionMembership,
   type CollectionMemberships,
 } from "@/lib/collections";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { collectionItem } from "@/lib/items";
 
 /**
  * The owner's shelving panel for one event: every collection they hold, each
@@ -28,8 +25,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
  *
  * Reads `GET /events/{id}/collections` (owner-only, empty collections included).
  * `New collection` opens the create page carrying this event. Each row is a
- * `<ToggleRow>` led by the collection's cover, with the item count as its
- * `description`, which sets the title at reading size (titles run to 255 characters).
+ * compact `<Item>` with a `<Switch>` as its action.
  *
  * **The toggle is optimistic and rolls back.** Membership is one bit and both
  * writes are idempotent, so the row flips on the click; a refusal restores the
@@ -91,13 +87,17 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
     <CollectionPicker
       items={rows}
       renderRow={(row) => (
-        <ToggleRow
-          leading={<PickerCover cover={row.cover} />}
-          label={row.title}
-          description={eventCountLabel(row.event_count)}
-          on={row.in_collection}
-          onToggle={() => void toggle(row)}
-          className={PICKER_ROW}
+        <Item
+          variant="compact"
+          {...collectionItem(row)}
+          href={undefined}
+          actions={
+            <Switch
+              on={row.in_collection}
+              onToggle={() => void toggle(row)}
+              aria-label={row.title}
+            />
+          }
         />
       )}
       emptyHint="Open one and this geolocation is its first item."

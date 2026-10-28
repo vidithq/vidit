@@ -7,10 +7,9 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCursorList } from "@/hooks/useCursorList";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
-import { EntityCard } from "@/components/ui/EntityCard";
+import { Item } from "@/components/ui/Item";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import {
@@ -24,13 +23,12 @@ import {
 } from "@/components/filters/EventFilterSections";
 import { FilterBar } from "@/components/filters/FilterBar";
 import { FilterRail } from "@/components/filters/FilterRail";
-import { cardTags } from "@/lib/cardTags";
 import { appendEventFilterParams } from "@/lib/search";
-import { creditProps } from "@/lib/geolocatorCredit";
+import { formatDate } from "@/lib/format";
+import { eventItem } from "@/lib/items";
 import type { PublicProfile } from "@/lib/users";
 import type { components, operations } from "@/lib/api-types";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
-import { eventHref, requestHref } from "@/lib/routes";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 type FeedItem = components["schemas"]["FeedItemRead"];
@@ -68,21 +66,9 @@ const ENTERED_LABEL: Partial<Record<FeedItem["status"], string>> = {
   detected: "Detected",
 };
 
-function itemHref(item: FeedItem): string {
-  return item.status === "requested"
-    ? requestHref(item.id)
-    : eventHref(item.id);
-}
-
-/** The event date when known, then the date the row entered the feed, named by its kind. */
-function itemDates(item: FeedItem): { label: string; date: string }[] {
-  const entered = {
-    label: ENTERED_LABEL[item.status] ?? "Published",
-    date: item.feed_at,
-  };
-  return item.occurred_date
-    ? [{ label: "Event", date: item.occurred_date }, entered]
-    : [entered];
+/** The date the row entered the feed, named by how it entered. */
+function enteredLabel(item: FeedItem): string {
+  return `${ENTERED_LABEL[item.status] ?? "Published"} ${formatDate(item.feed_at)}`;
 }
 
 export default function FeedPage() {
@@ -164,18 +150,11 @@ export default function FeedPage() {
       <>
         <div className="space-y-4">
           {items.map((item) => (
-            <EntityCard
+            <Item
               key={item.id}
-              variant="feed"
-              detailHref={itemHref(item)}
-              title={item.title}
-              badge={<StatusBadge status={item.status} />}
-              media={item.media ?? undefined}
-              isGraphic={item.is_graphic}
-              {...creditProps(item)}
-              dates={itemDates(item)}
-              coords={item.coords}
-              tags={cardTags(item)}
+              variant="card"
+              {...eventItem(item)}
+              extra={[enteredLabel(item)]}
             />
           ))}
         </div>

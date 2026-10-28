@@ -1,10 +1,9 @@
 
-import { StatusBadge } from "@/components/event/StatusBadge";
 import { Card } from "@/components/ui/Card";
 import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { EntityCard } from "@/components/ui/EntityCard";
-import { requestHref } from "@/lib/routes";
+import { Item } from "@/components/ui/Item";
+import { eventItem } from "@/lib/items";
 import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
 import type { EventListItem } from "@/types";
@@ -15,8 +14,8 @@ import type { EventListItem } from "@/types";
  * request page each opens (where the bot's reply sends the owner too). The parent renders the
  * block only when there is a row.
  *
- * Built like `RecentSubmissions`: the compact `EntityCard` under a `SectionEyebrow`, with one link
- * into the wider set. A request lives at `/requests/{id}`, not `/events/{id}`.
+ * Built like `RecentSubmissions`: list `<Item>` rows under a `SectionEyebrow`, with one link into
+ * the wider set.
  */
 export function OpenRequests({
   profile,
@@ -48,19 +47,7 @@ export function OpenRequests({
 
       <div className="space-y-2">
         {requests.map((entry) => (
-          <EntityCard
-            key={entry.id}
-            variant="compact"
-            author={{ username: profile.username }}
-            detailHref={requestHref(entry.id)}
-            title={entry.title}
-            badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
-            media={entry.media ?? undefined}
-            isGraphic={entry.is_graphic}
-            date={entry.occurred_date ?? undefined}
-            coords={entry.coords}
-            tags={entry.tags}
-          />
+          <Item key={entry.id} variant="list" {...eventItem(entry)} />
         ))}
       </div>
     </Card>

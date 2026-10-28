@@ -23,6 +23,7 @@ import {
 } from "@/lib/sites";
 import { searchPickableEvents } from "@/lib/collections";
 import { formatDate } from "@/lib/format";
+import { eventItem } from "@/lib/items";
 import type { EventDetail } from "@/types";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { ShareControl } from "@/components/share/ShareControl";
@@ -44,7 +45,7 @@ async function searchOwnEvents(username: string, q: string, exclude: ReadonlySet
     .filter((e) => e.status === "geolocated" && !exclude.has(e.id))
     .map((e) => ({
       id: e.id,
-      label: e.title,
+      item: { ...eventItem(e), href: undefined },
       meta: e.occurred_date ? formatDate(e.occurred_date) : "Undated",
     }));
 }

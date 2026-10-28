@@ -45,6 +45,7 @@ const SITE: Site = {
   contour_id: "c1",
   last_source: null,
   latest_link_effect: null,
+  media: null,
   owner: { id: "u1", username: "ana" },
   version_no: 1,
   hidden_at: null,

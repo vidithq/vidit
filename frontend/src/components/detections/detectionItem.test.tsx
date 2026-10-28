@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { DetectionQueueRow } from "./DetectionQueueRow";
+import { Item } from "@/components/ui/Item";
+import { detectionItem } from "./detectionItem";
 import { source } from "@/test/eventDetail";
 import type { EventDetail } from "@/types";
 
@@ -45,40 +46,41 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
-describe("DetectionQueueRow", () => {
+function QueueRow({ detection }: { detection: EventDetail }) {
+  return <Item variant="list" {...detectionItem(detection)} />;
+}
+
+describe("detectionItem", () => {
   it("badges a detection carrying the whole evidence floor as ready to review", () => {
-    render(<DetectionQueueRow detection={detectionFixture()} />);
+    render(<QueueRow detection={detectionFixture()} />);
     // "Ready to review", never a bare "Ready": the detection still needs the conflict and the
     // source kind. The queue filter's `?` explains the state, so the row has nothing to hover or press.
     expect(screen.getByText("Ready to review")).toBeInTheDocument();
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
     expect(document.querySelector("[title]")).toBeNull();
-    // Title, event date and source host: the whole row, nothing else.
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("t.me")).toBeInTheDocument();
-    // The row itself is the link, so a middle click or a new tab opens it from anywhere on it:
-    // to the form, inside a review pass starting at this detection.
-    const row = screen.getByRole("link", { name: /Strike near Bakhmut/ });
+    // The link is stretched over the row, so a middle click or a new tab opens it from anywhere on
+    // it: to the form, inside a review pass starting at this detection.
+    const row = screen.getByRole("link", { name: "Strike near Bakhmut" });
     expect(row).toHaveAttribute("href", "/events/d1/edit?queue=1");
-    expect(row).toContainElement(screen.getByText("Ready to review"));
-    expect(row).toContainElement(screen.getByText("t.me"));
   });
 
   it("says which entry the detection came in from, beside the date and the host", () => {
-    render(<DetectionQueueRow detection={detectionFixture({ detected_via: "archive" })} />);
+    render(<QueueRow detection={detectionFixture({ detected_via: "archive" })} />);
     expect(screen.getByText("From your archive")).toBeInTheDocument();
   });
 
   it("says nothing about the entry when the detection predates the record", () => {
-    render(<DetectionQueueRow detection={detectionFixture({ detected_via: null })} />);
+    render(<QueueRow detection={detectionFixture({ detected_via: null })} />);
     // Absent rather than "Unknown": a triage line is better one segment short than saying nothing.
     expect(screen.queryByText(/archive|Pasted|bot/)).toBeNull();
   });
 
   it("names the one piece an incomplete detection is missing", () => {
     render(
-      <DetectionQueueRow
+      <QueueRow
         detection={detectionFixture({ proof: "<p></p>" })}
       />
     );
@@ -89,7 +91,7 @@ describe("DetectionQueueRow", () => {
 
   it("collapses several missing pieces to a count", () => {
     render(
-      <DetectionQueueRow
+      <QueueRow
         detection={detectionFixture({
           proof: "<p></p>",
           sources: [{ ...SOURCE, media: null }],
@@ -102,7 +104,7 @@ describe("DetectionQueueRow", () => {
 
   it("says so when the detection declares no source and no event date", () => {
     render(
-      <DetectionQueueRow
+      <QueueRow
         detection={detectionFixture({ sources: [], occurred_date: null })}
       />
     );

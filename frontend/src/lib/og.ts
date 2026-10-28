@@ -76,7 +76,7 @@ interface OgMosaicFrame {
  *  cover cannot spill out of the panel. */
 const MOSAIC_MAX_TILES = 4;
 
-/** Tile boxes for a collection's mosaic, restating `<CollectionCover>`'s arrangement (Satori
+/** Tile boxes for a collection's mosaic, restating `<ItemMedia>`'s arrangement (Satori
  *  lays out flex, not grid): 1 fills, 2 split, 3 put the earliest tall on the left, 4 fill
  *  2x2. Boxes are absolute; `gap` is the neutral between them. */
 export function ogMosaicBoxes(count: number, frame: OgMosaicFrame): OgMosaicBox[] {

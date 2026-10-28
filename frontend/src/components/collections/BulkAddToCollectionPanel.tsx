@@ -5,12 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 
-import {
-  CollectionPicker,
-  PICKER_ROW,
-  PickerCover,
-} from "@/components/collections/CollectionPicker";
-import { ActionRow } from "@/components/ui/ActionRow";
+import { CollectionPicker } from "@/components/collections/CollectionPicker";
+import { Button } from "@/components/ui/Button";
+import { Item } from "@/components/ui/Item";
 import { Pill } from "@/components/ui/Pill";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -18,7 +15,6 @@ import { useMutation } from "@/hooks/useMutation";
 import {
   addEventsToCollection,
   collectionHref,
-  eventCountLabel,
   newCollectionFromSelectionHref,
   userCollectionsPath,
   type BulkAddResult,
@@ -27,6 +23,7 @@ import {
   type PickableEvent,
 } from "@/lib/collections";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { collectionItem } from "@/lib/items";
 
 /** One page of the owner's list at the endpoint's page cap (`services/pagination.MAX_PAGE_SIZE`);
  *  older collections past it are absent, as in the event page's panel. */
@@ -47,10 +44,10 @@ function summary({ added, skipped }: BulkAddResult): string {
  * Puts a selection of the owner's events on one of their collections in one write
  * (`POST /collections/{id}/events`).
  *
- * In the `<CollectionPicker>` the event page's panel shares, each collection is an `<ActionRow>`:
- * its lead cover tile, the title, and its item count. No heading, since the search page's head
- * row already counts the selection, and the popover's `PopoverPanel` names the dialog. The whole
- * row adds; once the write lands the row reads *Added N* and its count moves, and the line under
+ * In the `<CollectionPicker>` the event page's panel shares, each collection is a compact
+ * `<Item>` with **Add** as its action. No heading, since the search page's head row already
+ * counts the selection, and the popover's `PopoverPanel` names the dialog. Once the write lands
+ * the row reads *Added N* in place of **Add** and its count moves, and the line under
  * the list says what the write did and links to the collection. *New collection* opens
  * `/collections/new` carrying the selection (`newCollectionFromSelectionHref`).
  */
@@ -94,20 +91,25 @@ export function BulkAddToCollectionPanel({
       renderRow={(row) => {
         const result = done[row.id];
         return (
-          <ActionRow
-            leading={<PickerCover cover={row.cover} />}
-            label={row.title}
-            description={eventCountLabel(row.event_count + (result?.added ?? 0))}
-            actionLabel="Add"
-            aria-label={`Add to ${row.title}`}
-            disabled={write.loading}
-            onAct={() => void write.run(row.id)}
-            className={PICKER_ROW}
-            done={
-              result && (
+          <Item
+            variant="compact"
+            {...collectionItem({ ...row, event_count: row.event_count + (result?.added ?? 0) })}
+            href={undefined}
+            actions={
+              result ? (
                 <Pill tone="accent" icon={<Check size={11} />}>
                   Added {result.added}
                 </Pill>
+              ) : (
+                <Button
+                  action="add"
+                  variant="ghost"
+                  aria-label={`Add to ${row.title}`}
+                  disabled={write.loading}
+                  onClick={() => void write.run(row.id)}
+                >
+                  Add
+                </Button>
               )
             }
           />

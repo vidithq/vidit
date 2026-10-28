@@ -1,18 +1,18 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { X } from "lucide-react";
 
 import { EventSection } from "@/components/event/EventLayout";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
+import { Item } from "@/components/ui/Item";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { META_LINE } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { apiFetch } from "@/lib/api";
 import { coordinatePair, type CoordinatePair } from "@/lib/coordinates";
+import { siteItem } from "@/lib/items";
 import {
-  SITE_KIND_LABELS,
   eventSiteLinksPath,
   saveSiteLinks,
   siteSuggestionsNearPath,
@@ -70,7 +70,7 @@ export function useSiteLinksDraft(row: EventDetail | null): SiteLinksDraft {
 
 /**
  * The Linked sites block of an event form, last in the side column like the event page's: each
- * linked site as an accent chip a click removes, over the effect the event shows there, then the
+ * linked site as a compact `<Item>` with a remove control, over the effect the event shows there, then the
  * sites near the event's point as chips, the first few and one **Show more**, then the name
  * search. Nothing is written before the form's write.
  */
@@ -116,17 +116,17 @@ export function LinkedSitesField({
                 <ul className="space-y-3">
                   {links.map((link) => (
                     <li key={link.site.id} className="space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Pill
-                          tone="accent"
-                          title={`Remove ${link.site.name}`}
-                          onClick={() => setLinks(links.filter((l) => l.site.id !== link.site.id))}
-                        >
-                          {link.site.name}
-                          <X size={12} aria-hidden />
-                        </Pill>
-                        <span className={META_LINE}>{SITE_KIND_LABELS[link.site.kind]}</span>
-                      </div>
+                      <Item
+                        variant="compact"
+                        {...siteItem(link.site)}
+                        newTab
+                        actions={
+                          <RemoveButton
+                            label={`Remove ${link.site.name}`}
+                            onClick={() => setLinks(links.filter((l) => l.site.id !== link.site.id))}
+                          />
+                        }
+                      />
                       <EffectControl
                         aria-label={`Effect at ${link.site.name}`}
                         fullWidth={false}

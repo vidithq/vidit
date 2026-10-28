@@ -2,17 +2,15 @@
 
 import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
 
-import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
-import { StatusBadge } from "@/components/event/StatusBadge";
 import { Card } from "@/components/ui/Card";
 import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Item } from "@/components/ui/Item";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { RemoveButton } from "@/components/ui/RemoveButton";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { errorMessage } from "@/lib/api";
 import { errorText } from "@/lib/errors";
-import { formatDate } from "@/lib/format";
 import {
   eventCountLabel,
   PICKER_ROW_LIMIT,
@@ -20,6 +18,7 @@ import {
   searchPickableEvents,
   type PickableEvent,
 } from "@/lib/collections";
+import { eventItem } from "@/lib/items";
 import { useCursorList } from "@/hooks/useCursorList";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import type { EventListItem } from "@/types";
@@ -48,8 +47,8 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  * events, or the first matches once something is typed. *Events in this
  * collection* follows: what the collection holds if saved now (the rows the
  * page opened on, a `?event=` arrival, and everything added since), in the
- * collection page's order, as a vertical list of compact `<CollectionItemCard>`
- * rows, each with a `<RemoveButton>` at its right edge. A held row leaves the
+ * collection page's order, as compact `<Item>` rows, each with a `<RemoveButton>`
+ * at its right edge. Each add option is a compact `<Item>` too. A held row leaves the
  * add list, a pick scrolls its new row into view, and the add list stays open
  * for the next pick. Neither card writes anything; the page's submit does.
  *
@@ -228,15 +227,9 @@ export function EventPicker({
           options={loading ? [] : addable}
           optionKey={(row) => row.id}
           renderOption={(row) => (
-            <>
-              <span className="min-w-0 flex-1 truncate">{row.title}</span>
-              {row.occurred_date && (
-                <span className="shrink-0 text-xs text-neutral-500">
-                  {formatDate(row.occurred_date)}
-                </span>
-              )}
-              <StatusBadge status={row.status} />
-            </>
+            <div className="min-w-0 flex-1">
+              <Item variant="compact" {...eventItem(row)} href={undefined} />
+            </div>
           )}
           onPick={add}
           status={status}
@@ -248,13 +241,16 @@ export function EventPicker({
         {held.length > 0 ? (
           <ul className="space-y-2" aria-label="Events in this collection">
             {held.map((row) => (
-              <li key={row.id} ref={revealAdded(row.id)} className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <CollectionItemCard item={row} />
-                </div>
-                <RemoveButton
-                  label={`Remove ${row.title} from this collection`}
-                  onClick={() => remove(row)}
+              <li key={row.id} ref={revealAdded(row.id)}>
+                <Item
+                  variant="compact"
+                  {...eventItem(row)}
+                  actions={
+                    <RemoveButton
+                      label={`Remove ${row.title} from this collection`}
+                      onClick={() => remove(row)}
+                    />
+                  }
                 />
               </li>
             ))}

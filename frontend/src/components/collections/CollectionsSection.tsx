@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 
-import { CollectionCard } from "@/components/collections/CollectionCard";
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Item } from "@/components/ui/Item";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useApiResource } from "@/hooks/useApiResource";
+import { collectionItem } from "@/lib/items";
 import { profileSearchHref } from "@/lib/search";
 import {
   CollectionIcon,
@@ -17,12 +18,12 @@ import {
   type CollectionPage,
 } from "@/lib/collections";
 
-/** Two rows of the two-column grid. */
-const GRID_SIZE = 4;
+/** How many collections the section previews. */
+const PREVIEW_SIZE = 4;
 
 /**
  * The profile's Collections section: the analyst's named sets of their own
- * events, as a grid of mosaic cards, between Insights and Recent submissions.
+ * events, as list `<Item>` rows, between Insights and Recent submissions.
  *
  * The endpoint narrows by viewer: a visitor gets collections holding something a
  * reader may see, the owner all of theirs, empty included. For a visitor an
@@ -44,7 +45,7 @@ export function CollectionsSection({
   isOwn: boolean;
 }) {
   const { data } = useApiResource<CollectionPage>(
-    userCollectionsPath(username, GRID_SIZE),
+    userCollectionsPath(username, PREVIEW_SIZE),
   );
 
   // The profile hides this section rather than blocking on it.
@@ -66,15 +67,14 @@ export function CollectionsSection({
 
       {collections.length > 0 ? (
         <>
-          {/* One column on a phone: half of 375px leaves the title no room. */}
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-2">
             {collections.map((collection) => (
-              <CollectionCard key={collection.id} collection={collection} />
+              <Item key={collection.id} variant="list" {...collectionItem(collection)} />
             ))}
           </div>
-          {data.total > GRID_SIZE && (
+          {data.total > PREVIEW_SIZE && (
             // `type=collection` is the one scope `author` narrows rather than
-            // empties, so the expansion serves the set the grid previewed.
+            // empties, so the expansion serves the set the section previewed.
             <div className="flex justify-center">
               <ShowMoreLink href={profileSearchHref(username, {}, "collection")} />
             </div>

@@ -36,7 +36,7 @@ describe("<EventActionsPanel>", () => {
   });
 
   it("tells apart two events with the same title by date and author", async () => {
-    const event = { type: "event", title: "Strike on the depot", status: "geolocated" };
+    const event = { type: "event", title: "Strike on the depot", status: "geolocated", media: [] };
     api.apiFetch.mockResolvedValue({
       hits: [
         { ...event, id: ID, occurred_date: "2026-03-01", owner: { username: "ana" } },
@@ -56,10 +56,9 @@ describe("<EventActionsPanel>", () => {
     fireEvent.focus(field);
     fireEvent.change(field, { target: { value: "depot" } });
 
-    expect(await screen.findByText("1 Mar 2026 · ana")).toBeInTheDocument();
-    expect(screen.getByText("Undated · bo")).toBeInTheDocument();
-    expect(screen.getByText("Requested 2 Apr 2026 · cy")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("option", { name: /Undated · bo/ }));
+    expect(await screen.findByRole("option", { name: /1 Mar 2026.*ana/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Requested 2 Apr 2026.*cy/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /Undated.*bo/ }));
     expect(api.apiFetch.mock.calls[0][0]).toMatch(/^\/search\?q=depot&limit=10&type=event$/);
     expect(screen.getByTitle("Remove Strike on the depot")).toHaveTextContent("Undated · bo");
     expect(screen.getByRole("button", { name: "Mark graphic" })).toBeEnabled();

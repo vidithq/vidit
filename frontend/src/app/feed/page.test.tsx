@@ -256,7 +256,7 @@ describe("FeedPage", () => {
     expect(screen.getByText("You have reached the end of the feed")).toBeInTheDocument();
   });
 
-  it("puts the title first, names both dates, and keys the conflict, tags plain", () => {
+  it("puts the title before the byline, and the detail line names the kind and both dates", () => {
     walk.items = [
       item({
         id: "g1",
@@ -284,16 +284,11 @@ describe("FeedPage", () => {
     const byline = card.querySelector("a[href^='/profile/']")!;
     expect(heading.compareDocumentPosition(byline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    expect(within(card).getByText("Event 25 Aug 2009")).toBeInTheDocument();
-    expect(within(card).getByText("Published 3 Oct 2026")).toBeInTheDocument();
-    expect(screen.getByText("Requested 4 Oct 2026")).toBeInTheDocument();
-
-    expect(within(card).getByText("Conflict:").parentElement).toHaveTextContent(
-      "Conflict:Russo-Ukrainian war",
-    );
-    // A card carries no source, so it names no source kind.
-    expect(within(card).queryByText("Kind:")).toBeNull();
-    expect(within(card).getByText("airstrike")).toBeInTheDocument();
+    const [event, request] = container.querySelectorAll("article");
+    expect(event).toHaveTextContent(/Event·25 Aug 2009·.*·Published 3 Oct 2026/);
+    expect(request).toHaveTextContent(/^Where is this bridge.*Request·.*·Requested 4 Oct 2026/);
+    // The card's anatomy holds no tag row.
+    expect(within(card).queryByText("airstrike")).toBeNull();
   });
 
   it("cards a detection with its badge and date, linked to its event page", () => {

@@ -2,14 +2,13 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, MapPin, Search as SearchIcon, Users } from "lucide-react";
+import { MapPin, Search as SearchIcon } from "lucide-react";
 import {
   SearchSelectionActions,
   SelectAllRow,
   SelectableHit,
   useSearchSelection,
 } from "@/components/collections/SearchSelection";
-import { SearchHitRow } from "@/components/search/SearchHitRow";
 import {
   SEARCH_KIND_OPTIONS,
   SEARCH_KIND_SECTIONS,
@@ -25,7 +24,8 @@ import { GO_TO_ZOOM, formatCoordinates, parsePastedCoordinates } from "@/lib/coo
 import { showFieldScope } from "@/lib/showField";
 import { useMapState } from "@/contexts/MapStateContext";
 import { LinkRow } from "@/components/ui/LinkRow";
-import { Avatar } from "@/components/ui/Avatar";
+import { Item } from "@/components/ui/Item";
+import { searchHitItem } from "@/lib/items";
 import type { SearchHitType, SearchResponse } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -56,9 +56,7 @@ import { FilterBar } from "@/components/filters/FilterBar";
 import { FilterRail } from "@/components/filters/FilterRail";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { memberCountLabel, organizationPath } from "@/lib/organizations";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
-import { profileHref } from "@/lib/routes";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { readError, type ReadableError } from "@/lib/errors";
 
@@ -389,35 +387,8 @@ function SearchPageBody() {
             setViewState({ latitude: point.lat, longitude: point.lng, zoom: GO_TO_ZOOM });
           }}
         />
-      ) : named?.kind === "analyst" ? (
-        <LinkRow
-          icon={Users}
-          leading={
-            <Avatar src={named.hit.avatar_url} username={named.hit.username} size="size-7" />
-          }
-          value={named.hit.username}
-          meta="Analyst"
-          href={profileHref(named.hit.username)}
-          external={false}
-          variant="arrow"
-        />
-      ) : named?.kind === "organization" ? (
-        <LinkRow
-          icon={Building2}
-          leading={
-            <Avatar
-              src={named.hit.avatar_url}
-              username={named.hit.name}
-              size="size-7"
-              shape="square"
-            />
-          }
-          value={named.hit.name}
-          meta={`Organization · ${memberCountLabel(named.hit.member_count)}`}
-          href={organizationPath(named.hit.slug)}
-          external={false}
-          variant="arrow"
-        />
+      ) : named ? (
+        <Item variant="list" {...searchHitItem(named.hit)} highlight={undefined} />
       ) : null}
 
       <FilterBar count={filterCount} pills={activeFilters} onClearAll={clearFilters}>
@@ -463,7 +434,7 @@ function SearchPageBody() {
         <div className="space-y-1.5">
           {results.hits.map((hit) => (
             <SelectableHit key={`${hit.type}:${hit.id}`} hit={hit} selection={selection}>
-              <SearchHitRow hit={hit} />
+              <Item variant="list" {...searchHitItem(hit)} />
             </SelectableHit>
           ))}
           <LoadMoreRow

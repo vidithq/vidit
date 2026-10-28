@@ -1,17 +1,19 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { Combobox } from "@/components/ui/Combobox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FieldLabel } from "@/components/ui/FieldLabel";
+import { Item, type ItemData } from "@/components/ui/Item";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Pill } from "@/components/ui/Pill";
+import { RemoveButton } from "@/components/ui/RemoveButton";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { META_LINE } from "@/components/ui/styles";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
+import { siteItem } from "@/lib/items";
 import {
   LINK_EFFECTS,
   LINK_EFFECT_LABELS,
@@ -32,8 +34,9 @@ const EFFECT_OPTIONS = LINK_EFFECTS.map((value) => ({ value, label: LINK_EFFECT_
  *  site. */
 export interface LinkCandidate {
   id: string;
-  label: string;
-  /** What the reader needs to choose: the kind, the date, the distance. */
+  /** The compact item the search rows and the pick show, linking nowhere. */
+  item: ItemData;
+  /** What a suggestion chip adds to the name: the kind and the distance. */
   meta: string;
 }
 
@@ -52,7 +55,11 @@ export function siteCandidate(s: SiteSuggestion): LinkCandidate {
       : s.distance_m === 0
         ? "event inside the zone"
         : `${formatDistance(s.distance_m)} from the event`;
-  return { id: s.id, label: s.name, meta: [SITE_KIND_LABELS[s.kind], where].filter(Boolean).join(" · ") };
+  return {
+    id: s.id,
+    item: { ...siteItem(s), place: where, href: undefined },
+    meta: [SITE_KIND_LABELS[s.kind], where].filter(Boolean).join(" · "),
+  };
 }
 
 /** The suggestions of a link picker as neutral chips, the first few, then one **Show more**.
@@ -79,7 +86,7 @@ export function LinkSuggestionPills({
               <li key={s.id} className="max-w-full">
                 <Pill tone="neutral" title={s.meta} onClick={() => onPick(s)}>
                   <Plus size={12} aria-hidden />
-                  {s.label}
+                  {s.item.title}
                   <span className="font-normal opacity-70">{s.meta}</span>
                 </Pill>
               </li>
@@ -154,10 +161,9 @@ export function LinkSearch({
       options={rows}
       optionKey={(row) => row.id}
       renderOption={(row) => (
-        <span className="min-w-0">
-          <span className="block truncate">{row.label}</span>
-          <span className="block truncate text-xs text-neutral-500">{row.meta}</span>
-        </span>
+        <div className="min-w-0 flex-1">
+          <Item variant="compact" {...row.item} />
+        </div>
       )}
       onPick={(row) => {
         onPick(row);
@@ -205,7 +211,7 @@ export function EffectControl({
  * The dialog of the pages' link actions, on `ConfirmDialog`: an event's owner picks a site from
  * the event page, or one of their events from a site page. The suggestions, when the caller has
  * some (the sites near the event), show as chips, any other pick comes from the search, and the
- * pick shows as an accent chip a click removes. The effect has no default: the analyst says what
+ * pick shows as a compact `<Item>` with a remove control. The effect has no default: the analyst says what
  * the event shows. `extra` renders under the effect once a pick is made (the offer to file the
  * event's satellite sources).
  */
@@ -257,13 +263,13 @@ export function LinkDialog({
       <div className="space-y-2 pt-1">
         <FieldLabel label={pickLabel} />
         {picked ? (
-          <div className="space-y-1">
-            <Pill tone="accent" title={`Remove ${picked.label}`} onClick={() => setPicked(null)}>
-              {picked.label}
-              <X size={12} aria-hidden />
-            </Pill>
-            <p className={META_LINE}>{picked.meta}</p>
-          </div>
+          <Item
+            variant="compact"
+            {...picked.item}
+            actions={
+              <RemoveButton label={`Remove ${picked.item.title}`} onClick={() => setPicked(null)} />
+            }
+          />
         ) : (
           <>
             {suggestions && <LinkSuggestionPills suggestions={suggestions} onPick={setPicked} />}

@@ -23,10 +23,8 @@ import { usePalette } from "@/hooks/usePalette";
 import { useTheme } from "@/hooks/useTheme";
 import { paletteMapColors } from "@/lib/palette";
 import { apiFetch } from "@/lib/api";
-import { formatDate } from "@/lib/format";
-import { MediaThumb } from "@/components/ui/EntityCard";
-import { AuthorByline } from "@/components/ui/AuthorByline";
-import { StatusBadge } from "@/components/event/StatusBadge";
+import { Item } from "@/components/ui/Item";
+import { eventItem } from "@/lib/items";
 import type {
   ExpressionSpecification,
   FilterSpecification,
@@ -48,7 +46,6 @@ import {
   ringOffsets,
   ringRadius,
 } from "./stack";
-import { creditProps } from "@/lib/geolocatorCredit";
 import {
   CLUSTER_COUNT_COLOR,
   CLUSTER_LAYER,
@@ -487,28 +484,14 @@ function PinPreviewCard({
   x: number;
   y: number;
 }) {
-  // Backend-picked card thumbnail (source media, else proof image): the rule lives in services/thumbnails.
-  const media = entry?.thumbnail ?? undefined;
   return (
     <MapPreviewCard x={x} y={y}>
       {entry ? (
-        <>
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-medium text-neutral-100 line-clamp-2">
-              {entry.title}
-            </p>
-            <StatusBadge status={entry.status} />
-          </div>
-          <MediaThumb
-            media={media}
-            isGraphic={entry.is_graphic}
-            className="w-full"
-          />
-          <p className="text-[11px] text-neutral-500">
-            {entry.occurred_date && <>{formatDate(entry.occurred_date)} </>}
-            <AuthorByline {...creditProps(entry)} size="xs" />
-          </p>
-        </>
+        <Item
+          variant="compact"
+          {...eventItem({ ...entry, media: entry.thumbnail })}
+          href={undefined}
+        />
       ) : error ? (
         <p className="text-xs text-neutral-500">Preview unavailable</p>
       ) : (
