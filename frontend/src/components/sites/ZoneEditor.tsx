@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { GoToCoordinates } from "@/components/map/GoToCoordinates";
 import type { DrawChange } from "@/components/map/ZoneDrawMap";
-import type { MapSite } from "@/components/map/SiteLayers";
 import { cn } from "@/lib/cn";
 import type { CoordinatePair } from "@/lib/coordinates";
 import {
@@ -62,23 +61,19 @@ function hint(state: DrawState): string {
  */
 export function ZoneEditor({
   history,
-  sites,
   reference = null,
   onReset,
   bounds,
   center,
-  onBoundsChange,
   invalid = false,
   label,
 }: {
   history: ReturnType<typeof useDrawHistory>;
-  sites: MapSite[];
   reference?: Zone | null;
   /** Restores the contour being redrawn. */
   onReset?: () => void;
   bounds?: MapBounds;
   center?: { lat: number; lng: number; zoom: number };
-  onBoundsChange?: (bounds: MapBounds) => void;
   /** A write attempt found no closed contour: the frame turns red. */
   invalid?: boolean;
   /** The region's accessible name. */
@@ -148,12 +143,10 @@ export function ZoneEditor({
         <ZoneDrawMap
           state={state}
           onChange={change}
-          sites={sites}
           reference={reference}
           bounds={bounds}
           center={center}
           goTo={goTo}
-          onBoundsChange={onBoundsChange}
         />
       </div>
       <DetailRow

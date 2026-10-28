@@ -58,8 +58,8 @@ interface HoverTarget {
 }
 
 /**
- * The sites layer of a map, mounted as `<Map>` children: the zones from `zoneMinZoom`, under the
- * event pins, in the event pin colour or `zoneColor`. Below `ZONE_MIN_ZOOM` the sites are
+ * The sites layer of a map, mounted as `<Map>` children: the zones from `ZONE_MIN_ZOOM`, under
+ * the event pins, in the event pin colour. Below it the sites are
  * triangles in `<Map>`'s clusters (its `sites`). The map prints no site name: the preview and the
  * side panel carry it.
  *
@@ -73,17 +73,12 @@ export function SiteLayers({
   selectedId,
   onSelect,
   renderPreview,
-  zoneMinZoom = ZONE_MIN_ZOOM,
-  zoneColor,
 }: {
   sites: MapSite[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   /** The preview of a hovered site, or null for none. */
   renderPreview?: (id: string) => ReactNode;
-  zoneMinZoom?: number;
-  /** The zones' colour in place of the event pin colour. */
-  zoneColor?: string;
 }) {
   const { current: map } = useMap();
   const accent = paletteMapColors(usePalette()).base;
@@ -167,18 +162,18 @@ export function SiteLayers({
         <Layer
           id={FILL}
           type="fill"
-          minzoom={zoneMinZoom}
+          minzoom={ZONE_MIN_ZOOM}
           paint={{
-            "fill-color": zoneColor ?? accent,
+            "fill-color": accent,
             "fill-opacity": ["case", SELECTED, 0.22, 0.12],
           }}
         />
         <Layer
           id={LINE}
           type="line"
-          minzoom={zoneMinZoom}
+          minzoom={ZONE_MIN_ZOOM}
           paint={{
-            "line-color": zoneColor ?? accent,
+            "line-color": accent,
             "line-width": ["case", SELECTED, 3, 2],
           }}
         />

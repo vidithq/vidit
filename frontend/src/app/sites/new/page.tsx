@@ -13,7 +13,6 @@ import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import { SiteKindCard, SiteNameField } from "@/components/sites/SiteFormFields";
 import { SiteSourceEditor, SiteWriteActions, useSiteSourceDraft } from "@/components/sites/SiteSourceEditor";
 import { ZoneEditor, useDrawHistory } from "@/components/sites/ZoneEditor";
-import { useSitesInView } from "@/components/sites/useSitesInView";
 import { useMapState } from "@/contexts/MapStateContext";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
@@ -91,7 +90,6 @@ export default function NewSitePage() {
   const source = useSiteSourceDraft();
   const [overlaps, setOverlaps] = useState<SiteOverlap[]>([]);
   const [attempt, setAttempt] = useState(0);
-  const [sites, onBoundsChange] = useSitesInView();
 
   const zone = drawReady(history.state) ? zoneFromVertices(history.state.vertices) : null;
   const zoneKey = zone ? JSON.stringify(zone.coordinates) : "";
@@ -188,9 +186,7 @@ export default function NewSitePage() {
                       <ZoneEditor
                         label="Contour"
                         history={history}
-                        sites={sites}
                         center={{ lat: viewState.latitude, lng: viewState.longitude, zoom: viewState.zoom }}
-                        onBoundsChange={onBoundsChange}
                         invalid={flagged && !zone}
                       />
                       <OverlapWarning overlaps={overlaps} />

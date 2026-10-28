@@ -20,7 +20,6 @@ import { SitePanel, SitePreview } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
-import { toMapSite } from "@/components/sites/useSitesInView";
 import {
   sitePath,
   sitesAsOf,
@@ -134,7 +133,7 @@ export default function HomePage() {
     VIEWPORT_DEBOUNCE_MS,
   );
 
-  const mapSites = useMemo(() => (sitesShown ? sites.map(toMapSite) : []), [sites, sitesShown]);
+  const mapSites = useMemo(() => (sitesShown ? sites : []), [sites, sitesShown]);
 
   const renderSitePreview = useCallback(
     (id: string) => {

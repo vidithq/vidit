@@ -19,7 +19,6 @@ import type { CoordinatePair } from "@/lib/coordinates";
 import type { Zone } from "@/lib/sites";
 import type { MapBounds } from "@/lib/viewport";
 import Map from "./Map";
-import { SiteLayers, type MapSite } from "./SiteLayers";
 
 const SHAPE_FILL = "draw-fill";
 const SHAPE_LINE = "draw-line";
@@ -256,32 +255,26 @@ function DrawLayers({ state, reference }: { state: DrawState; reference: Zone | 
  * The contour editor's canvas. An open ring takes a corner per click and closes on a click on
  * its first corner. A closed ring edits in place: a corner drags, a click picks it, and the
  * small dot in the middle of each edge drags out a new corner. `reference` draws a zone dashed
- * under the drawing (the contour being redrawn), and `sites` the neighbours a new site may
- * overlap. The toolbar is the caller's.
+ * under the drawing (the contour being redrawn). No other site draws, so nothing on the map
+ * shares the drawing's accent. The toolbar is the caller's.
  */
 export default function ZoneDrawMap({
   state,
   onChange,
-  sites,
   reference = null,
   bounds,
   center,
   goTo,
-  onBoundsChange,
 }: {
   state: DrawState;
   onChange: DrawChange;
-  sites: MapSite[];
   reference?: Zone | null;
-  onBoundsChange?: (bounds: MapBounds) => void;
   /** Frames the map on a zone being edited; `center` is used otherwise. */
   bounds?: MapBounds;
   center?: { lat: number; lng: number; zoom: number };
   /** A coordinate typed beside the map. */
   goTo?: CoordinatePair | null;
 }) {
-  // The drawing takes the accent, so the neighbours keep the site zone colour to stay apart from it.
-  const neighbours = SITE_MAP_COLORS[useBasemapBrightness()].zone;
   return (
     <Map
       points={[]}
@@ -290,10 +283,8 @@ export default function ZoneDrawMap({
       center={center ? { lat: center.lat, lng: center.lng } : undefined}
       zoom={center?.zoom}
       goTo={goTo}
-      onBoundsChange={onBoundsChange}
       embedded
     >
-      <SiteLayers sites={sites} zoneMinZoom={0} zoneColor={neighbours} />
       <DrawLayers state={state} reference={reference} />
       <DrawInteractions state={state} onChange={onChange} />
     </Map>

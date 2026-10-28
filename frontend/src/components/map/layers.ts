@@ -3,7 +3,7 @@ import type { ExpressionSpecification, SymbolLayerSpecification } from "maplibre
 import type { paletteMapColors } from "@/lib/palette";
 import type { Brightness } from "./basemap";
 import { CLUSTER_MAX_ZOOM } from "./stack";
-import { TRIANGLE_RADIUS, besideOffsetPx } from "./triangle";
+import { TRIANGLE_HEIGHT, besideOffsetPx, heightToHold, incentreDropPx, triangleHeight } from "./triangle";
 
 /** Layer ids of the event pins, shared with the site layers that must stay under them. The
  *  cluster layer is the lowest of them. */
@@ -109,33 +109,63 @@ export function clusterCountLayout(count: ExpressionSpecification) {
   } satisfies SymbolLayerSpecification["layout"];
 }
 
-/** Per event and site count tier, `value(eventRadius, siteRadius, siteTextSize)` as a literal:
- *  [0, 0] for a cluster of sites only. */
-function besideCircle(value: (eventRadius: number, siteRadius: number, textSize: number) => [number, number]) {
-  const bySites = (eventRadius: number) =>
+/** `[from site count, the longest count label up to the next entry]`: where a label grows a
+ *  character, a tier starts, or the count text grows. */
+const SITE_LABELS: readonly (readonly [number, string])[] = [
+  [0, "9"],
+  [10, "49"],
+  [50, "99"],
+  [100, "199"],
+  [200, "999"],
+  [1000, "9.9k"],
+  [5000, "9.9k"],
+  [10000, "999k"],
+];
+
+/** The site triangle's height for `count` sites: the one paired with the circle of the same count,
+ *  grown to the next circle tier's until it holds the longest label of its range. */
+export function siteTriangleHeight(count: number): number {
+  const [from, label] = SITE_LABELS.filter(([start]) => count >= start).at(-1)!;
+  const needed = heightToHold(label, tierValue(COUNT_TIERS, from));
+  const tiers = CLUSTER_TIERS.map(([, radius]) => radius).filter((radius) => radius >= tierValue(CLUSTER_TIERS, from));
+  const fits = tiers.map(triangleHeight).find((height) => height >= needed);
+  return fits ?? needed;
+}
+
+/** Per event count tier and site label range, `value(eventRadius, triangleHeight, textSize)` as a
+ *  literal; `eventRadius` is null for a cluster of sites only. */
+function bySiteRange(value: (eventRadius: number | null, height: number, textSize: number) => [number, number]) {
+  const bySites = (eventRadius: number | null) =>
     step(
       SITE_COUNT,
-      CLUSTER_TIERS.map(([from, siteRadius]) => [
+      SITE_LABELS.map(([from]) => [
         from,
-        ["literal", value(eventRadius, siteRadius, tierValue(COUNT_TIERS, from))],
+        ["literal", value(eventRadius, siteTriangleHeight(from), tierValue(COUNT_TIERS, from))],
       ]),
     );
   return step(EVENT_COUNT, [
-    [0, ["literal", [0, 0]]],
+    [0, bySites(null)],
     ...CLUSTER_TIERS.map(([from, eventRadius]) => [Math.max(from, 1), bySites(eventRadius)] as const),
   ]);
 }
 
-/** The site triangle of a cluster: its circle's colour ramp and size tiers, read on the site
- *  count, and right of the circle when the cluster holds events. */
+/** The site triangle of a cluster: its circle's colour ramp, its height from
+ *  `siteTriangleHeight`, right of the circle when the cluster holds events, its count on the
+ *  incentre. */
 export function siteClusterStyle(marker: ReturnType<typeof paletteMapColors>) {
   return {
     layout: {
       ...clusterCountLayout(SITE_COUNT),
       "icon-image": TRIANGLE_ICON,
-      "icon-size": ["/", clusterRadius(SITE_COUNT), TRIANGLE_RADIUS],
-      "icon-offset": besideCircle((e, s) => [(besideOffsetPx(e, s) * TRIANGLE_RADIUS) / s, 0]),
-      "text-offset": besideCircle((e, s, size) => [besideOffsetPx(e, s) / size, 0]),
+      "icon-size": step(
+        SITE_COUNT,
+        SITE_LABELS.map(([from]) => [from, siteTriangleHeight(from) / TRIANGLE_HEIGHT]),
+      ),
+      "icon-offset": bySiteRange((e, h) => [e === null ? 0 : (besideOffsetPx(e, h) * TRIANGLE_HEIGHT) / h, 0]),
+      "text-offset": bySiteRange((e, h, size) => [
+        e === null ? 0 : besideOffsetPx(e, h) / size,
+        incentreDropPx(h) / size,
+      ]),
       "icon-allow-overlap": true,
       "icon-ignore-placement": true,
     },
@@ -146,3 +176,7 @@ export function siteClusterStyle(marker: ReturnType<typeof paletteMapColors>) {
     },
   } satisfies Pick<SymbolLayerSpecification, "layout" | "paint">;
 }
+
+/** A single site's triangle size: the one paired with an event point, or a selected one. */
+export const SITE_POINT_SIZE = triangleHeight(POINT_RADIUS) / TRIANGLE_HEIGHT;
+export const SELECTED_SITE_POINT_SIZE = triangleHeight(SELECTED_POINT_RADIUS) / TRIANGLE_HEIGHT;

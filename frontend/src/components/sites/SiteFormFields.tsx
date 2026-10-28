@@ -113,7 +113,6 @@ export function ContourDraft({
     <ZoneEditor
       label="Contour"
       history={history}
-      sites={[]}
       reference={reference}
       onReset={reference ? () => history.change(drawFromZone(reference)) : undefined}
       bounds={bounds}

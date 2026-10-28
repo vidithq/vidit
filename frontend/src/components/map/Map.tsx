@@ -58,12 +58,14 @@ import {
   POINT_LAYERS,
   POINT_RADIUS,
   SELECTED_POINT_RADIUS,
+  SELECTED_SITE_POINT_SIZE,
   SELECTED_STROKE,
   SELECTED_STROKE_WIDTH,
   SITE_CLUSTER_LAYER,
   SITE_COUNT,
   SITE_POINT_FILTER,
   SITE_POINT_LAYER,
+  SITE_POINT_SIZE,
   STACK_LAYER,
   TAP_TARGET_LAYERS,
   TRIANGLE_ICON,
@@ -74,7 +76,7 @@ import {
   siteClusterStyle,
 } from "./layers";
 import type { MapSite } from "./SiteLayers";
-import { TRIANGLE_RADIUS, triangleSdf } from "./triangle";
+import { triangleSdf } from "./triangle";
 import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
 import { BasemapControl } from "./BasemapControl";
 import { CoordinateGrid } from "./CoordinateGrid";
@@ -1303,12 +1305,7 @@ export default function Map({
           filter={SITE_POINT_FILTER}
           layout={{
             "icon-image": TRIANGLE_ICON,
-            "icon-size": [
-              "case",
-              ["==", ["get", "selected"], 1],
-              SELECTED_POINT_RADIUS / TRIANGLE_RADIUS,
-              POINT_RADIUS / TRIANGLE_RADIUS,
-            ],
+            "icon-size": ["case", ["==", ["get", "selected"], 1], SELECTED_SITE_POINT_SIZE, SITE_POINT_SIZE],
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
           }}
