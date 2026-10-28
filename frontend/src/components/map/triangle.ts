@@ -7,7 +7,28 @@ export const TRIANGLE_RADIUS = 12;
 const SDF_EDGE = 0.75;
 const SDF_PX = 8;
 
+// An equilateral triangle with the area of a circle of radius r has a side of this many r.
+const SIDE_PER_RADIUS = Math.sqrt((4 * Math.PI) / Math.sqrt(3));
+const GAP_PX = 1;
+
 type Vec = [number, number];
+
+/** How far right of a circle of `circleRadius` px the centroid of a triangle sized like a circle of
+ *  `triangleRadius` px sits so the two shapes do not overlap and stay `GAP_PX` apart at their
+ *  closest. */
+export function besideOffsetPx(circleRadius: number, triangleRadius: number): number {
+  const side = triangleRadius * SIDE_PER_RADIUS;
+  const height = (side * Math.sqrt(3)) / 2;
+  let offset = 0;
+  // y runs down from the apex (-2h/3) to the base (h/3), in the centroid's frame.
+  for (let i = 0; i <= 200; i++) {
+    const y = -(2 * height) / 3 + (height * i) / 200;
+    if (Math.abs(y) > circleRadius) continue;
+    const triangleLeft = (side / 2) * ((y + (2 * height) / 3) / height);
+    offset = Math.max(offset, Math.sqrt(circleRadius ** 2 - y ** 2) + triangleLeft);
+  }
+  return offset + GAP_PX;
+}
 
 function segmentDistance([px, py]: Vec, [ax, ay]: Vec, [bx, by]: Vec): number {
   const dx = bx - ax;
@@ -19,7 +40,7 @@ function segmentDistance([px, py]: Vec, [ax, ay]: Vec, [bx, by]: Vec): number {
 /** An upward triangle centred on its centroid, as a signed distance field for `addImage(id, image,
  *  { sdf: true })`, so `icon-color` paints it and `icon-halo-*` rings it. */
 export function triangleSdf(): { width: number; height: number; data: Uint8Array } {
-  const side = TRIANGLE_RADIUS * Math.sqrt((4 * Math.PI) / Math.sqrt(3));
+  const side = TRIANGLE_RADIUS * SIDE_PER_RADIUS;
   const height = (side * Math.sqrt(3)) / 2;
   const extent = Math.max((2 * height) / 3, side / 2) + SDF_PX;
   const size = Math.ceil(2 * extent);

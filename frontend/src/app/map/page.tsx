@@ -215,6 +215,8 @@ export default function HomePage() {
         points={visiblePoints}
         selectedId={selectedId}
         onPointClick={selectEvent}
+        sites={mapSites}
+        selectedSiteId={selectedSiteId}
         className="map-fullscreen"
         center={{ lat: viewState.latitude, lng: viewState.longitude }}
         zoom={viewState.zoom}

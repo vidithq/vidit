@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { TRIANGLE_RADIUS, triangleSdf } from "./triangle";
+import { TRIANGLE_RADIUS, besideOffsetPx, triangleSdf } from "./triangle";
 
 const EDGE = 192;
 
@@ -29,5 +29,29 @@ describe("triangleSdf", () => {
     const rows = Array.from({ length: height }, (_, y) => insideRow(y)).filter((n) => n > 0);
     expect(rows[0]).toBeLessThan(rows[rows.length - 1]);
     expect(rows).toEqual([...rows].sort((a, b) => a - b));
+  });
+});
+
+describe("besideOffsetPx", () => {
+  // The left edge of a triangle with the area of a circle of `radius`, centroid at the origin.
+  function leftEdge(radius: number): [number, number][] {
+    const side = radius * Math.sqrt((4 * Math.PI) / Math.sqrt(3));
+    const height = (side * Math.sqrt(3)) / 2;
+    return Array.from({ length: 101 }, (_, i) => {
+      const t = i / 100;
+      return [(-side / 2) * t, -(2 * height) / 3 + height * t];
+    });
+  }
+
+  it.each([
+    [12, 12],
+    [12, 42],
+    [42, 12],
+    [26, 16],
+  ])("sets a triangle of radius %i beside a circle of radius %i, apart but nearly touching", (circle, triangle) => {
+    const offset = besideOffsetPx(circle, triangle);
+    const gaps = leftEdge(triangle).map(([x, y]) => Math.hypot(x + offset, y) - circle);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(0);
+    expect(Math.min(...gaps)).toBeLessThan(2);
   });
 });
