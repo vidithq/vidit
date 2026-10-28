@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/Button";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import {
-  FORM_ERROR_BANNER,
   FORM_LABEL,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
@@ -39,6 +38,7 @@ import {
   updatePreferences,
   type UserPreferences,
 } from "@/lib/preferences";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 const SAVE_FAILED = "Could not save to your account. Try again.";
 
@@ -73,7 +73,7 @@ function NotificationsCard() {
         </p>
       </div>
       {(error || toggle.error || audience.error) && (
-        <div className={FORM_ERROR_BANNER}>{toggle.error ?? audience.error ?? error}</div>
+        <ErrorNotice error={toggle.error ?? audience.error ?? error} />
       )}
       <ChoiceRow
         label="Accept approval requests from"
@@ -199,7 +199,7 @@ export default function SettingsPage() {
             </p>
           </div>
           {display.error && (
-            <div className={FORM_ERROR_BANNER}>{display.error}</div>
+            <ErrorNotice error={display.error} />
           )}
           {/* `<ToggleRow>` makes the whole row the switch, so a thumb on the label still toggles. The divider is this card's. */}
           <ToggleRow
@@ -257,9 +257,7 @@ export default function SettingsPage() {
               missing={incomplete.missingFields.map((m) => m.label)}
             />
             {error && (
-              <div className={FORM_ERROR_BANNER}>
-                {error}
-              </div>
+              <ErrorNotice error={error} />
             )}
             {success && (
               <div className={FORM_SUCCESS_BANNER}>

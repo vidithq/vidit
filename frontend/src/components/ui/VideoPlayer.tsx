@@ -19,7 +19,7 @@ import {
   MediaDownloadButton,
   type DownloadSource,
 } from "@/components/ui/MediaDownloadButton";
-import { TileNotice } from "@/components/ui/TileNotice";
+import { FILE_UNAVAILABLE, TileNotice } from "@/components/ui/TileNotice";
 import { cn } from "@/lib/cn";
 import { posterFrameUrl } from "@/lib/mediaUrls";
 
@@ -108,7 +108,7 @@ export function VideoPlayer({
   if (failedSrc === src) {
     return (
       <div className={cn("relative block h-full w-full", className)}>
-        <TileNotice compact={compact}>Video unavailable</TileNotice>
+        <TileNotice compact={compact}>{FILE_UNAVAILABLE}</TileNotice>
         {/* No bar, so the download moves to the corner. */}
         <div className="absolute right-2 top-2 z-10">
           <MediaDownloadButton source={source} />

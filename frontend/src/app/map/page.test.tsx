@@ -147,8 +147,10 @@ describe("map detail panel", () => {
   it("retries a failed read and shows the event once it lands", async () => {
     renderMap();
     fireEvent.click(pin("a"));
-    await act(async () => readOf("a").reject(new ApiError("Server error", 500)));
-    expect(screen.getByRole("alert")).toHaveTextContent("Server error");
+    await act(async () =>
+      readOf("a").reject(new ApiError("Vidit hit a problem.", 500, null, false, { title: "Vidit hit a problem", message: "Retry in a moment.", fields: {} })),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Vidit hit a problem");
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -156,13 +158,6 @@ describe("map detail panel", () => {
 
     await act(async () => readOf("a").resolve(eventDetail("a", TITLE_A)));
     expect(heading(TITLE_A)).toBeInTheDocument();
-  });
-
-  it("shows a generic message for an error that carries none", async () => {
-    renderMap();
-    fireEvent.click(pin("a"));
-    await act(async () => readOf("a").reject(new ApiError("", 500)));
-    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load this event.");
   });
 
   it("reopens a pin that failed on a fresh read, not on the old error", async () => {

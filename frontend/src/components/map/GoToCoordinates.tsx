@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { readCoordinates, type CoordinatePair } from "@/lib/coordinates";
+import { FieldError } from "@/components/ui/ErrorNotice";
 
 /**
  * The go-to-coordinates field: a `lat, lng` pair in decimal degrees, or a Google Maps URL, then
@@ -71,11 +72,9 @@ export function GoToCoordinates({
           Go
         </Button>
       </div>
-      {error && (
-        <p id={errorId} role="alert" className="text-xs text-red-400">
-          {error}
-        </p>
-      )}
+      <FieldError id={errorId} alert>
+        {error}
+      </FieldError>
     </div>
   );
 }

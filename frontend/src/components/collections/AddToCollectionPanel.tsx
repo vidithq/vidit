@@ -8,7 +8,6 @@ import {
   PickerCover,
 } from "@/components/collections/CollectionPicker";
 import { ToggleRow } from "@/components/ui/ToggleRow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import {
@@ -20,6 +19,7 @@ import {
   type CollectionMembership,
   type CollectionMemberships,
 } from "@/lib/collections";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /**
  * The owner's shelving panel for one event: every collection they hold, each
@@ -81,7 +81,7 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   };
 
   if (error) {
-    return <div className={FORM_ERROR_BANNER}>{error}</div>;
+    return <ErrorNotice error={error} />;
   }
   if (rows === null) {
     return <p className="text-sm text-neutral-500">Loading…</p>;
@@ -101,7 +101,7 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
         />
       )}
       emptyHint="Open one and this geolocation is its first item."
-      status={write.error && <div className={FORM_ERROR_BANNER}>{write.error}</div>}
+      status={write.error && <ErrorNotice error={write.error} />}
       newCollection={newCollectionHref(eventId)}
     />
   );

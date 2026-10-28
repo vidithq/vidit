@@ -9,7 +9,6 @@ import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { FileManager } from "@/components/ui/FileManager";
 import {
   NumberedSteps,
@@ -33,6 +32,7 @@ import type { ArchiveImportJob } from "@/types";
 import type { ImportShell } from "./ImportPostPanel";
 import { pluralNoun } from "@/lib/format";
 import { detectionsQueueHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** Bytes below 1 KB, then KB, then MB with one decimal below 100 MB. */
 function formatBytes(n: number): string {
@@ -300,7 +300,7 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
           layout="stack"
         />
 
-        {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+        {error && <ErrorNotice error={error} />}
 
         {(loading || error || phase === "done") && (
           <Card className="space-y-3">

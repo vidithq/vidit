@@ -5,8 +5,9 @@ import type { ReactNode } from "react";
 import { Button } from "./Button";
 import { Card } from "./Card";
 import { cn } from "@/lib/cn";
-import { FORM_ERROR_BANNER } from "./form-styles";
 import { MediaOverlay } from "./MediaLightbox";
+import { ErrorNotice } from "./ErrorNotice";
+import type { ReadableError } from "@/lib/errors";
 
 /**
  * A confirmation step before a final action: a centred dialog over the blurred page that says what
@@ -38,7 +39,7 @@ export function ConfirmDialog({
   busyLabel?: ReactNode;
   busy?: boolean;
   confirmDisabled?: boolean;
-  error?: string | null;
+  error?: ReadableError | string | null;
   tone?: "accent" | "danger";
   onConfirm: () => void;
   onCancel: () => void;
@@ -54,9 +55,7 @@ export function ConfirmDialog({
         <h2 className="text-base font-semibold text-neutral-100">{title}</h2>
         <div className="space-y-2 text-neutral-400">{children}</div>
         {error && (
-          <div className={FORM_ERROR_BANNER} role="alert">
-            {error}
-          </div>
+          <ErrorNotice error={error} />
         )}
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="ghost" data-overlay-close="" onClick={onCancel} disabled={busy}>

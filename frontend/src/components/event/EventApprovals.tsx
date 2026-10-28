@@ -9,7 +9,6 @@ import { canRequestApproval } from "@/lib/approvalRequests";
 import { approvalBefore, approveOptions, type ApprovalList } from "@/lib/approvals";
 import type { EventDetail } from "@/types";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
   ApprovedBy,
   ApproveButtons,
@@ -21,6 +20,7 @@ import {
   RequestApprovalAction,
   useApprovalRequests,
 } from "@/components/event/ApprovalRequests";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /**
  * A published event's approvals, about the live version only, as three nodes that share one read
@@ -77,9 +77,7 @@ export function useEventApprovals(
         </>
       )}
       {approvals.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {approvals.error}
-        </div>
+        <ErrorNotice error={approvals.error} />
       )}
     </section>
   );

@@ -63,7 +63,7 @@ describe("useApiResource", () => {
   it("exposes the error message after a failed fetch", async () => {
     const { result } = renderHook(() => useApiResource<string>("/thing"));
     await act(async () => calls[0].reject(new Error("boom")));
-    expect(result.current.error).toBe("boom");
+    expect(result.current.error?.message).toBe("boom");
     expect(result.current.data).toBeNull();
     expect(result.current.loading).toBe(false);
   });
@@ -124,7 +124,7 @@ describe("useApiResource", () => {
   it("refetch after an error resets to the loading state", async () => {
     const { result } = renderHook(() => useApiResource<string>("/thing"));
     await act(async () => calls[0].reject(new Error("down")));
-    expect(result.current.error).toBe("down");
+    expect(result.current.error?.message).toBe("down");
 
     act(() => result.current.refetch());
     expect(result.current.error).toBeNull();
@@ -141,12 +141,12 @@ describe("useApiResource", () => {
     act(() => result.current.refetch());
     await act(async () => calls[1].reject(new Error("now failing")));
     expect(result.current.data).toBeNull();
-    expect(result.current.error).toBe("now failing");
+    expect(result.current.error?.message).toBe("now failing");
   });
 
   it("reports a generic message for non-Error rejections", async () => {
     const { result } = renderHook(() => useApiResource<string>("/thing"));
     await act(async () => calls[0].reject("string reason"));
-    expect(result.current.error).toBe("Request failed");
+    expect(result.current.error?.message).toBe("Something went wrong.");
   });
 });

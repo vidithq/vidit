@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { getDetectionStats, type DetectionStats } from "@/lib/admin";
 import { errorMessage } from "@/lib/api";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, LIST_TILE } from "@/components/ui/form-styles";
+import { LIST_TILE } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 // Local to this panel: admin surfaces inline their markup rather than mint primitives
 // (docs/design.md, admin dialect). A quiet bordered stat cell.
@@ -82,7 +83,7 @@ export function DetectionStatsPanel() {
         </p>
       </header>
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
 
       {stats === null && !error && (
         <div className="text-xs text-neutral-500 py-2">Loading…</div>

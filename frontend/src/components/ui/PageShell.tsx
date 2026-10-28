@@ -14,10 +14,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/cn";
+import type { ReadableError } from "@/lib/errors";
 import { smartBack } from "@/lib/navigation";
 import { getPhoneBackSlot, subscribePhoneBackSlot } from "@/lib/phoneBackSlot";
 import { TEXT_LINK } from "./styles";
 import { Button } from "./Button";
+import { ErrorNotice } from "./ErrorNotice";
 import { PageCenter, PageFrame } from "./PageFrame";
 import { PageWithRail } from "./PageWithRail";
 
@@ -320,19 +322,22 @@ export function PageLoading({ label = "Loading…" }: { label?: string }) {
 
 // Centered error state, with an optional back link.
 export function PageError({
-  message,
+  error,
+  onRetry,
   backHref,
   backLabel = "Back to map",
 }: {
-  message: ReactNode;
+  error: ReadableError | string;
+  /** Reads the page again, offered when the read failed for no fault of the reader's. */
+  onRetry?: () => void;
   backHref?: string;
   /** Names where `backHref` leads, when it is not the map. */
   backLabel?: string;
 }) {
   return (
     <PageCenter>
-      <div className="text-center space-y-2">
-        <p className="text-sm text-neutral-300">{message}</p>
+      <div className="w-full max-w-md space-y-3 text-center">
+        <ErrorNotice error={error} onRetry={onRetry} className="text-left" />
         {backHref && (
           <Link href={backHref} className={`text-xs ${TEXT_LINK}`}>
             {backLabel}

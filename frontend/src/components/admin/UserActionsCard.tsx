@@ -13,13 +13,14 @@ import {
   type AdminUserDeleteResponse,
 } from "@/lib/admin";
 import { useMutation } from "@/hooks/useMutation";
-import { FORM_ERROR_BANNER, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
+import { FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { ToggleRow } from "@/components/ui/ToggleRow";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** The fields the action card needs; `AdminUser` minus the list-only
  *  `created_at`, so the invite-list redeemer converts without inventing one. */
@@ -263,7 +264,7 @@ export function UserActionsCard({
         </div>
       )}
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
 
       {dangerMode !== null && (
         <ConfirmDialog

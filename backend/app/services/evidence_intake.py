@@ -361,9 +361,7 @@ async def attach_evidence_and_commit(
         except ValueError as exc:
             raise InvalidFileError(str(exc)) from exc
         if kind != "image":
-            raise InvalidFileError(
-                f"File type {file.content_type} not allowed for a proof image (image required)"
-            )
+            raise InvalidFileError("A proof takes images only.")
 
     # Before any S3 work: a mismatched batch is a 400 with nothing to sweep.
     proof_pairs = _match_proof_files(proof_html, proof_files)

@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiFetch = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/api", () => ({ apiFetch }));
+vi.mock("@/lib/api", async (actual) => ({ ...(await actual<typeof import("@/lib/api")>()), apiFetch }));
 
 const refresh = vi.hoisted(() => vi.fn());
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ refresh }) }));
@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace: push }),
 }));
 
+import { ApiError } from "@/lib/api";
 import ConfirmRegistrationPage from "./page";
 
 describe("ConfirmRegistrationPage", () => {
@@ -45,23 +46,39 @@ describe("ConfirmRegistrationPage", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("offers a fresh start when the link does not confirm", async () => {
-    apiFetch.mockRejectedValue(new Error("This link has expired."));
+  it("reads a refused token as expired or invalid, with the way to a new link", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiError("Invalid or expired confirmation link.", 400, "invalid_or_expired_token"),
+    );
     render(<ConfirmRegistrationPage />);
 
-    expect(await screen.findByText("This link has expired.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Start over/ })).toHaveAttribute(
+    expect(await screen.findByText("Link expired or invalid")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Get a new confirmation link" })).toHaveAttribute(
       "href",
-      "/register",
+      "/resend-confirmation",
     );
     expect(screen.queryByRole("link", { name: "Read Getting started" })).toBeNull();
   });
 
-  it("refuses a link with no token without calling the API", () => {
-    search.token = null;
+  it.each([null, "abc"])("refuses the token %s without calling the API", (token) => {
+    search.token = token;
     render(<ConfirmRegistrationPage />);
 
-    expect(screen.getByText("This confirmation link is missing a token.")).toBeInTheDocument();
+    expect(screen.getByText("Link expired or invalid")).toBeInTheDocument();
+    expect(screen.queryByText(/missing a token/)).toBeNull();
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("offers Retry when Vidit does not answer, and confirms on the retry", async () => {
+    const noAnswer = { title: "Vidit does not respond", message: "Check your connection, then retry.", fields: {} };
+    apiFetch.mockRejectedValueOnce(new ApiError("Vidit does not respond.", 0, null, false, noAnswer));
+    apiFetch.mockResolvedValueOnce({});
+    refresh.mockResolvedValue(undefined);
+    render(<ConfirmRegistrationPage />);
+
+    expect(await screen.findByText("Vidit does not respond")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Account confirmed")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledTimes(2);
   });
 });

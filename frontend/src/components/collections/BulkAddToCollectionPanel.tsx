@@ -12,7 +12,6 @@ import {
 } from "@/components/collections/CollectionPicker";
 import { ActionRow } from "@/components/ui/ActionRow";
 import { Pill } from "@/components/ui/Pill";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
@@ -27,6 +26,7 @@ import {
   type CollectionPage,
   type PickableEvent,
 } from "@/lib/collections";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** One page of the owner's list at the endpoint's page cap (`services/pagination.MAX_PAGE_SIZE`);
  *  older collections past it are absent, as in the event page's panel. */
@@ -85,7 +85,7 @@ export function BulkAddToCollectionPanel({
     },
   );
 
-  if (error) return <div className={FORM_ERROR_BANNER}>{error}</div>;
+  if (error) return <ErrorNotice error={error} />;
   if (data === null) return <p className="text-sm text-neutral-500">Loading…</p>;
 
   return (
@@ -117,7 +117,7 @@ export function BulkAddToCollectionPanel({
       status={
         <>
           {write.loading && <p className="text-xs text-neutral-500">Adding…</p>}
-          {write.error && <div className={FORM_ERROR_BANNER}>{write.error}</div>}
+          {write.error && <ErrorNotice error={write.error} />}
           {last && !write.loading && !write.error && (
             <p role="status" className="text-xs text-neutral-300">
               {summary(last.result)}.{" "}

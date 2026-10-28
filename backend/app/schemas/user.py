@@ -14,7 +14,7 @@ URL_MAX_LEN = 500
 HANDLE_MAX_LEN = 200
 
 
-def _normalise_optional(value: str | None, *, max_len: int, field: str) -> str | None:
+def _normalise_optional(value: str | None, *, max_len: int) -> str | None:
     """Strip whitespace, coerce empty → None, enforce a length cap. Empty means
     "clear", not "store an empty string"."""
     if value is None:
@@ -23,18 +23,18 @@ def _normalise_optional(value: str | None, *, max_len: int, field: str) -> str |
     if not cleaned:
         return None
     if len(cleaned) > max_len:
-        raise ValueError(f"{field} must be {max_len} characters or fewer")
+        raise ValueError(f"{max_len} characters at most")
     return cleaned
 
 
-def normalise_url(value: str | None, *, field: str) -> str | None:
-    cleaned = _normalise_optional(value, max_len=URL_MAX_LEN, field=field)
+def normalise_url(value: str | None) -> str | None:
+    cleaned = _normalise_optional(value, max_len=URL_MAX_LEN)
     if cleaned is None:
         return None
     lowered = cleaned.lower()
     # http(s) only: blocks ``javascript:`` URLs.
     if not (lowered.startswith("https://") or lowered.startswith("http://")):
-        raise ValueError(f"{field} must be an http or https URL")
+        raise ValueError("Not an http or https link")
     return cleaned
 
 
@@ -81,27 +81,27 @@ def _normalise_handle(value: str | None, *, field: str) -> str | None:
     ``x`` and ``github`` take a handle (``ana``, ``@ana``) or a profile URL on
     the platform's hosts; ``discord`` takes a username only (no profile URL).
     """
-    cleaned = _normalise_optional(value, max_len=HANDLE_MAX_LEN, field=field)
+    cleaned = _normalise_optional(value, max_len=HANDLE_MAX_LEN)
     if cleaned is None:
         return None
 
     hosts = SOCIAL_PROFILE_HOSTS.get(field)
     if hosts is None:
         if cleaned.lower().startswith("http") or set("/:") & set(cleaned):
-            raise ValueError(f"{field} must be a username, not a link")
+            raise ValueError("A username, not a link")
         handle = cleaned.removeprefix("@")
     elif cleaned.lower().startswith(("http://", "https://")):
         from_url = _url_path_handle(cleaned, hosts)
         if from_url is None:
-            raise ValueError(f"{field} must be a handle or a profile URL on {hosts[0]}")
+            raise ValueError(f"A handle or a profile link on {hosts[0]}")
         handle = from_url
     else:
         handle = cleaned.removeprefix("@")
 
     if not SOCIAL_HANDLE_PATTERNS[field].match(handle):
         if hosts is None:
-            raise ValueError(f"{field} must be a Discord username")
-        raise ValueError(f"{field} must be a handle or a profile URL on {hosts[0]}")
+            raise ValueError("Not a Discord username")
+        raise ValueError(f"A handle or a profile link on {hosts[0]}")
     return handle
 
 
@@ -130,7 +130,7 @@ class ExternalLinks(BaseModel):
     @field_validator("website")
     @classmethod
     def _website(cls, v: str | None) -> str | None:
-        return normalise_url(v, field="website")
+        return normalise_url(v)
 
 
 class AuthorRef(BaseModel):
@@ -255,4 +255,4 @@ class UserUpdate(BaseModel):
     @field_validator("bio")
     @classmethod
     def _bio(cls, v: str | None) -> str | None:
-        return _normalise_optional(v, max_len=BIO_MAX_LEN, field="bio")
+        return _normalise_optional(v, max_len=BIO_MAX_LEN)

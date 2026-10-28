@@ -15,7 +15,6 @@ import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading } from "@/components/ui/PageShell";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCollectionSequence } from "@/hooks/useCollectionSequence";
@@ -32,6 +31,7 @@ import {
 } from "@/lib/collections";
 import { renderProof } from "@/lib/proof";
 import { profileHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /**
  * One collection page, on `CollectionShell`: the title, the owner byline with a `Collection` pill,
@@ -64,7 +64,7 @@ function CollectionPageBody() {
   const { user } = useAuth();
   const id = typeof params.id === "string" ? params.id : "";
 
-  const { data: collection, error } = useApiResource<Collection>(
+  const { data: collection, error, refetch } = useApiResource<Collection>(
     id ? `/collections/${id}` : null,
   );
 
@@ -114,7 +114,7 @@ function CollectionPageBody() {
 
   const dropLabel = dropArmed ? "Confirm dropping this collection" : "Drop this collection";
 
-  if (error) return <PageError message={error} backHref="/map" />;
+  if (error) return <PageError error={error} onRetry={refetch} backHref="/map" />;
   if (!collection) return <PageLoading />;
 
   return (
@@ -165,9 +165,7 @@ function CollectionPageBody() {
           {/* Under the header, where the trigger is. */}
           {report.panel}
           {drop.error && (
-            <div className={FORM_ERROR_BANNER} role="alert">
-              {drop.error}
-            </div>
+            <ErrorNotice error={drop.error} />
           )}
         </>
       }

@@ -38,7 +38,7 @@ import { LinkRow } from "@/components/ui/LinkRow";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   request_fulfilled: CircleCheck,
@@ -93,9 +93,7 @@ function NotificationRow({ n, onChanged }: { n: Notification; onChanged: () => v
         }
       />
       {remove.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {remove.error}
-        </div>
+        <ErrorNotice error={remove.error} />
       )}
     </div>
   );
@@ -156,7 +154,7 @@ export default function NotificationsPage() {
 
   return (
     <PageShell title="Notifications">
-      {error && items.length === 0 && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && items.length === 0 && <ErrorNotice error={error} />}
       {loading ? (
         <p className="text-sm text-neutral-500">Loading notifications…</p>
       ) : items.length === 0 ? (

@@ -24,8 +24,9 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_LABEL } from "@/components/ui/form-styles";
 import { profileHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** The org manager's invite control and the pending invites.
  *
@@ -101,7 +102,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
         </Button>
       </form>
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
 
       {pending.length === 0 ? (
         <p className="text-xs text-neutral-500">No pending invite.</p>

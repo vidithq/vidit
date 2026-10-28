@@ -8,12 +8,11 @@ import { MapSidePanel, type MapSidePanelProps } from "./MapSidePanel";
 export function DetailSidePanel({
   resource,
   onClose,
-}: Omit<MapSidePanelProps<EventDetail>, "errorFallback" | "content">) {
+}: Omit<MapSidePanelProps<EventDetail>, "content">) {
   return (
     <MapSidePanel
       resource={resource}
       onClose={onClose}
-      errorFallback="Couldn't load this event."
       content={eventPanelContent}
     />
   );

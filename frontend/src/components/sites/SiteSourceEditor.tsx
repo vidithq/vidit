@@ -10,7 +10,6 @@ import { CountBadge } from "@/components/ui/CountBadge";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Textarea } from "@/components/ui/Input";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { missingSummary } from "@/lib/events";
 import {
   SITE_SOURCE_NOTE_MAX_LEN,
@@ -20,6 +19,7 @@ import {
   todayUtc,
 } from "@/lib/sites";
 import type { SourceDraft } from "@/lib/sources";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** A site source form's state: the one source draft and the note. */
 export function useSiteSourceDraft() {
@@ -134,9 +134,7 @@ export function SiteWriteActions({
       </CountBadge>
       <IncompleteFormAnnouncer attempt={attempt} missing={attempt > 0 ? missing : []} />
       {error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {error}
-        </div>
+        <ErrorNotice error={error} />
       )}
     </div>
   );

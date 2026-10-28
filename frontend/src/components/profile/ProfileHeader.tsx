@@ -15,7 +15,7 @@ import type { ExternalLinks } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { FileManager } from "@/components/ui/FileManager";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_LABEL } from "@/components/ui/form-styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { ARMED_RING, TEXT_LINK } from "@/components/ui/styles";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -23,6 +23,7 @@ import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { LinkedAccountsLine } from "./LinkedAccounts";
 import { ProfileOrganizations } from "./ProfileOrganizations";
 import type { ProfileEditState } from "./useProfileEdit";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** The page title: avatar and name, the analyst's handle or the organization's name (H1;
  * `<PageShell>` owns the heading markup). The avatar is `edit.avatarPreview`, falling back to the
@@ -217,9 +218,7 @@ export function ProfileEditActions({ edit }: { edit: ProfileEditState }) {
         </Button>
       </div>
       {edit.saveError && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {edit.saveError}
-        </div>
+        <ErrorNotice error={edit.saveError} />
       )}
     </div>
   );

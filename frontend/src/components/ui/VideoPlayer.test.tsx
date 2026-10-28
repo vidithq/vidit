@@ -85,7 +85,7 @@ describe("VideoPlayer", () => {
     );
 
     fireEvent.error(container.querySelector("video")!);
-    expect(screen.getByText("Video unavailable")).toBeInTheDocument();
+    expect(screen.getByText("File unavailable")).toBeInTheDocument();
     expect(container.querySelector("media-controller")).toBeNull();
     // The download stays: the bar that carried it is gone.
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
@@ -100,10 +100,10 @@ describe("VideoPlayer", () => {
     );
 
     fireEvent.error(container.querySelector("video")!);
-    expect(screen.getByText("Video unavailable")).toBeInTheDocument();
+    expect(screen.getByText("File unavailable")).toBeInTheDocument();
 
     rerender(<VideoPlayer src="/media/good.mp4" source={VIDEO} />);
-    expect(screen.queryByText("Video unavailable")).toBeNull();
+    expect(screen.queryByText("File unavailable")).toBeNull();
     expect(container.querySelector("media-controller")).not.toBeNull();
   });
 });

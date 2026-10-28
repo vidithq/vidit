@@ -57,11 +57,11 @@ export default function EventVersionPage() {
   }, [isCurrent, router, eventId]);
 
   if (number === null) notFound();
-  if (error) return <PageError message={error} />;
+  if (error) return <PageError error={error} />;
   if (!geo) return <PageLoading />;
   if (number > geo.version_no || number < first) notFound();
   if (isCurrent) return <PageLoading />;
-  if (rowError) return <PageError message={rowError} />;
+  if (rowError) return <PageError error={rowError} />;
   if (!row) return <PageLoading />;
   // The byline read lands last; if it fails the banner loses its byline, not the page its content.
   if (number > first && !producedBy && !producedByError) return <PageLoading />;

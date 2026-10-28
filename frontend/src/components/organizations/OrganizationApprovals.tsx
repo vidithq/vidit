@@ -15,8 +15,8 @@ import { Card } from "@/components/ui/Card";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { eventHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** One approval as a row to its event: the acting org manager's picture, the event title, then the
  *  version, who placed it and when, and its state. */
@@ -59,7 +59,7 @@ export function OrganizationApprovals({ slug }: { slug: string }) {
   return (
     <Card as="section">
       <SectionEyebrow title="Approvals" margin="none" />
-      {error && items.length === 0 && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && items.length === 0 && <ErrorNotice error={error} />}
       {!loading && items.length === 0 && !error && (
         <p className="text-sm text-neutral-500">No approval in this organization&apos;s name yet.</p>
       )}

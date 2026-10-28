@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { components } from "@/lib/api-types";
+import type { ReadableError } from "@/lib/errors";
 
 type FeedItem = components["schemas"]["FeedItemRead"];
 
@@ -38,7 +39,7 @@ vi.mock("@/hooks/useApiResource", () => ({
 // The walk is `useCursorList`'s; this page owns the path it builds and what it makes of the rows.
 const walk = vi.hoisted(() => ({
   items: [] as FeedItem[],
-  error: null as string | null,
+  error: null as ReadableError | null,
   loading: false,
   loadingMore: false,
   hasMore: false,
@@ -214,12 +215,12 @@ describe("FeedPage", () => {
     const watchers = stubObservers();
     walk.items = [item({ title: "Already loaded" })];
     walk.hasMore = true;
-    walk.error = "API error 500";
+    walk.error = { title: "Vidit hit a problem", message: "Retry in a moment.", fields: {} };
     render(<FeedPage />);
 
     expect(screen.getByRole("link", { name: "Already loaded" })).toBeInTheDocument();
-    expect(screen.getByText("API error 500")).toBeInTheDocument();
-    const retry = screen.getByRole("button", { name: "Try again" });
+    expect(screen.getByText("Vidit hit a problem")).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: "Retry" });
     expect(watchers.has(retry.parentElement!)).toBe(false);
 
     fireEvent.click(retry);
@@ -227,11 +228,11 @@ describe("FeedPage", () => {
   });
 
   it("shows only the error when the first page fails", () => {
-    walk.error = "API error 500";
+    walk.error = { title: "Vidit hit a problem", message: "Retry in a moment.", fields: {} };
     render(<FeedPage />);
 
-    expect(screen.getByText("API error 500")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(screen.getByText("Vidit hit a problem")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
   it("spins while the next page loads and marks the end of the feed", () => {

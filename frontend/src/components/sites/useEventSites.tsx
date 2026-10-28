@@ -7,7 +7,6 @@ import { Link2 } from "lucide-react";
 import { EventSection } from "@/components/event/EventLayout";
 import { Button } from "@/components/ui/Button";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -25,6 +24,7 @@ import type { EventDetail } from "@/types";
 import { LinkDialog, siteCandidate } from "./LinkDialog";
 import { LinkEffectPill } from "./SiteBadges";
 import { SatelliteSourcesOffer, fileOffered, useSatelliteOffer } from "./SatelliteSourcesOffer";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** The site picker's suggestions line: the sites near the event. */
 export const NEAR_SITES_COPY = { label: `Sites within ${SITE_MARGIN_KM} km of the event` };
@@ -69,7 +69,7 @@ export function useEventSites(event: EventDetail | null): {
       slot={{
         content: (
           <DetailCard>
-            {links.error && <div className={`m-3 ${FORM_ERROR_BANNER}`}>{links.error}</div>}
+            {links.error && <ErrorNotice error={links.error} className="m-3" />}
             {rows.map((row) => (
               <DetailRow
                 key={row.site.id}

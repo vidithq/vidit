@@ -23,7 +23,7 @@ const versionRows = (page: EventVersionList): EventVersion[] => page.items;
 export default function EventHistoryPage() {
   const params = useParams();
   const eventId = typeof params.id === "string" ? params.id : "";
-  const { data: geo, error } = useApiResource<EventDetail>(
+  const { data: geo, error, refetch } = useApiResource<EventDetail>(
     eventId ? `/events/${eventId}` : null
   );
 
@@ -33,7 +33,7 @@ export default function EventHistoryPage() {
   );
   const walk = useCursorList<EventVersion, EventVersionList>(buildPath, versionRows);
 
-  if (error) return <PageError message={error} />;
+  if (error) return <PageError error={error} onRetry={refetch} />;
   if (!geo) return <PageLoading />;
 
   return (

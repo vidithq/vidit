@@ -6,9 +6,9 @@ import { Suspense, useState } from "react";
 
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Button } from "@/components/ui/Button";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useMutation } from "@/hooks/useMutation";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 export interface TokenUnsubscribeCopy {
   title: string;
@@ -46,7 +46,7 @@ function TokenUnsubscribeInner({
         </Link>
       }
     >
-      {run.error && <div className={FORM_ERROR_BANNER}>{run.error}</div>}
+      {run.error && <ErrorNotice error={run.error} />}
       <Button
         variant="primary"
         fullWidth

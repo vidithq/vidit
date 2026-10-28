@@ -28,9 +28,9 @@ import { Button } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Pill } from "@/components/ui/Pill";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { profileHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 export function ApprovalState({ approval }: { approval: Approval }) {
   if (approval.current) return <Pill tone="accent">Current</Pill>;
@@ -299,9 +299,7 @@ export function ApproveButtons({
         ))
       )}
       {approve.error && (
-        <div className={`${FORM_ERROR_BANNER} basis-full`} role="alert">
-          {approve.error}
-        </div>
+        <ErrorNotice error={approve.error} className="basis-full" />
       )}
       {approve.error && stale && (
         <Button variant="secondary" onClick={() => window.location.reload()}>
@@ -339,9 +337,7 @@ export function VersionApprovals({ event, versionNo }: { event: EventDetail; ver
     <section aria-label="Approvals" className="space-y-2">
       {rows.length > 0 && <ApprovedBy approvals={rows} onDeleted={approvals.refetch} />}
       {approvals.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {approvals.error}
-        </div>
+        <ErrorNotice error={approvals.error} />
       )}
     </section>
   );

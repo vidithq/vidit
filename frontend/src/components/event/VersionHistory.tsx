@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { countLabel } from "@/lib/format";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 type Walk = Parameters<typeof LoadMoreRow>[0]["walk"] & {
   items: readonly unknown[];
@@ -24,7 +24,7 @@ export function VersionHistory({
   const historyError = walk.items.length === 0 ? walk.error : null;
   return (
     <>
-      {historyError && <div className={FORM_ERROR_BANNER}>{historyError}</div>}
+      {historyError && <ErrorNotice error={historyError} />}
       {walk.loading ? (
         <p className="text-sm text-neutral-500">Loading versions…</p>
       ) : (

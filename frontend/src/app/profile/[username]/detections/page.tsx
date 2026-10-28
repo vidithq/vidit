@@ -11,7 +11,6 @@ import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { buttonClasses } from "@/components/ui/Button";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
@@ -21,6 +20,7 @@ import {
 } from "@/lib/events";
 import { detectionsQueueHref, profileHref } from "@/lib/routes";
 import type { EventDetail } from "@/types";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** The queue's one filter, answered by the server over the whole queue (not just the loaded rows). */
 const FILTERS: { value: DetectionReadiness; label: string }[] = [
@@ -87,9 +87,7 @@ export default function DetectionsPage() {
   let listBody;
   if (page === 1 && error) {
     listBody = (
-      <div className={FORM_ERROR_BANNER} role="alert">
-        {error}
-      </div>
+      <ErrorNotice error={error} />
     );
   } else if (!summary || (page === 1 && !data)) {
     listBody = <p className="text-sm text-neutral-500">Loading…</p>;

@@ -217,7 +217,7 @@ async def stage_from_link(
     try:
         data = await download_cdn_media(parsed)
     except MediaTooLarge as exc:
-        raise InvalidFileError("File too large") from exc
+        raise InvalidFileError("The post's file is too large.") from exc
     except TweetFetchFailed as exc:
         raise LinkImportError("upstream_busy") from exc
     except TweetImportError as exc:

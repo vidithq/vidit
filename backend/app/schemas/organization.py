@@ -143,7 +143,7 @@ class OrganizationCreate(OrganizationUpdate):
     def _name(cls, v: str) -> str:
         cleaned = v.strip()
         if not cleaned:
-            raise ValueError("name must not be blank")
+            raise ValueError("Required")
         return cleaned
 
     @field_validator("slug")
@@ -151,7 +151,7 @@ class OrganizationCreate(OrganizationUpdate):
     def _slug(cls, v: str) -> str:
         cleaned = v.strip().lower()
         if not ORGANIZATION_SLUG_PATTERN.fullmatch(cleaned):
-            raise ValueError("slug must be 2 to 50 lowercase letters, digits or inner hyphens")
+            raise ValueError("2 to 50 lowercase letters, digits or inner hyphens")
         return cleaned
 
     @field_validator("x_handle")

@@ -23,12 +23,10 @@ import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import {
-  FORM_ERROR_BANNER,
-  FORM_LABEL,
-  LIST_TILE,
-} from "@/components/ui/form-styles";
+import { FORM_INVALID_LABEL, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
+import { cn } from "@/lib/cn";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
+import { ErrorNotice, FieldError } from "@/components/ui/ErrorNotice";
 
 /** `copiedOnMint` holds while the mint's own copy of this link flashes. */
 function CopyLink({ code, copiedOnMint }: { code: SponsoredInviteCode; copiedOnMint: boolean }) {
@@ -89,6 +87,7 @@ export function InviteAnalystsCard() {
 
   const mint = useMutation(() => mintInviteCode(handle.trim()), {
     fallback: "Could not mint the invite code. Try again.",
+    fields: ["x_handle"],
     onSuccess: async (code) => {
       setHandle("");
       setMinted(code);
@@ -104,6 +103,7 @@ export function InviteAnalystsCard() {
     onSuccess: () => refetch(),
   });
 
+  const handleRefused = mint.fieldErrors.x_handle !== undefined;
   const fetched = Array.isArray(data?.items) ? data.items : [];
   const codes =
     minted && !fetched.some((code) => code.id === minted.id) ? [minted, ...fetched] : fetched;
@@ -135,9 +135,7 @@ export function InviteAnalystsCard() {
         </p>
       </div>
 
-      {(error || mint.error || revoke.error) && (
-        <div className={FORM_ERROR_BANNER}>{mint.error ?? revoke.error ?? error}</div>
-      )}
+      <ErrorNotice error={mint.error ?? revoke.error ?? error} onRetry={refetch} />
 
       {mintingEnabled && data && (
         <form onSubmit={onSubmit} noValidate className="space-y-3">
@@ -148,19 +146,26 @@ export function InviteAnalystsCard() {
           <div>
             <label
               htmlFor="invite-x-handle"
-              className={incomplete.labelClass("handle", FORM_LABEL)}
+              className={cn(
+                incomplete.labelClass("handle", FORM_LABEL),
+                handleRefused && FORM_INVALID_LABEL,
+              )}
             >
               Invitee&apos;s X handle
             </label>
             <Input
               id="invite-x-handle"
-              invalid={incomplete.invalidKeys.has("handle")}
+              invalid={incomplete.invalidKeys.has("handle") || handleRefused}
+              aria-describedby={handleRefused ? "invite-x-handle-error" : undefined}
               autoComplete="off"
               value={handle}
               onChange={(e) => setHandle(e.target.value)}
               placeholder="@handle"
               className="mt-1"
             />
+            <FieldError id="invite-x-handle-error" alert>
+              {mint.fieldErrors.x_handle}
+            </FieldError>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" variant="primary" disabled={mint.loading}>

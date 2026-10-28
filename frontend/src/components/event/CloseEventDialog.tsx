@@ -10,7 +10,8 @@ import { CharCounter } from "@/components/ui/CharCounter";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Textarea } from "@/components/ui/Input";
-import { FORM_LABEL, FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { FieldError } from "@/components/ui/ErrorNotice";
+import { FORM_LABEL } from "@/components/ui/form-styles";
 
 /**
  * What each row is called, for the one verb that closes all of them. The verb is always *Close*:
@@ -118,14 +119,13 @@ export function CloseEventDialog({
             if (emptyReason) setEmptyReason(false);
           }}
           invalid={emptyReason}
+          aria-describedby={emptyReason ? "close_reason_error" : undefined}
           placeholder={`Why are you closing this ${noun}? (stays visible on the closed row)`}
         />
+        {emptyReason && (
+          <FieldError id="close_reason_error">A reason is required to close this {noun}.</FieldError>
+        )}
       </div>
-      {emptyReason && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          A reason is required to close this {noun}.
-        </div>
-      )}
     </ConfirmDialog>
   );
 }

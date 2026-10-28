@@ -11,10 +11,10 @@ import { EVENT_FIELDS } from "@/lib/events";
 import type { Concept } from "@/lib/fieldHelp";
 import type { Source } from "@/lib/sources";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { CARD_FRAME } from "@/components/ui/Card";
 import { DetailRow } from "@/components/ui/DetailRow";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EVENT_SECTIONS } from "@/components/event/EventLayout";
 import { SourceBlocks } from "@/components/sources/SourceBlock";
@@ -50,8 +50,6 @@ export interface MapSidePanelProps<T> {
    * loading or after a failed load. */
   resource: ApiResource<T>;
   onClose: () => void;
-  /** The error line when the read fails with no message. */
-  errorFallback: string;
   content: (data: T) => MapPanelContent;
 }
 
@@ -116,7 +114,6 @@ export function MapPanelBody({
 export function MapSidePanel<T>({
   resource,
   onClose,
-  errorFallback,
   content,
 }: MapSidePanelProps<T>) {
   const { data, error, loading, refetch } = resource;
@@ -150,12 +147,7 @@ export function MapSidePanel<T>({
       {error !== null ? (
         // `min-h-32` matches the loading box so the chrome holds still; `pr-12` clears the close button.
         <div className="p-4 space-y-3 min-h-32 pr-12">
-          <div className={FORM_ERROR_BANNER} role="alert">
-            {error || errorFallback}
-          </div>
-          <Button variant="secondary" onClick={refetch}>
-            Retry
-          </Button>
+          <ErrorNotice error={error} onRetry={refetch} />
         </div>
       ) : loading ? (
         <div className="flex items-center justify-center h-full min-h-32">

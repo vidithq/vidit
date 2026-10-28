@@ -20,7 +20,7 @@ export default function SitePage() {
   const { data: site, error, refetch } = useApiResource<Site>(siteId ? sitePath(siteId) : null);
   const actions = useSiteActions({ site, onChanged: refetch });
 
-  if (error) return <PageError message={error} backHref="/map" />;
+  if (error) return <PageError error={error} onRetry={refetch} backHref="/map" />;
   if (!site) return <PageLoading />;
 
   return (

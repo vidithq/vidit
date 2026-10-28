@@ -52,11 +52,11 @@ export default function SiteVersionPage() {
   }, [isCurrent, router, siteId]);
 
   if (number === null) notFound();
-  if (error) return <PageError message={error} />;
+  if (error) return <PageError error={error} />;
   if (!site) return <PageLoading />;
   if (number > site.version_no || number < 1) notFound();
   if (isCurrent) return <PageLoading />;
-  if (rowError) return <PageError message={rowError} />;
+  if (rowError) return <PageError error={rowError} />;
   if (!row) return <PageLoading />;
   // The byline read lands last; if it fails the banner loses its byline, not the page its content.
   if (number > 1 && !producedBy && !producedByError) return <PageLoading />;

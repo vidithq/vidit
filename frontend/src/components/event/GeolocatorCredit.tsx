@@ -7,7 +7,7 @@ import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** **Accept** and **Decline** of an invitation, for a page's actions: siblings in the caller's
  *  wrapping row, with the error on a line of its own under them. */
@@ -31,9 +31,7 @@ export function InviteAnswerButtons({
         Decline
       </Button>
       {answer.error && (
-        <div className={`${FORM_ERROR_BANNER} basis-full`} role="alert">
-          {answer.error}
-        </div>
+        <ErrorNotice error={answer.error} className="basis-full" />
       )}
     </>
   );

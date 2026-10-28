@@ -29,7 +29,6 @@ import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
-  FORM_ERROR_BANNER,
   FORM_LABEL,
   LABEL_TEXT,
 } from "@/components/ui/form-styles";
@@ -42,6 +41,7 @@ import { Pill } from "@/components/ui/Pill";
 import { InviteStatusPill } from "@/components/invites/InviteStatusPill";
 import { PurgeReceipt } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 const COLUMN_COUNT = 11;
 
@@ -371,7 +371,7 @@ export function OnboardingPanel() {
       </form>
 
       {(error ?? loadError) && (
-        <div className={FORM_ERROR_BANNER}>{error ?? loadError}</div>
+        <ErrorNotice error={error ?? loadError} />
       )}
 
       {/* `relative` holds the headers' absolute `sr-only` labels inside the scroll box, which

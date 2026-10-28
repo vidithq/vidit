@@ -30,7 +30,7 @@ import { cn } from "@/lib/cn";
 import { AvatarStack, type AvatarStackItem } from "@/components/ui/AvatarStack";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Popover } from "@/components/ui/Popover";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 const ADD_LABEL = "Invite a geolocator";
 
@@ -123,9 +123,7 @@ function AddGeolocator({
             />
             <p className="px-1 text-xs text-neutral-500">{note}</p>
             {error && (
-              <div className={FORM_ERROR_BANNER} role="alert">
-                {error}
-              </div>
+              <ErrorNotice error={error} />
             )}
           </>
         );
