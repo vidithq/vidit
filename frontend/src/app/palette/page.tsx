@@ -66,7 +66,8 @@ import { RemoveButton } from "@/components/ui/RemoveButton";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { CollectionCover } from "@/components/collections/CollectionCover";
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
-import { EventDetailBody, eventPageSlots } from "@/components/event/EventDetailBody";
+import { eventPageSlots, eventPanelContent } from "@/components/event/EventDetailBody";
+import { MapPanelBody } from "@/components/map/MapSidePanel";
 import { EventLayout } from "@/components/event/EventLayout";
 import { EventShellPreview } from "./eventShellDemo";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -700,11 +701,11 @@ export default function PalettePage() {
             <PaletteFilterSearchFields />
           </Item>
 
-          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file on a site). Settings lists one described row per notification kind, its Email switch.">
+          <Item name="<ToggleRow>" usage="An on/off row: an empty button over the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `concept` puts a <FieldHelp> after the label in the settings shape, stacked above that button, so a tap on the `?` opens its help and never toggles (the basemap control's layers and overlays). `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file on a site). Settings lists one described row per notification kind, its Email switch.">
             <PaletteToggleRow />
           </Item>
 
-          <Item name="<ChoiceRow>" usage="A pick-one preference row, the <ToggleRow> shape for a setting with a few named choices: the label at reading size over a line saying what the setting does, and a <SegmentedControl> named by the label. Beside the text from sm up; below sm the bar drops under it and takes the full column. `className` carries the caller's own divider and spacing. Settings and the organization page both render Accept approval requests from through it.">
+          <Item name="<ChoiceRow>" usage="A pick-one preference row, the <ToggleRow> shape for a setting with a few named choices: the label at reading size over a line saying what the setting does, and a <SegmentedControl> named by the label. `concept` puts a <FieldHelp> after the label (the basemap control's label language and density). Beside the text from sm up; below sm the bar drops under it and takes the full column. `className` carries the caller's own divider and spacing. Settings and the organization page both render Accept approval requests from through it.">
             <PaletteChoiceRow />
           </Item>
 
@@ -1050,10 +1051,15 @@ export default function PalettePage() {
 
           <Item
             name="<FieldHelp>"
-            usage="The one explanation hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
+            usage="The one explanation hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else. A concept whose data comes from outside Vidit lists its sources under the sentence, each a link that opens the provider's page in a new tab (the basemap control's presets, layers and overlays); the bubble then stays open while the pointer crosses into it, and a press on a link inside a popover panel keeps the panel open."
           >
-            <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
-              Coordinates <FieldHelp concept="coordinates" />
+            <span className="inline-flex items-center gap-3 text-sm text-neutral-300">
+              <span className="inline-flex items-center gap-1">
+                Coordinates <FieldHelp concept="coordinates" />
+              </span>
+              <span className="inline-flex items-center gap-1">
+                Relief <FieldHelp concept="map_relief" />
+              </span>
             </span>
           </Item>
 
@@ -2024,20 +2030,20 @@ export default function PalettePage() {
             <EventShellPreview />
           </Item>
 
-          <Item name="<EventDetailBody> / eventPageSlots" usage="An event's read-only fields, one field set for two surfaces. eventPageSlots fills EventShell's body on the event, version and request pages: the source blocks then the proof in the main column, the location slot (eventLocation, the map and its Coordinates row) then the Details card in the side column. <EventLocation> takes the map as a prop, more rows under the Coordinates row, a coordinatesConcept and footer lines: the site page fills it with the site map, Zone on, Contour and the map legend (SiteLocation), and heads it and its Details card (SiteDetails) with EventSection, EventLayout's own section heading, under the site's ? concepts. <EventDetailBody> is the map panel's body: one column, the source blocks, the Details rows, then the proof.">
+          <Item name="eventPageSlots / eventPanelContent / <MapPanelBody>" usage="An event's read-only fields, one field set for two surfaces. eventPageSlots fills EventShell's body on the event, version and request pages: the source blocks then the proof in the main column, the location slot (eventLocation, the map and its Coordinates row) then the Details card in the side column. <EventLocation> takes the map as a prop, more rows under the Coordinates row, a coordinatesConcept and footer lines: the site page fills it with the site map, Zone on, Contour and the map legend (SiteLocation), and heads it and its Details card (SiteDetails) with EventSection, EventLayout's own section heading, under the site's ? concepts. eventPanelContent fills the map side panel (MapSidePanel), which a site fills too (sitePanelContent): <MapPanelBody> is its body under the title and byline, one column with the source blocks, the Location block (the Coordinates row), the Details rows, then the footer (an event's proof).">
             <div className="w-full space-y-4">
               <Variant label="eventPageSlots, in EventLayout">
                 <EventLayout {...eventPageSlots(MOCK_DETAIL)} />
               </Variant>
-              <Variant label="EventDetailBody, an imported row with its provenance link">
+              <Variant label="MapPanelBody with eventPanelContent, an imported row with its provenance link">
                 <div className="w-[380px] max-w-full space-y-4">
-                  <EventDetailBody geo={MOCK_DETAIL_ARCHIVED} />
+                  <MapPanelBody content={eventPanelContent(MOCK_DETAIL_ARCHIVED)} />
                 </div>
               </Variant>
             </div>
           </Item>
 
-          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s in the order of the editor's fields: Title, Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its UTC date and time (the date alone at exactly midnight UTC) or Date unknown under it), Captured, Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel) and Tags as <DetailPills>. A row with no value drops out, Title included. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <SourcesRow> on the event page (eventPageSlots), a lone source taking the whole row as one wide block, and a vertical stack under Sources in the map panel (<EventDetailBody>). <SourcesRow> is the one sources row of the page and every form: a <HorizontalScroller> under a Sources (N) eyebrow, its header holding the arrows from two sources and the caller's actions (a form's Add a source), invalid turning the eyebrow red and note printing why in the header row. <SourceBlocks> takes an `extras` function that gives each block its name, rows after the source's own, actions and className: a site page's sources (siteSourceExtras) add the provider, the note, who filed it, the contour and the map control. A block with `actions` heads its card with SourceHeader, the name and controls row a <SourceEditor> shares.">
+          <Item name="<SourceBlock> / <SourceBlocks>" usage="One source of an event on a reading surface (components/sources/SourceBlock.tsx), read like the event's Details card: a <DetailCard> region named Source N, its file in the lead slot through <MediaGallery> (behind its own <GraphicContentGate> when this source is flagged, a No file box without one, and no file area at all on a context source without one), then <DetailRow>s in the order of the editor's fields: Title, Level as a <Pill>, Kind (the kind label, then the file's kind after a middle dot when there is a file: Drone · video, Article; an Unknown kind shows the file's kind alone, or no row without a file), Links (N) (right-aligned, each link through <SourceLabel> (its host, the full URL in the title) followed by its <ArchivedCopies> mark, with Posted and its UTC date and time (the date alone at exactly midnight UTC) or Date unknown under it), Captured, Capture position (the compact <CoordinateValue>: 4 decimals and the small <CoordinateActions> on one line, under wrapLabel) and Tags as <DetailPills>. A row with no value drops out, Title included. The map panel keeps a LIST_TILE with bare compact rows. `wide` grows the file and sets it beside the rows (<DetailCard leadBeside>). <SourceBlocks> renders the event's blocks in API order: a <SourcesRow> on the event page (eventPageSlots), a lone source taking the whole row as one wide block, and a vertical stack under Sources in the map panel (<MapPanelBody>). <SourcesRow> is the one sources row of the page and every form: a <HorizontalScroller> under a Sources (N) eyebrow, its header holding the arrows from two sources and the caller's actions (a form's Add a source), invalid turning the eyebrow red and note printing why in the header row. <SourceBlocks> takes an `extras` function that gives each block its name, rows after the source's own, actions and className: a site page's sources (siteSourceExtras) add the provider, the note, who filed it, the contour and the map control. A block with `actions` heads its card with SourceHeader, the name and controls row a <SourceEditor> shares.">
             <div className="w-full max-w-2xl">
               <SourceBlocks sources={[MOCK_SOURCE, MOCK_CONTEXT_SOURCE]} alt="Strike on a depot" />
             </div>
@@ -2548,6 +2554,15 @@ function PaletteToggleRow() {
           description="The small ? icons that explain each field and section."
           on={described}
           onToggle={() => setDescribed((v) => !v)}
+        />
+      </div>
+      <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+        <ToggleRow
+          label="Relief"
+          concept="map_relief"
+          variant="setting"
+          on={on}
+          onToggle={() => setOn((v) => !v)}
         />
       </div>
     </div>
