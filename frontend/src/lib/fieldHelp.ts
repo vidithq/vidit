@@ -209,10 +209,6 @@ export const FIELD_HELP = {
     label: "Who can send me approval requests?",
   },
   ...NOTIFICATION_HELP,
-  sites_layer: {
-    text: "Places analysts monitor through dated satellite imagery, such as bases, depots and radars. Below zoom 10 each site is a square; from zoom 10 the map draws its zone. A zone turns amber when its latest linked event shows damage and red for destruction. Each zone is the one valid at the end of the event date window.",
-    label: "What is the sites layer?",
-  },
   site_last_source: {
     text: "The capture date and the imagery provider of the most recent source filed on the site. Vidit says when the place was last seen, never whether it is in use today.",
     label: "What is the last source?",

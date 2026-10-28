@@ -134,13 +134,21 @@ interface InjectedSection extends PanelField {
   active: boolean;
 }
 
-/** A map layer offered as one more Show chip after the status chips: on shows the layer, and
- * `note` shows under the chips while it is on. */
+/** A map layer offered as one more Show chip after the status chips (`showFieldScope`). */
 interface FilterLayer {
   label: string;
-  on: boolean;
+  selected: boolean;
   onToggle: () => void;
-  note?: ReactNode;
+}
+
+/** What the Show field leaves on the map. With no chip selected, every event and the layer show;
+ * once a chip is selected, only what the selected chips name. */
+export function showFieldScope(
+  show: string[],
+  layerSelected: boolean,
+): { events: boolean; layer: boolean } {
+  const none = show.length === 0 && !layerSelected;
+  return { events: none || show.length > 0, layer: none || layerSelected };
 }
 
 const LAYER_CHIP = "layer";
@@ -400,17 +408,14 @@ export function EventFilterSections({
       title: FILTER_NAMES.show,
       concept: "status",
       children: (
-        <>
-          <ChipBucket
-            options={[
-              ...SHOW_OPTIONS.map(([value, label]) => ({ id: value, name: value, label })),
-              ...(layer ? [{ id: LAYER_CHIP, name: LAYER_CHIP, label: layer.label }] : []),
-            ]}
-            selected={[...values.show, ...(layer?.on ? [LAYER_CHIP] : [])]}
-            onToggle={(n) => (n === LAYER_CHIP ? layer?.onToggle() : toggleIn("show", n))}
-          />
-          {layer?.on && layer.note}
-        </>
+        <ChipBucket
+          options={[
+            ...SHOW_OPTIONS.map(([value, label]) => ({ id: value, name: value, label })),
+            ...(layer ? [{ id: LAYER_CHIP, name: LAYER_CHIP, label: layer.label }] : []),
+          ]}
+          selected={[...values.show, ...(layer?.selected ? [LAYER_CHIP] : [])]}
+          onToggle={(n) => (n === LAYER_CHIP ? layer?.onToggle() : toggleIn("show", n))}
+        />
       ),
     }),
     ...when(offers("conflict") && conflicts.length > 0, {
