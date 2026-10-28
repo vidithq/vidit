@@ -15,6 +15,8 @@ import type { ExternalLinks } from "@/types";
 // Bio ceiling, mirrors the backend BIO_MAX_LEN in schemas/user.py; change both.
 export const BIO_MAX_LEN = 500;
 
+const LINK_KEYS = ["x", "discord", "website", "github"] as const;
+
 /** The fields the edit mode reads: an analyst's profile or an organization's. */
 interface EditableProfile {
   bio: string | null;
@@ -74,6 +76,8 @@ export interface ProfileEditState {
   setDraftLinks: Dispatch<SetStateAction<ExternalLinks>>;
   saving: boolean;
   saveError: string | null;
+  /** The save's refusals the form shows under a linked-account field, keyed by platform. */
+  linkErrors: Record<string, string>;
   bioOver: boolean;
   startEditing: () => void;
   cancelEditing: () => void;
@@ -143,10 +147,7 @@ export function useProfileEdit({
       await calls.update({
         bio: draftBio,
         external_links: {
-          x: draftLinks.x ?? null,
-          discord: draftLinks.discord ?? null,
-          website: draftLinks.website ?? null,
-          github: draftLinks.github ?? null,
+          ...Object.fromEntries(LINK_KEYS.map((key) => [key, draftLinks[key] ?? null])),
         },
       });
       // After the PATCH so a rejected bio doesn't leave a stored image the profile never adopted.
@@ -161,6 +162,7 @@ export function useProfileEdit({
     },
     {
       fallback: "Failed to save",
+      fields: LINK_KEYS,
       onSuccess: async (avatarUrl) => {
         // Adopt the saved picture before leaving edit mode, so the header never shows the old one.
         if (avatarUrl !== undefined)
@@ -263,6 +265,7 @@ export function useProfileEdit({
     setDraftLinks,
     saving,
     saveError,
+    linkErrors: saveMutation.fieldErrors,
     bioOver,
     startEditing,
     cancelEditing,
