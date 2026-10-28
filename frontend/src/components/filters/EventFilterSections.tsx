@@ -36,9 +36,9 @@ import {
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
  * feed: one component owns the row order, so a vocabulary change lands on all four. The rows: the
- * surface's `lead` rows, a "Status, conflict, tags" row, a Dates row of the surface's
- * `dateSections`, Location guess, a Source row of Source kind, Level and Media, and a People row of
- * Author and Approvals. Sections that share a row show as fields under one collapsible header; a
+ * surface's `lead` rows, a "Status, conflict, tags" row ("Show, conflict, tags" with a `layer`), a
+ * Dates row of the surface's `dateSections`, Location guess, a Source row of Source kind, Level and
+ * Media, and a People row of Author and Approvals. Sections that share a row show as fields under one collapsible header; a
  * row left with one section shows it as its own row. Surfaces differ in `lead`, `layer`,
  * `dateSections` and `sections`, the subset they offer (the search page's Collections group is
  * narrowed by `author` alone, and only the board offers Location guess).
@@ -129,7 +129,7 @@ interface InjectedSection {
 }
 
 /** A map layer offered as one more chip after the status chips: on shows the layer, and `note`
- * shows under the chips while it is on. */
+ * shows under the chips while it is on. With a layer, the field reads "Show" instead of "Status". */
 interface FilterLayer {
   label: string;
   on: boolean;
@@ -365,7 +365,7 @@ export function EventFilterSections({
       key: "event",
       fields: [
         ...when(offers("status"), {
-          title: "Status",
+          title: layer ? "Show" : "Status",
           concept: "status",
           summary: chipSummary([
             ...values.statuses.map(statusLabel),

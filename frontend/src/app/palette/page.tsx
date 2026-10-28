@@ -693,7 +693,7 @@ export default function PalettePage() {
             <PaletteFilterSection />
           </Item>
 
-          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (status, with the map's Sites layer chip after it, source kind, level, media, location guess, Approved only, the feed's Kind): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (status, which the map labels Show and ends with its Sites layer chip, as in the demo, source kind, level, media, location guess, Approved only, the feed's Kind): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
             <PaletteChipBucket />
           </Item>
 
@@ -2452,15 +2452,18 @@ function PaletteFilterSection() {
 }
 
 function PaletteChipBucket() {
-  const [selected, setSelected] = useState<string[]>(["Image"]);
+  const [selected, setSelected] = useState<string[]>(["Geolocated", "Sites"]);
   return (
-    <ChipBucket
-      options={["Image", "Video"].map((n) => ({ id: n, name: n }))}
-      selected={selected}
-      onToggle={(n) =>
-        setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
-      }
-    />
+    <div className="w-72 space-y-1.5">
+      <FieldLabel label="Show" concept="status" />
+      <ChipBucket
+        options={["Requested", "Detected", "Geolocated", "Sites"].map((n) => ({ id: n, name: n }))}
+        selected={selected}
+        onToggle={(n) =>
+          setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
+        }
+      />
+    </div>
   );
 }
 

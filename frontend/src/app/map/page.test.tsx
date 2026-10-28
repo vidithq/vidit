@@ -198,7 +198,7 @@ describe("map detail panel", () => {
 
 describe("map sites layer", () => {
   const filtersButton = () => screen.getByRole("button", { name: /^Filters/ });
-  const STATUS_ROW = /^Toggle Status/;
+  const SHOW_ROW = /^Toggle Show/;
   // The Sites pill shares the chip's name; only the pill carries a title.
   const sitesChip = () => screen.getAllByRole("button", { name: "Sites" }).find((b) => !b.title)!;
   const sitesPill = () => screen.queryByTitle("Remove filter: Sites");
@@ -226,7 +226,7 @@ describe("map sites layer", () => {
 
   async function showSites() {
     fireEvent.click(filtersButton());
-    fireEvent.click(screen.getByRole("button", { name: STATUS_ROW }));
+    fireEvent.click(screen.getByRole("button", { name: SHOW_ROW }));
     fireEvent.click(sitesChip());
     fireEvent.click(screen.getByRole("button", { name: "report viewport" }));
     // The list read is debounced on the viewport.
@@ -271,7 +271,7 @@ describe("map sites layer", () => {
     renderMap();
     fireEvent.click(filtersButton());
     expect(screen.queryByRole("link", { name: "New site" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: STATUS_ROW }));
+    fireEvent.click(screen.getByRole("button", { name: SHOW_ROW }));
     expect(sitesPill()).not.toBeInTheDocument();
     expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
 
@@ -294,7 +294,7 @@ describe("map sites layer", () => {
   it("clears the Sites chip with Clear all", () => {
     renderMap();
     fireEvent.click(filtersButton());
-    fireEvent.click(screen.getByRole("button", { name: STATUS_ROW }));
+    fireEvent.click(screen.getByRole("button", { name: SHOW_ROW }));
     fireEvent.click(screen.getByRole("button", { name: "Detected" }));
     fireEvent.click(sitesChip());
     expect(filtersButton()).toHaveTextContent(/^Filters2/);

@@ -66,7 +66,7 @@ describe("<EventFilterSections>", () => {
     expect(screen.queryByRole("button", { name: "Drone" })).not.toBeInTheDocument();
   });
 
-  it("offers a layer as one more chip after the status chips", () => {
+  it("offers a layer as one more chip after the status chips, under a Show label", () => {
     const onPatch = vi.fn();
     const onToggle = vi.fn();
     const panel = (on: boolean) => (
@@ -80,11 +80,13 @@ describe("<EventFilterSections>", () => {
     );
     const { rerender } = render(panel(false));
 
-    expect(header("Status, conflict, tags")).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(header("Status, conflict, tags"));
+    expect(header("Show, conflict, tags")).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(header("Show, conflict, tags"));
     const chips = ["Requested", "Detected", "Geolocated", "Sites"];
     const row = screen.getByRole("button", { name: "Requested" }).parentElement!;
     expect([...row.children].map((c) => c.textContent)).toEqual(chips);
+    expect(screen.getByText("Show")).toBeInTheDocument();
+    expect(screen.queryByText("Status")).not.toBeInTheDocument();
     expect(screen.queryByText("zones note")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Sites" }));
@@ -93,8 +95,8 @@ describe("<EventFilterSections>", () => {
 
     rerender(panel(true));
     expect(screen.getByText("zones note")).toBeInTheDocument();
-    fireEvent.click(header("Status, conflict, tags"));
-    expect(screen.getByRole("button", { name: "Toggle Status, conflict, tags" })).toHaveTextContent(
+    fireEvent.click(header("Show, conflict, tags"));
+    expect(screen.getByRole("button", { name: "Toggle Show, conflict, tags" })).toHaveTextContent(
       "Detected +1",
     );
   });
