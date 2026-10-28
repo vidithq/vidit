@@ -198,7 +198,10 @@ describe("map detail panel", () => {
 
 describe("map sites layer", () => {
   const filtersButton = () => screen.getByRole("button", { name: /^Filters/ });
-  const sitesSwitch = () => screen.getByRole("switch", { name: "Show sites" });
+  const SHOW_ROW = /^Toggle Show/;
+  // The Sites pill shares the chip's name; only the pill carries a title.
+  const sitesChip = () => screen.getAllByRole("button", { name: "Sites" }).find((b) => !b.title)!;
+  const sitesPill = () => screen.queryByTitle("Remove filter: Sites");
 
   const SITE_NAME = "Rail depot";
   const ROW = {
@@ -223,8 +226,8 @@ describe("map sites layer", () => {
 
   async function showSites() {
     fireEvent.click(filtersButton());
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Sites" }));
-    fireEvent.click(sitesSwitch());
+    fireEvent.click(screen.getByRole("button", { name: SHOW_ROW }));
+    fireEvent.click(sitesChip());
     fireEvent.click(screen.getByRole("button", { name: "report viewport" }));
     // The list read is debounced on the viewport.
     const list = await waitFor(() => {
@@ -264,27 +267,41 @@ describe("map sites layer", () => {
     expect(screen.getAllByRole("button", { name: "Close detail panel" })).toHaveLength(1);
   });
 
-  it("turns the layer on from the filter panel and counts it as an active filter", () => {
+  it("turns the layer on from the Sites chip and counts it as an active filter", () => {
     renderMap();
-    expect(screen.queryByRole("switch", { name: "Show sites" })).not.toBeInTheDocument();
-
     fireEvent.click(filtersButton());
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Sites" }));
-    expect(sitesSwitch()).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("link", { name: "New site" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: SHOW_ROW }));
+    expect(sitesPill()).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
 
-    fireEvent.click(sitesSwitch());
-    expect(sitesSwitch()).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(sitesChip());
+    expect(sitesPill()).toBeInTheDocument();
+    expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
     expect(filtersButton()).toHaveTextContent(/^Filters1/);
 
     // Collapsed, the count and the pill still say the layer is on.
     fireEvent.click(filtersButton());
-    expect(screen.queryByRole("switch", { name: "Show sites" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
     expect(filtersButton()).toHaveTextContent(/^Filters1/);
 
-    fireEvent.click(screen.getByTitle("Remove filter: Sites"));
+    fireEvent.click(sitesPill()!);
     expect(filtersButton()).not.toHaveTextContent(/^Filters1/);
     fireEvent.click(filtersButton());
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Sites" }));
-    expect(sitesSwitch()).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
+  });
+
+  it("clears the Sites chip with Clear all", () => {
+    renderMap();
+    fireEvent.click(filtersButton());
+    fireEvent.click(screen.getByRole("button", { name: SHOW_ROW }));
+    fireEvent.click(screen.getByRole("button", { name: "Detected" }));
+    fireEvent.click(sitesChip());
+    expect(filtersButton()).toHaveTextContent(/^Filters2/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    expect(sitesPill()).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Remove filter: Detected")).not.toBeInTheDocument();
+    expect(filtersButton()).not.toHaveTextContent(/^Filters[12]/);
   });
 });
