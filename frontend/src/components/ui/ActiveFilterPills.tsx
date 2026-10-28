@@ -7,8 +7,9 @@ import { Pill } from "./Pill";
 /** `key` must be unique across the row (e.g. `conflicts:<name>`). */
 export interface ActiveFilter {
   key: string;
-  /** The filter's name, as its field label reads (`Conflict`). */
-  filter: string;
+  /** The filter's name, as its line in the panel reads (`Conflict`); a switch's pill reads as
+   *  its label alone. */
+  filter?: string;
   /** The value, as its chip reads. */
   label: string;
   icon?: ReactNode;
@@ -17,8 +18,8 @@ export interface ActiveFilter {
 
 /**
  * The one rendering of active filters: a row of removable accent chips, each a key/value pill
- * naming its filter, shared by the map's filter overlay and the filter rail. `onClearAll` adds a
- * clear affordance once two or more are on.
+ * naming its filter: the phone's filter bar and the map's collapsed filter panel. `onClearAll`
+ * adds a clear affordance once two or more are on.
  */
 export function ActiveFilterPills({
   filters,
@@ -36,7 +37,7 @@ export function ActiveFilterPills({
           tone="accent"
           icon={f.icon}
           label={f.filter}
-          title={`Remove filter ${f.filter}: ${f.label}`}
+          title={f.filter ? `Remove filter ${f.filter}: ${f.label}` : `Remove filter ${f.label}`}
           onClick={f.onRemove}
         >
           {f.label}

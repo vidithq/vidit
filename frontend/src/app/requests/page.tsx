@@ -8,18 +8,18 @@ import { eventListPath, type EventListSort } from "@/lib/events";
 import { formatOpenAge } from "@/lib/format";
 import type { EventListItem } from "@/types";
 import {
-  EMPTY_DATE_WINDOWS,
-  EMPTY_EVENT_FILTERS,
-  EventFilterSections,
-  buildActiveFilterPills,
-  countActiveFilters,
-  hasCoordsFilter,
-  type EventFilterPatch,
-  type EventFilterSectionName,
-  type EventFilterValues,
-} from "@/components/filters/EventFilterSections";
-import { FilterBar } from "@/components/filters/FilterBar";
-import { FilterRail } from "@/components/filters/FilterRail";
+  FilterRailPanel,
+  FilterSheetBar,
+  type FilterPanelProps,
+} from "@/components/filters/FilterPanel";
+import {
+  EMPTY_FILTERS,
+  anyActive,
+  type FilterPatch,
+  type FilterState,
+} from "@/components/filters/model";
+import { useTimelines } from "@/components/filters/useTimelines";
+import { searchDatesPath } from "@/lib/search";
 import { Item } from "@/components/ui/Item";
 import { eventItem } from "@/lib/items";
 import { PageShell } from "@/components/ui/PageShell";
@@ -31,17 +31,6 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
-// Status is fixed to `requested`, so the board offers no Status section: "closed" would read as
-// "done" on a work queue. `GET /events` takes no `media` filter, so Media stays off too.
-const BOARD_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
-  "conflict",
-  "source_kind",
-  "level",
-  "location_guess",
-  "tags",
-  "author",
-];
-
 const SORT_OPTIONS: { value: EventListSort; label: string }[] = [
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
@@ -50,23 +39,23 @@ const SORT_OPTIONS: { value: EventListSort; label: string }[] = [
 export default function RequestsPage() {
   // Public read; "Post request" routes through /submit, which bounces signed-out visitors to login.
   // Cursor-paged: the endpoint caps a response at 100 rows, so follow the `Link: rel="next"` cursor.
-  const [values, setValues] = useState<EventFilterValues>(EMPTY_EVENT_FILTERS);
+  const [values, setValues] = useState<FilterState>(EMPTY_FILTERS);
   const [sort, setSort] = useState<EventListSort>("newest");
 
-  const { tags, conflicts } = useFilterVocabulary();
-
-  const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
-  const clearFilters = () => setValues(EMPTY_EVENT_FILTERS);
-  const activeCount = countActiveFilters(values, EMPTY_DATE_WINDOWS);
-  const panel = (
-    <EventFilterSections
-      tags={tags}
-      conflicts={conflicts}
-      values={values}
-      onPatch={onPatch}
-      sections={BOARD_SECTIONS}
-    />
-  );
+  const vocabulary = useFilterVocabulary();
+  const onPatch: FilterPatch = useCallback((patch) => setValues((v) => ({ ...v, ...patch })), []);
+  // The board lists the open requests, the set search lists for that one status.
+  const request = { ...values, show: ["requested"] };
+  const timelines = useTimelines(searchDatesPath({ q: "", types: ["event"], ...request }));
+  const panel: FilterPanelProps = {
+    surface: "requests",
+    state: values,
+    onPatch,
+    onClear: () => setValues(EMPTY_FILTERS),
+    vocabulary,
+    timelines,
+  };
+  const filtered = anyActive("requests", values);
 
   const buildPath = useCallback(
     (cursor: string | null) =>
@@ -74,24 +63,18 @@ export default function RequestsPage() {
         ...values,
         view: "requested",
         show: ["requested"],
-        hasCoords: hasCoordsFilter(values.locationGuess),
         sort,
         cursor,
       }),
     [values, sort]
   );
   const walk = useCursorList<EventListItem>(buildPath);
-  const pills = buildActiveFilterPills(values, onPatch);
   const { items: requests, error, loading } = walk;
 
   return (
     <PageShell
       title="Requests"
-      rail={
-        <FilterRail pills={pills} onClearAll={clearFilters} sections={BOARD_SECTIONS}>
-          {panel}
-        </FilterRail>
-      }
+      rail={<FilterRailPanel {...panel} />}
       railLabel="Filters"
       narrowRail="hidden"
       actions={
@@ -112,9 +95,7 @@ export default function RequestsPage() {
         />
       }
     >
-      <FilterBar count={activeCount} pills={pills} onClearAll={clearFilters}>
-        {panel}
-      </FilterBar>
+      <FilterSheetBar {...panel} className="lg:hidden" />
 
       {error && requests.length === 0 && (
         <ErrorNotice error={error} />
@@ -126,7 +107,7 @@ export default function RequestsPage() {
 
       {!error && !loading && requests.length === 0 && (
         <EmptyState>
-          {activeCount > 0 ? (
+          {filtered ? (
             "No open requests match the filters."
           ) : (
             <>

@@ -98,7 +98,7 @@ const BASE = `inline-flex items-center justify-center rounded-md transition-colo
 // Both step up on a phone, where the desktop 28px text button and 32px icon
 // square are under what a thumb reliably hits. Only the tappable height grows.
 // The phone tap step, shared by every control a thumb has to hit (an
-// interactive `<Pill>`, a `<FilterSection>` header, quiet filter controls): 36px
+// interactive `<Pill>`, a `<PropertyRow>` line, quiet filter controls): 36px
 // below `sm`, the exact desktop shape from `sm` up. Height only.
 export const TAP_STEP = "min-h-9 sm:min-h-0";
 

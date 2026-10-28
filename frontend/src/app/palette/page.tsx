@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -91,7 +91,8 @@ import {
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
-import { FilterSection, chipSummary } from "@/components/ui/FilterSection";
+import { OptionPicker } from "@/components/ui/OptionPicker";
+import { PropertyRow } from "@/components/ui/PropertyRow";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { SwatchPicker } from "@/components/ui/SwatchPicker";
@@ -582,7 +583,7 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Entry name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site. `icon` makes a square icon-only button, and every icon control on the site is that ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs. A text button leads its label with the icon of the action it names: `action` on a <Button>, <ActionIcon> before the text of a buttonClasses link, one icon per action from ACTION_ICONS (see Action icons below). Both shapes take a phone tap step below `sm`, `TAP_STEP` for the text shape's height and `ICON_TAP_STEP` for the icon square; both are exported, so an interactive `<Pill>`, a `<FilterSection>` header toggle and the filter surfaces' quiet text controls take the height floor, and a square control smaller than this one (the settings accent swatch, a `<FileManager>` tile's remove control, the map scrubber's play and reset, the sidebar's community links) takes `ICON_TAP_STEP` and names its own desktop square beside it, rather than either inventing a second figure.">
+          <Entry name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site. `icon` makes a square icon-only button, and every icon control on the site is that ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs. A text button leads its label with the icon of the action it names: `action` on a <Button>, <ActionIcon> before the text of a buttonClasses link, one icon per action from ACTION_ICONS (see Action icons below). Both shapes take a phone tap step below `sm`, `TAP_STEP` for the text shape's height and `ICON_TAP_STEP` for the icon square; both are exported, so an interactive `<Pill>`, a `<PropertyRow>` line and the filter surfaces' quiet text controls take the height floor, and a square control smaller than this one (the settings accent swatch, a `<FileManager>` tile's remove control, the map scrubber's play and reset, the sidebar's community links) takes `ICON_TAP_STEP` and names its own desktop square beside it, rather than either inventing a second figure.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button action="geolocate" variant="primary">Publish</Button>
@@ -761,20 +762,20 @@ export default function PalettePage() {
             </Variant>
           </Entry>
 
-          <Entry name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent key/value chips (filter name, value, ×), shared by the map's filter overlay and the filter rail so active filter state reads identically everywhere. Each pill names its filter as the field label reads and its value as the chip reads (Approvals: Approved only, Author: ana). Entries are {key, filter, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
+          <Entry name="<ActiveFilterPills>" usage="The one rendering of the applied filters outside the panel: a row of removable accent key/value chips (filter name, value, ×), on the phone filter bar of every surface and under the map's collapsed Filters header. Each pill names its filter as its line in the panel reads and its value as its option reads (Conflict: Russo-Ukrainian War, Event date: Until 1 Jan 2025); a switch's pill reads as its label alone (Approved only). Entries are {key, filter?, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty. No pill carries a count.">
             <PaletteActiveFilterPills />
           </Entry>
 
-          <Entry name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections opens on Show, Conflict and Tags, each under its <FieldLabel> and always in view, then stacks the collapsible rows in one fixed order; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
-            <PaletteFilterSection />
+          <Entry name="<PropertyRow>" usage="One property on one line: its name (with an optional FieldHelp ?) at the left, and its values as removable accent pills at the right, or a muted chevron while it holds none. An empty button over the whole line opens the editor, a render prop handed the close, in a PopoverPanel anchored under the line and lifted over the map's floating panel and a sheet, so nothing in the panel moves or expands in place. Escape returns focus to the line. The filter panel draws every list and account dimension through it (Show, Conflict, Tags, Source kind, Level, Media, Location guess, Author, Approved by); a switch dimension is a ToggleRow instead.">
+            <PalettePropertyRow />
           </Entry>
 
-          <Entry name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (Show, which the map ends with its Sites layer chip, as in the demo, source kind, level, media, location guess, Approved only): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
+          <Entry name="<ChipBucket>" usage="A multi-select row of <Pill> chips for one small fixed family: every option a chip, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. <OptionPicker> draws a list of up to eight options through it (Show, Source kind, Level, Media, Location guess).">
             <PaletteChipBucket />
           </Entry>
 
-          <Entry name="<ConflictChips filter> / <TagChips filter>" usage="The Conflict and Tags sections of the shared filter panel: the event form's search fields in filter mode. Each picks by name, the value the URL carries, from the panel's own catalogue of values in use (GET /conflicts?used=true, GET /tags), shows the picks as accent chips that remove on click, and keeps a picked name its catalogue lacks on show. The conflict field offers every conflict in use, ended ones included, with no label row and no switch; the tag field has no Create row and never calls POST /tags.">
-            <PaletteFilterSearchFields />
+          <Entry name="<OptionPicker>" usage="A multi-select over a fixed option list, the editor of every list dimension of the filter panel. Up to eight options show whole as a <ChipBucket>. A longer list (Conflict, Tags) is a search field, the picks as removable accent chips (PickedPills, which <TagChips> and <ConflictChips> share), then the first eight unpicked options the search matches as neutral chips, with one Show more (<LoadMoreRow>) for the rest. A picked value the list lacks (a crafted URL) still shows, by its value.">
+            <PaletteOptionPicker />
           </Entry>
 
           <Entry name="<ToggleRow>" usage="An on/off row: an empty button over the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `concept` puts a <FieldHelp> after the label in the settings shape, stacked above that button, so a tap on the `?` opens its help and never toggles (the basemap control's layers and overlays). `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file on a site). Settings lists one described row per notification kind, its Email switch.">
@@ -1141,7 +1142,7 @@ export default function PalettePage() {
             </span>
           </Entry>
 
-          <Entry name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Under the search, neutral <Pill> chips with a plus offer the suggested tags (GET /tags/suggested: your most used tags, then the platform's), the picked ones left out; a click picks the tag. The chips wrap, the first 6 show, and one Show more shows the rest. Each source editor renders <TagChips> alone, named for its source (Source 1 tags). The conflict field is <ConflictChips>; with filter, both fields serve the filter panel (see the filter search fields).">
+          <Entry name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Under the search, neutral <Pill> chips with a plus offer the suggested tags (GET /tags/suggested: your most used tags, then the platform's), the picked ones left out; a click picks the tag. The chips wrap, the first 6 show, and one Show more shows the rest. Each source editor renders <TagChips> alone, named for its source (Source 1 tags). The conflict field is <ConflictChips>.">
             <div className="w-full max-w-2xl space-y-4">
               <TagPicker
                 tags={tpTags}
@@ -1505,7 +1506,7 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<MediaLightbox>" usage="The one media viewer, mounted by MediaGallery, MediaManager (through FileManager's shared MediaOverlay shell) and a proof body's images, so the viewer can't drift into per-surface copies. MediaOverlay's dialog variant (dimmed, blurred theme canvas, no corner controls, focus on the content's data-overlay-close control) is OutboundLink's warning shell. Backdrop click or Escape closes; the content click is stopped so the player's controls stay usable. Takes either a persisted Media (images view at hero) or a plain {src, kind} for a staged object URL or a proof image. The corner MediaDownloadButton is for images: a clip plays in <VideoPlayer>, whose control bar already carries one. MediaLightboxBody alone renders the sized media for a caller that already owns a shell.">
+          <Entry name="<MediaLightbox>" usage="The one media viewer, mounted by MediaGallery, MediaManager (through FileManager's shared MediaOverlay shell) and a proof body's images, so the viewer can't drift into per-surface copies. MediaOverlay's dialog variant (dimmed, blurred theme canvas, no corner controls, focus on the content's data-overlay-close control) is OutboundLink's warning shell, and its sheet variant (the dialog docked to the bottom edge at full width, at most 85% of the screen tall, scrolling inside) holds the filter panel on a phone. Backdrop click or Escape closes; the content click is stopped so the player's controls stay usable. Takes either a persisted Media (images view at hero) or a plain {src, kind} for a staged object URL or a proof image. The corner MediaDownloadButton is for images: a clip plays in <VideoPlayer>, whose control bar already carries one. MediaLightboxBody alone renders the sized media for a caller that already owns a shell.">
             <PaletteMediaLightbox />
           </Entry>
 
@@ -2377,40 +2378,30 @@ function PaletteDisclosure() {
   );
 }
 
-function PaletteFilterSection() {
-  const [open, setOpen] = useState(true);
-  const [kinds, setKinds] = useState<string[]>(["Drone"]);
-  const [levels, setLevels] = useState<string[]>([]);
-  const toggle = (n: string) => (prev: string[]) =>
-    prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n];
+function PalettePropertyRow() {
+  const [levels, setLevels] = useState<string[]>(["direct"]);
+  const options = [
+    { value: "direct", label: "Direct" },
+    { value: "indirect", label: "Indirect" },
+    { value: "context", label: "Context" },
+  ];
+  const toggle = (value: string) =>
+    setLevels((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   return (
-    <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-      <FilterSection
-        title="Source"
-        summary={chipSummary([...kinds, ...levels])}
-        active={kinds.length + levels.length > 0}
-        open={open}
-        onToggle={() => setOpen((o) => !o)}
-      >
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <FieldLabel label="Source kind" />
-            <ChipBucket
-              options={["Drone", "Dashcam", "Static camera"].map((n) => ({ id: n, name: n }))}
-              selected={kinds}
-              onToggle={(n) => setKinds(toggle(n))}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <FieldLabel label="Level" />
-            <ChipBucket
-              options={["Direct", "Indirect"].map((n) => ({ id: n, name: n }))}
-              selected={levels}
-              onToggle={(n) => setLevels(toggle(n))}
-            />
-          </div>
-        </div>
-      </FilterSection>
+    <div className="w-72 divide-y divide-neutral-800 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+      <PropertyRow
+        name="Level"
+        concept="source_level"
+        values={levels.map((value) => ({
+          key: value,
+          label: options.find((o) => o.value === value)?.label ?? value,
+          onRemove: () => toggle(value),
+        }))}
+        editor={() => (
+          <OptionPicker label="Level" options={options} selected={levels} onToggle={toggle} />
+        )}
+      />
+      <PropertyRow name="Author" values={[]} editor={() => <p className="text-xs text-neutral-400">The account picker</p>} />
     </div>
   );
 }
@@ -2450,18 +2441,26 @@ function PaletteChoiceRow() {
   );
 }
 
-function PaletteFilterSearchFields() {
-  const [conflicts, setConflicts] = useState<string[]>(["Russian invasion of Ukraine"]);
-  const [tags, setTags] = useState<string[]>([]);
+function PaletteOptionPicker() {
+  const [short, setShort] = useState<string[]>(["Geolocated"]);
+  const [tags, setTags] = useState<string[]>([MOCK_TAGS[0].name]);
+  const toggleIn = (set: Dispatch<SetStateAction<string[]>>) => (value: string) =>
+    set((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  const longList = [...MOCK_TAGS.map((t) => t.name), ...Array.from({ length: 12 }, (_, i) => `tag-${i + 1}`)];
   return (
     <div className="w-72 space-y-4 bg-neutral-900 rounded-lg border border-neutral-700 p-3">
-      <ConflictChips
-        filter
-        conflicts={MOCK_CONFLICTS}
-        selected={conflicts}
-        setSelected={setConflicts}
+      <OptionPicker
+        label="Show"
+        options={["Requested", "Detected", "Geolocated"].map((v) => ({ value: v, label: v }))}
+        selected={short}
+        onToggle={toggleIn(setShort)}
       />
-      <TagChips filter tags={MOCK_TAGS} selected={tags} setSelected={setTags} />
+      <OptionPicker
+        label="Tags"
+        options={longList.map((v) => ({ value: v, label: v }))}
+        selected={tags}
+        onToggle={toggleIn(setTags)}
+      />
     </div>
   );
 }

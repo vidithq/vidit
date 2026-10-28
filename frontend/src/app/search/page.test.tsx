@@ -9,11 +9,29 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace, back: vi.fn() }),
 }));
 
-// The two pickers the filter panel fills from, read on every render.
+// The two pickers the filter panel fills from, read on every render, and the timelines.
+const reads = vi.hoisted(() => ({
+  tags: [{ id: "t1", name: "dam" }],
+  dates: { occurred_date: [], submitted: [] } as {
+    occurred_date: { date: string; count: number }[];
+    submitted: { date: string; count: number }[];
+  },
+  paths: [] as (string | null)[],
+}));
 vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string) => ({
-    data: path === "/tags" ? [{ id: "t1", name: "dam" }] : [],
-  }),
+  useApiResource: (path: string | null) => {
+    reads.paths.push(path);
+    return {
+      data:
+        path === "/tags"
+          ? reads.tags
+          : path?.startsWith("/search/dates")
+            ? reads.dates
+            : path
+              ? []
+              : null,
+    };
+  },
 }));
 
 const search = vi.fn();
@@ -157,9 +175,17 @@ const sections = (
   };
 };
 
-const toggle = (title: string) => screen.queryByRole("button", { name: `Toggle ${title}` });
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
-const chip = (name: string) => within(rail()).getByRole("button", { name });
+/** A dimension's line in the rail, or null while the panel does not offer it. */
+const line = (name: string) => within(rail()).queryByRole("button", { name });
+const heading = (name: string) => within(rail()).queryByRole("heading", { name });
+const editor = (name: string) => screen.getByRole("dialog", { name });
+/** Toggles a Show option through the Show line's popover. */
+function chip(name: string) {
+  fireEvent.click(line("Show")!);
+  fireEvent.click(within(editor("Show")).getByRole("button", { name }));
+  fireEvent.keyDown(editor("Show"), { key: "Escape" });
+}
 const linkTo = (href: string) => document.querySelector<HTMLAnchorElement>(`a[href="${href}"]`)!;
 /** The item a link is stretched over. */
 const rowOf = (href: string) => linkTo(href).parentElement!;
@@ -167,6 +193,8 @@ const rowOf = (href: string) => linkTo(href).parentElement!;
 beforeEach(() => {
   vi.clearAllMocks();
   searchParams = new URLSearchParams("q=kakhovka");
+  reads.dates = { occurred_date: [], submitted: [] };
+  reads.paths = [];
   search.mockResolvedValue(response());
   searchSections.mockResolvedValue(sections([]));
 });
@@ -298,13 +326,13 @@ describe("the search page's URL", () => {
     );
     expect(await screen.findByRole("link", { name: "Kakhovka depot" })).toBeInTheDocument();
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
-    expect(within(rail()).getByTitle("Remove filter Show: Sites")).toBeInTheDocument();
+    expect(within(rail()).getByRole("button", { name: "Remove Sites" })).toBeInTheDocument();
 
     searchParams = new URLSearchParams("q=kakhovka");
     rerender(<SearchPage />);
 
     expect(await screen.findByRole("region", { name: "Analysts" })).toBeInTheDocument();
-    expect(within(rail()).queryByTitle("Remove filter Show: Sites")).not.toBeInTheDocument();
+    expect(within(rail()).queryByRole("button", { name: "Remove Sites" })).not.toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toHaveValue("kakhovka");
     // Reading the URL writes nothing back.
     await new Promise((resolve) => setTimeout(resolve, 400));
@@ -321,7 +349,7 @@ describe("the search page's URL", () => {
     await waitFor(() => expect(replace).toHaveBeenLastCalledWith("/search?q=kakhovka+dam"));
     expect(push).not.toHaveBeenCalled();
 
-    fireEvent.click(chip("Sites"));
+    chip("Sites");
     await waitFor(() => expect(push).toHaveBeenLastCalledWith("/search?q=kakhovka+dam&type=site"));
   });
 });
@@ -332,7 +360,12 @@ describe("the Show field", () => {
     render(<SearchPage />);
 
     await screen.findByText("Kakhovka spillway");
-    for (const name of [
+    fireEvent.click(line("Show")!);
+    expect(
+      within(editor("Show"))
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual([
       "Requested",
       "Detected",
       "Geolocated",
@@ -340,9 +373,7 @@ describe("the Show field", () => {
       "Collections",
       "Analysts",
       "Organizations",
-    ]) {
-      expect(chip(name)).toBeInTheDocument();
-    }
+    ]);
   });
 
   it("lists only what the picked chips name, and drops the event filters once no event is listed", async () => {
@@ -350,24 +381,24 @@ describe("the Show field", () => {
     search.mockResolvedValue(response({ hits: [siteHit()] }));
     render(<SearchPage />);
     await waitFor(() => expect(linkTo("/sites/s1")).toBeInTheDocument());
-    expect(toggle("Dates")).toBeInTheDocument();
+    expect(heading("When")).toBeInTheDocument();
 
-    fireEvent.click(chip("Sites"));
+    chip("Sites");
     await waitFor(() =>
       expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ types: ["site"] })),
     );
-    expect(toggle("Dates")).not.toBeInTheDocument();
-    expect(within(rail()).queryByRole("combobox", { name: "Conflict" })).not.toBeInTheDocument();
-    expect(toggle("Author")).toBeInTheDocument();
-    expect(within(rail()).getByTitle("Remove filter Show: Sites")).toBeInTheDocument();
+    expect(heading("When")).not.toBeInTheDocument();
+    expect(line("Conflict")).not.toBeInTheDocument();
+    expect(line("Author")).toBeInTheDocument();
+    expect(within(rail()).getByRole("button", { name: "Remove Sites" })).toBeInTheDocument();
 
-    fireEvent.click(chip("Geolocated"));
+    chip("Geolocated");
     await waitFor(() =>
       expect(searchSections).toHaveBeenLastCalledWith(
         expect.objectContaining({ types: ["event", "site"], show: ["geolocated"] }),
       ),
     );
-    expect(toggle("Dates")).toBeInTheDocument();
+    expect(heading("When")).toBeInTheDocument();
   });
 
   it("keeps the tags and the author when the pick steps from events to collections", async () => {
@@ -375,17 +406,20 @@ describe("the Show field", () => {
 
     render(<SearchPage />);
     await waitFor(() => expect(search).toHaveBeenCalled());
-    fireEvent.click(chip("Geolocated"));
-    fireEvent.click(chip("Collections"));
+    chip("Geolocated");
+    chip("Collections");
 
     await waitFor(() =>
       expect(search).toHaveBeenLastCalledWith(
         expect.objectContaining({ types: ["collection"], tags: ["dam"], author: "ana", conflicts: [] }),
       ),
     );
-    expect(screen.getByRole("combobox", { name: "Tags" })).toBeInTheDocument();
-    expect(toggle("Author")).toBeInTheDocument();
-    for (const title of ["Dates", "Source"]) expect(toggle(title)).not.toBeInTheDocument();
+    expect(line("Tags")).toBeInTheDocument();
+    expect(line("Author")).toBeInTheDocument();
+    for (const name of ["Conflict", "Source kind", "Location guess"]) {
+      expect(line(name)).not.toBeInTheDocument();
+    }
+    expect(heading("When")).not.toBeInTheDocument();
   });
 
   it("browses one analyst's shelf on an author alone", async () => {
@@ -399,7 +433,7 @@ describe("the Show field", () => {
     expect(search).toHaveBeenCalledWith(
       expect.objectContaining({ q: "", types: ["collection"], author: "ana" }),
     );
-    expect(within(rail()).getByTitle("Remove filter Show: Collections")).toBeInTheDocument();
+    expect(within(rail()).getByRole("button", { name: "Remove Collections" })).toBeInTheDocument();
   });
 
   it("reads a profile link's type=event as every status", async () => {
@@ -423,14 +457,13 @@ describe("the Show field", () => {
     render(<SearchPage />);
     await screen.findByText("kakhovka_watch");
 
-    fireEvent.click(chip("Analysts"));
+    chip("Analysts");
 
     await waitFor(() =>
       expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ types: ["user"] })),
     );
-    for (const title of ["Dates", "Source", "People", "Author"]) {
-      expect(toggle(title)).not.toBeInTheDocument();
-    }
+    expect(within(rail()).getAllByRole("heading").map((h) => h.textContent)).toEqual(["What"]);
+    expect(line("Author")).not.toBeInTheDocument();
   });
 });
 
@@ -521,41 +554,74 @@ describe("the search page's states", () => {
   });
 });
 
-describe("the search page's filter rail", () => {
-  it("puts the panel in the rail and applies the dialog's dates at once", async () => {
+describe("the search page's filter panel", () => {
+  it("puts the panel in the rail and applies the sheet's dates at once", async () => {
     searchSections.mockResolvedValue(sections([eventHit()]));
+    reads.dates = {
+      occurred_date: [
+        { date: "2026-05-01", count: 2 },
+        { date: "2026-06-09", count: 1 },
+      ],
+      submitted: [],
+    };
 
     render(<SearchPage />);
     expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
-    expect(rail()).toContainElement(screen.getByRole("button", { name: "Toggle Dates" }));
+    expect(heading("When")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Dates" }));
-    fireEvent.change(within(dialog).getByLabelText("Event date from"), {
+    const sheet = screen.getByRole("dialog", { name: "Filters" });
+    fireEvent.change(within(sheet).getByLabelText("Event date window start date"), {
       target: { value: "2026-06-01" },
     });
-    expect(within(dialog).queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
 
     await waitFor(() =>
       expect(searchSections).toHaveBeenCalledWith(
         expect.objectContaining({ eventFrom: "2026-06-01" }),
       ),
     );
-    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
+    expect(screen.getByTitle("Remove filter Event date: From 1 Jun 2026")).toBeInTheDocument();
   });
 
-  it("heads the rail with the active filters, minus the author its Author section names", async () => {
-    searchParams = new URLSearchParams("q=kakhovka&tag=drone&author=ana");
+  it("reads its timelines for the events the query and the filters match", async () => {
+    reads.dates = {
+      occurred_date: [
+        { date: "2026-06-01", count: 2 },
+        { date: "2026-06-09", count: 1 },
+      ],
+      submitted: [],
+    };
+    searchParams = new URLSearchParams("q=kakhovka&tag=dam&type=site&type=event&status=geolocated");
+    render(<SearchPage />);
+
+    await waitFor(() => expect(searchSections).toHaveBeenCalled());
+    const path = reads.paths.findLast((p) => p?.startsWith("/search/dates"))!;
+    const query = new URLSearchParams(path.split("?")[1]);
+    expect(query.get("q")).toBe("kakhovka");
+    expect(query.getAll("type")).toEqual(["event"]);
+    expect(query.getAll("status")).toEqual(["geolocated"]);
+    expect(query.getAll("tag")).toEqual(["dam"]);
+    expect(within(rail()).getAllByRole("slider", { name: /Event date window/ })).toHaveLength(2);
+  });
+
+  it("shows the active filters in their lines, and as pills on the phone bar", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&tag=drone&author=ana&has_coords=false");
     searchSections.mockResolvedValue(sections([eventHit()]));
     render(<SearchPage />);
 
-    expect(await within(rail()).findByTitle("Remove filter Tags: drone")).toBeInTheDocument();
-    expect(within(rail()).queryByTitle("Remove filter Author: ana")).not.toBeInTheDocument();
-    expect(screen.getAllByTitle("Remove filter Author: ana")).toHaveLength(1);
-    expect(screen.getAllByTitle("Remove filter Tags: drone")).toHaveLength(2);
+    await waitFor(() =>
+      expect(searchSections).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: ["drone"], author: "ana", locationGuess: ["blind"] }),
+      ),
+    );
+    for (const value of ["drone", "ana", "No guess"]) {
+      expect(within(rail()).getByRole("button", { name: `Remove ${value}` })).toBeInTheDocument();
+    }
+    expect(within(rail()).queryByTitle(/^Remove filter/)).not.toBeInTheDocument();
+    expect(screen.getByTitle("Remove filter Tags: drone")).toBeInTheDocument();
+    expect(screen.getByTitle("Remove filter Location guess: No guess")).toBeInTheDocument();
   });
 });
 
@@ -574,9 +640,9 @@ describe("the approval filters on the search page", () => {
         }),
       ),
     );
-    expect(screen.getAllByTitle("Remove filter Approved by: kakhovka-watch").length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle("Remove filter Approvals: Approved only").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Filters (2)" })).toBeInTheDocument();
+    expect(screen.getByTitle("Remove filter Approved by: kakhovka-watch")).toBeInTheDocument();
+    expect(screen.getByTitle("Remove filter Approved only")).toBeInTheDocument();
+    expect(within(rail()).getByRole("switch", { name: "Approved only" })).toBeChecked();
   });
 
   it("commits Approved only from the panel into the URL", async () => {
@@ -584,8 +650,7 @@ describe("the approval filters on the search page", () => {
 
     render(<SearchPage />);
     await screen.findByText("Kakhovka spillway");
-    fireEvent.click(within(rail()).getByRole("button", { name: "Toggle People" }));
-    fireEvent.click(within(rail()).getByRole("button", { name: "Approved only" }));
+    fireEvent.click(within(rail()).getByRole("switch", { name: "Approved only" }));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/search?q=kakhovka&approved=true"));
   });
@@ -748,24 +813,30 @@ describe("the shortcut under the search field", () => {
     expect(setViewState).toHaveBeenCalledWith({ latitude: 31.46939, longitude: 34.3851, zoom: 14 });
   });
 
-  it("leads to the analyst a query names exactly", async () => {
+  it("lists the analyst a query names exactly once, first in its section", async () => {
     searchParams = new URLSearchParams("q=%40KAKHOVKA_WATCH");
-    searchSections.mockResolvedValue(sections([userHit()], { query: "@KAKHOVKA_WATCH" }));
+    const other = { ...userHit(), id: "u3", username: "kakhovka_fan", username_highlight: "kakhovka_fan" };
+    searchSections.mockResolvedValue(sections([other, userHit()], { query: "@KAKHOVKA_WATCH" }));
     render(<SearchPage />);
 
     const rows = await screen.findAllByRole("link", { name: "kakhovka_watch" });
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveAttribute("href", "/profile/kakhovka_watch");
+    expect(rows).toHaveLength(1);
+    const analysts = within(screen.getByRole("region", { name: "Analysts" })).getAllByRole("link");
+    expect(analysts[0]).toHaveAttribute("href", "/profile/kakhovka_watch");
   });
 
-  it("leads to the organization a query names by its name", async () => {
+  it("lists the organization a query names by its name once, first in its section", async () => {
     searchParams = new URLSearchParams("q=kakhovka+watch");
-    searchSections.mockResolvedValue(sections([orgHit()], { query: "kakhovka watch" }));
+    const other = { ...orgHit(), id: "o2", slug: "watchers", name: "Watchers", name_highlight: "Watchers" };
+    searchSections.mockResolvedValue(sections([other, orgHit()], { query: "kakhovka watch" }));
     render(<SearchPage />);
 
     const rows = await screen.findAllByRole("link", { name: "Kakhovka Watch" });
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveAttribute("href", "/organizations/kakhovka-watch");
+    expect(rows).toHaveLength(1);
+    const organizations = within(screen.getByRole("region", { name: "Organizations" })).getAllByRole(
+      "link",
+    );
+    expect(organizations[0]).toHaveAttribute("href", "/organizations/kakhovka-watch");
   });
 });
 

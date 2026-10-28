@@ -65,6 +65,7 @@ describe("the event filter keys", () => {
       sourceKinds: ["drone"], levels: ["direct"],
       tags: ["drone", "night"],
       mediaTypes: ["video"],
+      locationGuess: ["blind"],
       author: " ana ",
       approved: true,
       approvedBy: { kind: "analyst", username: "bo" },
@@ -75,7 +76,8 @@ describe("the event filter keys", () => {
     });
     expect(params.toString()).toBe(
       "status=geolocated&conflict=Ukraine&source_kind=drone&level=direct&tag=drone&tag=night&media=video" +
-        "&author=ana&approved=true&approved_by=bo&occurred_date_from=2026-01-01&submitted_to=2026-02-01",
+        "&author=ana&has_coords=false&approved=true&approved_by=bo&occurred_date_from=2026-01-01" +
+        "&submitted_to=2026-02-01",
     );
     expect(readEventFilterParams(params)).toEqual({
       show: ["geolocated"],
@@ -83,6 +85,7 @@ describe("the event filter keys", () => {
       sourceKinds: ["drone"], levels: ["direct"],
       tags: ["drone", "night"],
       mediaTypes: ["video"],
+      locationGuess: ["blind"],
       author: "ana",
       approved: true,
       approvedBy: { kind: "analyst", username: "bo" },
@@ -156,32 +159,27 @@ describe("exactProfile", () => {
 });
 
 describe("the Show pick", () => {
-  const STATUSES = ["requested", "detected", "geolocated"];
-
   it("lists every type with no chip selected, and only what the selected chips name", () => {
-    expect(searchTypes([], [])).toEqual([]);
-    expect(searchTypes(["geolocated"], [])).toEqual(["event"]);
-    expect(searchTypes([], ["site"])).toEqual(["site"]);
-    expect(searchTypes(["detected"], ["site", "collection"])).toEqual([
-      "event",
-      "site",
-      "collection",
-    ]);
+    expect(searchTypes([])).toEqual([]);
+    expect(searchTypes(["geolocated"])).toEqual(["event"]);
+    expect(searchTypes(["site"])).toEqual(["site"]);
+    expect(searchTypes(["detected", "site", "collection"])).toEqual(["event", "site", "collection"]);
   });
 
   it("writes the pick in the GET /search vocabulary and reads it back", () => {
-    const params = searchPageParams("depot", ["site"], { show: ["geolocated"], author: "ana" });
+    const params = searchPageParams("depot", { show: ["geolocated", "site"], author: "ana" });
     expect(params.toString()).toBe("q=depot&type=event&type=site&status=geolocated&author=ana");
-    expect(readShowPick(params, STATUSES)).toEqual({ statuses: ["geolocated"], kinds: ["site"] });
+    expect(readShowPick(params)).toEqual(["geolocated", "site"]);
   });
 
   it("reads type=event alone as every status, and drops values no chip offers", () => {
-    expect(readShowPick(new URLSearchParams("type=event"), STATUSES)).toEqual({
-      statuses: STATUSES,
-      kinds: [],
-    });
+    expect(readShowPick(new URLSearchParams("type=event"))).toEqual([
+      "requested",
+      "detected",
+      "geolocated",
+    ]);
     expect(
-      readShowPick(new URLSearchParams("type=geolocation&type=collection&status=closed"), STATUSES),
-    ).toEqual({ statuses: [], kinds: ["collection"] });
+      readShowPick(new URLSearchParams("type=geolocation&type=collection&status=closed")),
+    ).toEqual(["collection"]);
   });
 });

@@ -123,7 +123,9 @@ const FOCUSABLE =
  * **Variant.** `media` dims to near black under the corner controls, so pixels
  * read at full contrast. `dialog` dims and blurs the page in the theme's own
  * canvas and draws no corner controls: the content carries its own exit,
- * marked `data-overlay-close` so focus lands on it.
+ * marked `data-overlay-close` so focus lands on it. `sheet` is the dialog
+ * docked to the bottom edge at full width, at most 85% of the screen tall and
+ * scrolling inside: the phone's filter panel.
  *
  * **Layer.** Portalled to `document.body` at a z-index above every floating
  * surface (map panels 1000, sidebar 1100, banner 1200). `fixed` resolves
@@ -139,7 +141,7 @@ export function MediaOverlay({
 }: {
   /** Accessible name for the dialog. */
   label: string;
-  variant?: "media" | "dialog";
+  variant?: "media" | "dialog" | "sheet";
   /** Extra corner controls, rendered left of the close button. */
   actions?: ReactNode;
   onClose: () => void;
@@ -206,9 +208,19 @@ export function MediaOverlay({
           leaves a band above scroll origin that no gesture reaches (where the
           close cluster hangs). The child is sized by its content, so a tall
           frame scrolls instead of being cut. */}
-      <div className="flex h-full w-full items-start justify-center overflow-y-auto p-6">
+      <div
+        className={cn(
+          "flex h-full w-full justify-center",
+          variant === "sheet" ? "items-end" : "items-start overflow-y-auto p-6",
+        )}
+      >
         <div
-          className="relative my-auto max-w-full"
+          className={cn(
+            "relative",
+            variant === "sheet"
+              ? "max-h-[85dvh] w-full overflow-y-auto rounded-t-xl border-t border-neutral-700 bg-neutral-900 px-4 pt-3 pb-4"
+              : "my-auto max-w-full",
+          )}
           onClick={(e) => e.stopPropagation()}
         >
           {children}

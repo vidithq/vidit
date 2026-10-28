@@ -1,6 +1,18 @@
 import type { Account } from "@/components/ui/AccountPicker";
+import {
+  DATE_DIMENSIONS,
+  DATE_KEYS,
+  DIMENSIONS,
+  FILTER_STATUSES,
+  SHOW_KINDS,
+  hasCoordsFilter,
+  locationGuessOf,
+  showScope,
+  splitShow,
+  type DimensionKey,
+  type FilterState,
+} from "@/components/filters/model";
 import { apiFetch } from "./api";
-import { showFieldScope } from "./showField";
 import type { components } from "./api-types";
 import type {
   SearchHit,
@@ -16,7 +28,7 @@ type SearchOptions = { q: string; types?: SearchHitType[] } & EventFilterParams;
 function searchQuery(opts: SearchOptions, extra: Record<string, string>): string {
   const params = new URLSearchParams({ q: opts.q, ...extra });
   appendSearchTypes(params, opts.types ?? []);
-  appendEventFilterParams(params, opts);
+  appendEventFilterParams(params, { ...opts, show: splitShow(opts.show ?? []).statuses });
   return params.toString();
 }
 
@@ -39,30 +51,17 @@ export function searchSections(opts: SearchOptions): Promise<SearchSections> {
   return apiFetch<SearchSections>(`/search/sections?${searchQuery(opts, {})}`);
 }
 
-/** The types other than events, in the order of their Show chips and sections. */
-export const SEARCH_KINDS: ReadonlyArray<Exclude<SearchHitType, "event">> = [
-  "site",
-  "collection",
-  "user",
-  "organization",
-];
+/** The path of `GET /search/dates`: the events `search` would list for the same options, counted
+ *  per day on each date axis, each axis ignoring its own window. */
+export function searchDatesPath(opts: SearchOptions): string {
+  return `/search/dates?${searchQuery(opts, {})}`;
+}
 
-/** The filter sections each kind answers, the rest leaving it out of the list. Mirrors backend
- *  `services/search._TYPE_FILTERS`; change both. */
-export const SEARCH_KIND_SECTIONS: Record<
-  Exclude<SearchHitType, "event">,
-  ReadonlyArray<"tags" | "author">
-> = {
-  site: ["author"],
-  collection: ["tags", "author"],
-  user: [],
-  organization: [],
-};
-
-/** The hit types a Show pick lists, by the Show field's one rule (`showFieldScope`). Every type
- *  shows while no chip is selected, which `GET /search` reads as no `type` sent. */
-export function searchTypes(statuses: string[], kinds: SearchHitType[]): SearchHitType[] {
-  const scope = showFieldScope(statuses, kinds.length > 0);
+/** The hit types a Show pick lists, by the Show field's one rule (`showScope`). Every type shows
+ *  while no chip is selected, which `GET /search` reads as no `type` sent. */
+export function searchTypes(show: string[]): SearchHitType[] {
+  const { statuses, kinds } = splitShow(show);
+  const scope = showScope(show);
   if (scope.events && scope.others) return statuses.length > 0 ? ["event", ...kinds] : [];
   return scope.events ? ["event"] : kinds;
 }
@@ -71,85 +70,64 @@ function appendSearchTypes(params: URLSearchParams, types: SearchHitType[]): voi
   for (const type of types) params.append("type", type);
 }
 
-/** The search page's URL for a query, its Show pick and its filters: the `GET /search`
- *  vocabulary, so a profile link and the page read one format. */
-export function searchPageParams(
-  q: string,
-  kinds: SearchHitType[],
-  filters: EventFilterParams,
-): URLSearchParams {
+/** The search page's URL for a query and its filters: the `GET /search` vocabulary, so a
+ *  profile link and the page read one format. */
+export function searchPageParams(q: string, filters: EventFilterParams): URLSearchParams {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
-  appendSearchTypes(params, searchTypes(filters.show ?? [], kinds));
-  appendEventFilterParams(params, filters);
+  const show = filters.show ?? [];
+  appendSearchTypes(params, searchTypes(show));
+  appendEventFilterParams(params, { ...filters, show: splitShow(show).statuses });
   return params;
 }
 
-/** The Show pick a URL names: the kinds of its `type` values and the statuses of its `status`
+/** The Show pick a URL names: the statuses of its `status` values and the kinds of its `type`
  *  values, both gated to the chips' vocabulary. A `type=event` with no status names every
  *  status. */
-export function readShowPick(
-  params: { getAll(name: string): string[] },
-  statusOptions: ReadonlyArray<string>,
-): { statuses: string[]; kinds: SearchHitType[] } {
+export function readShowPick(params: { getAll(name: string): string[] }): string[] {
   const types = params.getAll("type");
-  const named = params.getAll("status").filter((s) => statusOptions.includes(s));
-  const kinds = SEARCH_KINDS.filter((kind) => types.includes(kind));
-  const statuses = named.length === 0 && types.includes("event") ? [...statusOptions] : named;
-  return { statuses, kinds };
+  const named = params.getAll("status").filter((s) => (FILTER_STATUSES as ReadonlyArray<string>).includes(s));
+  const statuses = named.length === 0 && types.includes("event") ? [...FILTER_STATUSES] : named;
+  return [...statuses, ...SHOW_KINDS.filter((kind) => types.includes(kind))];
 }
 
-/** The approval filter values: `approved`, and the account `approvedBy` names. */
-export interface ApprovalFilters {
-  approved: boolean;
-  approvedBy: Account | null;
-}
+/** The filter values a request or a URL carries: the panel's state less the feed's Following. */
+export type EventFilterParams = Partial<Omit<FilterState, "following">>;
 
-/** The date fields share the `DateWindows` names, so a surface spreads its windows in. */
-export interface EventFilterParams extends Partial<ApprovalFilters> {
-  /** The Show filter, sent as `status`. */
-  show?: string[];
-  conflicts?: string[];
-  sourceKinds?: string[];
-  levels?: string[];
-  tags?: string[];
-  mediaTypes?: string[];
-  author?: string;
-  hasCoords?: boolean;
-  eventFrom?: string;
-  eventTo?: string;
-  addedFrom?: string;
-  addedTo?: string;
-}
+const LIST_PARAMS: ReadonlyArray<[keyof EventFilterParams & string, DimensionKey]> = [
+  ["show", "show"],
+  ["conflicts", "conflict"],
+  ["sourceKinds", "sourceKind"],
+  ["levels", "level"],
+  ["tags", "tags"],
+  ["mediaTypes", "media"],
+];
 
-/** The filter set under its wire names, the one mapping the query string and a JSON body
- *  (`SearchMatch.filters`, `lib/collections.ts`) both read. A list is any-match within itself
- *  and AND across lists. An author the `AUTHOR_FILTER_RE` gate refuses is dropped rather than
- *  sent to a 422. */
+/** The filter set under its wire names (`DIMENSIONS`), the one mapping the query string and a
+ *  JSON body (`SearchMatch.filters`, `lib/collections.ts`) both read. A list is any-match within
+ *  itself and AND across lists. An author the `AUTHOR_FILTER_RE` gate refuses is dropped rather
+ *  than sent to a 422. */
 export function eventFilterFields(
   f: EventFilterParams,
 ): Record<string, string[] | string | boolean> {
   const fields: Record<string, string[] | string | boolean> = {};
-  const lists: Array<[string, string[] | undefined]> = [
-    ["status", f.show],
-    ["conflict", f.conflicts],
-    ["source_kind", f.sourceKinds],
-    ["level", f.levels],
-    ["tag", f.tags],
-    ["media", f.mediaTypes],
-  ];
-  for (const [key, values] of lists) if (values?.length) fields[key] = values;
+  for (const [field, key] of LIST_PARAMS) {
+    const values = f[field] as string[] | undefined;
+    if (values?.length) fields[DIMENSIONS[key].param] = values;
+  }
   const author = f.author?.trim();
-  if (author && AUTHOR_FILTER_RE.test(author)) fields.author = author;
-  if (f.hasCoords !== undefined) fields.has_coords = f.hasCoords;
-  if (f.approved) fields.approved = true;
+  if (author && AUTHOR_FILTER_RE.test(author)) fields[DIMENSIONS.author.param] = author;
+  const hasCoords = hasCoordsFilter(f.locationGuess ?? []);
+  if (hasCoords !== undefined) fields[DIMENSIONS.locationGuess.param] = hasCoords;
+  if (f.approved) fields[DIMENSIONS.approved.param] = true;
   const by = f.approvedBy;
-  if (by?.kind === "analyst") fields.approved_by = by.username;
+  if (by?.kind === "analyst") fields[DIMENSIONS.approvedBy.param] = by.username;
   else if (by) fields.approved_by_org = by.slug;
-  if (f.eventFrom) fields.occurred_date_from = f.eventFrom;
-  if (f.eventTo) fields.occurred_date_to = f.eventTo;
-  if (f.addedFrom) fields.submitted_from = f.addedFrom;
-  if (f.addedTo) fields.submitted_to = f.addedTo;
+  for (const key of DATE_KEYS) {
+    const { from, to, params } = DATE_DIMENSIONS[key];
+    if (f[from]) fields[params[0]] = f[from];
+    if (f[to]) fields[params[1]] = f[to];
+  }
   return fields;
 }
 
@@ -160,32 +138,36 @@ export function appendEventFilterParams(params: URLSearchParams, f: EventFilterP
   }
 }
 
-/** A name the `AUTHOR_FILTER_RE` gate refuses is dropped, so a crafted URL cannot 422 every fetch,
- *  and an organization read from a slug carries the slug as its name. */
+/** The filter values a URL names, `show` holding its statuses. A name the `AUTHOR_FILTER_RE`
+ *  gate refuses is dropped, so a crafted URL cannot 422 every fetch, and an organization read
+ *  from a slug carries the slug as its name. */
 export function readEventFilterParams(params: {
   get(name: string): string | null;
   getAll(name: string): string[];
-}): Required<Omit<EventFilterParams, "hasCoords" | "approvedBy">> & ApprovalFilters {
-  const author = params.get("author") ?? "";
-  const username = params.get("approved_by") ?? "";
+}): Required<EventFilterParams> {
+  const author = params.get(DIMENSIONS.author.param) ?? "";
+  const username = params.get(DIMENSIONS.approvedBy.param) ?? "";
   const slug = params.get("approved_by_org") ?? "";
   let approvedBy: Account | null = null;
   if (AUTHOR_FILTER_RE.test(username)) approvedBy = { kind: "analyst", username };
   else if (AUTHOR_FILTER_RE.test(slug)) approvedBy = { kind: "organization", slug, name: slug };
+  const list = (key: DimensionKey) => params.getAll(DIMENSIONS[key].param);
+  const date = (name: string) => params.get(name) ?? "";
   return {
-    show: params.getAll("status"),
-    conflicts: params.getAll("conflict"),
-    sourceKinds: params.getAll("source_kind"),
-    levels: params.getAll("level"),
-    tags: params.getAll("tag"),
-    mediaTypes: params.getAll("media"),
+    show: list("show"),
+    conflicts: list("conflict"),
+    sourceKinds: list("sourceKind"),
+    levels: list("level"),
+    tags: list("tags"),
+    mediaTypes: list("media"),
+    locationGuess: locationGuessOf(params.get(DIMENSIONS.locationGuess.param)),
     author: AUTHOR_FILTER_RE.test(author) ? author : "",
-    approved: params.get("approved") === "true",
+    approved: params.get(DIMENSIONS.approved.param) === "true",
     approvedBy,
-    eventFrom: params.get("occurred_date_from") ?? "",
-    eventTo: params.get("occurred_date_to") ?? "",
-    addedFrom: params.get("submitted_from") ?? "",
-    addedTo: params.get("submitted_to") ?? "",
+    eventFrom: date(DATE_DIMENSIONS.eventDate.params[0]),
+    eventTo: date(DATE_DIMENSIONS.eventDate.params[1]),
+    addedFrom: date(DATE_DIMENSIONS.added.params[0]),
+    addedTo: date(DATE_DIMENSIONS.added.params[1]),
   };
 }
 

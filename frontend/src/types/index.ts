@@ -126,4 +126,8 @@ export type SearchHitType = SearchHit["type"];
 /** `GET /search/sections`: one section per type with a hit. */
 export type SearchSections = components["schemas"]["SearchSections"];
 
+/** Events per day on each date axis (`GET /search/dates`, `GET /feed/dates`). */
+export type DateHistogram = components["schemas"]["DateHistogram"];
+export type DayCount = components["schemas"]["DayCount"];
+
 export type SearchSection = SearchSections["sections"][number];

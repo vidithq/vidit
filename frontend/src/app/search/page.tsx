@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MapPin, Search as SearchIcon } from "lucide-react";
 import {
@@ -10,19 +10,17 @@ import {
   useSearchSelection,
 } from "@/components/collections/SearchSelection";
 import {
-  SEARCH_KINDS,
-  SEARCH_KIND_SECTIONS,
   exactProfile,
   hitsOf,
   readEventFilterParams,
   readShowPick,
   search,
+  searchDatesPath,
   searchPageParams,
   searchSections,
   searchTypes,
 } from "@/lib/search";
 import { GO_TO_ZOOM, formatCoordinates, parsePastedCoordinates } from "@/lib/coordinates";
-import { showFieldScope } from "@/lib/showField";
 import { useMapState } from "@/contexts/MapStateContext";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { Item } from "@/components/ui/Item";
@@ -33,101 +31,52 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { LoadMoreRow, SeeAllLink } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { ChipBucket } from "@/components/ui/ChipBucket";
-import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
-import { rangeSummary } from "@/components/ui/FilterSection";
 import {
-  ALL_FILTER_SECTIONS,
-  EMPTY_DATE_WINDOWS,
-  EMPTY_EVENT_FILTERS,
-  EventFilterSections,
-  FILTER_NAMES,
-  SHOW_OPTIONS,
-  addedWindowActive,
-  buildActiveFilterPills,
-  buildDateWindowPills,
-  countActiveFilters,
-  eventWindowActive,
-  hasAnyFilter,
-  type DateWindows,
-  type EventFilterPatch,
-  type EventFilterSectionName,
-  type EventFilterValues,
-} from "@/components/filters/EventFilterSections";
-import { FilterBar } from "@/components/filters/FilterBar";
-import { FilterRail } from "@/components/filters/FilterRail";
+  FilterRailPanel,
+  FilterSheetBar,
+  type FilterPanelProps,
+} from "@/components/filters/FilterPanel";
+import {
+  EMPTY_FILTERS,
+  FILTER_STATUSES,
+  anyActive,
+  datesOffered,
+  scopeState,
+  splitShow,
+  type FilterPatch,
+  type FilterState,
+} from "@/components/filters/model";
+import { useTimelines } from "@/components/filters/useTimelines";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { readError, type ReadableError } from "@/lib/errors";
 
-const STATUS_VALUES = SHOW_OPTIONS.map(([value]) => value);
-const SHOW_CHIPS = [
-  ...SHOW_OPTIONS,
-  ...SEARCH_KINDS.map((kind) => [kind, searchTypeLabel(kind)] as const),
-].map(([id, label]) => ({ id, name: id, label }));
+/** A state with the filters its Show pick no longer offers dropped. */
+const scoped = (state: FilterState) => scopeState("search", state);
 
-// The Show field heads the panel through `lead`, so the panel's own status-only one stays off.
-const EVENT_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "show");
-
-/** The filter sections a pick offers: every event section while it lists events, otherwise the
- *  ones its kinds answer. */
-function sectionsFor(eventsListed: boolean, kinds: SearchHitType[]) {
-  if (eventsListed) return EVENT_SECTIONS;
-  const answered = new Set<EventFilterSectionName>(
-    kinds.flatMap((kind) => (kind === "event" ? [] : SEARCH_KIND_SECTIONS[kind])),
-  );
-  return EVENT_SECTIONS.filter((s) => answered.has(s));
-}
-
-type SearchPick = { values: EventFilterValues; dates: DateWindows; kinds: SearchHitType[] };
-
-/** A pick with the filters it no longer offers dropped: once the list holds no event, only the
- *  author and the tags its kinds answer stay, and the date windows go. */
-function scoped(pick: SearchPick): SearchPick {
-  if (showFieldScope(pick.values.show, pick.kinds.length > 0).events) return pick;
-  const offered = sectionsFor(false, pick.kinds);
-  return {
-    kinds: pick.kinds,
-    dates: EMPTY_DATE_WINDOWS,
-    values: {
-      ...EMPTY_EVENT_FILTERS,
-      author: offered.includes("author") ? pick.values.author : "",
-      tags: offered.includes("tags") ? pick.values.tags : [],
-    },
-  };
-}
-
-/** The pick of a section's See all: that kind alone. Events keep the statuses the pick names,
+/** The filters of a section's See all: that kind alone. Events keep the statuses the pick names,
  *  or take every status. */
-function seeAllPick(pick: SearchPick, type: SearchHitType): SearchPick {
+function seeAllFilters(filters: FilterState, type: SearchHitType): FilterState {
   if (type === "event") {
-    const show = pick.values.show.length > 0 ? pick.values.show : STATUS_VALUES;
-    return { ...pick, kinds: [], values: { ...pick.values, show } };
+    const { statuses } = splitShow(filters.show);
+    return { ...filters, show: statuses.length > 0 ? statuses : [...FILTER_STATUSES] };
   }
-  return scoped({ ...pick, kinds: [type], values: { ...pick.values, show: [] } });
+  return scoped({ ...filters, show: [type] });
 }
 
-/** The query and the pick a URL names. */
-function readPage(params: URLSearchParams): { q: string; pick: SearchPick } {
-  const { eventFrom, eventTo, addedFrom, addedTo, ...read } = readEventFilterParams(params);
-  const shown = readShowPick(params, STATUS_VALUES);
+/** The query and the filters a URL names. */
+function readPage(params: URLSearchParams): { q: string; filters: FilterState } {
   return {
     q: params.get("q") ?? "",
-    pick: scoped({
-      // The search list serves no location-guess predicate, so the panel never offers it here.
-      values: { ...read, show: shown.statuses, locationGuess: [] },
-      dates: { eventFrom, eventTo, addedFrom, addedTo },
-      kinds: shown.kinds,
-    }),
+    filters: scoped({ ...EMPTY_FILTERS, ...readEventFilterParams(params), show: readShowPick(params) }),
   };
 }
 
-/** The page's query string for a query and a pick. */
-function pageQuery(q: string, pick: SearchPick): string {
-  return searchPageParams(q, pick.kinds, { ...pick.values, ...pick.dates }).toString();
-}
+/** The page's query string for a query and its filters. */
+const pageQuery = (q: string, filters: FilterState): string =>
+  searchPageParams(q, filters).toString();
 
 const pageHref = (query: string) => (query ? `/search?${query}` : "/search");
 
@@ -135,6 +84,17 @@ const pageHref = (query: string) => (query ? `/search?${query}` : "/search");
 function shownKinds(query: string): string {
   const params = new URLSearchParams(query);
   return [...params.getAll("type"), ...params.getAll("status")].join(",");
+}
+
+/** Whether the filters alone make a search: a picked kind other than a status narrows nothing
+ *  until a query or a filter names what to list. */
+const filtersSearch = (filters: FilterState): boolean =>
+  anyActive("search", { ...filters, show: splitShow(filters.show).statuses });
+
+/** The hits with the profile the query names exactly moved to the front, so it leads its kind. */
+function leadWithNamed(q: string, hits: SearchHit[]): SearchHit[] {
+  const named = exactProfile(q, hits)?.hit;
+  return named ? [named, ...hits.filter((hit) => hit !== named)] : hits;
 }
 
 type SearchRequest = Parameters<typeof search>[0];
@@ -167,25 +127,23 @@ function SearchPageBody() {
   const initial = readPage(searchParams);
 
   const [queryInput, setQueryInput] = useState(initial.q);
-  const [pick, setPick] = useState<SearchPick>(initial.pick);
-  const { values, dates, kinds } = pick;
-  const update = (next: Partial<SearchPick>) => setPick((p) => scoped({ ...p, ...next }));
+  const [filters, setFilters] = useState<FilterState>(initial.filters);
 
   // The debounced snapshot the fetch and URL run on, so typing doesn't fire a request per keystroke.
-  const [committed, setCommitted] = useState({ q: initial.q, ...initial.pick });
+  const [committed, setCommitted] = useState(initial);
 
   // The query string the page last wrote or read, so its own write is not read back as a move.
-  const written = useRef(pageQuery(initial.q, initial.pick));
+  const written = useRef(pageQuery(initial.q, initial.filters));
   const urlQuery = searchParams.toString();
   // Back, Forward and a See all link move the URL: the page takes the view it names at once.
   useEffect(() => {
     const read = readPage(new URLSearchParams(urlQuery));
-    const query = pageQuery(read.q, read.pick);
+    const query = pageQuery(read.q, read.filters);
     if (query === written.current) return;
     written.current = query;
     setQueryInput(read.q);
-    setPick(read.pick);
-    setCommitted({ q: read.q, ...read.pick });
+    setFilters(read.filters);
+    setCommitted(read);
   }, [urlQuery]);
 
   const [results, setResults] = useState<Results | null>(null);
@@ -196,109 +154,27 @@ function SearchPageBody() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<ReadableError | null>(null);
 
-  const { tags, conflicts } = useFilterVocabulary();
-
-  const onPatch: EventFilterPatch = (patch) =>
-    setPick((p) => scoped({ ...p, values: { ...p.values, ...patch } }));
-  const clearFilters = () =>
-    setPick({ values: EMPTY_EVENT_FILTERS, dates: EMPTY_DATE_WINDOWS, kinds: [] });
-  const toggleShow = (chip: string) => {
-    if (STATUS_VALUES.includes(chip)) {
-      const show = values.show.includes(chip)
-        ? values.show.filter((s) => s !== chip)
-        : [...values.show, chip];
-      onPatch({ show });
-      return;
-    }
-    const kind = chip as SearchHitType;
-    update({ kinds: kinds.includes(kind) ? kinds.filter((k) => k !== kind) : [...kinds, kind] });
+  const vocabulary = useFilterVocabulary();
+  const onPatch: FilterPatch = useCallback(
+    (patch) => setFilters((f) => scoped({ ...f, ...patch })),
+    [],
+  );
+  const timelines = useTimelines(
+    datesOffered("search", committed.filters.show)
+      ? searchDatesPath({ q: committed.q.trim(), types: ["event"], ...committed.filters })
+      : null,
+  );
+  const panel: FilterPanelProps = {
+    surface: "search",
+    state: filters,
+    onPatch,
+    onClear: () => setFilters(EMPTY_FILTERS),
+    vocabulary,
+    timelines,
   };
-
-  const eventsListed = showFieldScope(values.show, kinds.length > 0).events;
-  const sections = sectionsFor(eventsListed, kinds);
-
-  const filterPills = buildActiveFilterPills(values, onPatch);
-  const statusPillCount = values.show.length;
-  const activeFilters: ActiveFilter[] = [
-    ...filterPills.slice(0, statusPillCount),
-    ...kinds.map((kind) => ({
-      key: `kind:${kind}`,
-      filter: FILTER_NAMES.show,
-      label: searchTypeLabel(kind),
-      onRemove: () => update({ kinds: kinds.filter((k) => k !== kind) }),
-    })),
-    ...filterPills.slice(statusPillCount),
-    ...buildDateWindowPills(
-      dates,
-      () => update({ dates: { ...dates, eventFrom: "", eventTo: "" } }),
-      () => update({ dates: { ...dates, addedFrom: "", addedTo: "" } }),
-    ),
-  ];
-  const filterCount = countActiveFilters(values, dates) + kinds.length;
 
   // Monotonic request token: late responses apply only if still latest.
   const latestRequestId = useRef<number>(0);
-
-  const panel = (
-    <EventFilterSections
-      tags={tags}
-      conflicts={conflicts}
-      values={values}
-      onPatch={onPatch}
-      sections={sections}
-      lead={[
-        {
-          title: FILTER_NAMES.show,
-          concept: "status",
-          children: (
-            <ChipBucket
-              options={SHOW_CHIPS}
-              selected={[...values.show, ...kinds]}
-              onToggle={toggleShow}
-            />
-          ),
-        },
-      ]}
-      dateSections={
-        eventsListed
-          ? [
-              {
-                title: FILTER_NAMES.eventDate,
-                concept: "occurred_date",
-                summary: rangeSummary(dates.eventFrom, dates.eventTo),
-                active: eventWindowActive(dates),
-                children: (
-                  <DateRange
-                    label={FILTER_NAMES.eventDate}
-                    from={dates.eventFrom}
-                    to={dates.eventTo}
-                    onChange={(from, to) =>
-                      update({ dates: { ...dates, eventFrom: from, eventTo: to } })
-                    }
-                  />
-                ),
-              },
-              {
-                title: FILTER_NAMES.added,
-                concept: "added",
-                summary: rangeSummary(dates.addedFrom, dates.addedTo),
-                active: addedWindowActive(dates),
-                children: (
-                  <DateRange
-                    label={FILTER_NAMES.added}
-                    from={dates.addedFrom}
-                    to={dates.addedTo}
-                    onChange={(from, to) =>
-                      update({ dates: { ...dates, addedFrom: from, addedTo: to } })
-                    }
-                  />
-                ),
-              },
-            ]
-          : []
-      }
-    />
-  );
 
   // Debounced commit of inputs to the snapshot and the URL. A new Show pick is a history entry;
   // typing and the other filters replace the current one, so Back doesn't fill with
@@ -308,17 +184,17 @@ function SearchPageBody() {
       // Identity-preserving: if nothing changed, keep the previous object so the fetch doesn't
       // refire.
       setCommitted((prev) => {
-        const next = { q: queryInput, ...pick };
+        const next = { q: queryInput, filters };
         return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       });
-      const query = pageQuery(queryInput, pick);
+      const query = pageQuery(queryInput, filters);
       if (query === written.current) return;
       const moved = shownKinds(query) !== shownKinds(written.current);
       written.current = query;
       if (moved) router.push(pageHref(query));
       else router.replace(pageHref(query));
     },
-    [queryInput, pick, router],
+    [queryInput, filters, router],
     DEBOUNCE_MS,
   );
 
@@ -328,7 +204,7 @@ function SearchPageBody() {
   // land, so typing never blanks the page.
   useEffect(() => {
     const q = committed.q.trim();
-    if (!q && !hasAnyFilter(committed.values, committed.dates)) {
+    if (!q && !filtersSearch(committed.filters)) {
       latestRequestId.current++;
       setResults(null);
       setLoading(false);
@@ -340,9 +216,9 @@ function SearchPageBody() {
     setError(null);
     const request: SearchRequest = {
       q,
-      types: searchTypes(committed.values.show, committed.kinds),
-      ...committed.values,
-      ...committed.dates,
+      types: searchTypes(committed.filters.show),
+      ...committed.filters,
+      show: splitShow(committed.filters.show).statuses,
     };
     const read: Promise<Results> =
       request.types?.length === 1
@@ -375,18 +251,13 @@ function SearchPageBody() {
 
   const { setViewState, setSelectedId } = useMapState();
   const point = parsePastedCoordinates(queryInput);
-  const shownHits: SearchHit[] = !results
-    ? []
-    : results.mode === "list"
-      ? results.page.hits
-      : results.sections.flatMap((section) => section.hits);
-  const named =
-    results && queryInput.trim() === results.request.q
-      ? exactProfile(results.request.q, shownHits)
-      : null;
   // The bulk add serves the list of events alone, where Select all reads as every match.
   const selection = useSearchSelection(
-    { q: committed.q, ...committed.values, ...committed.dates },
+    {
+      q: committed.q,
+      ...committed.filters,
+      show: splitShow(committed.filters.show).statuses,
+    },
     results?.mode === "list" ? hitsOf(results.page.hits, "event") : [],
   );
 
@@ -422,20 +293,15 @@ function SearchPageBody() {
   // A suggestion replaces the query at once, without waiting out the typing debounce.
   const respell = (q: string) => {
     setQueryInput(q);
-    setCommitted({ q, ...pick });
+    setCommitted({ q, filters });
   };
 
   // Emptiness gates read the LIVE inputs, so clearing the field doesn't flash stale results
   // under the empty state for a debounce window.
-  const searching = !!(queryInput.trim() || hasAnyFilter(values, dates));
+  const searching = !!(queryInput.trim() || filtersSearch(filters));
   const empty =
     !!results &&
     (results.mode === "list" ? results.page.hits.length === 0 : results.sections.length === 0);
-  const committedPick: SearchPick = {
-    values: committed.values,
-    dates: committed.dates,
-    kinds: committed.kinds,
-  };
 
   return (
     <PageShell
@@ -451,11 +317,7 @@ function SearchPageBody() {
           autoFocus
         />
       }
-      rail={
-        <FilterRail pills={activeFilters} onClearAll={clearFilters} sections={sections}>
-          {panel}
-        </FilterRail>
-      }
+      rail={<FilterRailPanel {...panel} />}
       railLabel="Filters"
       narrowRail="hidden"
       stickyActions={
@@ -463,9 +325,8 @@ function SearchPageBody() {
       }
       stickyActionsIdle={selection.count === 0}
     >
-      {/* One shortcut under the field: a typed coordinate pair opens the map there, a query
-          that names an analyst or an organization exactly opens their page. */}
-      {point ? (
+      {/* A typed coordinate pair opens the map there. */}
+      {point && (
         <LinkRow
           icon={MapPin}
           value={formatCoordinates(point.lat, point.lng)}
@@ -478,13 +339,9 @@ function SearchPageBody() {
             setViewState({ latitude: point.lat, longitude: point.lng, zoom: GO_TO_ZOOM });
           }}
         />
-      ) : named ? (
-        <Item variant="list" {...searchHitItem(named.hit)} highlight={undefined} />
-      ) : null}
+      )}
 
-      <FilterBar count={filterCount} pills={activeFilters} onClearAll={clearFilters}>
-        {panel}
-      </FilterBar>
+      <FilterSheetBar {...panel} className="lg:hidden" />
 
       {searching && results?.mode === "list" && <SelectAllRow selection={selection} />}
 
@@ -516,9 +373,9 @@ function SearchPageBody() {
           {results.sections.map((section) => (
             <ResultSection
               key={section.type}
-              section={section}
+              section={{ ...section, hits: leadWithNamed(results.request.q, section.hits) }}
               seeAllHref={pageHref(
-                pageQuery(results.request.q, seeAllPick(committedPick, section.type)),
+                pageQuery(results.request.q, seeAllFilters(committed.filters, section.type)),
               )}
             />
           ))}
@@ -527,7 +384,7 @@ function SearchPageBody() {
 
       {searching && results?.mode === "list" && !empty && (
         <div className="space-y-1.5" aria-busy={loading}>
-          {results.page.hits.map((hit) => (
+          {leadWithNamed(results.request.q, results.page.hits).map((hit) => (
             <SelectableHit key={`${hit.type}:${hit.id}`} hit={hit} selection={selection}>
               <Item variant="list" {...searchHitItem(hit)} />
             </SelectableHit>
@@ -561,38 +418,5 @@ function ResultSection({ section, seeAllHref }: { section: SearchSection; seeAll
         ))}
       </div>
     </section>
-  );
-}
-
-/** The date controls (the map uses timeline scrubbers for the same sections): a from/to pair
- *  of native date inputs. */
-function DateRange({
-  label,
-  from,
-  to,
-  onChange,
-}: {
-  label: string;
-  from: string;
-  to: string;
-  onChange: (from: string, to: string) => void;
-}) {
-  return (
-    // Stacked: two native date controls at the field type size need more width than a row of the
-    // filter rail or of a 320px screen leaves.
-    <div className="flex flex-col gap-2">
-      <Input
-        type="date"
-        value={from}
-        onChange={(e) => onChange(e.target.value, to)}
-        aria-label={`${label} from`}
-      />
-      <Input
-        type="date"
-        value={to}
-        onChange={(e) => onChange(from, e.target.value)}
-        aria-label={`${label} to`}
-      />
-    </div>
   );
 }

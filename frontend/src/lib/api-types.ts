@@ -1774,12 +1774,35 @@ export interface paths {
          *     ``scope=following`` (default) keeps the geolocations credited to analysts
          *     the current user follows and the requests and detections they own, and is
          *     empty when they follow nobody; ``scope=all`` keeps every row. ``kind``
-         *     (``geolocation``, ``request``, ``detected``; all three when omitted), ``conflict``,
-         *     ``source_kind``, ``level``, ``tag``, ``approved``, ``approved_by`` and
-         *     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
-         *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
+         *     (``geolocation``, ``request``, ``detected``; all three when omitted) keeps those kinds,
+         *     and the filter set narrows the rows as on ``GET /events``. Cursor-paged, capped at 100
+         *     rows; the ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
         get: operations["get_feed_api_v1_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feed/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feed Dates
+         * @description The rows ``GET /feed`` walks for the request, counted per day on each date axis.
+         *
+         *     Takes the ``scope``, ``kind`` and filters of ``GET /feed``. ``occurred_date`` ignores the
+         *     request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
+         *     ``submitted_from`` / ``submitted_to``.
+         */
+        get: operations["get_feed_dates_api_v1_feed_dates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2181,6 +2204,31 @@ export interface paths {
          *     this is how a partial name becomes a handle. Empty ``q`` returns [].
          */
         get: operations["suggest_authors_api_v1_search_authors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Dates
+         * @description The events ``GET /search`` lists for the request, counted per day on each date axis.
+         *
+         *     Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
+         *     own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
+         *     / ``submitted_to``. An empty ``q`` with no active filter counts every searchable event; a
+         *     ``type`` without ``event`` counts nothing.
+         */
+        get: operations["search_dates_api_v1_search_dates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4066,6 +4114,27 @@ export interface components {
             /** Lng */
             lng: number;
         };
+        /**
+         * DateHistogram
+         * @description Events per day on each date axis, ascending, days without a row left out
+         *     (``services.event_filters.date_histogram``).
+         */
+        DateHistogram: {
+            /** Occurred Date */
+            occurred_date: components["schemas"]["DayCount"][];
+            /** Submitted */
+            submitted: components["schemas"]["DayCount"][];
+        };
+        /** DayCount */
+        DayCount: {
+            /** Count */
+            count: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+        };
         /** DisplayPreferences */
         DisplayPreferences: {
             /** Help Tooltips */
@@ -4123,6 +4192,8 @@ export interface components {
             author?: string | null;
             /** Conflict */
             conflict?: string[] | null;
+            /** Has Coords */
+            has_coords?: boolean | null;
             /** Level */
             level?: string[] | null;
             /** Media */
@@ -7970,26 +8041,30 @@ export interface operations {
             query?: {
                 view?: string;
                 status?: string[] | null;
-                conflict?: string[] | null;
-                source_kind?: string[] | null;
-                level?: string[] | null;
-                tag?: string[] | null;
                 bbox?: string | null;
-                occurred_date_from?: string | null;
-                occurred_date_to?: string | null;
-                submitted_from?: string | null;
-                submitted_to?: string | null;
-                author?: string | null;
-                /** @description true: approved on the live version */
-                approved?: boolean;
-                approved_by?: string | null;
-                approved_by_org?: string | null;
-                /** @description true: with a location; false: without */
-                has_coords?: boolean | null;
                 sort?: "newest" | "oldest";
                 limit?: number;
                 /** @description Opaque cursor from a Link: rel=next header */
                 cursor?: string | null;
+                conflict?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
+                tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -9219,9 +9294,21 @@ export interface operations {
                 source_kind?: string[] | null;
                 level?: string[] | null;
                 tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
                 approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
                 approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
                 approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -9238,6 +9325,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedItemRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_feed_dates_api_v1_feed_dates_get: {
+        parameters: {
+            query?: {
+                scope?: "following" | "all";
+                kind?: ("geolocation" | "request" | "detected")[] | null;
+                conflict?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
+                tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DateHistogram"];
                 };
             };
             /** @description Validation Error */
@@ -9967,7 +10107,7 @@ export interface operations {
                 occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
-                /** @description Keep the events credited to this username, and the sites and collections it owns (exact, case-insensitive) */
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
                 author?: string | null;
                 media?: string[] | null;
                 /** @description Keep events approved on their live version */
@@ -9976,6 +10116,8 @@ export interface operations {
                 approved_by?: string | null;
                 /** @description Keep events this organization approved on their live version (slug) */
                 approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -10035,6 +10177,60 @@ export interface operations {
             };
         };
     };
+    search_dates_api_v1_search_dates_get: {
+        parameters: {
+            query?: {
+                /** @description Free-text query */
+                q?: string;
+                /** @description Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type */
+                type?: string[] | null;
+                status?: string[] | null;
+                conflict?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
+                tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DateHistogram"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_sections_api_v1_search_sections_get: {
         parameters: {
             query?: {
@@ -10053,7 +10249,7 @@ export interface operations {
                 occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
-                /** @description Keep the events credited to this username, and the sites and collections it owns (exact, case-insensitive) */
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
                 author?: string | null;
                 media?: string[] | null;
                 /** @description Keep events approved on their live version */
@@ -10062,6 +10258,8 @@ export interface operations {
                 approved_by?: string | null;
                 /** @description Keep events this organization approved on their live version (slug) */
                 approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
             };
             header?: never;
             path?: never;
