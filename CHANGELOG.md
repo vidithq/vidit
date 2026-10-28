@@ -26,9 +26,12 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A pulsing dot above the basemap control shows while the daily satellite imagery or the fire detections are still loading, including after you move the map ([#758](https://github.com/vidithq/vidit/pull/761)).
 - In the basemap control, a `?` beside each basemap, label setting, layer and overlay says what it shows and links to the source of its data or tiles ([#757](https://github.com/vidithq/vidit/pull/757)).
 - When the basemap's tile server does not respond, offline or with one provider down, a line over the map says so instead of leaving it blank ([#792](https://github.com/vidithq/vidit/pull/792)).
+- Saving a site edit asks for an optional version note, like an event edit, and the site's history shows it ([#800](https://github.com/vidithq/vidit/pull/800)).
 
 ### Changed
 
+- A site zone covers at most 1,000 km², down from 10,000 km²: the contour editor says so while you draw, and areas read with thousands separators ([#800](https://github.com/vidithq/vidit/pull/800)).
+- Filing a source on a site opens the site page, like the other submit forms, in place of a separate confirmation page ([#800](https://github.com/vidithq/vidit/pull/800)).
 - Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a request page, the asker sees Edit, which opens the request's form, and every other reader sees Geolocate; the asker no longer gets both for the same page ([#794](https://github.com/vidithq/vidit/pull/794)).
@@ -75,6 +78,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A source shows when it was posted on its own Posted row, so an unknown post date no longer reads as an unknown capture date ([#800](https://github.com/vidithq/vidit/pull/800)).
+- The site edit form no longer shows a missing count on Save before you change anything ([#800](https://github.com/vidithq/vidit/pull/800)).
 - A collection's owner no longer sees Report on their own collection ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a phone, the pinned actions and the menu button sit on one full-width bar once the page scrolls, so fields and lists no longer show between them ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a wide screen, the pinned actions stay on one line, such as Approve, Accept and Decline on an invitation ([#794](https://github.com/vidithq/vidit/pull/794)).
