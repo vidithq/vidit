@@ -21,18 +21,16 @@ import {
   DATE_KEYS,
   DIMENSIONS,
   FILTER_GROUPS,
-  activePills,
+  anyActive,
   datesOffered,
-  dimensionOptions,
-  dimensionPills,
   offeredDimensions,
   type DateKey,
   type DimensionKey,
   type FilterPatch,
   type FilterState,
   type Surface,
-  type Vocabulary,
 } from "./model";
+import { activePills, dimensionOptions, dimensionPills, type Vocabulary } from "./labels";
 
 type SetPlaying = (v: boolean | ((prev: boolean) => boolean)) => void;
 
@@ -194,7 +192,7 @@ export function FilterPanel({
     title: g.title,
     dimensions: g.dimensions.filter((d) => offered.includes(d)),
   })).filter((g) => g.dimensions.length > 0);
-  const active = activePills(surface, state, vocabulary, onPatch).length > 0;
+  const active = anyActive(surface, state);
   return (
     <div className="space-y-4">
       {datesOffered(surface, state.show) && (

@@ -1,60 +1,24 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { CONFLICTS, REQUESTED_EVENT, TAGS } from "./support/fixtures";
+import { LONG_TAG_NAME, REQUESTED_EVENT } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
 import {
   expectControlInsideViewport,
   expectNarrowViewportLayout,
   expectNoHorizontalOverflow,
+  expectReadableFieldText,
 } from "./support/narrowLayout";
 
-type Pick = (page: Page, panel: Locator) => Promise<void>;
-
-const pickChip =
-  (name: string): Pick =>
-  (_page, panel) =>
-    panel.getByRole("button", { name, exact: true }).click();
-
-// The list renders in a portal on the body, outside the panel.
-const pickConflict: Pick = async (page, panel) => {
-  await panel.getByRole("combobox", { name: "Conflict" }).fill("russian");
-  await page
-    .getByRole("listbox", { name: "Conflict" })
-    .getByRole("option", { name: new RegExp(`^${CONFLICTS[0].name}`) })
-    .click();
-  await expect(
-    panel.getByRole("button", { name: new RegExp(`^Remove ${CONFLICTS[0].name}`) }),
-  ).toBeVisible();
-};
-
 /**
- * The filter rail on the three lists that carry it. From `lg` up the panel is a
- * sticky right rail beside the list; below `lg` it leaves the page and a
- * "Filters (N)" button at the top of the list opens it full screen, where each
- * pick applies at once, with Clear and Done in reach.
+ * The filter panel on the three lists that carry it. From `lg` up the panel is a sticky right
+ * rail beside the list; below `lg` it leaves the page, and a bar of the Filters button and the
+ * active filters opens it in a sheet from the bottom edge. A line of the panel opens its editor in
+ * a popover over the sheet, and each pick applies at once.
  */
 const PAGES = [
-  {
-    name: "feed",
-    path: "/feed",
-    signedIn: true,
-    pick: pickChip("Requested"),
-    column: (page: Page) => page.getByRole("link", { name: REQUESTED_EVENT.title }),
-  },
-  {
-    name: "requests",
-    path: "/requests",
-    signedIn: false,
-    pick: pickConflict,
-    column: (page: Page) => page.getByRole("link", { name: REQUESTED_EVENT.title }),
-  },
-  {
-    name: "search",
-    path: "/search?q=rail",
-    signedIn: false,
-    pick: pickConflict,
-    column: (page: Page) => page.getByRole("link", { name: REQUESTED_EVENT.title }),
-  },
+  { name: "feed", path: "/feed", signedIn: true },
+  { name: "requests", path: "/requests", signedIn: false },
+  { name: "search", path: "/search?q=rail", signedIn: false },
 ];
 
 async function open(page: Page, path: string, signedIn: boolean) {
@@ -63,9 +27,21 @@ async function open(page: Page, path: string, signedIn: boolean) {
   await page.goto(path);
 }
 
+/** Picks the long tag through the Tags line of `panel`, whose editor is a popover on the body. */
+async function pickLongTag(page: Page, panel: Locator) {
+  await panel.getByRole("button", { name: "Tags", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Tags" });
+  await expect(editor).toBeVisible();
+  await expect(editor).toBeInViewport({ ratio: 1 });
+  await editor.getByRole("button", { name: LONG_TAG_NAME }).click();
+  await editor.press("Escape");
+  await expect(editor).toBeHidden();
+  await expect(panel.getByRole("button", { name: `Remove ${LONG_TAG_NAME}` })).toBeVisible();
+}
+
 for (const target of PAGES) {
   test.describe(target.name, () => {
-    test("opens the filters full screen from the Filters button", async ({ page }) => {
+    test("opens the filters in a sheet from the Filters button", async ({ page }) => {
       await open(page, target.path, target.signedIn);
 
       const button = page.getByRole("button", { name: "Filters", exact: true });
@@ -73,58 +49,58 @@ for (const target of PAGES) {
       await expect(page.getByRole("complementary", { name: "Filters" })).toBeHidden();
 
       await button.click();
-      const dialog = page.getByRole("dialog", { name: "Filters" });
-      await expect(dialog).toBeVisible();
-      await target.pick(page, dialog);
+      const sheet = page.getByRole("dialog", { name: "Filters" });
+      await expect(sheet).toBeVisible();
+      await expect(sheet.getByRole("slider", { name: "Event date window start" })).toBeVisible();
+      await expectReadableFieldText(page);
+      await pickLongTag(page, sheet);
       await expectNoHorizontalOverflow(page);
-      await expectControlInsideViewport(page, dialog.getByRole("button", { name: "Clear" }));
-      const done = dialog.getByRole("button", { name: "Done" });
+      await expectControlInsideViewport(page, sheet.getByRole("button", { name: "Clear all" }));
+      const done = sheet.getByRole("button", { name: "Done" });
       await expectControlInsideViewport(page, done);
-      await expect(page.getByRole("button", { name: "Filters (1)" })).toBeAttached();
 
       await done.click();
-      await expect(dialog).toBeHidden();
-      await expect(page.getByRole("button", { name: "Filters (1)" })).toBeVisible();
+      await expect(sheet).toBeHidden();
+      await expect(page.getByTitle(`Remove filter Tags: ${LONG_TAG_NAME}`)).toBeVisible();
       await expectNoHorizontalOverflow(page);
     });
 
-    test("keeps the panel in a sticky rail beside the list on a wide screen", async ({
-      page,
-    }) => {
+    test("keeps the panel in a sticky rail beside the list on a wide screen", async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 800 });
       await open(page, target.path, target.signedIn);
 
       const rail = page.getByRole("complementary", { name: "Filters" });
-      await expect(rail.getByRole("combobox", { name: "Tags" })).toBeVisible();
+      await expect(rail.getByRole("heading", { name: "When" })).toBeVisible();
+      await expect(rail.getByRole("button", { name: "Tags", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeHidden();
       await expect(rail).toHaveCSS("position", "sticky");
 
-      const column = target.column(page);
+      const column = page.getByRole("link", { name: REQUESTED_EVENT.title });
       await expect(column).toBeVisible();
       const [railBox, columnBox] = [(await rail.boundingBox())!, (await column.boundingBox())!];
       expect(railBox.x, "the rail sits right of the list").toBeGreaterThanOrEqual(
         columnBox.x + columnBox.width,
       );
+
+      // The editor floats over the page: nothing in the rail moves when it opens.
+      const media = rail.getByRole("button", { name: "Media", exact: true });
+      const before = (await media.boundingBox())!;
+      await rail.getByRole("button", { name: "Tags", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Tags" })).toBeVisible();
+      expect((await media.boundingBox())!.y).toBe(before.y);
       await expectNoHorizontalOverflow(page);
     });
   });
 }
 
-test("picks and removes a tag through the search field, in the URL", async ({ page }) => {
+test("picks and removes a tag through its line, in the URL", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await open(page, "/search", false);
 
   const rail = page.getByRole("complementary", { name: "Filters" });
-  await rail.getByRole("combobox", { name: "Tags" }).fill("dro");
-  const list = page.getByRole("listbox", { name: "Tags" });
-  await expect(list.getByRole("option")).toHaveText([TAGS[0].name]);
-  await list.getByRole("option", { name: TAGS[0].name }).click();
-  await expect(page).toHaveURL(new RegExp(`[?&]tag=${TAGS[0].name}(&|$)`));
+  await pickLongTag(page, rail);
+  await expect(page).toHaveURL(/[?&]tag=/);
 
-  // The list stays open for the next pick, and with the active pills heading the rail it can open
-  // above the field, over the chips.
-  await page.keyboard.press("Escape");
-  await expect(list).toBeHidden();
-  await rail.getByRole("button", { name: `Remove ${TAGS[0].name}` }).click();
+  await rail.getByRole("button", { name: `Remove ${LONG_TAG_NAME}` }).click();
   await expect(page).not.toHaveURL(/[?&]tag=/);
 });

@@ -15,37 +15,46 @@ test.describe("map", () => {
     await mockApi(page);
     await page.goto("/map");
 
-    const filters = page.getByRole("button", { name: "Filters" });
+    const filters = page.getByRole("button", { name: "Filters", exact: true });
     await expectNarrowViewportLayout(page, filters);
   });
 
-  test("opens the filter panel on a narrow column", async ({ page }) => {
+  test("opens the filter panel in a sheet on a narrow column", async ({ page }) => {
     await mockApi(page);
     await page.goto("/map");
 
-    const filters = page.getByRole("button", { name: "Filters" });
+    const filters = page.getByRole("button", { name: "Filters", exact: true });
     await expect(filters).toBeVisible();
     await filters.click();
+    const sheet = page.getByRole("dialog", { name: "Filters" });
+    await expect(sheet).toBeVisible();
 
-    // The panel's own sections are where a phone column runs out of room, so
-    // the three checks run again with the panel open.
+    // The panel's own lines are where a phone column runs out of room, so the three checks run
+    // again with the sheet open, and again with a line's editor over it.
+    await expectNarrowViewportLayout(page, sheet.getByRole("button", { name: "Done" }));
+    await sheet.getByRole("button", { name: "Show", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "Show" });
+    await expect(editor).toBeInViewport({ ratio: 1 });
+    await editor.getByRole("button", { name: "Sites" }).click();
+    await editor.press("Escape");
+    await sheet.getByRole("button", { name: "Done" }).click();
+    await expect(page.getByTitle("Remove filter Show: Sites").filter({ visible: true })).toBeVisible();
     await expectNarrowViewportLayout(page, filters);
   });
 
-  // The open panel runs down the column, and the map's bottom-left row (zoom,
-  // locate, basemap, attribution) sits under it: the attribution wraps to
-  // three lines at 320px, so the panel has to stop above the tallest of them.
+  // From `lg` up the panel floats under its header, and the map's bottom-left row (zoom, locate,
+  // basemap) sits under it: a tall open panel stops above that row and scrolls the rest.
   test("keeps the open filter panel above the map's bottom-left controls", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 640 });
     await mockApi(page);
     await page.goto("/map");
 
-    const filters = page.getByRole("button", { name: "Filters" });
-    await filters.click();
-    await page.getByRole("button", { name: "Toggle Source" }).click();
-    await page.getByRole("button", { name: "Toggle People" }).click();
+    const header = page.getByRole("button", { name: /^Filters/ }).first();
+    await header.click();
+    await expect(page.getByRole("heading", { name: "When" })).toBeVisible();
     await expect(page.locator(".maplibregl-ctrl-bottom-left .maplibregl-ctrl-group").first()).toBeVisible();
 
-    const panel = (await filters.locator("..").boundingBox())!;
+    const panel = (await header.locator("..").boundingBox())!;
     const controls = await page
       .locator(".maplibregl-ctrl-bottom-left > *")
       .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
@@ -59,35 +68,24 @@ test.describe("map", () => {
     }
   });
 
-  // `TAP_STEP` sits on each `<FilterSection>` header toggle, not on the row
-  // holding the two of them: on the row it sizes the row and leaves each
-  // button at its own 16px line box, a 36px strip a thumb misses two thirds of
-  // the time. Measured on the border box each toggle actually presents.
-  test("a filter section header is a 36px tap target", async ({ page }) => {
+  // `TAP_STEP` sits on each line of the panel, so a line that opens an editor and a switch line
+  // are each a 36px target on a phone. Measured on the border box each line presents.
+  test("a filter line is a 36px tap target", async ({ page }) => {
     await mockApi(page);
     await page.goto("/map");
 
-    await page.getByRole("button", { name: "Filters" }).click();
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    const sheet = page.getByRole("dialog", { name: "Filters" });
+    const lines = sheet.locator('button[aria-haspopup="dialog"], button[role="switch"]');
+    await expect(lines.first()).toBeVisible();
+    expect(await lines.count(), "the filter panel rendered no lines").toBeGreaterThan(1);
 
-    // Both halves of each header: the summary and chevron, which names itself
-    // `Toggle <section>`, and the title beside it, which carries
-    // `aria-expanded` and no name of its own (the Next dev-tools launcher, on
-    // a dev server, is another `aria-expanded` button, and it has one).
-    const toggles = page.locator(
-      'button[aria-label^="Toggle "], button[aria-expanded]:not([aria-label])',
-    );
-    await expect(toggles.first()).toBeVisible();
-    expect(
-      await toggles.count(),
-      "the filter panel rendered no section headers",
-    ).toBeGreaterThan(1);
-
-    for (const toggle of await toggles.all()) {
-      const box = await toggle.boundingBox();
-      expect(box, "a section toggle has no bounding box").not.toBeNull();
+    for (const line of await lines.all()) {
+      const box = await line.boundingBox();
+      expect(box, "a filter line has no bounding box").not.toBeNull();
       expect(
         (box as { height: number }).height,
-        "a filter section toggle stands under the phone tap step",
+        "a filter line stands under the phone tap step",
       ).toBeGreaterThanOrEqual(36);
     }
   });

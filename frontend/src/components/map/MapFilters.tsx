@@ -8,14 +8,8 @@ import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { CARD_FRAME } from "@/components/ui/Card";
 import { Dot } from "@/components/ui/Dot";
 import { FilterPanel, FilterSheetBar, type FilterPanelProps } from "@/components/filters/FilterPanel";
-import {
-  EMPTY_FILTERS,
-  activePills,
-  dayCounts,
-  inWindow,
-  type FilterPatch,
-  type Vocabulary,
-} from "@/components/filters/model";
+import { EMPTY_FILTERS, dayCounts, inWindow, type FilterPatch } from "@/components/filters/model";
+import { activePills, type Vocabulary } from "@/components/filters/labels";
 import { useMapState } from "@/contexts/MapStateContext";
 import { cn } from "@/lib/cn";
 

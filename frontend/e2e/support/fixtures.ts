@@ -64,7 +64,7 @@ export const SIGNED_IN_USER: User = {
  * The backend accepts it: `schemas/tag.py` caps the name's length and nothing
  * else, so this is a tag an analyst can actually create.
  */
-const LONG_TAG_NAME = "counterbatteryradarreconnaissance";
+export const LONG_TAG_NAME = "counterbatteryradarreconnaissance";
 
 export const TAGS: Tag[] = [
   { id: "33333333-3333-4333-8333-333333333331", name: "Drone" },
@@ -705,4 +705,17 @@ export const SEARCH_SECTIONS: SearchSections = {
   ],
   suggestion: null,
   query: "rail",
+};
+
+/** `GET /search/dates` and `GET /feed/dates`: a spread wide enough for both timelines' axes. */
+export const DATE_HISTOGRAM: components["schemas"]["DateHistogram"] = {
+  occurred_date: [
+    { date: "2024-02-24", count: 3 },
+    { date: "2024-11-02", count: 1 },
+    { date: "2025-06-14", count: 5 },
+  ],
+  submitted: [
+    { date: "2025-01-02", count: 2 },
+    { date: "2025-09-30", count: 4 },
+  ],
 };

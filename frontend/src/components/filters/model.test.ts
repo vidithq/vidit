@@ -1,13 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { activePills, dimensionOptions } from "./labels";
 import {
   DIMENSIONS,
   EMPTY_FILTERS,
-  activePills,
   anyActive,
   datesOffered,
   dayCounts,
-  dimensionOptions,
   hasCoordsFilter,
   inWindow,
   offeredDimensions,

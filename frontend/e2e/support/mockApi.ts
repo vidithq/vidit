@@ -16,6 +16,7 @@ import {
   COLLECTION,
   COLLECTION_ID,
   CONFLICTS,
+  DATE_HISTOGRAM,
   SUGGESTED_TAGS,
   TAGS,
   UPLOAD,
@@ -76,6 +77,8 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/feed$/, FEED_ITEMS],
   [/^\/search$/, EMPTY_SEARCH],
   [/^\/search\/sections$/, SEARCH_SECTIONS],
+  // The timelines of search, the feed and the Requests board.
+  [/^\/(search|feed)\/dates$/, DATE_HISTOGRAM],
   [/^\/events\/possible-duplicates$/, []],
   [/^\/tags$/, TAGS],
   [/^\/tags\/suggested$/, SUGGESTED_TAGS],
