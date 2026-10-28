@@ -1,4 +1,5 @@
-"""``GET /search``: one ranked list of events, sites, collections, analysts and organizations.
+"""``GET /search``: one ranked list of events, sites, collections, analysts and organizations,
+and ``GET /search/sections``: the top of that list for each type.
 
 Anonymous like the rest of the read surface; the 60/min per-IP limit is the
 abuse floor. FTS plumbing is in ``services/search.py``.
@@ -7,13 +8,14 @@ abuse floor. FTS plumbing is in ``services/search.py``.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.ratelimit import authenticated_read_quota, limiter
-from app.schemas.search import AuthorSuggestions, SearchResponse
+from app.schemas.search import AuthorSuggestions, SearchResponse, SearchSections
 from app.services import search as search_service
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
@@ -29,24 +31,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("", response_model=SearchResponse)
-@authenticated_read_quota
-@limiter.limit("60/minute")
-def search(
-    request: Request,
+@dataclass(frozen=True)
+class _SearchRequest:
+    q: str
+    types: frozenset[str]
+    filters: EventFilters
+
+
+def _search_request(
     q: str = Query("", description="Free-text query"),
     type: list[str] | None = Query(
         None,
         description=(
             "Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type"
-        ),
-    ),
-    limit: int = Query(20, ge=1, le=50, description="Hits per page"),
-    cursor: str | None = Query(
-        None,
-        description=(
-            "Opaque `cursor` of a previous response: its next page. Send the query, types and"
-            " filters of the request that returned it"
         ),
     ),
     # The standard event filter set (``services/event_filters``). List params take multiple
@@ -78,6 +75,60 @@ def search(
         pattern=AUTHOR_FILTER_PATTERN,
         description="Keep events this organization approved on their live version (slug)",
     ),
+) -> _SearchRequest:
+    """The query, the types and the filters both search reads take, 422 on a value outside its
+    domain."""
+    unknown = sorted(set(type or ()) - set(search_service.SEARCH_TYPES))
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"type must be one of: {', '.join(search_service.SEARCH_TYPES)}",
+        )
+    validate_media_types(media)
+    validate_status_filter(status)
+    validate_source_filters(source_kind, level)
+    return _SearchRequest(
+        q=q,
+        types=frozenset(type or search_service.SEARCH_TYPES),
+        filters=EventFilters(
+            status=status,
+            conflict=conflict,
+            source_kind=source_kind,
+            level=level,
+            tag=tag,
+            occurred_date_from=occurred_date_from,
+            occurred_date_to=occurred_date_to,
+            submitted_from=submitted_from,
+            submitted_to=submitted_to,
+            author=author,
+            media=media,
+            approved=approved,
+            approved_by=approved_by,
+            approved_by_org=approved_by_org,
+        ),
+    )
+
+
+def _suggestion(db: Session, params: _SearchRequest) -> str | None:
+    return search_service.spelling_suggestion(
+        db, query=params.q, types=params.types, filters=params.filters
+    )
+
+
+@router.get("", response_model=SearchResponse)
+@authenticated_read_quota
+@limiter.limit("60/minute")
+def search(
+    request: Request,
+    params: _SearchRequest = Depends(_search_request),
+    limit: int = Query(20, ge=1, le=50, description="Hits per page"),
+    cursor: str | None = Query(
+        None,
+        description=(
+            "Opaque `cursor` of a previous response: its next page. Send the query, types and"
+            " filters of the request that returned it"
+        ),
+    ),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     """One ranked list of events, sites, collections, analysts and organizations.
@@ -91,49 +142,54 @@ def search(
 
     When nothing matches, ``suggestion`` may hold a respelling of ``q`` that finds results.
     """
-    unknown = sorted(set(type or ()) - set(search_service.SEARCH_TYPES))
-    if unknown:
-        raise HTTPException(
-            status_code=422,
-            detail=f"type must be one of: {', '.join(search_service.SEARCH_TYPES)}",
-        )
     after = decode_ranked_cursor(cursor) if cursor is not None else None
-    validate_media_types(media)
-    validate_status_filter(status)
-    validate_source_filters(source_kind, level)
-
-    types = frozenset(type or search_service.SEARCH_TYPES)
-    filters = EventFilters(
-        status=status,
-        conflict=conflict,
-        source_kind=source_kind,
-        level=level,
-        tag=tag,
-        occurred_date_from=occurred_date_from,
-        occurred_date_to=occurred_date_to,
-        submitted_from=submitted_from,
-        submitted_to=submitted_to,
-        author=author,
-        media=media,
-        approved=approved,
-        approved_by=approved_by,
-        approved_by_org=approved_by_org,
-    )
     page = search_service.search(
-        db, query=q, types=types, limit=limit, filters=filters, after=after
+        db,
+        query=params.q,
+        types=params.types,
+        limit=limit,
+        filters=params.filters,
+        after=after,
     )
-    suggestion = (
-        search_service.spelling_suggestion(db, query=q, types=types, filters=filters)
-        if after is None and page.total == 0
-        else None
-    )
+    suggestion = _suggestion(db, params) if after is None and page.total == 0 else None
     return SearchResponse.model_validate(
         {
             "hits": page.hits,
             "total": page.total,
             "cursor": page.cursor,
             "suggestion": suggestion,
-            "query": q,
+            "query": params.q,
+        }
+    )
+
+
+@router.get("/sections", response_model=SearchSections)
+@authenticated_read_quota
+@limiter.limit("60/minute")
+def search_sections(
+    request: Request,
+    params: _SearchRequest = Depends(_search_request),
+    limit: int = Query(5, ge=1, le=10, description="Hits per section"),
+    db: Session = Depends(get_db),
+) -> SearchSections:
+    """The top hits of each type, one section per type with a hit.
+
+    Takes the query, types and filters of ``GET /search``; each section is the first page that
+    ``GET /search`` returns for its type alone, its ``cursor`` included.
+    """
+    sections = search_service.search_sections(
+        db, query=params.q, types=params.types, limit=limit, filters=params.filters
+    )
+    suggestion = None if sections else _suggestion(db, params)
+    return SearchSections.model_validate(
+        {
+            # Field by field: ``asdict`` would deep-copy the ORM rows the hits hold.
+            "sections": [
+                {"type": s.type, "hits": s.hits, "total": s.total, "cursor": s.cursor}
+                for s in sections
+            ],
+            "suggestion": suggestion,
+            "query": params.q,
         }
     )
 

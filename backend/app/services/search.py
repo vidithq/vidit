@@ -1,4 +1,5 @@
-"""Full-text search: one ranked list of events, sites, collections, analysts and organizations.
+"""Full-text search: one ranked list of events, sites, collections, analysts and organizations,
+or the top of that list for each type.
 
 Postgres FTS: ``websearch_to_tsquery`` parses user input (quoted phrases, ``OR``
 and ``-word``, never a syntax error), and ``ts_headline`` returns fragments with
@@ -6,8 +7,8 @@ sentinel delimiters the frontend renders as ``<mark>`` (no HTML across the wire,
 so XSS-safe). Soft-deleted rows are filtered at query time.
 
 Each type contributes one candidate select of ``(type, id, rank, created_at)``
-(:func:`_candidates`); their union is ordered and paged once (:func:`search`), and only
-the page's rows are read in full (:func:`_hydrate`). Events compose with the standard
+(:func:`_candidates`); their union is ordered and paged once (:func:`search`), or cut per
+type (:func:`search_sections`), and only the served rows are read in full (:func:`_hydrate`). Events compose with the standard
 event filters (``services/event_filters``). An event's document is its title and its
 sources' titles together, so ``-word`` excludes an event whichever of them holds the
 word. A site's document is its name and its live sources' titles and notes, the same way
@@ -20,9 +21,10 @@ and the ``_USER_TSVECTOR`` and ``_ORGANIZATION_TSVECTOR`` constants.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, get_args
 
 from sqlalchemy import (
     ColumnElement,
@@ -43,9 +45,11 @@ from sqlalchemy import (
     union_all,
 )
 from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION, TSQUERY
+from sqlalchemy.engine import Row
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.elements import ColumnClause
+from sqlalchemy.sql.selectable import Subquery
 
 from app.models.collection import Collection
 from app.models.event import (
@@ -58,6 +62,7 @@ from app.models.organization import Organization
 from app.models.site import Site
 from app.models.source import Source, SourceLink
 from app.models.user import User
+from app.schemas.search import SearchType
 from app.services import organizations
 from app.services.collections import (
     build_collection_reads,
@@ -310,8 +315,8 @@ def _collection_tsvector():
 # Hydration runs on an id list without ``LIMIT``, so ``joinedload`` on the tags cannot truncate it.
 _HIT_LOADS = (joinedload(Event.owner), *thumbnail_loads(), joinedload(Event.tags), CREDIT_LOAD)
 
-# The hit types, in the vocabulary of ``GET /search?type=``.
-SEARCH_TYPES = ("event", "site", "collection", "user", "organization")
+# The hit types, in the vocabulary of ``GET /search?type=`` and in the order of the sections.
+SEARCH_TYPES: tuple[str, ...] = get_args(SearchType)
 
 # The filters each type other than ``event`` answers. ``status`` narrows events alone and never
 # drops another type; any other active filter drops a type that does not answer it. Mirrored by
@@ -464,6 +469,34 @@ def _candidates(
     return selects
 
 
+def _union(
+    db: Session, *, query: str, types: frozenset[str], filters: EventFilters
+) -> Subquery | None:
+    """Every candidate of ``types`` as one ``(type, id, rank, created_at)`` relation, or ``None``
+    when nothing can match: an empty ``query`` with no active filter matches nothing."""
+    if not query and not filters.active:
+        return None
+    selects = _candidates(db, query=query, types=types, filters=filters)
+    if not selects:
+        return None
+    return union_all(*selects).subquery("candidates")
+
+
+def _ranking(candidates: Any) -> tuple[ColumnElement[Any], ...]:
+    """``rank``, then ``created_at``, then ``id``, all descending: a total order, so a walk by
+    cursor never repeats or skips a hit."""
+    return candidates.rank.desc(), candidates.created_at.desc(), candidates.id.desc()
+
+
+def _next_cursor(rows: Sequence[Row[Any]], limit: int) -> str | None:
+    """The cursor after the first ``limit`` of ``rows``, read one past the cut, or ``None`` when
+    no row lies past it."""
+    if len(rows) <= limit:
+        return None
+    last = rows[limit - 1]
+    return encode_ranked_cursor(last.rank, last.created_at, last.id)
+
+
 @dataclass(frozen=True)
 class SearchPage:
     """One page of hits in rank order, the whole match count, and the next page's cursor
@@ -487,39 +520,82 @@ def search(
 
     Each type ranks on its own text with the same ``ts_rank``: an event on its title, a site on
     its name, a collection on its title and description, an analyst on their username and bio,
-    an organization on its name, slug and bio. The order is ``rank``, then ``created_at``, then
-    ``id``, all descending: a total order, so a walk by cursor never repeats or skips a hit.
-    ``total`` is the whole match count, whatever ``after`` skips.
+    an organization on its name, slug and bio, in the order of :func:`_ranking`. ``total`` is the
+    whole match count, whatever ``after`` skips.
 
     With an empty ``query`` and an active filter the list browses: every hit ranks 0, so the
     order is newest first. An empty ``query`` with no active filter matches nothing.
     """
     filters = filters or EventFilters()
     q = query.strip()
-    if not q and not filters.active:
+    union = _union(db, query=q, types=types, filters=filters)
+    if union is None:
         return SearchPage([], 0, None)
-    selects = _candidates(db, query=q, types=types, filters=filters)
-    if not selects:
-        return SearchPage([], 0, None)
-    union = union_all(*selects).subquery("candidates")
     counted = select(union, func.count().over().label("total_count")).subquery("counted")
     page = select(counted)
     if after is not None:
         page = page.where(tuple_(counted.c.rank, counted.c.created_at, counted.c.id) < after)
-    rows = db.execute(
-        page.order_by(
-            counted.c.rank.desc(), counted.c.created_at.desc(), counted.c.id.desc()
-        ).limit(limit + 1)
-    ).all()
+    rows = db.execute(page.order_by(*_ranking(counted.c)).limit(limit + 1)).all()
     if not rows:
         return SearchPage([], 0, None)
-    served = rows[:limit]
-    last = served[-1]
-    cursor = (
-        encode_ranked_cursor(last.rank, last.created_at, last.id) if len(rows) > limit else None
-    )
-    hits = _hydrate(db, [(row.type, row.id) for row in served], query=q)
-    return SearchPage(hits, int(rows[0].total_count), cursor)
+    hits = _hydrate(db, [(row.type, row.id) for row in rows[:limit]], query=q)
+    return SearchPage(hits, int(rows[0].total_count), _next_cursor(rows, limit))
+
+
+@dataclass(frozen=True)
+class SearchSection:
+    """The first page of one type's list: what :func:`search` returns for that type alone."""
+
+    type: str
+    hits: list[dict]
+    total: int
+    cursor: str | None
+
+
+def search_sections(
+    db: Session,
+    *,
+    query: str,
+    types: frozenset[str],
+    limit: int,
+    filters: EventFilters | None = None,
+) -> list[SearchSection]:
+    """The top ``limit`` hits of each type of ``types`` that has one, in :data:`SEARCH_TYPES`
+    order, read in one query. Each section's ``cursor`` continues that type's list in
+    :func:`search`."""
+    filters = filters or EventFilters()
+    q = query.strip()
+    union = _union(db, query=q, types=types, filters=filters)
+    if union is None:
+        return []
+    ranked = select(
+        union,
+        func.row_number()
+        .over(partition_by=union.c.type, order_by=_ranking(union.c))
+        .label("position"),
+        func.count().over(partition_by=union.c.type).label("total_count"),
+    ).subquery("ranked")
+    rows = db.execute(
+        select(ranked)
+        .where(ranked.c.position <= limit + 1)
+        .order_by(ranked.c.type, ranked.c.position)
+    ).all()
+    by_type: dict[str, list[Row[Any]]] = {}
+    for row in rows:
+        by_type.setdefault(row.type, []).append(row)
+    present = [type_ for type_ in SEARCH_TYPES if type_ in by_type]
+    served = [(row.type, row.id) for type_ in present for row in by_type[type_][:limit]]
+    hits = _hydrate(db, served, query=q)
+    sections = [
+        SearchSection(
+            type=type_,
+            hits=[hit for hit in hits if hit["type"] == type_],
+            total=int(by_type[type_][0].total_count),
+            cursor=_next_cursor(by_type[type_], limit),
+        )
+        for type_ in present
+    ]
+    return [section for section in sections if section.hits]
 
 
 def _headline(column: Any, parsed: _Query | None, opts: str = _HEADLINE_OPTS_FULL) -> Any:
@@ -780,16 +856,16 @@ def _respelled(db: Session, query: str) -> str | None:
 def spelling_suggestion(
     db: Session, *, query: str, types: frozenset[str], filters: EventFilters | None = None
 ) -> str | None:
-    """A respelling of ``query`` that finds results in ``types``, for a search that found none:
-    each unknown word becomes the closest word of the catalogue (``Khan Younis`` to ``Khan
-    Yunis``). ``None`` when a filter is active, when no word has a close match, or when the
-    respelling finds nothing either."""
-    if (filters is not None and filters.active) or not query.strip():
+    """A respelling of ``query`` that finds results in ``types`` and ``filters``, for a search
+    that found none: each unknown word becomes the closest word of the catalogue (``Khan Younis``
+    to ``Khan Yunis``). ``None`` when a filter other than ``status`` is active, when no word has a
+    close match, or when the respelling finds nothing either."""
+    if (filters is not None and filters.active_beyond("status")) or not query.strip():
         return None
     candidate = _respelled(db, query.strip())
     if candidate is None:
         return None
-    found = search(db, query=candidate, types=types, limit=1)
+    found = search(db, query=candidate, types=types, limit=1, filters=filters)
     return candidate if found.total else None
 
 

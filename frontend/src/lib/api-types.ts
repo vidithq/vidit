@@ -2189,6 +2189,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Sections
+         * @description The top hits of each type, one section per type with a hit.
+         *
+         *     Takes the query, types and filters of ``GET /search``; each section is the first page that
+         *     ``GET /search`` returns for its type alone, its ``cursor`` included.
+         */
+        get: operations["search_sections_api_v1_search_sections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sites": {
         parameters: {
             query?: never;
@@ -5096,6 +5119,36 @@ export interface components {
             suggestion?: string | null;
             /** Total */
             total: number;
+        };
+        /**
+         * SearchSection
+         * @description The first page of one type's list: what ``GET /search`` returns for that type alone with
+         *     the same ``limit``, its ``cursor`` included.
+         */
+        SearchSection: {
+            /** Cursor */
+            cursor: string | null;
+            /** Hits */
+            hits: (components["schemas"]["SearchEventHit"] | components["schemas"]["SearchSiteHit"] | components["schemas"]["SearchCollectionHit"] | components["schemas"]["SearchUserHit"] | components["schemas"]["SearchOrganizationHit"])[];
+            /** Total */
+            total: number;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "event" | "site" | "collection" | "user" | "organization";
+        };
+        /**
+         * SearchSections
+         * @description One section per type with a hit, in the order of ``services.search.SEARCH_TYPES``.
+         */
+        SearchSections: {
+            /** Query */
+            query: string;
+            /** Sections */
+            sections: components["schemas"]["SearchSection"][];
+            /** Suggestion */
+            suggestion?: string | null;
         };
         /**
          * SearchSiteHit
@@ -9897,14 +9950,14 @@ export interface operations {
     search_api_v1_search_get: {
         parameters: {
             query?: {
-                /** @description Free-text query */
-                q?: string;
-                /** @description Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type */
-                type?: string[] | null;
                 /** @description Hits per page */
                 limit?: number;
                 /** @description Opaque `cursor` of a previous response: its next page. Send the query, types and filters of the request that returned it */
                 cursor?: string | null;
+                /** @description Free-text query */
+                q?: string;
+                /** @description Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type */
+                type?: string[] | null;
                 status?: string[] | null;
                 conflict?: string[] | null;
                 source_kind?: string[] | null;
@@ -9969,6 +10022,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthorSuggestions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_sections_api_v1_search_sections_get: {
+        parameters: {
+            query?: {
+                /** @description Hits per section */
+                limit?: number;
+                /** @description Free-text query */
+                q?: string;
+                /** @description Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type */
+                type?: string[] | null;
+                status?: string[] | null;
+                conflict?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
+                tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username, and the sites and collections it owns (exact, case-insensitive) */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchSections"];
                 };
             };
             /** @description Validation Error */

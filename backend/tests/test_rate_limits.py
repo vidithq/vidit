@@ -177,6 +177,7 @@ _READ_LIMITS = [
     # would 422 without touching the bucket.
     (f"/api/v1/events/points?bbox={WORLD_BBOX}", 60),
     ("/api/v1/search?q=vidit", 60),
+    ("/api/v1/search/sections?q=vidit", 60),
     ("/api/v1/search/authors?q=vidit", 60),
     ("/api/v1/tags", 60),
     ("/api/v1/conflicts", 60),
@@ -234,6 +235,7 @@ _QUOTA_ROUTES = [
     "/api/v1/events/possible-duplicates",
     "/api/v1/events/{geolocation_id}/approvals",
     "/api/v1/search",
+    "/api/v1/search/sections",
     "/api/v1/search/authors",
     "/api/v1/tags",
     "/api/v1/conflicts",

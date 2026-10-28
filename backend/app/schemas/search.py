@@ -1,6 +1,6 @@
-"""Pydantic shapes for ``GET /search``.
+"""Pydantic shapes for ``GET /search`` and ``GET /search/sections``.
 
-One ranked list of hits of five types, told apart by ``type``. Hits carry
+One ranked list of hits of five types, told apart by ``type``, or one section per type. Hits carry
 ``*_highlight`` fields with sentinel-delimited match fragments
 (``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
 turns into ``<mark>`` tags, so no raw HTML crosses the wire.
@@ -21,6 +21,8 @@ from app.schemas.media import MediaRead
 from app.schemas.site import SiteLastSourceRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
+
+SearchType = Literal["event", "site", "collection", "user", "organization"]
 
 
 class SearchEventHit(BaseModel):
@@ -119,6 +121,25 @@ class SearchResponse(BaseModel):
     # (``services.search.spelling_suggestion``).
     suggestion: str | None = None
     # Echoes ``q`` so the frontend can match a response to the current query.
+    query: str
+
+
+class SearchSection(BaseModel):
+    """The first page of one type's list: what ``GET /search`` returns for that type alone with
+    the same ``limit``, its ``cursor`` included."""
+
+    type: SearchType
+    hits: list[SearchHit]
+    total: int
+    cursor: str | None
+
+
+class SearchSections(BaseModel):
+    """One section per type with a hit, in the order of ``services.search.SEARCH_TYPES``."""
+
+    sections: list[SearchSection]
+    # Same rule as ``SearchResponse.suggestion``, set only when no section holds a hit.
+    suggestion: str | None = None
     query: str
 
 

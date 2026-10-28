@@ -152,6 +152,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/site-suggestions` | 🔒 | Sites your event may link to, nearest first or by name |
 | **Search** | | | |
 | GET | `/search` | 🌐 | One ranked list of events, sites, collections, analysts and organizations |
+| GET | `/search/sections` | 🌐 | The top hits of each type, one section per type |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List the tags on live events or their sources |
@@ -293,7 +294,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /sites/suggestions`, `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
 | `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
-| `GET /search`, `GET /search/authors` | 60/min |
+| `GET /search`, `GET /search/sections`, `GET /search/authors` | 60/min |
 | `GET /tags`, `GET /tags/suggested` | 60/min |
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
@@ -332,9 +333,9 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 30 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 31 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
@@ -1963,7 +1964,7 @@ Decline an approval request addressed to you, or to an organization you are a me
 
 ## Search
 
-Full-text discovery across five hit types in one ranked list: `event` (`geolocated` and `detected` rows with coordinates, and open requests), `site`, `collection`, `user` (an analyst) and `organization`. Proof content is not searched.
+Full-text discovery across five hit types: `event` (`geolocated` and `detected` rows with coordinates, and open requests), `site`, `collection`, `user` (an analyst) and `organization`. [`GET /search`](#get-search) returns them in one ranked list, and [`GET /search/sections`](#get-searchsections) returns the top hits of each type. Proof content is not searched.
 
 ### `GET /search` 🌐
 
@@ -2012,7 +2013,7 @@ The last word of `q` also matches as a prefix, so a word you are still typing fi
 - Every other filter narrows the events and leaves out every other type.
 - An empty `q` with no active filter returns an empty list.
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight. Analysts and organizations need a `q`, so browse mode leaves them out. With `author` or `tag`, browse mode lists the matching sites and collections too.
-- When nothing matches, no filter is active and no `cursor` is sent, `suggestion` may hold a respelling of `q` that finds results. Each word that no visible event title and no live username holds is replaced by the closest one that does, by trigram similarity (`pg_trgm`, at least 0.35): `Khan Younis` suggests `Khan Yunis`. A word that names an analyst is spelled as their username. `OR`, excluded words, quotes and punctuation stay as typed. `suggestion` is `null` when no word has a close match, or when the respelling finds nothing either.
+- When nothing matches, no filter other than `status` is active and no `cursor` is sent, `suggestion` may hold a respelling of `q` that finds results. Each word that no visible event title and no live username holds is replaced by the closest one that does, by trigram similarity (`pg_trgm`, at least 0.35): `Khan Younis` suggests `Khan Yunis`. A word that names an analyst is spelled as their username. `OR`, excluded words, quotes and punctuation stay as typed. `suggestion` is `null` when no word has a close match, or when the respelling finds nothing either with the same `type` and `status`.
 
 **Highlight markers:** every hit but a collection carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
 
@@ -2087,6 +2088,52 @@ The last word of `q` also matches as a prefix, so a word you are still typing fi
 | Code | Case |
 |------|------|
 | 422 | A `type` outside the allowed set, `limit` outside [1, 50], a `source_kind` or `level` value outside its domain, or a malformed `cursor` |
+
+---
+
+### `GET /search/sections` 🌐
+
+The top hits of each type, one section per type that has a hit, in a fixed order: `event`, `site`, `collection`, `user`, `organization`. A request is an `event` hit, so it shares the events' section. Read it for an overview page that lists results by type.
+
+**Query params:** `q`, `type` and the *filter set* of [`GET /search`](#get-search), with the same meaning, plus:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `limit` | int | Hits per section. 1 ≤ `limit` ≤ 10, default 5. |
+
+Each section is the first page that `GET /search` returns for its type alone with the same `limit`: the same hits in the same order, the same `total` and the same `cursor`. To read the rest of one type, call `GET /search` with that `type` and the section's `cursor`.
+
+A type that matches nothing has no section. A filter that a type does not answer leaves its section out, by the rules of *Filters* in [`GET /search`](#get-search).
+
+**Response 200:**
+```json
+{
+  "sections": [
+    {
+      "type": "event",
+      "hits": [{ "type": "event", "…": "a search hit" }],
+      "total": 12,
+      "cursor": "WyIwLjA2MDc5MjcxIiwiMjAyNi0wNC0xNlQwODowMDowMCswMDowMCIsIjlmNC4uLiJd"
+    },
+    {
+      "type": "site",
+      "hits": [{ "type": "site", "…": "a search hit" }],
+      "total": 1,
+      "cursor": null
+    }
+  ],
+  "suggestion": null,
+  "query": "kharkiv"
+}
+```
+
+- `hits` holds hits of the section's `type` alone, in the shape `GET /search` returns.
+- `suggestion` follows the rule of `GET /search`, and is set only when no section holds a hit.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | A `type` outside the allowed set, `limit` outside [1, 10], or a `source_kind` or `level` value outside its domain |
 
 ---
 
@@ -4381,6 +4428,7 @@ One Account Activity delivery.
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |
 | [`GET /search`](#get-search) | cursor in the body | `ts_rank DESC, created_at DESC, id DESC` | 20 | 50 |
+| [`GET /search/sections`](#get-searchsections) | one cursor per section, read by `GET /search` | `ts_rank DESC, created_at DESC, id DESC` within each type | 5 | 10 |
 | [`GET /events/{id}/collections`](#get-eventsidcollections) | none | newest first | | 100 |
 | [`GET /events/{id}/approvals`](#get-eventsidapprovals) | none | version, then oldest first; the newest are kept | | 500 |
 | [`GET /tags`](#get-tags), [`GET /conflicts`](#get-conflicts) | none, returned whole | see endpoint | | 2000 (referential ceiling) |

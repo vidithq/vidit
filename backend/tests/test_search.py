@@ -1884,3 +1884,165 @@ def test_site_search_strips_planted_sentinel_bytes_from_the_name(seed_site):
     hit = _grouped(client.get(f"/api/v1/search?q={token}&type=site").json())["sites"][0]
     assert hit["name_highlight"].count(HIGHLIGHT_START) == 1
     assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["name_highlight"]
+
+
+def _sections(**params) -> dict:
+    response = client.get("/api/v1/search/sections", params=params)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_sections_hold_the_top_hits_of_each_type_in_a_fixed_order(
+    db, caller, seed_collection, seed_site, seed_org
+):
+    """Each section is the first page ``GET /search`` returns for its type alone, cursor
+    included, and the sections follow the type order whatever the ranks."""
+    token = _unique_token()
+    geos = [_seed_geo(db, caller, f"{token} strike {i}") for i in range(4)]
+    site = seed_site(f"{token} {token} depot")
+    collection = seed_collection(f"{token} shelf", "Plain words.")
+    org = seed_org(name=f"{token} watch")
+    try:
+        body = _sections(q=token, limit=3)
+        assert [s["type"] for s in body["sections"]] == [
+            "event",
+            "site",
+            "collection",
+            "organization",
+        ]
+        for section in body["sections"]:
+            alone = client.get(
+                "/api/v1/search", params={"q": token, "type": section["type"], "limit": 3}
+            ).json()
+            assert section["hits"] == alone["hits"]
+            assert section["total"] == alone["total"]
+            assert section["cursor"] == alone["cursor"]
+        events, *_ = body["sections"]
+        assert len(events["hits"]) == 3
+        assert events["total"] == 4
+        rest = client.get(
+            "/api/v1/search",
+            params={"q": token, "type": "event", "limit": 3, "cursor": events["cursor"]},
+        ).json()
+        walked = [h["id"] for h in events["hits"] + rest["hits"]]
+        assert sorted(walked) == sorted(str(i) for i in geos)
+        assert [s["hits"][0]["id"] for s in body["sections"][1:]] == [
+            str(site),
+            str(collection),
+            str(org),
+        ]
+        assert all(s["cursor"] is None for s in body["sections"][1:])
+        assert body["query"] == token
+        assert body["suggestion"] is None
+    finally:
+        db.query(Event).filter(Event.id.in_(geos)).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_sections_keep_the_requests_with_the_events(db, caller):
+    token = _unique_token()
+    request = Event(
+        owner_id=caller.id,
+        title=f"Request {token}",
+        sources=[_source("https://example.com")],
+        status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
+    )
+    db.add(request)
+    db.commit()
+    geo = _seed_geo(db, caller, f"Geo {token}")
+    try:
+        (events,) = _sections(q=token)["sections"]
+        assert events["type"] == "event"
+        assert sorted(h["status"] for h in events["hits"]) == [STATUS_GEOLOCATED, STATUS_REQUESTED]
+    finally:
+        db.query(Event).filter(Event.id.in_((geo, request.id))).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_sections_follow_the_types_and_the_filters_each_type_answers(
+    db, caller, other_author, seed_collection, seed_site, seed_org
+):
+    token = _unique_token()
+    mine = _seed_geo(db, caller, f"{token} strike")
+    theirs = _seed_geo(db, other_author, f"{token} strike")
+    my_site = seed_site(f"{token} depot")
+    seed_site(f"{token} depot", owner=other_author)
+    seed_collection(f"{token} shelf", "Plain words.", owner=other_author)
+    seed_org(name=f"{token} watch")
+    try:
+        picked = _sections(q=token, type=["site", "organization"])
+        assert [s["type"] for s in picked["sections"]] == ["site", "organization"]
+
+        # ``author`` narrows the events and the sites, keeps the collections it owns (none
+        # here), and leaves the organizations out, so their sections go.
+        authored = _sections(q=token, author=caller.username)
+        assert [s["type"] for s in authored["sections"]] == ["event", "site"]
+        assert [h["id"] for h in authored["sections"][0]["hits"]] == [str(mine)]
+        assert [h["id"] for h in authored["sections"][1]["hits"]] == [str(my_site)]
+
+        # ``status`` narrows the events alone.
+        requested = _sections(q=token, status="requested")
+        assert [s["type"] for s in requested["sections"]] == ["site", "collection", "organization"]
+
+        # Any other event filter leaves every other type out.
+        conflict = _sections(q=token, conflict="Yemen")
+        assert conflict["sections"] == []
+    finally:
+        db.query(Event).filter(Event.id.in_((mine, theirs))).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_sections_leave_out_what_search_never_lists(db, caller, seed_collection, seed_site):
+    token = _unique_token()
+    hidden_geo = Event(
+        owner_id=caller.id,
+        title=f"Withheld {token}",
+        coords=from_shape(Point(34.5, 48.5), srid=4326),
+        sources=[_source("https://example.com")],
+        occurred_date=date(2026, 5, 1),
+        geolocated_at=datetime.now(UTC),
+        hidden_at=datetime.now(UTC),
+    )
+    gone = User(
+        username=f"{token}gone",
+        email=f"gone-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("p"),
+        deleted_at=datetime.now(UTC),
+    )
+    db.add_all([hidden_geo, gone])
+    db.commit()
+    seed_site(f"{token} depot", hidden=True)
+    seed_collection(f"{token} shelf", "Plain words.", hidden=True)
+    seed_collection(f"{token} empty shelf", "Plain words.", empty=True)
+    try:
+        assert _sections(q=token)["sections"] == []
+    finally:
+        db.query(Event).filter(Event.id == hidden_geo.id).delete(synchronize_session=False)
+        db.query(User).filter(User.id == gone.id).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_sections_are_empty_without_a_query_or_a_filter():
+    assert _sections(q="") == {"sections": [], "suggestion": None, "query": ""}
+
+
+def test_sections_suggest_a_spelling_when_no_section_holds_a_hit(db, caller):
+    place = f"Novohrodivka{uuid.uuid4().hex[:4]}"
+    geo = _seed_geo(db, caller, f"Strike near {place}")
+    typo = place.replace("hrod", "grod")
+    try:
+        assert _sections(q=typo)["suggestion"] == f"{place[0]}{place[1:].lower()}"
+        # The Show field's status narrows the respelling's check, and keeps the suggestion.
+        assert _sections(q=typo, status="geolocated")["suggestion"] is not None
+        assert _sections(q=typo, status="requested")["suggestion"] is None
+        assert _sections(q=place)["suggestion"] is None
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
+
+
+@pytest.mark.parametrize("params", [{"type": "bogus"}, {"limit": 0}, {"limit": 11}])
+def test_sections_refuse_a_value_outside_its_domain(params):
+    response = client.get("/api/v1/search/sections", params={"q": "x", **params})
+    assert response.status_code == 422
