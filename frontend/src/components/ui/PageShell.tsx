@@ -8,6 +8,7 @@ import {
   type ComponentProps,
   type CSSProperties,
   type ReactNode,
+  type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -130,16 +131,31 @@ export function PageShell({
   // knows when it has left it and needs a surface over the content scrolling under it.
   const sentinelRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef<HTMLElement>(null);
+  // The side column's spacer, on a `headerSide` page.
+  const sideSpacerRef = useRef<HTMLDivElement>(null);
   const [stickySize, setStickySize] = useState<{ width: number; height: number }>();
+  // How far the resting cluster reaches left past the side column, into the header's row: all of
+  // it while the columns stack.
+  const [overhang, setOverhang] = useState(0);
   const [stuck, setStuck] = useState(false);
   useEffect(() => {
     const el = stickyRef.current;
     const sentinel = sentinelRef.current;
     if (!hasSticky || !el || !sentinel) return;
-    const observer = new ResizeObserver(() =>
-      setStickySize({ width: el.offsetWidth, height: el.offsetHeight }),
-    );
+    const side = sideSpacerRef.current?.parentElement;
+    const header = headerRef.current;
+    const observer = new ResizeObserver(() => {
+      setStickySize({ width: el.offsetWidth, height: el.offsetHeight });
+      if (side && header) {
+        const room = side.getBoundingClientRect().right - header.getBoundingClientRect().right;
+        setOverhang(Math.max(0, el.offsetWidth - room));
+      }
+    });
     observer.observe(el);
+    if (side && header) {
+      observer.observe(side);
+      observer.observe(header);
+    }
     const onScroll = () =>
       setStuck(el.getBoundingClientRect().top - sentinel.getBoundingClientRect().top > 1);
     onScroll();
@@ -151,13 +167,9 @@ export function PageShell({
       window.removeEventListener("resize", onScroll);
     };
   }, [hasSticky]);
-  const stickySpacer = (className?: string) =>
+  const stickySpacer = (size = stickySize, ref?: Ref<HTMLDivElement>, className?: string) =>
     hasSticky && (
-      <div
-        aria-hidden
-        className={cn("shrink-0 max-w-full", className)}
-        style={stickySize}
-      />
+      <div ref={ref} aria-hidden className={cn("shrink-0 max-w-full", className)} style={size} />
     );
   const header = (
     <div ref={headerRef} className="space-y-6">
@@ -192,8 +204,11 @@ export function PageShell({
           {/* `max-w-full` lets a wide action row wrap inside itself; `shrink-0` alone
               would scroll a phone sideways. */}
           {actions && <div className="shrink-0 max-w-full">{actions}</div>}
-          {/* From `lg` up a `headerSide` page keeps the room at the top of its side column. */}
-          {stickySpacer(headerSide !== undefined ? "lg:hidden" : undefined)}
+          {/* From `lg` up a `headerSide` page keeps the room at the top of its side column, and
+              here only what the cluster reaches past it. */}
+          {headerSide === undefined
+            ? stickySpacer()
+            : overhang > 0 && stickySpacer(stickySize && { ...stickySize, width: overhang })}
         </div>
       </header>
       {controls && (
@@ -228,16 +243,26 @@ export function PageShell({
             <div ref={sentinelRef} aria-hidden className="h-0 !mb-0" />
             {/* A zero-height track that sticks, so the cluster hangs from it over the header and
                 stays pinned until the end of the page. Its `top` is the frame's top padding, so
-                it never moves before it pins. From `lg` up the cluster is no wider than the side
-                column (`PAGE_COLUMNS_SPLIT`, less the gap). Its surface overhangs by 8px, so the
-                actions themselves line up with the column's edges. */}
+                it never moves before it pins. The cluster takes the width its actions need on one
+                line, up to the column's. Its surface overhangs by 8px, so the actions themselves
+                line up with the column's edges. */}
             <div className="sticky top-10 max-sm:top-16 z-30 h-0 !mb-0 flex items-start justify-end pointer-events-none">
+              {/* On a phone the pinned cluster sits on a band from the screen's top edge to under
+                  the cluster, the drawer chip's row included, so the content scrolls under one
+                  surface instead of showing between the chip and the actions. */}
+              {stuck && !stickyActionsIdle && stickySize && (
+                <div
+                  aria-hidden
+                  className="sm:hidden pointer-events-auto absolute -top-16 -left-[calc(1rem+env(safe-area-inset-left))] -right-[calc(1rem+env(safe-area-inset-right))] border-b border-neutral-800 bg-neutral-950/95 backdrop-blur-sm"
+                  style={{ height: `calc(5rem + ${stickySize.height}px)` }}
+                />
+              )}
               <div
                 data-stuck={stuck || undefined}
                 className={cn(
-                  "pointer-events-auto -m-2 max-w-[calc(100%+1rem)] lg:max-w-[calc((100%-1.5rem)*0.35+1rem)] rounded-lg border p-[7px] transition-colors",
+                  "pointer-events-auto relative -m-2 max-w-[calc(100%+1rem)] rounded-lg border p-[7px] transition-colors",
                   stuck && !stickyActionsIdle
-                    ? "border-neutral-800 bg-neutral-950/95 shadow-lg backdrop-blur-sm"
+                    ? "border-transparent sm:border-neutral-800 sm:bg-neutral-950/95 sm:shadow-lg sm:backdrop-blur-sm"
                     : "border-transparent",
                   stickyActionsIdle && "invisible",
                 )}
@@ -255,7 +280,7 @@ export function PageShell({
             main={header}
             side={
               <>
-                {stickySpacer("max-lg:hidden")}
+                {stickySpacer(stickySize, sideSpacerRef, "max-lg:hidden")}
                 {headerSide}
               </>
             }

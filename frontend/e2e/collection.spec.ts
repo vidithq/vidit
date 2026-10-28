@@ -16,10 +16,9 @@ import {
  * A collection page, read by its owner.
  *
  * The owner rather than a visitor, because the owner is the narrow case: the
- * header carries a long title plus the whole cluster, the report flag every
- * reader gets and the two controls only the owner does. `/collections` is
+ * header carries a long title plus the owner's Edit and Drop. `/collections` is
  * public in `proxy.ts`, so the session cookie is granted for the owner
- * controls rather than for access.
+ * controls rather than for access, and a visitor reads the report form.
  */
 test.describe("collection page", () => {
   test("the header stays inside the column", async ({ context, page }) => {
@@ -42,7 +41,7 @@ test.describe("collection page", () => {
     expect(overflow, "the header runs past the column").toBeLessThanOrEqual(1);
   });
 
-  test("opens the report form inside the column", async ({ context, page }) => {
+  test("keeps the owner's controls inside the column, with no report flag", async ({ context, page }) => {
     await grantSession(context);
     await mockApi(page);
     await page.goto(`/collections/${COLLECTION_ID}`);
@@ -65,6 +64,13 @@ test.describe("collection page", () => {
       page,
       page.getByRole("link", { name: "Your geolocations" }),
     );
+
+    await expect(page.getByRole("button", { name: "Report", exact: true })).toHaveCount(0);
+  });
+
+  test("opens the report form inside the column for a visitor", async ({ page }) => {
+    await mockApi(page);
+    await page.goto(`/collections/${COLLECTION_ID}`);
 
     // The flag opens a dialog holding a select and a textarea, the only form
     // this reading page ever shows: both have to render at the size that

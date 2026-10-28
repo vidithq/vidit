@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Plus, Search as SearchIcon } from "lucide-react";
 
 import { CollectionCover } from "@/components/collections/CollectionCover";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { CollectionIcon, type CollectionCoverTile } from "@/lib/collections";
@@ -99,10 +99,11 @@ export function CollectionPicker<T extends { id: string; title: string }>({
 
       {typeof newCollection === "string" ? (
         <Link href={newCollection} className={buttonClasses("ghost")}>
+          <ActionIcon action="newCollection" />
           {NEW_COLLECTION}
         </Link>
       ) : (
-        <Button variant="ghost" onClick={newCollection}>
+        <Button action="newCollection" variant="ghost" onClick={newCollection}>
           {NEW_COLLECTION}
         </Button>
       )}

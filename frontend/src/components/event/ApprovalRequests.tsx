@@ -167,7 +167,12 @@ export function DeclineRequests({
             : "Declines every request. Each requester is notified."
         }
       >
-        <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>
+        <Button
+          action="decline"
+          variant="ghost"
+          onClick={() => void decline.run()}
+          disabled={decline.loading}
+        >
           Decline
         </Button>
       </Tooltip>
@@ -207,6 +212,7 @@ function RequestApprovalDialog({
     <ConfirmDialog
       title="Request approval"
       confirmLabel={selected ? `Ask ${accountName(selected)}` : "Ask for approval"}
+      confirmAction="askApproval"
       busyLabel="Sending…"
       busy={send.loading}
       confirmDisabled={!selected}

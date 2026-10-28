@@ -33,7 +33,7 @@ function Host({
           busyLabel: "Publishing…",
           busy: false,
           variant: "primary",
-          icon: <svg data-testid="icon" />,
+          icon: "geolocate",
           missing,
         },
       ]}
@@ -81,9 +81,11 @@ describe("PublishActions", () => {
     expect(button.className).toContain("opacity-60");
   });
 
-  it("shows the icon from lg up and the banner as an alert", () => {
+  it("leads the label with its action's icon at every width, and shows the banner as an alert", () => {
     render(<Host write={vi.fn()} error="Couldn't publish." />);
-    expect(screen.getByTestId("icon").parentElement!.className).toContain("max-lg:hidden");
+    const icon = screen.getByRole("button", { name: "Publish geolocation" }).querySelector("svg");
+    expect(icon).toHaveClass("lucide-map-pin");
+    expect(icon!.parentElement!.className).not.toContain("max-lg:hidden");
     expect(screen.getByRole("button", { name: "What does Publish do?" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Couldn't publish.");
   });

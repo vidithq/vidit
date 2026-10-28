@@ -153,7 +153,7 @@ export function MapSidePanel<T>({
           <div className={FORM_ERROR_BANNER} role="alert">
             {error || errorFallback}
           </div>
-          <Button variant="secondary" onClick={refetch}>
+          <Button action="retry" variant="secondary" onClick={refetch}>
             Retry
           </Button>
         </div>

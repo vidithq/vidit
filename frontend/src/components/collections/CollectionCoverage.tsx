@@ -130,6 +130,7 @@ export function CollectionCoverage({
             >
               <span className="flex shrink-0 items-center gap-1.5">
                 <Button
+                  action="previous"
                   variant="ghost"
                   disabled={step <= 1}
                   onClick={() => onStep(step - 1)}
@@ -138,6 +139,7 @@ export function CollectionCoverage({
                   Previous
                 </Button>
                 <Button
+                  action="next"
                   variant="secondary"
                   disabled={step >= total}
                   onClick={() => onStep(step + 1)}

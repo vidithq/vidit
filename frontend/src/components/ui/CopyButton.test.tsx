@@ -30,6 +30,12 @@ describe("<CopyButton>", () => {
     expect(screen.getByRole("status")).toHaveClass("sr-only");
   });
 
+  it("shows the confirmation in its tooltip while the copy holds", () => {
+    marks(true);
+    const bubbles = [...document.body.querySelectorAll('[aria-hidden="true"]')];
+    expect(bubbles.some((el) => el.textContent === "Coordinates copied")).toBe(true);
+  });
+
   it("fades back only under motion-safe", () => {
     const { rest } = marks(false);
     expect(rest).toHaveClass("motion-safe:transition-opacity");

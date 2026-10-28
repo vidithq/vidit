@@ -1,4 +1,64 @@
 import type { ComponentPropsWithRef } from "react";
+import {
+  Activity,
+  Archive,
+  ArrowRight,
+  Ban,
+  BellOff,
+  BookOpen,
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  CircleX,
+  ClipboardCheck,
+  Copy,
+  Eraser,
+  Eye,
+  EyeOff,
+  Flag,
+  FolderPlus,
+  Globe,
+  ImagePlus,
+  ImageUp,
+  KeyRound,
+  Layers,
+  Link2,
+  LocateFixed,
+  LogIn,
+  LogOut,
+  MailPlus,
+  MailX,
+  MapPin,
+  MapPinned,
+  MapPinPlus,
+  Megaphone,
+  Minus,
+  PenTool,
+  Plus,
+  RotateCcw,
+  RotateCw,
+  Save,
+  Search,
+  Send,
+  ShieldCheck,
+  SkipForward,
+  SlidersHorizontal,
+  Stamp,
+  Ticket,
+  Trash2,
+  TriangleAlert,
+  Undo2,
+  Unlink,
+  Upload,
+  UserCheck,
+  UserCog,
+  UserPlus,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { TooltipButton } from "./Tooltip";
@@ -83,6 +143,79 @@ export function buttonClasses(
   );
 }
 
+// Every button or button-styled link with a text label leads with the icon of the action it
+// names, one icon per action, so a reader learns an icon once. A text `<Button>` names it with
+// `action`; a link styled by `buttonClasses` puts `<ActionIcon>` before its text.
+// `Button.test.ts` fails on a text button that names none. docs/design.md, Action icons, lists
+// the labels of each.
+export const ACTION_ICONS = {
+  accept: Check,
+  activity: Activity,
+  add: Plus,
+  approve: Stamp,
+  archive: Archive,
+  askApproval: ClipboardCheck,
+  cancel: X,
+  clear: Eraser,
+  collect: Layers,
+  continue: ArrowRight,
+  copy: Copy,
+  decline: CircleX,
+  delete: Trash2,
+  dismiss: ShieldCheck,
+  draw: PenTool,
+  fileSource: ImagePlus,
+  filter: SlidersHorizontal,
+  follow: UserPlus,
+  following: UserCheck,
+  geolocate: MapPin,
+  go: LocateFixed,
+  graphic: TriangleAlert,
+  guide: BookOpen,
+  hide: EyeOff,
+  import: Upload,
+  invite: MailPlus,
+  leave: LogOut,
+  less: ChevronUp,
+  link: Link2,
+  map: Globe,
+  mint: Ticket,
+  more: ChevronDown,
+  newCollection: FolderPlus,
+  newSite: MapPinPlus,
+  next: ChevronRight,
+  password: KeyRound,
+  previous: ChevronLeft,
+  removePoint: Minus,
+  report: Flag,
+  request: Megaphone,
+  retry: RotateCw,
+  revert: RotateCcw,
+  review: Bot,
+  revoke: Ban,
+  role: UserCog,
+  save: Save,
+  search: Search,
+  send: Send,
+  show: Eye,
+  signIn: LogIn,
+  site: MapPinned,
+  skip: SkipForward,
+  undo: Undo2,
+  unlink: Unlink,
+  unsubscribe: BellOff,
+  useProof: ImageUp,
+  withdraw: MailX,
+} satisfies Record<string, LucideIcon>;
+
+export type ButtonAction = keyof typeof ACTION_ICONS;
+
+/** The icon of `action`, at the size of a text button's label. */
+export function ActionIcon({ action }: { action: ButtonAction }) {
+  const Icon = ACTION_ICONS[action];
+  return <Icon size={14} aria-hidden className="shrink-0" />;
+}
+
 // `ComponentPropsWithRef` so a caller can pass `ref` to measure or focus the
 // real button.
 interface ButtonProps extends ComponentPropsWithRef<"button"> {
@@ -90,18 +223,30 @@ interface ButtonProps extends ComponentPropsWithRef<"button"> {
   fullWidth?: boolean;
   /** Square icon-only shape for a bare icon child (no text padding). */
   icon?: boolean;
+  /** The action a text label names: its icon leads the label. */
+  action?: ButtonAction;
 }
 
 export function Button({
   variant = "primary",
   fullWidth = false,
   icon = false,
+  action,
   type = "button",
   className = "",
   title,
+  children,
   ...props
 }: ButtonProps) {
   const classes = buttonClasses(variant, { fullWidth, icon, className });
+  if (action) {
+    children = (
+      <>
+        <ActionIcon action={action} />
+        {children}
+      </>
+    );
+  }
   // An icon button's name is its only text, so it shows as a tooltip: `title` when it differs
   // from the name (a longer hint), else the `aria-label`. The native `title` would be a second one.
   const tip = icon ? (title ?? props["aria-label"]) : undefined;
@@ -113,9 +258,15 @@ export function Button({
         tip={tip}
         hidden={props["aria-expanded"] === true}
         {...props}
-      />
+      >
+        {children}
+      </TooltipButton>
     );
   }
-  return <button type={type} className={classes} title={title} {...props} />;
+  return (
+    <button type={type} className={classes} title={title} {...props}>
+      {children}
+    </button>
+  );
 }
 

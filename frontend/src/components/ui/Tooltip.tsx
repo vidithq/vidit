@@ -31,8 +31,11 @@ function focusVisible(el: Element): boolean {
  * dismissal (Escape, scroll, resize, an outside click) are `usePinnedPopover`'s. Only `tapClick`
  * pins, for a control whose label holds more than its name says (see `<Tooltip tapToShow>`).
  */
-function useTooltip(label: string, hidden: boolean) {
-  const { open, wrapperProps, anchorProps, popoverProps } = usePinnedPopover<HTMLSpanElement>();
+function useTooltip(label: string, hidden: boolean, shown = false) {
+  const { open, wrapperProps, anchorProps, popoverProps } = usePinnedPopover<HTMLSpanElement>({
+    shown,
+    content: label,
+  });
   const { ref: wrapperRef } = wrapperProps;
   const { ref: anchorRef } = anchorProps;
   // `placeOn` is the box the bubble hangs under, the control itself unless the caller names another.
@@ -112,18 +115,21 @@ function both<E>(a: ((e: E) => void) | undefined, b: (e: E) => void) {
 /**
  * The `<button>` of `<Button icon>`: the same element, plus the tooltip showing `tip`. No wrapper
  * element, so a slot, a parent selector or a flex layout around the button sees the button.
+ * `shown` holds the bubble open, touch included, for a confirmation the reader must see
+ * (`<CopyButton>`'s *Link copied*).
  */
 export function TooltipButton({
   tip,
   hidden = false,
+  shown = false,
   ref,
   onPointerEnter,
   onPointerLeave,
   onFocus,
   onBlur,
   ...props
-}: ComponentPropsWithRef<"button"> & { tip: string; hidden?: boolean }) {
-  const { attach, handlers, bubble } = useTooltip(tip, hidden);
+}: ComponentPropsWithRef<"button"> & { tip: string; hidden?: boolean; shown?: boolean }) {
+  const { attach, handlers, bubble } = useTooltip(tip, hidden, shown);
   const setRef = useCallback(
     (el: HTMLButtonElement | null) => {
       attach(el);

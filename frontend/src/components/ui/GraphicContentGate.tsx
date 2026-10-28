@@ -97,12 +97,12 @@ export function GraphicContentGate({
         // `z-20` outranks an `EntityCard`'s stretched link (`z-10`), which would
         // otherwise take the click and navigate.
         <Button
+          action="show"
           variant="ghost"
           onClick={acknowledge}
           aria-label="Show graphic content (18 or older)"
           className={`absolute inset-0 z-20 h-full w-full flex-col gap-1 rounded-none px-1 ${WARNING_CALLOUT}`}
         >
-          <EyeOff size={12} />
           <span className="text-[10px] leading-none">Graphic content</span>
         </Button>
       ) : (
@@ -115,6 +115,7 @@ export function GraphicContentGate({
             injury or human remains. Confirm you are 18 or older to view it.
           </p>
           <Button
+            action="show"
             variant="secondary"
             onClick={acknowledge}
             aria-label="Show graphic content (18 or older)"

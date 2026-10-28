@@ -13,7 +13,7 @@ import { useEffect } from "react";
 
 import * as Sentry from "@sentry/nextjs";
 
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { PageCenter } from "@/components/ui/PageFrame";
 
@@ -56,12 +56,14 @@ export default function Error({ error, reset }: ErrorProps) {
           )}
           <div className="flex items-center justify-center gap-3 pt-2">
             <Button
+              action="retry"
               type="button"
               onClick={reset}
             >
               Try again
             </Button>
             <a href="/map" className={buttonClasses("secondary")}>
+              <ActionIcon action="map" />
               Back to map
             </a>
           </div>

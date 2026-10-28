@@ -6,7 +6,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 type State = "confirming" | "success" | "failed";
@@ -72,9 +72,11 @@ function ConfirmInner() {
           </p>
           <div className="flex flex-col gap-2">
             <Link href="/submit?import=1" className={buttonClasses("primary", { fullWidth: true })}>
+              <ActionIcon action="import" />
               Import your X archive
             </Link>
             <Link href="/guide" className={buttonClasses("secondary", { fullWidth: true })}>
+              <ActionIcon action="guide" />
               Read Getting started
             </Link>
           </div>

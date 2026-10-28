@@ -7,7 +7,7 @@ import { HeldCoverage } from "@/components/collections/CollectionCoverage";
 import { CollectionDetails, CollectionShell } from "@/components/collections/CollectionShell";
 import { EventPicker } from "@/components/collections/EventPicker";
 import { TitleField } from "@/components/geolocations/TitleField";
-import { Button } from "@/components/ui/Button";
+import { Button, type ButtonAction } from "@/components/ui/Button";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
@@ -92,6 +92,7 @@ export function CollectionDetailsForm({
   username,
   hint,
   submitLabel,
+  submitAction,
   onSubmit,
   onCancel,
   busy = false,
@@ -117,6 +118,8 @@ export function CollectionDetailsForm({
   hint?: string;
   /** The verb: *Create collection*, *Save collection*, *Create and add*. */
   submitLabel: string;
+  /** The action the verb names: *newCollection* for a create, *save* for an edit. */
+  submitAction: ButtonAction;
   onSubmit: (
     title: string,
     description: CollectionDescription,
@@ -171,12 +174,13 @@ export function CollectionDetailsForm({
   const actions = (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>
+        <Button action="cancel" type="button" variant="ghost" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>
         <CountBadge count={missing.length} label={missingSummary(missing)}>
           {(describedBy) => (
             <Button
+              action={submitAction}
               type="submit"
               form={formId}
               variant="primary"

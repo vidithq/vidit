@@ -96,7 +96,12 @@ export function OrganizationInvites({ slug }: { slug: string }) {
             />
           </div>
         </div>
-        <Button type="submit" variant="secondary" disabled={!picked || send.loading}>
+        <Button
+          action="invite"
+          type="submit"
+          variant="secondary"
+          disabled={!picked || send.loading}
+        >
           {send.loading ? "Inviting…" : "Invite"}
         </Button>
       </form>
@@ -131,6 +136,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
                 external={false}
                 action={
                   <Button
+                    action="withdraw"
                     variant="ghost"
                     onClick={() => void cancel.run(invite.user.username)}
                     disabled={cancel.loading}

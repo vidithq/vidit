@@ -71,6 +71,7 @@ function DeleteApprovalDialog({
     <ConfirmDialog
       title="Delete this approval?"
       confirmLabel="Delete approval"
+      confirmAction="delete"
       busyLabel="Deleting…"
       busy={remove.loading}
       error={remove.error}
@@ -279,6 +280,7 @@ export function ApproveButtons({
         <ActionMenu
           label="Approve as…"
           text="Approve"
+          action="approve"
           icon={<ChevronDown size={14} />}
           menuLabel="Approve as"
           variant="primary"
@@ -292,8 +294,12 @@ export function ApproveButtons({
         />
       ) : (
         identities.map((identity) => (
-          <Button key={identity?.slug ?? ""} onClick={() => open(identity)} disabled={disabled}>
-            <Stamp size={14} />
+          <Button
+            key={identity?.slug ?? ""}
+            action="approve"
+            onClick={() => open(identity)}
+            disabled={disabled}
+          >
             {identity ? `Approve as ${identity.name}` : "Approve"}
           </Button>
         ))
@@ -304,7 +310,7 @@ export function ApproveButtons({
         </div>
       )}
       {approve.error && stale && (
-        <Button variant="secondary" onClick={() => window.location.reload()}>
+        <Button action="retry" variant="secondary" onClick={() => window.location.reload()}>
           Reload
         </Button>
       )}
@@ -312,6 +318,7 @@ export function ApproveButtons({
         <ConfirmDialog
           title={confirming ? `Approve as ${confirming.name}?` : "Approve this version?"}
           confirmLabel="Approve"
+          confirmAction="approve"
           busyLabel="Approving…"
           busy={approve.loading}
           onConfirm={() => void approve.run(confirming?.slug ?? null)}

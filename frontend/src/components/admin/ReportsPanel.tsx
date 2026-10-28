@@ -149,6 +149,7 @@ function ReportRow({
         <div className="flex flex-wrap items-center gap-2">
           {report.event_id !== null && (
             <Button
+              action="graphic"
               variant="secondary"
               disabled={busy}
               onClick={() => void resolveMutation.run("marked_graphic")}
@@ -158,6 +159,7 @@ function ReportRow({
           )}
           {!targetGone && (
             <Button
+              action="hide"
               variant="danger"
               disabled={busy}
               onClick={() => {
@@ -169,6 +171,7 @@ function ReportRow({
             </Button>
           )}
           <Button
+            action="dismiss"
             variant="ghost"
             disabled={busy}
             onClick={() => void resolveMutation.run("dismissed")}
@@ -182,6 +185,7 @@ function ReportRow({
         <ConfirmDialog
           title={`Hide the ${noun}?`}
           confirmLabel={`Hide the ${noun}`}
+          confirmAction="hide"
           busyLabel="Hiding…"
           busy={busy}
           error={resolveMutation.error}

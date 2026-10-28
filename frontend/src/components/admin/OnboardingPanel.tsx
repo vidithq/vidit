@@ -7,7 +7,6 @@ import {
   Bot,
   ChevronDown,
   ChevronRight,
-  Copy,
   Ellipsis,
   FileArchive,
   MapPin,
@@ -34,7 +33,7 @@ import {
   LABEL_TEXT,
 } from "@/components/ui/form-styles";
 import { ActionMenu } from "@/components/ui/ActionMenu";
-import { Button } from "@/components/ui/Button";
+import { Button, type ButtonAction } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
@@ -68,10 +67,18 @@ type InviteAction = "revoke" | "delete";
 
 const INVITE_ACTIONS: Record<
   InviteAction,
-  { label: string; title: string; body: string; busy: string; fallback: string }
+  {
+    label: string;
+    action: ButtonAction;
+    title: string;
+    body: string;
+    busy: string;
+    fallback: string;
+  }
 > = {
   revoke: {
     label: "Revoke",
+    action: "revoke",
     title: "Revoke this invite code?",
     body: "The code stops working at once and cannot be turned back on. Its row stays in the table.",
     busy: "Revoking…",
@@ -79,6 +86,7 @@ const INVITE_ACTIONS: Record<
   },
   delete: {
     label: "Delete",
+    action: "delete",
     title: "Delete this invite code?",
     body: "Drops the row for good. The code was never used, so no account depends on it.",
     busy: "Deleting…",
@@ -139,11 +147,11 @@ function InviteCodeRow({
     <tr className="border-b border-neutral-800 last:border-0">
       <td className="py-2 pr-3">
         <Button
+          action="copy"
           variant="ghost"
           onClick={onCopy}
           title={copied ? "Copied" : `Copy ${invite.code}`}
         >
-          <Copy size={12} className="text-neutral-500" />
           <span className="font-mono">
             {copied ? "Copied" : `${invite.code.slice(0, 6)}…`}
           </span>
@@ -206,7 +214,7 @@ function InviteCodeRow({
       <td className="py-2 text-right whitespace-nowrap">
         <div className="inline-flex items-center gap-1">
           {redeemer && (
-            <Button variant="ghost" onClick={onToggle}>
+            <Button action={expanded ? "less" : "more"} variant="ghost" onClick={onToggle}>
               {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               Manage
             </Button>
@@ -244,6 +252,7 @@ function InviteCodeRow({
           <ConfirmDialog
             title={INVITE_ACTIONS[confirming].title}
             confirmLabel={INVITE_ACTIONS[confirming].label}
+            confirmAction={INVITE_ACTIONS[confirming].action}
             busyLabel={INVITE_ACTIONS[confirming].busy}
             busy={action.loading}
             error={action.error}
@@ -365,7 +374,7 @@ export function OnboardingPanel() {
             className="mt-1"
           />
         </div>
-        <Button type="submit" disabled={creating}>
+        <Button action="mint" type="submit" disabled={creating}>
           {creating ? "Minting…" : "Mint code"}
         </Button>
       </form>

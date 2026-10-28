@@ -24,10 +24,15 @@ export function InviteAnswerButtons({
   });
   return (
     <>
-      <Button onClick={() => void answer.run("accept")} disabled={answer.loading}>
+      <Button action="accept" onClick={() => void answer.run("accept")} disabled={answer.loading}>
         Accept
       </Button>
-      <Button variant="ghost" onClick={() => void answer.run("decline")} disabled={answer.loading}>
+      <Button
+        action="decline"
+        variant="ghost"
+        onClick={() => void answer.run("decline")}
+        disabled={answer.loading}
+      >
         Decline
       </Button>
       {answer.error && (

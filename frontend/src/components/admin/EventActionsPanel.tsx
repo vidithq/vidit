@@ -33,9 +33,9 @@ import { ActionReceipt } from "@/components/admin/ActionReceipt";
 type ModerationBody = { is_graphic?: boolean; hidden?: boolean };
 
 const MODERATION_ACTIONS = [
-  { key: "mark", label: "Mark graphic", body: { is_graphic: true } },
-  { key: "unmark", label: "Unmark graphic", body: { is_graphic: false } },
-  { key: "unhide", label: "Restore", body: { hidden: false } },
+  { key: "mark", label: "Mark graphic", action: "graphic", body: { is_graphic: true } },
+  { key: "unmark", label: "Unmark graphic", action: "graphic", body: { is_graphic: false } },
+  { key: "unhide", label: "Restore", action: "show", body: { hidden: false } },
 ] as const;
 
 type Receipt =
@@ -239,6 +239,7 @@ export function EventActionsPanel() {
         <div className="flex flex-wrap gap-2">
           {MODERATION_ACTIONS.map((action) => (
             <Button
+              action={action.action}
               key={action.key}
               variant="secondary"
               disabled={disabled}
@@ -247,7 +248,12 @@ export function EventActionsPanel() {
               {action.label}
             </Button>
           ))}
-          <Button variant="danger" disabled={disabled} onClick={() => confirm("hide")}>
+          <Button
+            action="hide"
+            variant="danger"
+            disabled={disabled}
+            onClick={() => confirm("hide")}
+          >
             Hide
           </Button>
         </div>
@@ -266,7 +272,12 @@ export function EventActionsPanel() {
           onChange={setMode}
         />
         <div className="flex gap-2">
-          <Button variant="danger" disabled={disabled} onClick={() => confirm("delete")}>
+          <Button
+            action="delete"
+            variant="danger"
+            disabled={disabled}
+            onClick={() => confirm("delete")}
+          >
             {deleteLabel}
           </Button>
         </div>
@@ -276,6 +287,7 @@ export function EventActionsPanel() {
         <ConfirmDialog
           title={`Hide ${name}?`}
           confirmLabel="Hide"
+          confirmAction="hide"
           busyLabel="Hiding…"
           busy={busy}
           error={moderateMutation.error}
@@ -290,6 +302,7 @@ export function EventActionsPanel() {
         <ConfirmDialog
           title={`${deleteLabel} ${name}?`}
           confirmLabel={deleteLabel}
+          confirmAction="delete"
           busyLabel="Deleting…"
           busy={busy}
           error={deleteMutation.error}

@@ -2,7 +2,7 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { MapPin, SquarePen, Users } from "lucide-react";
+import { SquarePen, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -15,7 +15,7 @@ import { answerGeolocatorInvite, creditedAuthors, removeGeolocator } from "@/lib
 import { eventEditHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { Button, DANGER_CONFIRM, buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -122,6 +122,8 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     answeredFor !== event.id;
   // Reporting your own event says nothing an edit or a close could not.
   const canReport = tiers.utilities && !isAuthor;
+  // The asker's Edit opens the same form, so the asker gets Edit alone.
+  const canGeolocate = tiers.flow && isOpenRequest && !canEdit;
 
   const controls = [
     tiers.history && hasPublishedRecord(event) && (
@@ -188,10 +190,10 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     ),
     // `max-sm:pr-2`: the `?` grows its tap area 8px past its glyph on a phone, which stays inside
     // the row's right edge.
-    tiers.flow && isOpenRequest && (
+    canGeolocate && (
       <span key="geolocate" className="inline-flex items-center gap-1.5 max-sm:pr-2">
         <Link href={eventEditHref(event.id)} className={buttonClasses("primary")}>
-          <MapPin size={14} />
+          <ActionIcon action="geolocate" />
           Geolocate
         </Link>
         <FieldHelp concept="geolocate_request" />
@@ -241,6 +243,7 @@ function CreditRow({
       <AuthorByline author={author} avatar className="text-sm min-w-0" />
       {leave && (
         <Button
+          action="leave"
           ref={controlRef}
           variant="danger"
           className={armed ? DANGER_CONFIRM : ""}

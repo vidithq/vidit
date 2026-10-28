@@ -3,7 +3,7 @@
 import { Suspense, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Trash2 } from "lucide-react";
+import { SquarePen, Trash2 } from "lucide-react";
 
 import { CollectionCoverage } from "@/components/collections/CollectionCoverage";
 import { CollectionItems } from "@/components/collections/CollectionItems";
@@ -44,9 +44,9 @@ import { profileHref } from "@/lib/routes";
  * Both sections read one sequence, walked once, so pins and rows describe the same collection.
  *
  * Actions: **Share on X** (`<ShareOnX>`, a plain click since a collection has no `detected`
- * state), **Report** (open to readers with no account, via `useReportContent`), then the owner's
- * **Edit** and **Drop** (red trash under the two-click confirm, landing on the owner's profile).
- * Drop lives only here.
+ * state), **Report** for every reader but the owner (signed out included, via
+ * `useReportContent`), then the owner's **Edit** and **Drop** (red trash under the two-click
+ * confirm, landing on the owner's profile). Drop lives only here.
  */
 export default function CollectionPage() {
   // `useSearchParams` opts out of static prerender, so the body sits under Suspense.
@@ -130,7 +130,7 @@ function CollectionPageBody() {
               `by ${collection.owner.username} · ${collectionMetaSegments(collection).join(" · ")}`,
             ]}
           />
-          {report.trigger}
+          {!isOwner && report.trigger}
           {isOwner && (
             <>
               {/* Navigation: `buttonClasses` on the link, not a button nested in an anchor. */}
@@ -140,7 +140,7 @@ function CollectionPageBody() {
                   className={buttonClasses("ghost", { icon: true })}
                   aria-label="Edit this collection"
                 >
-                  <Pencil size={14} />
+                  <SquarePen size={14} />
                 </Link>
               </Tooltip>
               <Button
@@ -163,7 +163,7 @@ function CollectionPageBody() {
       panels={
         <>
           {/* Under the header, where the trigger is. */}
-          {report.panel}
+          {!isOwner && report.panel}
           {drop.error && (
             <div className={FORM_ERROR_BANNER} role="alert">
               {drop.error}

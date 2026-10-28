@@ -323,7 +323,7 @@ export default function SettingsPage() {
               />
             </div>
 
-            <Button type="submit" variant="primary" disabled={submitting}>
+            <Button action="password" type="submit" variant="primary" disabled={submitting}>
               {submitting ? "Updating..." : "Update password"}
             </Button>
           </form>

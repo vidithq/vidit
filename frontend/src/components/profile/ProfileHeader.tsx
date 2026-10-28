@@ -2,7 +2,7 @@
 
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
-import { FolderPlus, LogOut, Pencil } from "lucide-react";
+import { FolderPlus, LogOut, SquarePen } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
@@ -154,7 +154,7 @@ export function ProfileActions({
             aria-label="Edit profile"
             title="Edit profile"
           >
-            <Pencil size={14} />
+            <SquarePen size={14} />
           </Button>
         )}
         {icons}
@@ -205,10 +205,11 @@ export function ProfileEditActions({ edit }: { edit: ProfileEditState }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" onClick={edit.cancelEditing} disabled={edit.saving}>
+        <Button action="cancel" variant="ghost" onClick={edit.cancelEditing} disabled={edit.saving}>
           Cancel
         </Button>
         <Button
+          action="save"
           variant="primary"
           onClick={edit.saveEdits}
           disabled={edit.saving || edit.bioOver}

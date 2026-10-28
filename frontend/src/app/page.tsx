@@ -10,12 +10,11 @@ import {
   BookOpen,
   IdCard,
   Play,
-  ArrowRight,
 } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { PageFrame } from "@/components/ui/PageFrame";
-import { buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import DemoVideo from "@/components/landing/DemoVideo";
 import { staticPageMetadata } from "./_og/metadata";
 
@@ -130,8 +129,8 @@ export default function LandingPage() {
           {/* The hero carries the read path alone; joining lives in the sidebar's sign-in. */}
           <div className="mt-8 flex items-center justify-center">
             <Link href="/map" className={buttonClasses("primary")}>
+              <ActionIcon action="map" />
               Explore the map
-              <ArrowRight size={15} />
             </Link>
           </div>
         </section>

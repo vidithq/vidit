@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
-import { Plus } from "lucide-react";
 
 import { SourceEditor, type SourceEditorInvalid } from "@/components/sources/SourceEditor";
 import { SourcesRow } from "@/components/sources/SourcesRow";
@@ -120,8 +119,7 @@ export function SourcesField({
           {atCap && (
             <span className="text-xs text-neutral-500">{MAX_SOURCES_PER_EVENT} maximum.</span>
           )}
-          <Button variant="secondary" disabled={atCap} onClick={add}>
-            <Plus size={13} strokeWidth={2} />
+          <Button action="add" variant="secondary" disabled={atCap} onClick={add}>
             Add a source
           </Button>
         </>

@@ -2,7 +2,6 @@
 
 import { useCallback, useState } from "react";
 import dynamic from "next/dynamic";
-import { Check, Eraser, Minus, RotateCcw, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
@@ -98,36 +97,38 @@ export function ZoneEditor({
         aria-label="Contour tools"
         className="flex flex-wrap items-center gap-1 rounded-t-lg border-b border-neutral-800 bg-neutral-900 px-2 py-1.5"
       >
-        <Button variant="ghost" disabled={!canUndo} onClick={undo}>
-          <Undo2 size={14} />
+        <Button action="undo" variant="ghost" disabled={!canUndo} onClick={undo}>
           Undo
         </Button>
         {closed ? (
           <Button
+            action="removePoint"
             variant="ghost"
             disabled={!canRemove}
             onClick={() => selected !== null && change(removeVertex(state, selected))}
           >
-            <Minus size={14} />
             Remove corner
           </Button>
         ) : (
           <Button
+            action="accept"
             variant="ghost"
             disabled={vertices.length < MIN_ZONE_VERTICES}
             onClick={() => change({ ...state, closed: true, selected: null })}
           >
-            <Check size={14} />
             Close
           </Button>
         )}
-        <Button variant="ghost" disabled={vertices.length === 0} onClick={() => change(EMPTY_DRAW)}>
-          <Eraser size={14} />
+        <Button
+          action="clear"
+          variant="ghost"
+          disabled={vertices.length === 0}
+          onClick={() => change(EMPTY_DRAW)}
+        >
           Start over
         </Button>
         {onReset && (
-          <Button variant="ghost" onClick={onReset}>
-            <RotateCcw size={14} />
+          <Button action="revert" variant="ghost" onClick={onReset}>
             Back to the current contour
           </Button>
         )}

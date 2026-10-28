@@ -21,7 +21,6 @@ import {
   Map as MapIcon,
   MapPin,
   MessageCircle,
-  Save,
   Search as SearchIcon,
   SquarePen,
   Swords,
@@ -138,7 +137,13 @@ import {
   WARNING_CALLOUT,
   TOOLTIP_SURFACE,
 } from "@/components/ui/styles";
-import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
+import {
+  ACTION_ICONS,
+  Button,
+  buttonClasses,
+  DANGER_CONFIRM,
+  type ButtonAction,
+} from "@/components/ui/Button";
 import { CoordinateActions, CoordinateValue } from "@/components/event/CoordinateActions";
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
@@ -191,6 +196,67 @@ function Variant({ label, children }: { label: string; children: React.ReactNode
     </div>
   );
 }
+
+// One label per action icon, so a new action shows here before it ships.
+const ACTION_LABELS: Record<ButtonAction, string> = {
+  accept: "Accept",
+  activity: "Show all activity",
+  add: "Add a source",
+  approve: "Approve",
+  archive: "Wayback Machine",
+  askApproval: "Ask for approval",
+  cancel: "Cancel",
+  clear: "Clear",
+  collect: "Add to collection",
+  continue: "Continue",
+  copy: "Copy",
+  decline: "Decline",
+  delete: "Delete",
+  dismiss: "Dismiss",
+  draw: "Draw a contour on this source",
+  fileSource: "File the source",
+  filter: "Filters",
+  follow: "Follow",
+  following: "Following",
+  geolocate: "Geolocate",
+  go: "Go",
+  graphic: "Mark graphic",
+  guide: "Read Getting started",
+  hide: "Hide",
+  import: "Import archive",
+  invite: "Invite",
+  leave: "Leave",
+  less: "Manage",
+  link: "Link",
+  map: "Explore the map",
+  mint: "Mint code",
+  more: "Show more",
+  newCollection: "New collection",
+  newSite: "Create the site",
+  next: "Next",
+  password: "Update password",
+  previous: "Previous",
+  removePoint: "Remove corner",
+  report: "Send report",
+  request: "Post request",
+  retry: "Try again",
+  revert: "Back to the current contour",
+  review: "Start reviewing",
+  revoke: "Revoke",
+  role: "Make org manager",
+  save: "Save version 2",
+  search: "Your geolocations",
+  send: "Send reset link",
+  show: "Restore",
+  signIn: "Sign in",
+  site: "Open the site page",
+  skip: "Skip",
+  undo: "Undo",
+  unlink: "Clear link",
+  unsubscribe: "Turn off",
+  useProof: "Use a proof image",
+  withdraw: "Withdraw",
+};
 
 const MOCK_TAGS = [
   { id: "1", name: "Ukraine" },
@@ -487,7 +553,7 @@ export default function PalettePage() {
 
           <Item name="ARMED_RING" usage="The armed half of a two-click confirm on a control that stays put: a ring plus a neutral plate, so the button reads as changed without moving or resizing anything. Applied via className over any variant, paired with useConfirmAction (which owns the arming, the timeout, and the Escape / outside-click exits) and a label that says what the next click does. Every armed control that is not the loud red point of no return uses it: the event share row's detection link, the event forms' publish buttons (through PublishActions). DANGER_CONFIRM is the destructive counterpart.">
             <div className="flex items-center gap-3">
-              <Button variant="primary" className={ARMED_RING}>
+              <Button action="geolocate" variant="primary" className={ARMED_RING}>
                 Confirm
               </Button>
               <Button icon variant="ghost" className={ARMED_RING} aria-label="Copy coordinates" title="Copy coordinates">
@@ -513,27 +579,27 @@ export default function PalettePage() {
         <section className="space-y-3">
           <SectionEyebrow title="Controls · buttons & pills" />
 
-          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site. `icon` makes a square icon-only button, and every icon control on the site is that ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs. Both shapes take a phone tap step below `sm`, `TAP_STEP` for the text shape's height and `ICON_TAP_STEP` for the icon square; both are exported, so an interactive `<Pill>`, a `<FilterSection>` header toggle and the filter surfaces' quiet text controls take the height floor, and a square control smaller than this one (the settings accent swatch, a `<FileManager>` tile's remove control, the map scrubber's play and reset, the sidebar's community links) takes `ICON_TAP_STEP` and names its own desktop square beside it, rather than either inventing a second figure.">
+          <Item name="<Button>" usage="Two axes: tone (accent / danger) and emphasis (filled → outline → text). Everything clickable is the accent colour, red is destructive or alerting, no grey button. `dangerGhost` is red at ghost weight, for a red control sitting in an icon row (the report flag). `DANGER_CONFIRM` is the one loud filled red, applied only to the armed two-click confirm. `disabled` drops the tone for neutral grey rather than fading it, so a button that refuses the click reads like every other inert control on the site. `icon` makes a square icon-only button, and every icon control on the site is that ghost icon button, at one size: a page-header cluster, the profile header row, the coordinates line, the archive mark beside a source link, a field's trailing adornment, all the same 32px square with the same hover plate. An action is <Button icon variant='ghost'>; navigation is buttonClasses('ghost', {icon: true}) on a <Link> or an <a>, so a control that navigates never nests a button inside an anchor; a control with nothing to act on is the disabled button, which paints itself neutral grey and leaves the tab order (an inert link becomes a disabled button, since a dead anchor is not a control). aria-label is the whole name, title repeats it, and only a tooltip that moves while the name holds still (a copy flash) may differ. Marks are 14px lucide or brand glyphs. A text button leads its label with the icon of the action it names: `action` on a <Button>, <ActionIcon> before the text of a buttonClasses link, one icon per action from ACTION_ICONS (see Action icons below). Both shapes take a phone tap step below `sm`, `TAP_STEP` for the text shape's height and `ICON_TAP_STEP` for the icon square; both are exported, so an interactive `<Pill>`, a `<FilterSection>` header toggle and the filter surfaces' quiet text controls take the height floor, and a square control smaller than this one (the settings accent swatch, a `<FileManager>` tile's remove control, the map scrubber's play and reset, the sidebar's community links) takes `ICON_TAP_STEP` and names its own desktop square beside it, rather than either inventing a second figure.">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="primary">Primary</Button>
-                <Button variant="secondary">Secondary</Button>
-                <Button variant="ghost">Ghost</Button>
-                <Button variant="danger">Danger</Button>
-                <Button variant="dangerGhost">Danger ghost</Button>
+                <Button action="geolocate" variant="primary">Publish</Button>
+                <Button action="add" variant="secondary">Add a source</Button>
+                <Button action="cancel" variant="ghost">Cancel</Button>
+                <Button action="delete" variant="danger">Remove</Button>
+                <Button action="report" variant="dangerGhost">Send report</Button>
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-[11px] text-neutral-600 self-center">disabled:</span>
-                <Button variant="primary" disabled>Primary</Button>
-                <Button variant="secondary" disabled>Secondary</Button>
-                <Button variant="ghost" disabled>Ghost</Button>
-                <Button variant="danger" disabled>Danger</Button>
+                <Button action="geolocate" variant="primary" disabled>Publish</Button>
+                <Button action="add" variant="secondary" disabled>Add a source</Button>
+                <Button action="cancel" variant="ghost" disabled>Cancel</Button>
+                <Button action="delete" variant="danger" disabled>Remove</Button>
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-[11px] text-neutral-600 self-center">two-click confirm:</span>
-                <Button variant="danger">Destructive action</Button>
+                <Button action="delete" variant="danger">Remove</Button>
                 <span className="text-neutral-600 self-center">→</span>
-                <Button variant="danger" className={DANGER_CONFIRM}>
+                <Button action="delete" variant="danger" className={DANGER_CONFIRM}>
                   Confirm
                 </Button>
               </div>
@@ -566,6 +632,16 @@ export default function PalettePage() {
                   </Button>
                 </Variant>
               </div>
+            </div>
+          </Item>
+
+          <Item name="ACTION_ICONS" usage="The action icons: one lucide icon per action a text button names, the same icon wherever that action appears. A text <Button> takes `action` and draws the icon before its label; a buttonClasses link puts <ActionIcon action> before its text; ConfirmDialog takes confirmAction for its confirm, ActionMenu takes action for a text trigger (Approve). Button.test fails on a text button that names no action. docs/design.md, Action icons, lists every label each icon goes with.">
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(ACTION_ICONS) as ButtonAction[]).map((action) => (
+                <Button key={action} action={action} variant="secondary">
+                  {ACTION_LABELS[action]}
+                </Button>
+              ))}
             </div>
           </Item>
 
@@ -656,7 +732,7 @@ export default function PalettePage() {
             <Variant label="hover or tab to the count">
               <CountBadge count={2} label="2 missing: Title, Conflict">
                 {(describedBy) => (
-                  <Button variant="primary" aria-describedby={describedBy}>
+                  <Button action="geolocate" variant="primary" aria-describedby={describedBy}>
                     Publish
                   </Button>
                 )}
@@ -664,7 +740,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<CopyButton>" usage="The one copy confirmation: an icon button whose mark turns into a check while `copied` holds (useCopyToClipboard times it, 1.5 s) and fades back after, with no fade under prefers-reduced-motion. The accessible name never changes, since a changing name is re-announced as a new control; `announce` reaches screen readers through a sibling aria-live region, with no visible text. Worn by Copy coordinates, a profile's copied handle, and Share where the browser has no share sheet (Link copied). The secondary `variant` boxes the button, for a copy that stands beside a field as its own item (Copy coordinates).">
+          <Item name="<CopyButton>" usage="The one copy confirmation: an icon button whose mark turns into a check while `copied` holds (useCopyToClipboard times it, 1.5 s) and fades back after, with no fade under prefers-reduced-motion. The accessible name never changes, since a changing name is re-announced as a new control; its tooltip reads `announce` while the check shows, shown on its own (a tap included), and a sibling aria-live region says it to screen readers. Worn by Copy coordinates, a profile's copied handle, and Share where the browser has no share sheet (Link copied). The secondary `variant` boxes the button, for a copy that stands beside a field as its own item (Copy coordinates).">
             <Variant label="ghost (default)">
               <PaletteCopyButton />
             </Variant>
@@ -1667,8 +1743,8 @@ export default function PalettePage() {
                 external={false}
                 action={
                   <>
-                    <Button variant="ghost">Make member</Button>
-                    <Button variant="danger">Remove</Button>
+                    <Button action="role" variant="ghost">Make member</Button>
+                    <Button action="delete" variant="danger">Remove</Button>
                   </>
                 }
               />
@@ -1787,7 +1863,7 @@ export default function PalettePage() {
                   variant="invite"
                   icon={MapPin}
                   lead="Your feed is empty"
-                  cta={<Button variant="primary">Explore the map</Button>}
+                  cta={<Button action="map" variant="primary">Explore the map</Button>}
                 >
                   Follow other analysts to see their latest geolocations here.
                 </EmptyState>
@@ -2080,10 +2156,10 @@ export default function PalettePage() {
 
           <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. `tone` is accent by default; `danger` paints the border and the confirm red (the danger Button) for an action that deletes, removes or closes something: closing an event, every admin delete, purge and invite revoke, deleting an organization or an approval, removing a co-geolocator or withdrawing an invitation, and hiding a report whose owner deleted it. Approve opens it in accent, since an approval is final but destroys nothing, Request approval opens it over the open requests and the picker of whom to ask, and the report flag opens it over the reason and the details.">
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => setConfirmOpen("accent")}>
+              <Button action="approve" variant="secondary" onClick={() => setConfirmOpen("accent")}>
                 Approve
               </Button>
-              <Button variant="danger" onClick={() => setConfirmOpen("danger")}>
+              <Button action="delete" variant="danger" onClick={() => setConfirmOpen("danger")}>
                 Delete approval
               </Button>
             </div>
@@ -2091,6 +2167,7 @@ export default function PalettePage() {
               <ConfirmDialog
                 title="Approve this version?"
                 confirmLabel="Approve"
+                confirmAction="approve"
                 onConfirm={() => setConfirmOpen(null)}
                 onCancel={() => setConfirmOpen(null)}
               >
@@ -2102,6 +2179,7 @@ export default function PalettePage() {
               <ConfirmDialog
                 title="Delete this approval?"
                 confirmLabel="Delete approval"
+                confirmAction="delete"
                 tone="danger"
                 onConfirm={() => setConfirmOpen(null)}
                 onCancel={() => setConfirmOpen(null)}
@@ -2200,7 +2278,7 @@ function PaletteMediaLightbox() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="secondary" onClick={() => setOpen(true)}>
+      <Button action="show" variant="secondary" onClick={() => setOpen(true)}>
         Open the viewer
       </Button>
       {open && (
@@ -2349,7 +2427,7 @@ function PalettePublishActions() {
               busyLabel: SAVING_LABEL,
               busy: false,
               variant: "primary",
-              icon: <Save size={14} strokeWidth={2} />,
+              icon: "save",
               ask: {
                 label: "Version note",
                 content: (
@@ -2362,7 +2440,7 @@ function PalettePublishActions() {
                       autoFocus
                     />
                     <div className="flex justify-end">
-                      <Button variant="primary" onClick={save.confirmAsk}>
+                      <Button action="save" variant="primary" onClick={save.confirmAsk}>
                         Save version 3
                       </Button>
                     </div>

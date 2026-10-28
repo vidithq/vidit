@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import type { useCursorList } from "@/hooks/useCursorList";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { cn } from "@/lib/cn";
-import { Button, buttonClasses } from "./Button";
+import { ActionIcon, Button, buttonClasses } from "./Button";
 import { FORM_ERROR_BANNER } from "./form-styles";
 
 /** The one label of the control that shows more of a list, in place or on another page. */
@@ -42,7 +42,12 @@ export function LoadMoreRow({
     <div className="space-y-3">
       {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
       <div ref={sentinel} className="flex justify-center">
-        <Button variant="secondary" onClick={loadMore} disabled={loadingMore}>
+        <Button
+          action={loadingMore ? undefined : error ? "retry" : "more"}
+          variant="secondary"
+          onClick={loadMore}
+          disabled={loadingMore}
+        >
           {loadingMore && <Loader2 size={14} className="animate-spin" />}
           {loadingMore ? "Loading…" : error ? "Try again" : SHOW_MORE}
         </Button>
@@ -62,6 +67,7 @@ export function ShowMoreLink({ href, className }: { href: string; className?: st
       href={href}
       className={buttonClasses("secondary", { className: cn("whitespace-nowrap", className) })}
     >
+      <ActionIcon action="more" />
       {SHOW_MORE}
     </Link>
   );

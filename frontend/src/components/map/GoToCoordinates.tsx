@@ -67,7 +67,7 @@ export function GoToCoordinates({
           aria-describedby={error ? errorId : undefined}
           className="font-mono"
         />
-        <Button variant="secondary" onClick={go}>
+        <Button action="go" variant="secondary" onClick={go}>
           Go
         </Button>
       </div>

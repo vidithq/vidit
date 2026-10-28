@@ -3,10 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ImagePlus } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
-import { buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { PageColumns, PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
@@ -90,10 +89,12 @@ export default function FileSiteSourcePage() {
           )}
           <div className="flex flex-wrap gap-2">
             <Link href={siteHref(site.id)} className={buttonClasses("primary")}>
+              <ActionIcon action="site" />
               Open the site page
             </Link>
             {ownsSite(site, user.id) && (
               <Link href={siteEditHref(site.id, filed.id)} className={buttonClasses("secondary")}>
+                <ActionIcon action="draw" />
                 Draw a contour on this source
               </Link>
             )}
@@ -114,7 +115,7 @@ export default function FileSiteSourcePage() {
         <SiteWriteActions
           label="File the source"
           busyLabel="Filing…"
-          icon={<ImagePlus size={14} />}
+          action="fileSource"
           missing={draft.missing}
           attempt={attempt}
           busy={write.loading}
