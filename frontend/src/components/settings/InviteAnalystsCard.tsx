@@ -157,7 +157,7 @@ export function InviteAnalystsCard() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" variant="primary" disabled={mint.loading}>
+            <Button action="mint" type="submit" variant="primary" disabled={mint.loading}>
               {mint.loading ? "Minting…" : "Mint invite code"}
             </Button>
             <p className="text-xs text-neutral-500">

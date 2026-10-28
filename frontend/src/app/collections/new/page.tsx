@@ -126,6 +126,7 @@ function NewCollectionPageBody() {
       submitLabel={
         eventId || ((match || checked) && total > 0) ? "Create and add" : "Create collection"
       }
+      submitAction="newCollection"
       hint="Say what the collection holds. Items order themselves by event date, so there is no order to set."
       busy={create.loading}
       error={create.error}

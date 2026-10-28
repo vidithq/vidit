@@ -261,6 +261,7 @@ export function UserActionsCard({
           />
           <div className="flex gap-2">
             <Button
+              action="link"
               variant="primary"
               onClick={submitXHandle}
               disabled={linking}
@@ -269,6 +270,7 @@ export function UserActionsCard({
             </Button>
             {user.x_handle && (
               <Button
+                action="unlink"
                 variant="danger"
                 onClick={submitXHandleClear}
                 disabled={linking}
@@ -277,6 +279,7 @@ export function UserActionsCard({
               </Button>
             )}
             <Button
+              action="cancel"
               variant="ghost"
               onClick={() => {
                 setShowXHandleForm(false);
@@ -300,6 +303,7 @@ export function UserActionsCard({
               : `${DANGER_LABELS[dangerMode]} ${user.username}?`
           }
           confirmLabel={DANGER_LABELS[dangerMode]}
+          confirmAction="delete"
           busyLabel="Working…"
           busy={acting}
           error={dangerError}

@@ -224,6 +224,7 @@ export function GeolocatorsByline({
               : `Withdraw the invitation of ${confirming.username}?`
           }
           confirmLabel={confirming.kind === "remove" ? "Remove" : "Withdraw"}
+          confirmAction={confirming.kind === "remove" ? "delete" : "withdraw"}
           busy={write.loading}
           error={write.error}
           tone="danger"

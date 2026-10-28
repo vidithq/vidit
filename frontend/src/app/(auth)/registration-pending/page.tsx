@@ -58,6 +58,7 @@ function PendingInner() {
         </p>
         {resend === "idle" && (
           <Button
+            action="send"
             variant="secondary"
             fullWidth
             onClick={handleResend}
@@ -75,7 +76,7 @@ function PendingInner() {
           </p>
         )}
         {resend === "failed" && (
-          <Button variant="secondary" fullWidth onClick={handleResend}>
+          <Button action="retry" variant="secondary" fullWidth onClick={handleResend}>
             Try again
           </Button>
         )}

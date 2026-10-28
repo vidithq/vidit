@@ -48,6 +48,7 @@ function TokenUnsubscribeInner({
     >
       {run.error && <div className={FORM_ERROR_BANNER}>{run.error}</div>}
       <Button
+        action="unsubscribe"
         variant="primary"
         fullWidth
         disabled={!token || run.loading}

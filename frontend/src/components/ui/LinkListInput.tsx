@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Plus } from "lucide-react";
 
 import { Button } from "./Button";
 import { RemoveButton } from "./RemoveButton";
@@ -180,6 +179,7 @@ export function LinkListInput<R>({
 
       <div className="flex items-center gap-2">
         <Button
+          action="add"
           variant="secondary"
           disabled={atCap}
           aria-label={addName}
@@ -189,7 +189,6 @@ export function LinkListInput<R>({
             setExpanded([...expandedNow, false]);
           }}
         >
-          <Plus size={13} strokeWidth={2} />
           {addText ?? `Add ${lower}`}
         </Button>
         {atCap && <span className="text-xs text-neutral-500">{max} maximum.</span>}

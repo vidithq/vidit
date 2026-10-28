@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { Download, ImageUp } from "lucide-react";
+import { Download } from "lucide-react";
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { MediaManager } from "@/components/geolocations/MediaManager";
@@ -174,11 +174,11 @@ export function SourceEditor({
       )}
       {!hasFile && proofImages.length > 0 && (
         <Button
+          action="useProof"
           variant="ghost"
           onClick={() => onCopyProofImage(proofImages[0])}
           aria-label={`Use a proof image as the file of ${name.toLowerCase()}`}
         >
-          <ImageUp size={13} />
           Use a proof image
         </Button>
       )}

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { Megaphone } from "lucide-react";
 import { useCursorList } from "@/hooks/useCursorList";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { eventListPath, type EventListSort } from "@/lib/events";
@@ -27,7 +26,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { requestHref, submitHref } from "@/lib/routes";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
@@ -103,7 +102,7 @@ export default function RequestsPage() {
           href={submitHref("single")}
           className={buttonClasses("primary", { className: "whitespace-nowrap" })}
         >
-          <Megaphone size={14} strokeWidth={2} />
+          <ActionIcon action="request" />
           Post request
         </Link>
       }

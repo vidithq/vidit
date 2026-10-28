@@ -4,7 +4,7 @@ import { useId, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
@@ -143,6 +143,7 @@ export function ImportPostPanel({ shell }: { shell: ImportShell }) {
           )}
           {detectionId !== undefined && (
             <Link href={eventEditHref(detectionId, true)} className={buttonClasses("primary")}>
+              <ActionIcon action="review" />
               Review the detection
             </Link>
           )}
@@ -155,6 +156,7 @@ export function ImportPostPanel({ shell }: { shell: ImportShell }) {
   // submits.
   const actions = (
     <Button
+      action="import"
       type="submit"
       form={formId}
       variant="primary"

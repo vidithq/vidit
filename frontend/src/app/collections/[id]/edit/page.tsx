@@ -94,6 +94,7 @@ export default function EditCollectionPage() {
       initialDescription={collection.description}
       initialEvents={items}
       submitLabel="Save collection"
+      submitAction="save"
       busy={save.loading}
       error={save.error}
       onSubmit={(title, description, eventIds) =>

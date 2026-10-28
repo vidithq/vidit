@@ -29,6 +29,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
+- On a request page, the asker sees Edit, which opens the request's form, and every other reader sees Geolocate; the asker no longer gets both for the same page ([#794](https://github.com/vidithq/vidit/pull/794)).
 - Search finds results while you type: the last word matches as the start of a longer word, so a partial place name or handle already lists what it begins, and accents no longer matter (`cafe` finds `Café`) ([#788](https://github.com/vidithq/vidit/pull/788)).
 - The settings page shows labels only, with each explanation behind its `?`, and a section says *Saved* for a moment once a setting reaches your account ([#792](https://github.com/vidithq/vidit/pull/792)).
 - The help of the dashed disputed borders switch says the map data, not Vidit, decides which borders are disputed, and what the switch does ([#792](https://github.com/vidithq/vidit/pull/792)).
@@ -72,6 +74,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A collection's owner no longer sees Report on their own collection ([#794](https://github.com/vidithq/vidit/pull/794)).
+- On a phone, the pinned actions and the menu button sit on one full-width bar once the page scrolls, so fields and lists no longer show between them ([#794](https://github.com/vidithq/vidit/pull/794)).
+- On a wide screen, the pinned actions stay on one line, such as Approve, Accept and Decline on an invitation ([#794](https://github.com/vidithq/vidit/pull/794)).
+- Share shows Link copied in its tooltip when it copies the link, on a tap too ([#794](https://github.com/vidithq/vidit/pull/794)).
 - The content reports queue names a reported event by its title and author, and the Manage an event picker shows each event's date and author, so two events with the same title stay apart ([#793](https://github.com/vidithq/vidit/pull/793)).
 - An admin opening a withheld event or collection sees that it is withheld and since when, as on a withheld site ([#793](https://github.com/vidithq/vidit/pull/793)).
 - The admin console marks a soft-deleted account and offers only the actions that apply to it, sums up what a hard delete erased, and names the action on each event receipt instead of hard or soft ([#793](https://github.com/vidithq/vidit/pull/793)).

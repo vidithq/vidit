@@ -14,7 +14,6 @@ import {
   requestWriteButton,
 } from "@/components/geolocations/PublishActions";
 import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
-import { Save } from "lucide-react";
 
 import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldLabel } from "@/components/ui/FieldLabel";
@@ -208,7 +207,12 @@ export function EventEditForm({
         queue && (
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
             <span className={LABEL_TEXT}>{queue.position}</span>
-            <Button variant="secondary" onClick={queue.onAdvance} disabled={writes.busy}>
+            <Button
+              action="skip"
+              variant="secondary"
+              onClick={queue.onAdvance}
+              disabled={writes.busy}
+            >
               Skip
             </Button>
           </div>
@@ -222,7 +226,7 @@ export function EventEditForm({
               busyLabel: SAVING_LABEL,
               busy: submit.busy,
               variant: "primary",
-              icon: <Save size={14} strokeWidth={2} />,
+              icon: "save",
               form: EDIT_FORM_ID,
               ask: {
                 label: "Version note",
@@ -329,7 +333,7 @@ function VersionNotePanel({
         />
       </div>
       <div className="flex justify-end">
-        <Button variant="primary" onClick={onSave}>
+        <Button action="save" variant="primary" onClick={onSave}>
           {saveLabel}
         </Button>
       </div>

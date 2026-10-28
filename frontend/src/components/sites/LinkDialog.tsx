@@ -239,6 +239,7 @@ export function LinkDialog({
     <ConfirmDialog
       title={title}
       confirmLabel="Link"
+      confirmAction="link"
       busyLabel="Saving…"
       busy={link.loading}
       confirmDisabled={!picked || !effect}

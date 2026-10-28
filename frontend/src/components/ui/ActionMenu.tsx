@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 
 import { cn } from "@/lib/cn";
-import { Button } from "./Button";
+import { Button, type ButtonAction } from "./Button";
 import { Tooltip } from "./Tooltip";
 import { ACCENT_SURFACE, TOOLTIP_SURFACE } from "./styles";
 
@@ -56,6 +56,7 @@ export function ActionMenu({
   label,
   icon,
   text,
+  action,
   menuLabel = label,
   items,
   matchTriggerWidth = false,
@@ -67,6 +68,8 @@ export function ActionMenu({
   icon: ReactNode;
   /** Printed on the trigger before the icon (the version selector's *v2*); icon-only when unset. */
   text?: string;
+  /** The action `text` names, whose icon leads it (**Approve**). A picker's text names none. */
+  action?: ButtonAction;
   /** The list's accessible name; the trigger's when unset. */
   menuLabel?: string;
   items: ActionMenuItem[];
@@ -179,6 +182,7 @@ export function ActionMenu({
       <Button
         ref={triggerRef}
         icon={!text}
+        action={action}
         variant={variant}
         disabled={disabled}
         aria-label={label}

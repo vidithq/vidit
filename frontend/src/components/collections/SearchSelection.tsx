@@ -10,7 +10,6 @@ import { cn } from "@/lib/cn";
 import {
   BULK_ADD_MAX_EVENTS,
   COLLECTABLE_STATUSES,
-  CollectionIcon,
   countCollectableMatches,
   pickableFromHit,
   type BulkTarget,
@@ -112,13 +111,13 @@ export function SearchSelectionActions({ selection }: { selection: SearchSelecti
   return (
     <>
       <Button
+        action="collect"
         ref={anchorRef}
         variant="primary"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <CollectionIcon size={14} strokeWidth={1.8} />
         Add to collection
       </Button>
       {open && (

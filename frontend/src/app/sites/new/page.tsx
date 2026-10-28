@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MapPinPlus, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 
 import { EventSection } from "@/components/event/EventLayout";
 import { EventShell } from "@/components/event/EventShell";
@@ -155,7 +155,7 @@ export default function NewSitePage() {
           <SiteWriteActions
             label="Create the site"
             busyLabel="Creating…"
-            icon={<MapPinPlus size={14} />}
+            action="newSite"
             missing={missing}
             attempt={attempt}
             busy={create.loading}

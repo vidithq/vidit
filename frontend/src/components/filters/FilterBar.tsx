@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { SlidersHorizontal } from "lucide-react";
 
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { Button } from "@/components/ui/Button";
@@ -40,11 +39,11 @@ export function FilterBar<S>({
   return (
     <div className="flex flex-wrap items-center gap-2 lg:hidden">
       <Button
+        action="filter"
         variant="secondary"
         aria-haspopup="dialog"
         onClick={() => setDraft({ value })}
       >
-        <SlidersHorizontal size={14} />
         {count > 0 ? `Filters (${count})` : "Filters"}
       </Button>
       <ActiveFilterPills filters={pills} onClearAll={onClearAll} />
@@ -53,7 +52,7 @@ export function FilterBar<S>({
           <Card className="flex min-h-[calc(100dvh-3rem)] w-[calc(100vw-3rem)] flex-col">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-neutral-100">Filters</h2>
-              <Button variant="ghost" data-overlay-close="" onClick={close}>
+              <Button action="cancel" variant="ghost" data-overlay-close="" onClick={close}>
                 Cancel
               </Button>
             </div>
@@ -61,10 +60,11 @@ export function FilterBar<S>({
               {renderPanel(draft.value, (next) => setDraft({ value: next }))}
             </div>
             <div className="sticky bottom-0 flex justify-end gap-2 bg-neutral-900 pt-2">
-              <Button variant="ghost" onClick={() => setDraft({ value: empty })}>
+              <Button action="clear" variant="ghost" onClick={() => setDraft({ value: empty })}>
                 Clear
               </Button>
               <Button
+                action="accept"
                 variant="primary"
                 onClick={() => {
                   onApply(draft.value);

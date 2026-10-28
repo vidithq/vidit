@@ -26,7 +26,7 @@ test.describe("submit", () => {
     await expectNarrowViewportLayout(page, publish);
   });
 
-  test("pins the publish buttons on one line on a phone, each counting what it misses", async ({ page }) => {
+  test("pins the publish buttons on a phone, each counting what it misses", async ({ page }) => {
     await page.goto("/submit?mode=single");
 
     const actions = page.getByRole("complementary", { name: "Actions" });
@@ -45,11 +45,16 @@ test.describe("submit", () => {
     await expect(actions.getByRole("button", { name: /^7 missing: / })).toHaveText("7");
     await expect(actions.getByRole("button", { name: /^4 missing: / })).toHaveText("4");
 
-    // One line of buttons, and nothing else in the cluster.
     const publishBox = (await publish.boundingBox())!;
     const requestBox = (await request.boundingBox())!;
-    expect(Math.abs(publishBox.y - requestBox.y)).toBeLessThan(1);
-    expect((await actions.boundingBox())!.height).toBeLessThan(publishBox.height + 1);
+    if (page.viewportSize()!.width >= 375) {
+      // One line of buttons, and nothing else in the cluster.
+      expect(Math.abs(publishBox.y - requestBox.y)).toBeLessThan(1);
+      expect((await actions.boundingBox())!.height).toBeLessThan(publishBox.height + 1);
+    } else {
+      // With their icons the two buttons outgrow a 320px line: Publish request wraps under.
+      expect(requestBox.y).toBeGreaterThanOrEqual(publishBox.y + publishBox.height);
+    }
     await expectNoHorizontalOverflow(page);
 
     // Scrolled to the last field, both buttons stay on screen, under the menu chip.

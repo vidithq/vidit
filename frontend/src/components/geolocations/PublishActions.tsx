@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { MapPin, Megaphone } from "lucide-react";
-
-import { Button } from "@/components/ui/Button";
+import { Button, type ButtonAction } from "@/components/ui/Button";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
@@ -93,8 +91,8 @@ interface PublishButton {
   busyLabel: string;
   busy: boolean;
   variant: "primary" | "secondary";
-  /** Shown from `lg` up. */
-  icon: ReactNode;
+  /** The action the label names, whose icon leads it. */
+  icon: ButtonAction;
   /** The conditions this write still misses: the count on the button, which dims it while short.
    *  Left out, nothing is counted. */
   missing?: MissingField[];
@@ -122,7 +120,7 @@ export function publishGeolocationButton(
     label,
     busyLabel: PUBLISHING_LABEL,
     variant: "primary",
-    icon: <MapPin size={14} strokeWidth={2} />,
+    icon: "geolocate",
   };
 }
 
@@ -140,7 +138,7 @@ export function requestWriteButton(
     label,
     busyLabel,
     variant: "secondary",
-    icon: <Megaphone size={14} strokeWidth={2} />,
+    icon: "request",
   };
 }
 
@@ -176,7 +174,8 @@ export function PublishActions({
   return (
     <div className="space-y-3">
       {lead}
-      <div className="flex items-center justify-end gap-2">
+      {/* Wraps on a 320px phone, where two publish buttons with their icons outgrow the line. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {buttons.map((b) => {
           const missing = b.missing ?? [];
           const label = b.busy ? b.busyLabel : b.action.armed ? ARMED_LABEL : b.label;
@@ -186,6 +185,7 @@ export function PublishActions({
               {(describedBy) => (
                 <>
                   <Button
+                    action={b.icon}
                     ref={b.action.controlRef}
                     type={b.form ? "submit" : "button"}
                     form={b.form}
@@ -203,9 +203,6 @@ export function PublishActions({
                       asking && ACCENT_SURFACE,
                     )}
                   >
-                    <span aria-hidden className="contents max-lg:hidden">
-                      {b.icon}
-                    </span>
                     {/* Both labels share one grid cell, so arming never resizes the button. */}
                     <span aria-hidden className="grid">
                       <span className="invisible col-start-1 row-start-1">{b.label}</span>

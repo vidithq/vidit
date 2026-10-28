@@ -219,10 +219,10 @@ describe("the owner's edit", () => {
     expect(within(row()).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
-  it("puts the asker's Edit and Geolocate in the request page's actions row, with no card around them", () => {
+  it("gives the asker Edit alone to the request's form, in a row with no card around it", () => {
     renderAs(OWNER, { status: "requested", surface: "request" });
-    expect(rowControls()).toEqual(["Edit", "Share", "Geolocate", HELP]);
-    expect(within(row()).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
+    expect(rowControls()).toEqual(["Edit", "Share"]);
+    expect(within(row()).getByRole("link", { name: "Edit" })).toHaveAttribute(
       "href",
       "/events/e1/edit",
     );
@@ -233,6 +233,10 @@ describe("the owner's edit", () => {
   it("shows a visitor Share and Report on the request page, then Geolocate on the same row", () => {
     renderAs(ANALYST, { status: "requested", surface: "request" });
     expect(rowControls()).toEqual(["Share", "Report", "Geolocate", HELP]);
+    expect(within(row()).getByRole("link", { name: "Geolocate" })).toHaveAttribute(
+      "href",
+      "/events/e1/edit",
+    );
   });
 
   it("gives a closed request Share and Report, and no Geolocate", () => {

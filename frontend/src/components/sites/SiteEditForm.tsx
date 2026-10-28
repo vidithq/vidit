@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, RotateCcw, Save } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
 import { EventSection } from "@/components/event/EventLayout";
 import { EventShell } from "@/components/event/EventShell";
@@ -198,7 +198,7 @@ export function SiteEditForm({
           <SiteWriteActions
             label="Save"
             busyLabel="Saving…"
-            icon={<Save size={14} />}
+            action="save"
             missing={missing}
             attempt={attempt}
             busy={save.loading}
@@ -218,13 +218,13 @@ export function SiteEditForm({
                 actions={
                   !adding && (
                     <Button
+                      action="add"
                       variant="secondary"
                       onClick={() => {
                         setAdding(true);
                         setPicked(ADDED);
                       }}
                     >
-                      <Plus size={13} strokeWidth={2} />
                       Add a source
                     </Button>
                   )
