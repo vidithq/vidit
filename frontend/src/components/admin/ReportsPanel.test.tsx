@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ apiFetch: vi.fn(), apiFetchPage: vi.fn() }));
@@ -69,15 +69,15 @@ describe("<ReportsPanel>", () => {
     expect(screen.queryByText("Open the event")).toBeNull();
   });
 
-  it("hides the event only from the confirm dialog", async () => {
+  it("hides the event only on the second click of its in-place confirm", async () => {
     api.apiFetchPage.mockResolvedValue(page(["r1"], 1, 1));
     api.apiFetch.mockResolvedValue({});
     render(<ReportsPanel />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Hide the event" }));
     expect(api.apiFetch).not.toHaveBeenCalled();
-    const dialog = screen.getByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Hide the event" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm hide the event" }));
 
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/admin/reports/r1/resolve", {
@@ -85,7 +85,6 @@ describe("<ReportsPanel>", () => {
         body: JSON.stringify({ resolution: "hidden" }),
       }),
     );
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("keeps a collection its owner deleted judgeable", async () => {

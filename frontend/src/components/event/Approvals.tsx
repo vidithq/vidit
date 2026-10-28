@@ -37,7 +37,7 @@ export function ApprovalState({ approval }: { approval: Approval }) {
   return <Pill tone="neutral">Outdated</Pill>;
 }
 
-/** Who an approval speaks for, for the deletion dialog. */
+/** Who an approval speaks for, for the delete control's name. */
 function approvalSigner(approval: Approval): string {
   return approval.organization?.name ?? approval.reviewer?.username ?? "a deleted account";
 }
@@ -49,40 +49,6 @@ function deleteErrorMessage(err: unknown): string | undefined {
   }
   if (err.status === 403) return "Only a site admin can delete an approval.";
   return undefined;
-}
-
-/** The [`ConfirmDialog`] of a site admin's delete: it says the deletion cannot be undone and that
- *  the reviewer can approve again. */
-function DeleteApprovalDialog({
-  approval,
-  onDeleted,
-  onCancel,
-}: {
-  approval: Approval;
-  onDeleted: () => void;
-  onCancel: () => void;
-}) {
-  const remove = useMutation(() => deleteApproval(approval.id), {
-    fallback: "Failed to delete the approval",
-    onError: deleteErrorMessage,
-    onSuccess: onDeleted,
-  });
-  return (
-    <ConfirmDialog
-      title="Delete this approval?"
-      confirmLabel="Delete approval"
-      confirmAction="delete"
-      busyLabel="Deleting…"
-      busy={remove.loading}
-      error={remove.error}
-      tone="danger"
-      onConfirm={() => void remove.run()}
-      onCancel={onCancel}
-    >
-      <p>{`You delete the approval of version ${approval.version_no} by ${approvalSigner(approval)}. This cannot be undone.`}</p>
-      <p>The reviewer can approve this version again.</p>
-    </ConfirmDialog>
-  );
 }
 
 /**
@@ -146,8 +112,8 @@ function approvalStamp(approval: Approval): AvatarStackItem | null {
 
 /** The given approvals, oldest first, as stamps that link to each signer's page, each with an
  *  accent check badge. Every stamp shows: no count of approvals shows anywhere. With `onDeleted`,
- *  a site admin gets a delete control on each stamp, which opens a confirmation. Renders nothing
- *  for an empty list. */
+ *  a site admin gets a delete control on each stamp, which confirms in place, and its refusal
+ *  shows under the stamps. Renders nothing for an empty list. */
 export function ApprovalStamps({
   approvals,
   onDeleted,
@@ -162,7 +128,11 @@ export function ApprovalStamps({
   className?: string;
 }) {
   const { isAdmin } = useAdmin();
-  const [deleting, setDeleting] = useState<Approval | null>(null);
+  const remove = useMutation((approval: Approval) => deleteApproval(approval.id), {
+    fallback: "Failed to delete the approval",
+    onError: deleteErrorMessage,
+    onSuccess: () => onDeleted?.(),
+  });
   const deletable = isAdmin && onDeleted !== undefined;
   const items = approvals.flatMap((a) => {
     const stamp = approvalStamp(a);
@@ -173,7 +143,7 @@ export function ApprovalStamps({
         ...stamp,
         remove: {
           label: `Delete approval by ${approvalSigner(a)}`,
-          onClick: () => setDeleting(a),
+          onClick: () => void remove.run(a),
           confirms: true,
         },
       },
@@ -190,16 +160,7 @@ export function ApprovalStamps({
         trailing={trailing}
         className={className}
       />
-      {deleting && onDeleted && (
-        <DeleteApprovalDialog
-          approval={deleting}
-          onCancel={() => setDeleting(null)}
-          onDeleted={() => {
-            setDeleting(null);
-            onDeleted();
-          }}
-        />
-      )}
+      {remove.error && <ErrorNotice error={remove.error} className="lg:text-left" />}
     </>
   );
 }

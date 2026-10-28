@@ -96,7 +96,7 @@ export default function OrganizationPage() {
       {org.viewer_invited && !edit.editing && (
         <Card as="section">
           <p className="text-sm text-neutral-200">
-            You are invited to join {org.name}. Accept or decline it at the top of the page.
+            You are invited to join {org.name}.
           </p>
         </Card>
       )}

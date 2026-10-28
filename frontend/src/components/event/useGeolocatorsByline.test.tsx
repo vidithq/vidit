@@ -60,24 +60,49 @@ describe("<GeolocatorsByline>", () => {
     expect(screen.queryByRole("heading")).toBeNull();
   });
 
-  it("asks before it removes a co-geolocator or withdraws an invitation", async () => {
+  it("removes a co-geolocator on the second click of its trash, with no dialog", async () => {
     const onChanged = vi.fn();
     render(<GeolocatorsByline event={shared} onChanged={onChanged} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove bo" }));
+    const remove = screen.getByRole("button", { name: "Remove bo" });
+    expect(remove.querySelector("svg.lucide-trash-2, svg.lucide-trash2")).not.toBeNull();
+    fireEvent.click(remove);
     expect(api.apiFetch).not.toHaveBeenCalled();
-    const dialog = screen.getByRole("dialog", { name: "Remove bo?" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm remove bo" }));
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" }),
     );
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it("withdraws an invitation at once from its cross", async () => {
+    render(<GeolocatorsByline event={shared} onChanged={vi.fn()} />);
+
+    const withdraw = screen.getByRole("button", { name: "Withdraw the invitation of cy" });
+    expect(withdraw.querySelector("svg.lucide-x")).not.toBeNull();
+    fireEvent.click(withdraw);
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocator-invites/cy", {
+        method: "DELETE",
+      }),
+    );
+  });
+
+  it("shows a refused removal under the byline", async () => {
+    api.apiFetch.mockRejectedValue(new Error("Not your event"));
+    render(<GeolocatorsByline event={shared} onChanged={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Withdraw the invitation of cy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(api.apiFetch).not.toHaveBeenCalledWith(
-      "/events/e1/geolocator-invites/cy",
-      expect.anything(),
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not your event");
+  });
+
+  it("states the geolocator limit where the owner invites", () => {
+    render(<GeolocatorsByline event={shared} onChanged={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Invite a geolocator" }));
+    expect(screen.getByRole("dialog", { name: "Invite a geolocator" })).toHaveTextContent(
+      `at most ${MAX_EVENT_GEOLOCATORS} geolocators`,
     );
   });
 

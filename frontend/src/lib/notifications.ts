@@ -30,8 +30,8 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
   }
 }
 
-/** Delete one of your notifications. */
-export function deleteNotification(id: string): Promise<void> {
+/** Dismiss one of your notifications: it leaves your list. */
+export function dismissNotification(id: string): Promise<void> {
   return apiFetch<void>(`${NOTIFICATIONS_PATH}/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 

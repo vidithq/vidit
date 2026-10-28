@@ -2,7 +2,6 @@
 
 import { User } from "lucide-react";
 
-import { useConfirmAction, ARM_MS } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
 import {
@@ -12,8 +11,9 @@ import {
   type OrganizationMember,
 } from "@/lib/organizations";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { Pill } from "@/components/ui/Pill";
@@ -34,7 +34,7 @@ interface MemberRowProps {
 
 /** One member: a row to their profile with the role and join date, and the controls the viewer
  * holds over it. A manager flips the role and removes; anyone leaves from their own row. Removing
- * and leaving take a two-click confirm. The last org manager's row offers neither, and says why. */
+ * and leaving confirm in place. The last org manager's row offers neither, and says why. */
 function MemberRow({ slug, member, viewer, canManage, lastManager, onChanged }: MemberRowProps) {
   const username = member.user.username;
   const isSelf = viewer === username;
@@ -48,17 +48,8 @@ function MemberRow({ slug, member, viewer, canManage, lastManager, onChanged }: 
     fallback: isSelf ? "Could not leave" : "Could not remove",
     onSuccess: onChanged,
   });
-  const {
-    armed,
-    trigger,
-    controlRef: removeRef,
-  } = useConfirmAction(() => removal.run().then(() => undefined), {
-    timeoutMs: ARM_MS,
-    dismissOnOutside: true,
-  });
   const error = roleChange.error ?? removal.error;
   const busy = roleChange.loading || removal.loading;
-  const removeLabel = isSelf ? "Leave" : "Remove";
 
   const controls = (
     <>
@@ -69,16 +60,13 @@ function MemberRow({ slug, member, viewer, canManage, lastManager, onChanged }: 
         </Button>
       )}
       {(isSelf || canManage) && !lastManager && (
-        <Button
+        <ConfirmButton
           action={isSelf ? "leave" : "delete"}
-          ref={removeRef}
-          variant="danger"
-          className={armed ? DANGER_CONFIRM : ""}
-          onClick={trigger}
+          label={isSelf ? "Leave" : "Remove"}
+          name={isSelf ? undefined : `Remove ${username}`}
+          onConfirm={removal.run}
           disabled={busy}
-        >
-          {armed ? `Confirm ${removeLabel.toLowerCase()}` : removeLabel}
-        </Button>
+        />
       )}
     </>
   );

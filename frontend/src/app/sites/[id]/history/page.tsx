@@ -51,7 +51,7 @@ export default function SiteHistoryPage() {
   return (
     // Plain-text title: the *Current* row already links to the site.
     <PageShell back title="Version history" subtitle={site.name}>
-      <VersionHistory walk={walk} count={site.version_no}>
+      <VersionHistory walk={walk}>
         {siteVersions(site, walk.items, walk.hasMore).map((version) => (
           <VersionRow
             key={version.number}

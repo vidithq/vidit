@@ -4,10 +4,9 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 
 import { SourceEditor, type SourceEditorInvalid } from "@/components/sources/SourceEditor";
 import { SourcesRow } from "@/components/sources/SourcesRow";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
-import { RemoveButton } from "@/components/ui/RemoveButton";
+import { Button } from "@/components/ui/Button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
-import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
 import type { MissingFieldKey } from "@/lib/events";
 import {
@@ -249,22 +248,10 @@ function placeUploads(
   ];
 }
 
-/** An editor's red trash button: the first click arms it, the second removes the source. */
+/** An editor's red trash button, which confirms in place. */
 function RemoveSource({ index, onRemove }: { index: number; onRemove: () => void }) {
-  const { armed, trigger, controlRef } = useConfirmAction(onRemove, {
-    timeoutMs: ARM_MS,
-    dismissOnOutside: true,
-  });
-  const name = sourceName(index).toLowerCase();
-  const label = armed ? `Confirm removing ${name}` : `Remove ${name}`;
   return (
-    <RemoveButton
-      ref={controlRef}
-      confirms
-      label={label}
-      className={armed ? DANGER_CONFIRM : ""}
-      onClick={trigger}
-    />
+    <ConfirmButton icon label={`Remove ${sourceName(index).toLowerCase()}`} onConfirm={onRemove} />
   );
 }
 

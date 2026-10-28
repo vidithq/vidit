@@ -30,6 +30,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- A minor destructive action, such as dismissing a notification, acts at once from a red cross; an important one, such as removing a co-geolocator or deleting an approval, asks for a second click in place instead of a dialog ([#803](https://github.com/vidithq/vidit/pull/803)).
+- The version history starts every title on one line, Current included, and drops the count above the list; the invitation cards no longer point at Accept and Decline, and the geolocator invite picker states the limit of 10 geolocators ([#803](https://github.com/vidithq/vidit/pull/803)).
 - A site zone covers at most 1,000 km², down from 10,000 km²: the contour editor says so while you draw, and areas read with thousands separators ([#800](https://github.com/vidithq/vidit/pull/800)).
 - Filing a source on a site opens the site page, like the other submit forms, in place of a separate confirmation page ([#800](https://github.com/vidithq/vidit/pull/800)).
 - The event forms' Location block shows the event page's map under the coordinates: click the map or drag the pin to set the coordinates, and typed coordinates move the pin ([#801](https://github.com/vidithq/vidit/pull/801)).

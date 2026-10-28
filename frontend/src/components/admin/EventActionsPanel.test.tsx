@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -68,8 +68,8 @@ describe("<EventActionsPanel>", () => {
     fireEvent.change(screen.getByLabelText(FIELD), { target: { value: ID } });
 
     fireEvent.click(screen.getByRole("button", { name: button }));
-    const dialog = screen.queryByRole("dialog");
-    if (dialog) fireEvent.click(within(dialog).getByRole("button", { name: button }));
+    const armed = screen.queryByRole("button", { name: `Confirm ${button.toLowerCase()}` });
+    if (armed) fireEvent.click(armed);
 
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith(`/admin/events/${ID}/moderation`, {
@@ -82,7 +82,7 @@ describe("<EventActionsPanel>", () => {
     expect(screen.queryByText("soft")).toBeNull();
   });
 
-  it("hard deletes only from the confirm dialog", async () => {
+  it("hard deletes only on the second click of its in-place confirm", async () => {
     api.apiFetch.mockResolvedValue({
       geolocation_id: ID,
       title: "Strike",
@@ -95,9 +95,8 @@ describe("<EventActionsPanel>", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Hard delete" }));
     expect(api.apiFetch).not.toHaveBeenCalled();
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent("Hard delete is irreversible.");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Hard delete" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm hard delete" }));
 
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith(`/admin/events/${ID}?hard=true`, {
@@ -105,6 +104,5 @@ describe("<EventActionsPanel>", () => {
       }),
     );
     expect(await screen.findByText("Swept 2 media rows (source and proof roles).")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

@@ -186,7 +186,7 @@ describe("OrganizationPage", () => {
     render(<OrganizationPage />);
 
     expect(screen.getAllByRole("button", { name: "Leave" })).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Remove / })).toBeNull();
   });
 
   it("gives an org manager the role controls, the invites and the edit", () => {
@@ -196,7 +196,7 @@ describe("OrganizationPage", () => {
 
     const makeManager = screen.getByRole("button", { name: "Make org manager" });
     expect(makeManager.closest("a")).toBeNull();
-    expect(screen.getByRole("button", { name: "Remove" }).closest("a")).toBeNull();
+    expect(screen.getByRole("button", { name: /^Remove / }).closest("a")).toBeNull();
     expect(screen.getByText("Invites")).toBeInTheDocument();
     fireEvent.focus(screen.getByLabelText("Analyst"));
     expect(screen.getByText("No mutual follow to invite")).toBeInTheDocument();

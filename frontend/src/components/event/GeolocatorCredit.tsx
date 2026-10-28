@@ -51,7 +51,6 @@ export function GeolocatorInviteCard({ event }: { event: EventDetail }) {
       <p className="text-sm text-neutral-300">
         <AuthorByline author={event.owner} prefix={false} /> invites you to share the credit of
         this geolocation. You are credited beside them; editing and closing stay with the owner.
-        Accept or decline it at the top of the page.
       </p>
     </Card>
   );

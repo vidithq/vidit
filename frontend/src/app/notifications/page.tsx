@@ -22,7 +22,7 @@ import { useCursorList } from "@/hooks/useCursorList";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
-  deleteNotification,
+  dismissNotification,
   describeNotification,
   markNotificationsRead,
   notificationAvatar,
@@ -59,8 +59,8 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
 function NotificationRow({ n, onChanged }: { n: Notification; onChanged: () => void }) {
   const { text, href } = describeNotification(n);
   const avatar = notificationAvatar(n);
-  const remove = useMutation(() => deleteNotification(n.id), {
-    fallback: "Failed to delete the notification",
+  const dismiss = useMutation(() => dismissNotification(n.id), {
+    fallback: "Failed to dismiss the notification",
     onSuccess: onChanged,
   });
   return (
@@ -86,14 +86,14 @@ function NotificationRow({ n, onChanged }: { n: Notification; onChanged: () => v
         external={false}
         action={
           <RemoveButton
-            label="Delete notification"
-            onClick={() => void remove.run()}
-            disabled={remove.loading}
+            label="Dismiss notification"
+            onClick={() => void dismiss.run()}
+            disabled={dismiss.loading}
           />
         }
       />
-      {remove.error && (
-        <ErrorNotice error={remove.error} />
+      {dismiss.error && (
+        <ErrorNotice error={dismiss.error} />
       )}
     </div>
   );

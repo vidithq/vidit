@@ -18,7 +18,7 @@ import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Combobox } from "@/components/ui/Combobox";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Pill } from "@/components/ui/Pill";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ActionReceipt } from "@/components/admin/ActionReceipt";
@@ -28,7 +28,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
  * Every admin action on one event, with no report behind it: the two moderation axes
  * (`PATCH /admin/events/{id}/moderation`, the one verb that undoes a takedown) and the soft or
  * hard delete (`DELETE /admin/events/{id}`). The event comes from a title search over `GET /search`
- * or a pasted ID or event link. Hide and delete open a `ConfirmDialog`.
+ * or a pasted ID or event link. Hide and delete confirm in place.
  */
 
 type ModerationBody = { is_graphic?: boolean; hidden?: boolean };
@@ -191,7 +191,6 @@ function EventField({
 export function EventActionsPanel() {
   const [target, setTarget] = useState<Target | null>(null);
   const [mode, setMode] = useState<"soft" | "hard">("soft");
-  const [confirming, setConfirming] = useState<"hide" | "delete" | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const id = target?.id ?? "";
 
@@ -201,7 +200,6 @@ export function EventActionsPanel() {
       fallback: "Moderation failed",
       onSuccess: (data, move) => {
         setReceipt({ kind: "moderation", action: move.done, title: target?.title ?? null, data });
-        setConfirming(null);
       },
     }
   );
@@ -211,7 +209,6 @@ export function EventActionsPanel() {
       fallback: "Delete failed",
       onSuccess: (data) => {
         setReceipt({ kind: "delete", data });
-        setConfirming(null);
         setTarget(null);
         setMode("soft");
       },
@@ -223,17 +220,10 @@ export function EventActionsPanel() {
     void moderateMutation.run({ body, done });
   };
 
-  const confirm = (kind: "hide" | "delete") => {
-    moderateMutation.reset();
-    deleteMutation.reset();
-    setConfirming(kind);
-  };
-
   const busy = moderateMutation.loading || deleteMutation.loading;
   const disabled = busy || !target;
   const error = moderateMutation.error ?? deleteMutation.error;
   const deleteLabel = mode === "hard" ? "Hard delete" : "Soft delete";
-  const name = target?.title ?? "this event";
 
   return (
     <Card as="section">
@@ -263,7 +253,7 @@ export function EventActionsPanel() {
         />
       </div>
 
-      {error && !confirming && <ErrorNotice error={error} />}
+      {error && <ErrorNotice error={error} />}
 
       <div className="space-y-2">
         <span className={FORM_LABEL}>Moderation</span>
@@ -279,14 +269,12 @@ export function EventActionsPanel() {
               {action.label}
             </Button>
           ))}
-          <Button
+          <ConfirmButton
             action="hide"
-            variant="danger"
+            label="Hide"
             disabled={disabled}
-            onClick={() => confirm("hide")}
-          >
-            Hide
-          </Button>
+            onConfirm={() => moderate({ hidden: true }, HIDE_DONE)}
+          />
         </div>
       </div>
 
@@ -303,57 +291,17 @@ export function EventActionsPanel() {
           onChange={setMode}
         />
         <div className="flex gap-2">
-          <Button
-            action="delete"
-            variant="danger"
+          <ConfirmButton
+            key={mode}
+            label={deleteLabel}
             disabled={disabled}
-            onClick={() => confirm("delete")}
-          >
-            {deleteLabel}
-          </Button>
+            onConfirm={() => {
+              moderateMutation.reset();
+              return deleteMutation.run();
+            }}
+          />
         </div>
       </div>
-
-      {confirming === "hide" && (
-        <ConfirmDialog
-          title={`Hide ${name}?`}
-          confirmLabel="Hide"
-          confirmAction="hide"
-          busyLabel="Hiding…"
-          busy={busy}
-          error={moderateMutation.error}
-          onConfirm={() => moderate({ hidden: true }, HIDE_DONE)}
-          onCancel={() => setConfirming(null)}
-        >
-          <p>The event drops off every public read until it is restored.</p>
-        </ConfirmDialog>
-      )}
-
-      {confirming === "delete" && (
-        <ConfirmDialog
-          title={`${deleteLabel} ${name}?`}
-          confirmLabel={deleteLabel}
-          confirmAction="delete"
-          busyLabel="Deleting…"
-          busy={busy}
-          error={deleteMutation.error}
-          tone="danger"
-          onConfirm={() => {
-            moderateMutation.reset();
-            void deleteMutation.run();
-          }}
-          onCancel={() => setConfirming(null)}
-        >
-          {mode === "hard" ? (
-            <p>
-              <strong>Hard delete is irreversible.</strong> The row, its media,
-              and its S3 objects are erased.
-            </p>
-          ) : (
-            <p>The event is removed from public view. Its proof and S3 evidence stay.</p>
-          )}
-        </ConfirmDialog>
-      )}
 
       {receipt?.kind === "moderation" && (
         <ActionReceipt
