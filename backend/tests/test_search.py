@@ -2046,3 +2046,164 @@ def test_sections_suggest_a_spelling_when_no_section_holds_a_hit(db, caller):
 def test_sections_refuse_a_value_outside_its_domain(params):
     response = client.get("/api/v1/search/sections", params={"q": "x", **params})
     assert response.status_code == 422
+
+
+def _seed_request(db, owner, title, *, guessed: bool) -> uuid.UUID:
+    request = Event(
+        owner_id=owner.id,
+        title=title,
+        coords=from_shape(Point(34.5, 48.5), srid=4326) if guessed else None,
+        sources=[_source("https://example.com/ask")],
+        status=STATUS_REQUESTED,
+        requested_at=datetime.now(UTC),
+    )
+    db.add(request)
+    db.commit()
+    return request.id
+
+
+def test_has_coords_narrows_the_events_and_leaves_the_other_types_out(
+    db, caller, seed_collection, seed_site
+):
+    """The located rows always carry a point, so ``has_coords=false`` keeps the blind requests.
+    No other type answers it, so the sites and collections go, in both search reads."""
+    token = _unique_token()
+    located = _seed_geo(db, caller, f"Located {token}")
+    guessed = _seed_request(db, caller, f"Guessed {token}", guessed=True)
+    blind = _seed_request(db, caller, f"Blind {token}", guessed=False)
+    seed_site(f"{token} depot")
+    seed_collection(f"{token} shelf", "Plain words.")
+    try:
+
+        def hits(**params) -> list[tuple[str, str]]:
+            response = client.get("/api/v1/search", params={"q": token, **params})
+            assert response.status_code == 200, response.text
+            return sorted((h["type"], h["id"]) for h in response.json()["hits"])
+
+        assert {type_ for type_, _ in hits()} == {"event", "site", "collection"}
+        assert hits(has_coords="false") == [("event", str(blind))]
+        assert hits(has_coords="true") == sorted([("event", str(located)), ("event", str(guessed))])
+
+        sections = _sections(q=token, has_coords="false")["sections"]
+        assert [s["type"] for s in sections] == ["event"]
+        assert [h["id"] for h in sections[0]["hits"]] == [str(blind)]
+
+        # Alone, it is an active filter: the empty query browses.
+        browsed = client.get(
+            "/api/v1/search", params={"has_coords": "false", "type": "event", "limit": 50}
+        ).json()
+        assert str(blind) in [h["id"] for h in browsed["hits"]]
+        assert str(located) not in [h["id"] for h in browsed["hits"]]
+    finally:
+        db.query(Event).filter(Event.id.in_((located, guessed, blind))).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+
+def _dates(**params) -> dict:
+    response = client.get("/api/v1/search/dates", params=params)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _days(*pairs: tuple[str, int]) -> list[dict]:
+    return [{"date": day, "count": count} for day, count in pairs]
+
+
+@pytest.fixture
+def dated_events(db, caller):
+    """Four events matching one token on known days, and one matching another token."""
+    token, other = _unique_token(), _unique_token()
+    seeded = {
+        "a": _seed_geo(db, caller, f"Strike {token} a"),
+        "b": _seed_geo(db, caller, f"Strike {token} b"),
+        "c": _seed_geo(db, caller, f"Strike {token} c"),
+        "r": _seed_request(db, caller, f"Where is {token}", guessed=False),
+        "other": _seed_geo(db, caller, f"Strike {other}"),
+    }
+    days = {
+        # 23:30 UTC stays on the 11th: the submitted day is the UTC day.
+        "a": (date(2024, 1, 10), datetime(2024, 1, 11, 23, 30, tzinfo=UTC)),
+        "b": (date(2024, 1, 10), datetime(2024, 2, 1, 8, 0, tzinfo=UTC)),
+        "c": (None, datetime(2024, 2, 1, 9, 0, tzinfo=UTC)),
+        "r": (date(2024, 3, 5), datetime(2024, 3, 6, 12, 0, tzinfo=UTC)),
+        "other": (date(2024, 1, 10), datetime(2024, 1, 11, 12, 0, tzinfo=UTC)),
+    }
+    for key, (occurred, created) in days.items():
+        db.query(Event).filter(Event.id == seeded[key]).update(
+            {"occurred_date": occurred, "created_at": created}
+        )
+    db.commit()
+    yield token, other
+    db.query(Event).filter(Event.id.in_(seeded.values())).delete(synchronize_session=False)
+    db.commit()
+
+
+def test_search_dates_count_the_listed_events_per_day(dated_events):
+    token, other = dated_events
+    assert _dates(q=token) == {
+        "occurred_date": _days(("2024-01-10", 2), ("2024-03-05", 1)),
+        "submitted": _days(("2024-01-11", 1), ("2024-02-01", 2), ("2024-03-06", 1)),
+    }
+    assert _dates(q=other) == {
+        "occurred_date": _days(("2024-01-10", 1)),
+        "submitted": _days(("2024-01-11", 1)),
+    }
+    assert _dates(q=token, status="requested") == {
+        "occurred_date": _days(("2024-03-05", 1)),
+        "submitted": _days(("2024-03-06", 1)),
+    }
+
+
+def test_search_dates_drop_each_axis_own_window(dated_events):
+    """Each axis ignores its own window and keeps every other filter, the other window too."""
+    token, _ = dated_events
+    everything = _dates(q=token)
+
+    by_occurrence = _dates(q=token, occurred_date_from="2024-03-01")
+    assert by_occurrence["occurred_date"] == everything["occurred_date"]
+    assert by_occurrence["submitted"] == _days(("2024-03-06", 1))
+
+    by_submission = _dates(q=token, submitted_from="2024-02-01")
+    assert by_submission["submitted"] == everything["submitted"]
+    assert by_submission["occurred_date"] == _days(("2024-01-10", 1), ("2024-03-05", 1))
+
+
+def test_search_dates_follow_the_types(dated_events):
+    token, _ = dated_events
+    assert _dates(q=token, type="site") == {"occurred_date": [], "submitted": []}
+    assert _dates(q=token, type=["site", "event"]) == _dates(q=token)
+    assert client.get("/api/v1/search/dates", params={"type": "bogus"}).status_code == 422
+    assert client.get("/api/v1/search/dates", params={"status": "bogus"}).status_code == 422
+
+
+def test_search_dates_without_a_query_or_a_filter_count_every_searchable_event(db, caller):
+    def counts() -> tuple[dict[str, int], dict[str, int]]:
+        body = _dates()
+        return (
+            {d["date"]: d["count"] for d in body["occurred_date"]},
+            {d["date"]: d["count"] for d in body["submitted"]},
+        )
+
+    occurred_before, submitted_before = counts()
+    geo = _seed_geo(db, caller, f"Strike {_unique_token()}")
+    withheld = _seed_geo(db, caller, f"Withheld {_unique_token()}")
+    db.query(Event).filter(Event.id == geo).update(
+        {"occurred_date": date(1901, 2, 3), "created_at": datetime(1901, 2, 4, tzinfo=UTC)}
+    )
+    db.query(Event).filter(Event.id == withheld).update(
+        {
+            "occurred_date": date(1901, 2, 3),
+            "created_at": datetime(1901, 2, 4, tzinfo=UTC),
+            "hidden_at": datetime.now(UTC),
+        }
+    )
+    db.commit()
+    try:
+        occurred_after, submitted_after = counts()
+        assert occurred_after.get("1901-02-03", 0) - occurred_before.get("1901-02-03", 0) == 1
+        assert submitted_after.get("1901-02-04", 0) - submitted_before.get("1901-02-04", 0) == 1
+    finally:
+        db.query(Event).filter(Event.id.in_((geo, withheld))).delete(synchronize_session=False)
+        db.commit()

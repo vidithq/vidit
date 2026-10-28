@@ -73,6 +73,7 @@ from app.services.event_filters import (
     EventFilters,
     collectable_events,
     credited_to,
+    date_histogram,
     owner_username_matches,
     taxonomy_predicates,
     visible_events,
@@ -365,6 +366,24 @@ def _event_candidates(db: Session, terms: _EventTerms, filters: EventFilters) ->
     return select(matched.subquery())
 
 
+def search_dates(
+    db: Session, *, query: str, types: frozenset[str], filters: EventFilters
+) -> dict[str, list[dict[str, Any]]]:
+    """The events :func:`search` lists for ``query`` and ``filters`` (:func:`_event_candidates`),
+    counted per day by ``services/event_filters.date_histogram``. Unlike :func:`search`, an empty
+    ``query`` with no active filter counts every searchable event; ``types`` without ``event``
+    counts nothing."""
+    if "event" not in types:
+        return {"occurred_date": [], "submitted": []}
+    terms = _event_terms(db, query.strip())
+    return date_histogram(
+        lambda window: _matching(
+            db.query(Event.id), _searchable_events(), terms=terms, view=None, filters=window
+        ),
+        filters,
+    )
+
+
 def _site_name_tsvector():
     """The site name's ``tsvector``, which the rank and the highlight read."""
     return func.to_tsvector(_TS_CONFIG, func.coalesce(Site.name, literal_column("''")))
@@ -455,7 +474,7 @@ def _candidates(
 
     def offered(type_: str) -> bool:
         kept = _TYPE_FILTERS[type_]
-        own = any(getattr(filters, name) for name in kept if name != "status")
+        own = any(filters.is_set(name) for name in kept if name != "status")
         return type_ in types and not filters.active_beyond(*kept) and (bool(query) or own)
 
     if offered("site"):

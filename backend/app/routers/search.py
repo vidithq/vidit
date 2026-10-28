@@ -1,5 +1,6 @@
 """``GET /search``: one ranked list of events, sites, collections, analysts and organizations,
-and ``GET /search/sections``: the top of that list for each type.
+``GET /search/sections``: the top of that list for each type, and ``GET /search/dates``: its
+events per day.
 
 Anonymous like the rest of the read surface; the 60/min per-IP limit is the
 abuse floor. FTS plumbing is in ``services/search.py``.
@@ -8,20 +9,20 @@ abuse floor. FTS plumbing is in ``services/search.py``.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.ratelimit import authenticated_read_quota, limiter
+from app.routers._filters import event_filters
+from app.schemas.event import DateHistogram
 from app.schemas.search import AuthorSuggestions, SearchResponse, SearchSections
 from app.services import search as search_service
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
     EventFilters,
-    validate_media_types,
-    validate_source_filters,
     validate_status_filter,
 )
 from app.services.pagination import decode_ranked_cursor
@@ -46,37 +47,10 @@ def _search_request(
             "Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type"
         ),
     ),
-    # The standard event filter set (``services/event_filters``). List params take multiple
-    # values (?tag=a&tag=b).
     status: list[str] | None = Query(None),
-    conflict: list[str] | None = Query(None),
-    source_kind: list[str] | None = Query(None),
-    level: list[str] | None = Query(None),
-    tag: list[str] | None = Query(None),
-    occurred_date_from: str | None = None,
-    occurred_date_to: str | None = None,
-    submitted_from: str | None = None,
-    submitted_to: str | None = None,
-    author: str | None = Query(
-        None,
-        pattern=AUTHOR_FILTER_PATTERN,
-        description="Keep the events credited to this username, and the sites and collections"
-        " it owns (exact, case-insensitive)",
-    ),
-    media: list[str] | None = Query(None),
-    approved: bool = Query(False, description="Keep events approved on their live version"),
-    approved_by: str | None = Query(
-        None,
-        pattern=AUTHOR_FILTER_PATTERN,
-        description="Keep events this analyst approved on their live version (username)",
-    ),
-    approved_by_org: str | None = Query(
-        None,
-        pattern=AUTHOR_FILTER_PATTERN,
-        description="Keep events this organization approved on their live version (slug)",
-    ),
+    filters: EventFilters = Depends(event_filters),
 ) -> _SearchRequest:
-    """The query, the types and the filters both search reads take, 422 on a value outside its
+    """The query, the types and the filters every search read takes, 422 on a value outside its
     domain."""
     unknown = sorted(set(type or ()) - set(search_service.SEARCH_TYPES))
     if unknown:
@@ -84,28 +58,11 @@ def _search_request(
             status_code=422,
             detail=f"type must be one of: {', '.join(search_service.SEARCH_TYPES)}",
         )
-    validate_media_types(media)
     validate_status_filter(status)
-    validate_source_filters(source_kind, level)
     return _SearchRequest(
         q=q,
         types=frozenset(type or search_service.SEARCH_TYPES),
-        filters=EventFilters(
-            status=status,
-            conflict=conflict,
-            source_kind=source_kind,
-            level=level,
-            tag=tag,
-            occurred_date_from=occurred_date_from,
-            occurred_date_to=occurred_date_to,
-            submitted_from=submitted_from,
-            submitted_to=submitted_to,
-            author=author,
-            media=media,
-            approved=approved,
-            approved_by=approved_by,
-            approved_by_org=approved_by_org,
-        ),
+        filters=replace(filters, status=status),
     )
 
 
@@ -191,6 +148,26 @@ def search_sections(
             "suggestion": suggestion,
             "query": params.q,
         }
+    )
+
+
+@router.get("/dates", response_model=DateHistogram)
+@authenticated_read_quota
+@limiter.limit("60/minute")
+def search_dates(
+    request: Request,
+    params: _SearchRequest = Depends(_search_request),
+    db: Session = Depends(get_db),
+) -> DateHistogram:
+    """The events ``GET /search`` lists for the request, counted per day on each date axis.
+
+    Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
+    own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
+    / ``submitted_to``. An empty ``q`` with no active filter counts every searchable event; a
+    ``type`` without ``event`` counts nothing.
+    """
+    return DateHistogram.model_validate(
+        search_service.search_dates(db, query=params.q, types=params.types, filters=params.filters)
     )
 
 

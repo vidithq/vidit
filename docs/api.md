@@ -153,6 +153,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Search** | | | |
 | GET | `/search` | 🌐 | One ranked list of events, sites, collections, analysts and organizations |
 | GET | `/search/sections` | 🌐 | The top hits of each type, one section per type |
+| GET | `/search/dates` | 🌐 | The events a search lists, counted per day |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List the tags on live events or their sources |
@@ -200,6 +201,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/organizations/{slug}/members/{username}` | 🔒 | Remove a member, or leave |
 | **Feed** | | | |
 | GET | `/feed` | 🔒 | Published geolocations, open requests and machine detections, from followed analysts or everyone |
+| GET | `/feed/dates` | 🔒 | The rows of the feed, counted per day |
 | **Webhooks** | | | |
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
@@ -294,12 +296,12 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /sites/suggestions`, `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
 | `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
-| `GET /search`, `GET /search/sections`, `GET /search/authors` | 60/min |
+| `GET /search`, `GET /search/sections`, `GET /search/dates`, `GET /search/authors` | 60/min |
 | `GET /tags`, `GET /tags/suggested` | 60/min |
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
 | **Users / Feed** | |
-| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /feed` | 120/min |
+| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /feed`, `GET /feed/dates` | 120/min |
 | `PATCH /users/me` | 30/min |
 | `PUT`/`DELETE /users/me/avatar` | 20/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
@@ -333,13 +335,13 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 31 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 33 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/dates` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed` · `/feed/dates`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
-- Anonymous callers are exempt and keep the per-IP limits alone. Twenty-six of the 30 paths answer anonymously.
+- Anonymous callers are exempt and keep the per-IP limits alone. Twenty-seven of the 33 paths answer anonymously.
 - Every authenticated read absent from the list is exempt, including `GET /auth/me` and the read-only admin probes.
 - `GET /events/import-archive/{job_id}` is exempt because an import polls it. It returns one job's progress counters and no catalog rows.
 
@@ -878,6 +880,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `source_kind` | string (repeatable) | Keeps an event with a source of this [kind](#sources): `smartphone`, `camera`, `static_camera`, `drone`, `aircraft`, `satellite`, `dashcam`, `body_cam`, `article`, `official_statement`, `other` or `unknown`. Same OR / AND semantics. Any other value returns 422. |
 | `level` | string (repeatable) | Keeps an event with a source of this evidence level: `direct`, `indirect` or `context`. Same OR / AND semantics. Any other value returns 422. |
 | `tag` | string (repeatable) | Filter by tag name, on the event or on one of its sources. Same OR / AND semantics. |
+| `media` | string (repeatable) | `?media=image&media=video` keeps an event carrying a source file or a proof image of a listed type. Values outside `image` / `video` return 422. |
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input; latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
 | `occurred_date_from` / `occurred_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
@@ -1964,7 +1967,7 @@ Decline an approval request addressed to you, or to an organization you are a me
 
 ## Search
 
-Full-text discovery across five hit types: `event` (`geolocated` and `detected` rows with coordinates, and open requests), `site`, `collection`, `user` (an analyst) and `organization`. [`GET /search`](#get-search) returns them in one ranked list, and [`GET /search/sections`](#get-searchsections) returns the top hits of each type. Proof content is not searched.
+Full-text discovery across five hit types: `event` (`geolocated` and `detected` rows with coordinates, and open requests), `site`, `collection`, `user` (an analyst) and `organization`. [`GET /search`](#get-search) returns them in one ranked list, [`GET /search/sections`](#get-searchsections) returns the top hits of each type, and [`GET /search/dates`](#get-searchdates) counts the event hits per day. Proof content is not searched.
 
 ### `GET /search` 🌐
 
@@ -1975,7 +1978,7 @@ Full-text discovery across five hit types: `event` (`geolocated` and `detected` 
 | `type` | enum, repeatable | `event`, `site`, `collection`, `user` or `organization`. Omitted, every type. Anything else → 422. |
 | `limit` | int | Hits per page. 1 ≤ `limit` ≤ 50, default 20. |
 | `cursor` | string | The `cursor` of a previous response. Returns the next page; send the same `q`, `type` and filters as the request that returned it. |
-| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `source_kind`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. See *Filters* below. |
+| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `source_kind`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`, `has_coords`. See *Filters* below. |
 
 **Query syntax.** `q` reads like a web search engine query (Postgres `websearch_to_tsquery`). Text that is not valid syntax is read as words and never returns an error.
 
@@ -2010,7 +2013,8 @@ The last word of `q` also matches as a prefix, so a word you are still typing fi
 - `status` narrows the events to those statuses. It leaves the other types as they are.
 - `author` keeps the events credited to that analyst, the sites they own and the collections they own. It leaves out analysts and organizations.
 - `tag` keeps the events tagged with one of the values and the collections whose [`tags`](#get-collectionsid) hold one. It leaves out sites, analysts and organizations.
-- Every other filter narrows the events and leaves out every other type.
+- `has_coords` keeps the events with a point (`true`) or without one (`false`). A located event always carries a point, so `false` keeps the requests without a location guess.
+- Every other filter narrows the events and leaves out every other type. `has_coords` is one of them.
 - An empty `q` with no active filter returns an empty list.
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight. Analysts and organizations need a `q`, so browse mode leaves them out. With `author` or `tag`, browse mode lists the matching sites and collections too.
 - When nothing matches, no filter other than `status` is active and no `cursor` is sent, `suggestion` may hold a respelling of `q` that finds results. Each word that no visible event title and no live username holds is replaced by the closest one that does, by trigram similarity (`pg_trgm`, at least 0.35): `Khan Younis` suggests `Khan Yunis`. A word that names an analyst is spelled as their username. `OR`, excluded words, quotes and punctuation stay as typed. `suggestion` is `null` when no word has a close match, or when the respelling finds nothing either with the same `type` and `status`.
@@ -2134,6 +2138,40 @@ A type that matches nothing has no section. A filter that a type does not answer
 | Code | Case |
 |------|------|
 | 422 | A `type` outside the allowed set, `limit` outside [1, 10], or a `source_kind` or `level` value outside its domain |
+
+---
+
+### `GET /search/dates` 🌐
+
+The events [`GET /search`](#get-search) lists for a request, counted per day on each date axis. Read it to draw a timeline under the date filters.
+
+**Query params:** `q`, `type` and the *filter set* of [`GET /search`](#get-search), with the same meaning. It takes no `limit` and no `cursor`.
+
+- It counts the `event` hits alone. A `type` without `event` returns two empty lists.
+- An empty `q` with no active filter counts every event search lists, where `GET /search` returns an empty list.
+- `occurred_date` ignores the request's own `occurred_date_from` and `occurred_date_to`, and `submitted` ignores its own `submitted_from` and `submitted_to`. Every other filter applies to both, so each timeline shows the spread its own window cuts from.
+
+**Response 200:** a `DateHistogram`.
+```json
+{
+  "occurred_date": [
+    { "date": "2026-03-14", "count": 2 },
+    { "date": "2026-03-15", "count": 5 }
+  ],
+  "submitted": [
+    { "date": "2026-03-16", "count": 7 }
+  ]
+}
+```
+
+- `occurred_date` counts the events per `occurred_date`. An event without one is not counted.
+- `submitted` counts the events per UTC day of `created_at`: the `added_date` of [`GET /events/points`](#get-eventspoints), and the day `submitted_from` and `submitted_to` compare against.
+- Each list runs in ascending date order and leaves out the days without an event.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 422 | A `type` or `status` outside the allowed set, a malformed date filter, or a `media`, `source_kind`, `level`, `author`, `approved_by` or `approved_by_org` value outside its domain |
 
 ---
 
@@ -3863,8 +3901,8 @@ A retraction, a withdrawn request and a rejected detection are in no kind. A sof
 |-------|------|-------------|
 | `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests and detections one of them owns, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
 | `kind` | string (repeatable) | `geolocation`, `request` or `detected` keeps that kind of row. Omitted, it keeps all three. Anything else returns 422. |
-| `conflict`, `source_kind`, `level`, `tag` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
-| `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
+| `conflict`, `source_kind`, `level`, `tag`, `media` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
+| `occurred_date_from`, `occurred_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`, `has_coords` | | Same semantics as on [`GET /events`](#get-events). `author` keeps a row that credits the analyst as owner or geolocator, and `has_coords=false` keeps the requests without a location guess. |
 | `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
 
@@ -3893,6 +3931,24 @@ A retraction, a withdrawn request and a rejected detection are in no kind. A sof
 **Response headers:** `Link: <…&cursor=…>; rel="next"` when a further page exists.
 
 `status` tells the three kinds apart. `feed_at` is the row's feed timestamp, `created_at` when that stamp is missing. Rows are ordered by `feed_at DESC, id DESC`, one total order across the three kinds, so a walk never repeats or skips a row.
+
+---
+
+### `GET /feed/dates` 🔒
+
+The rows a [`GET /feed`](#get-feed) walk lists, counted per day on each date axis. Read it to draw a timeline under the date filters.
+
+**Query params:** `scope`, `kind` and the filters of [`GET /feed`](#get-feed), with the same meaning. It takes no `limit` and no `cursor`.
+
+`occurred_date` ignores the request's own `occurred_date_from` and `occurred_date_to`, and `submitted` ignores its own `submitted_from` and `submitted_to`. Every other filter applies to both, so each timeline shows the spread its own window cuts from.
+
+**Response 200:** a `DateHistogram`, in the shape of [`GET /search/dates`](#get-searchdates).
+```json
+{
+  "occurred_date": [{ "date": "2026-03-15", "count": 3 }],
+  "submitted": [{ "date": "2026-03-16", "count": 3 }]
+}
+```
 
 ---
 

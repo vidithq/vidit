@@ -2,6 +2,7 @@
 payload, and the filter / bbox / cache-key helpers behind them."""
 
 import hashlib
+from dataclasses import replace
 
 import orjson
 from fastapi import (
@@ -25,6 +26,7 @@ from app.models.event import (
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
+from app.routers._filters import event_filters
 from app.routers.events._common import DETAIL_LOADS, build_event_list, build_event_read
 from app.schemas.event import (
     EventList,
@@ -34,6 +36,7 @@ from app.schemas.event import (
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
     VIEWS,
+    EventFilters,
     apply_filters,
     bbox_predicate,
     parse_bbox,
@@ -241,20 +244,8 @@ def list_events(
     view: str = Query("located"),
     # Multi-value, any-match; a single value parses to a one-item list.
     status: list[str] | None = Query(None),
-    conflict: list[str] | None = Query(None),
-    source_kind: list[str] | None = Query(None),
-    level: list[str] | None = Query(None),
-    tag: list[str] | None = Query(None),
+    filters: EventFilters = Depends(event_filters),
     bbox: str | None = None,
-    occurred_date_from: str | None = None,
-    occurred_date_to: str | None = None,
-    submitted_from: str | None = None,
-    submitted_to: str | None = None,
-    author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    approved: bool = Query(False, description="true: approved on the live version"),
-    approved_by: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    approved_by_org: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    has_coords: bool | None = Query(None, description="true: with a location; false: without"),
     sort: EventListSort = Query("newest"),
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
     cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
@@ -276,29 +267,14 @@ def list_events(
             status_code=422, detail=f"view must be one of: {', '.join(sorted(VIEWS))}"
         )
     validate_status_filter(status)
-    validate_source_filters(source_kind, level)
     size = page_size(limit)
 
     # Step 1: ids with the limit (no row-inflating joins)
-    id_query = apply_filters(
-        db.query(Event.id, Event.created_at),
-        view=view,
-        status=status,
-        conflict=conflict,
-        source_kind=source_kind,
-        level=level,
-        tag=tag,
-        occurred_date_from=occurred_date_from,
-        occurred_date_to=occurred_date_to,
-        submitted_from=submitted_from,
-        submitted_to=submitted_to,
-        author=author,
-        approved=approved,
-        approved_by=approved_by,
-        approved_by_org=approved_by_org,
-        bbox=bbox,
-        has_coords=has_coords,
+    id_query = replace(filters, status=status).apply(
+        db.query(Event.id, Event.created_at), view=view
     )
+    if bbox:
+        id_query = id_query.filter(bbox_predicate(parse_bbox(bbox)))
 
     oldest = sort == "oldest"
     order = (

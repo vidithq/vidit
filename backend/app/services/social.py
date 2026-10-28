@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import Row, Select, and_, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
 from app.models.event import Event, feed_at
@@ -13,12 +14,12 @@ from app.models.user import User
 from app.schemas.user import UserProfile
 from app.services import notifications
 from app.services.event_filters import (
-    approval_predicates,
+    EventFilters,
+    date_histogram,
     live_detections,
     open_requests,
     published_credited_to,
     published_events,
-    taxonomy_predicates,
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD
@@ -97,42 +98,16 @@ def mutual_follow_ids(user_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
     )
 
 
-def get_feed(
+def _feed_rows(
     db: Session,
-    *,
+    *columns: Any,
     user_id: uuid.UUID,
     scope: FeedScope,
-    size: int,
-    cursor: tuple[datetime, uuid.UUID] | None = None,
-    kind: list[FeedKind] | None = None,
-    conflict: list[str] | None = None,
-    source_kind: list[str] | None = None,
-    level: list[str] | None = None,
-    tag: list[str] | None = None,
-    approved: bool = False,
-    approved_by: str | None = None,
-    approved_by_org: str | None = None,
-) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
-    """One window of the feed, newest first, over-fetched by one row for ``pagination.paged``.
-
-    The feed carries three kinds of row: a geolocation an analyst published
-    (:func:`services.event_filters.published_events`), a request an analyst has open
-    (:func:`services.event_filters.open_requests`) and a machine detection
-    (:func:`services.event_filters.live_detections`). An open request's owner is its requester:
-    ownership moves only when a request is geolocated. A detection's owner is the analyst whose
-    post was imported. ``scope="following"`` keeps the geolocations credited to an analyst
-    ``user_id`` follows (owner or co-geolocator) and the requests and detections such an analyst
-    owns; ``"all"`` keeps every row.
-
-    ``kind`` keeps the named kinds (all three when empty). ``conflict``, ``source_kind``,
-    ``level`` and ``tag`` narrow through :func:`services.event_filters.taxonomy_predicates`, and ``approved``,
-    ``approved_by`` and ``approved_by_org`` through
-    :func:`services.event_filters.approval_predicates`, as on ``GET /events``.
-
-    Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
-    (:func:`models.event.feed_at`), a total order over the three kinds, so a keyset walk
-    neither repeats nor skips a row.
-    """
+    kind: list[FeedKind] | None,
+    filters: EventFilters,
+) -> SAQuery:
+    """``columns`` of the rows the feed lists for ``scope``, ``kind`` and ``filters``, unordered
+    (see :func:`get_feed`)."""
     kinds = set(kind or ("geolocation", "request", "detected"))
     legs = []
     if scope == "following":
@@ -150,35 +125,77 @@ def get_feed(
             legs.append(open_requests())
         if "detected" in kinds:
             legs.append(live_detections())
+    return filters.apply(db.query(*columns).filter(or_(*legs)), view=None)
 
+
+def get_feed(
+    db: Session,
+    *,
+    user_id: uuid.UUID,
+    scope: FeedScope,
+    size: int,
+    filters: EventFilters,
+    cursor: tuple[datetime, uuid.UUID] | None = None,
+    kind: list[FeedKind] | None = None,
+) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
+    """One window of the feed, newest first, over-fetched by one row for ``pagination.paged``.
+
+    The feed carries three kinds of row: a geolocation an analyst published
+    (:func:`services.event_filters.published_events`), a request an analyst has open
+    (:func:`services.event_filters.open_requests`) and a machine detection
+    (:func:`services.event_filters.live_detections`). An open request's owner is its requester:
+    ownership moves only when a request is geolocated. A detection's owner is the analyst whose
+    post was imported. ``scope="following"`` keeps the geolocations credited to an analyst
+    ``user_id`` follows (owner or co-geolocator) and the requests and detections such an analyst
+    owns; ``"all"`` keeps every row.
+
+    ``kind`` keeps the named kinds (all three when empty). ``filters`` narrows the rows as on
+    ``GET /events`` (:class:`services.event_filters.EventFilters`).
+
+    Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
+    (:func:`models.event.feed_at`), a total order over the three kinds, so a keyset walk
+    neither repeats nor skips a row.
+    """
     key = feed_at()
-    query = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-            key.label("feed_at"),
-        )
+    query = _feed_rows(
+        db,
+        Event,
+        ST_Y(Event.coords).label("lat"),
+        ST_X(Event.coords).label("lng"),
+        key.label("feed_at"),
+        user_id=user_id,
+        scope=scope,
+        kind=kind,
+        filters=filters,
+    ).options(
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
-        .options(
-            joinedload(Event.owner),
-            selectinload(Event.tags),
-            selectinload(Event.conflicts),
-            *thumbnail_loads(),
-            CREDIT_LOAD,
-        )
-        .filter(
-            *visible_events(),
-            or_(*legs),
-            *taxonomy_predicates(conflict=conflict, source_kind=source_kind, level=level, tag=tag),
-            *approval_predicates(
-                approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
-            ),
-        )
+        joinedload(Event.owner),
+        selectinload(Event.tags),
+        selectinload(Event.conflicts),
+        *thumbnail_loads(),
+        CREDIT_LOAD,
     )
     if cursor is not None:
         query = query.filter(keyset_before(key, Event.id, cursor))
     return query.order_by(key.desc(), Event.id.desc()).limit(size + 1).all()
+
+
+def get_feed_dates(
+    db: Session,
+    *,
+    user_id: uuid.UUID,
+    scope: FeedScope,
+    kind: list[FeedKind] | None,
+    filters: EventFilters,
+) -> dict[str, list[dict[str, Any]]]:
+    """The rows :func:`get_feed` walks for ``scope``, ``kind`` and ``filters``, counted per day
+    by :func:`services.event_filters.date_histogram`."""
+    return date_histogram(
+        lambda window: _feed_rows(
+            db, Event.id, user_id=user_id, scope=scope, kind=kind, filters=window
+        ),
+        filters,
+    )
 
 
 def build_profile(db: Session, user: User, *, viewer: User | None) -> UserProfile:
