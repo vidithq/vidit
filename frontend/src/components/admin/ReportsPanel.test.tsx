@@ -14,6 +14,11 @@ import { ReportsPanel } from "./ReportsPanel";
 const report = (id: string) => ({
   id,
   event_id: `event-${id}`,
+  event: {
+    id: `event-${id}`,
+    title: `Strike ${id}`,
+    owner: { id: "u2", username: "reported_author", avatar_url: null },
+  },
   collection: null,
   reason: "other",
   details: `Report ${id}`,
@@ -52,6 +57,18 @@ describe("<ReportsPanel>", () => {
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
+  it("names a reported event by its title and author", async () => {
+    api.apiFetchPage.mockResolvedValue(page(["r1"], 1, 1));
+    render(<ReportsPanel />);
+
+    expect(await screen.findByRole("link", { name: "Strike r1" })).toHaveAttribute(
+      "href",
+      "/events/event-r1",
+    );
+    expect(screen.getByText("reported_author")).toBeInTheDocument();
+    expect(screen.queryByText("Open the event")).toBeNull();
+  });
+
   it("hides the event only from the confirm dialog", async () => {
     api.apiFetchPage.mockResolvedValue(page(["r1"], 1, 1));
     api.apiFetch.mockResolvedValue({});
@@ -75,6 +92,7 @@ describe("<ReportsPanel>", () => {
     const deleted = {
       ...report("r1"),
       event_id: null,
+      event: null,
       collection: {
         id: "c1",
         title: "Deleted shelf",
@@ -99,6 +117,7 @@ describe("<ReportsPanel>", () => {
     const site = {
       ...report("r1"),
       event_id: null,
+      event: null,
       site: { id: "s1", name: "Kerrin Flats depot", owner: { id: "u1", username: "owner", avatar_url: null } },
     };
     api.apiFetchPage.mockResolvedValue({

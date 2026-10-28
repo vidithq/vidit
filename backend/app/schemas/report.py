@@ -23,6 +23,17 @@ class ContentReportCreate(BaseModel):
     details: str | None = Field(default=None, max_length=DETAILS_MAX_LENGTH)
 
 
+class ReportedEvent(BaseModel):
+    """The reported event as the admin queue names it, read live so an edited
+    title shows its current wording."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    owner: AuthorRef
+
+
 class ReportedCollection(BaseModel):
     """The reported collection as the admin queue names it, read live so a
     renamed collection shows its current name."""
@@ -53,9 +64,9 @@ class ContentReportRead(BaseModel):
     ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
     and all set once resolved, so ``resolved_at is None`` is the open test.
 
-    A row names one target: ``event_id``, ``collection`` or ``site``. All are
-    NULL once the target is destroyed (the orphan row, closed only by
-    ``dismissed``).
+    A row names one target: ``event`` (with its ``event_id``), ``collection``
+    or ``site``. All are NULL once the target is destroyed (the orphan row,
+    closed only by ``dismissed``).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -63,6 +74,8 @@ class ContentReportRead(BaseModel):
     id: uuid.UUID
     # NULL once the event is hard-deleted; the report outlives it.
     event_id: uuid.UUID | None
+    # NULL for any other report, and once the event is hard-deleted.
+    event: ReportedEvent | None = None
     # NULL for an event report, and once the collection is gone.
     collection: ReportedCollection | None = None
     # NULL for any other report, and once the site is gone.

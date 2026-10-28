@@ -2,30 +2,19 @@
 
 import { useRef, useState } from "react";
 
-import {
-  searchUsers,
-  type AdminPurgeDetectedResponse,
-  type AdminUser,
-  type AdminUserDeleteResponse,
-} from "@/lib/admin";
+import { searchUsers, type AdminUser } from "@/lib/admin";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { AccountPicker, analystAccount } from "@/components/ui/AccountPicker";
 import { Card } from "@/components/ui/Card";
-import { ActionReceipt, PurgeReceipt } from "@/components/admin/ActionReceipt";
+import { UserOutcomeReceipt, type UserOutcome } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
-import { countLabel } from "@/lib/format";
 
 export function ManageAnalystsPanel() {
   // The picker hands back an account; the action card needs the admin row it came from.
   const found = useRef(new Map<string, AdminUser>());
   const [picked, setPicked] = useState<AdminUser | null>(null);
-  const [lastDelete, setLastDelete] = useState<AdminUserDeleteResponse | null>(
-    null,
-  );
-  const [lastPurge, setLastPurge] = useState<AdminPurgeDetectedResponse | null>(
-    null,
-  );
+  const [outcome, setOutcome] = useState<UserOutcome | null>(null);
 
   const search = async (query: string) => {
     const users = await searchUsers(query);
@@ -33,16 +22,10 @@ export function ManageAnalystsPanel() {
     return users.map(analystAccount);
   };
 
-  const onDeleted = (_userId: string, response: AdminUserDeleteResponse) => {
-    // The user is now gone (hard) or hidden from reads (soft).
-    setPicked(null);
-    setLastDelete(response);
-    setLastPurge(null);
-  };
-
-  const onPurged = (response: AdminPurgeDetectedResponse) => {
-    setLastPurge(response);
-    setLastDelete(null);
+  const onOutcome = (next: UserOutcome) => {
+    // A deleted user is gone (hard) or out of this search (soft).
+    if (next.kind === "delete") setPicked(null);
+    setOutcome(next);
   };
 
   return (
@@ -69,8 +52,7 @@ export function ManageAnalystsPanel() {
             onSelect={(account) => {
               if (account.kind !== "analyst") return;
               setPicked(found.current.get(account.username) ?? null);
-              setLastDelete(null);
-              setLastPurge(null);
+              setOutcome(null);
             }}
             onClear={() => setPicked(null)}
             placeholder="username or email"
@@ -85,27 +67,11 @@ export function ManageAnalystsPanel() {
           key={picked.id}
           user={picked}
           onUpdated={setPicked}
-          onDeleted={onDeleted}
-          onPurged={onPurged}
+          onOutcome={onOutcome}
         />
       )}
 
-      {lastDelete && (
-        <ActionReceipt
-          mode={lastDelete.mode}
-          header={<span className="font-medium">{lastDelete.username}</span>}
-        >
-          <div className="text-neutral-500">
-            {lastDelete.mode === "hard"
-              ? `Dropped ${countLabel(lastDelete.cascaded_geolocations, "geolocation")}, handed ${
-                  lastDelete.transferred_events
-                } to a co-geolocator, swept ${countLabel(lastDelete.media_count, "media row")} (source + proof roles).`
-              : `Cascade-hid ${countLabel(lastDelete.cascaded_geolocations, "geolocation")}.`}
-          </div>
-        </ActionReceipt>
-      )}
-
-      {lastPurge && <PurgeReceipt purge={lastPurge} />}
+      {outcome && <UserOutcomeReceipt outcome={outcome} />}
     </Card>
   );
 }

@@ -89,8 +89,8 @@ class ContentReport(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    # Read by the admin queue to name a collection or site report (title or name, and
-    # owner). No ``event`` relationship: an event report carries its id and links out.
+    # Read by the admin queue to name the reported item (title or name, and owner).
+    event = relationship("Event")
     collection = relationship("Collection")
     site = relationship("Site")
 

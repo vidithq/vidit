@@ -95,6 +95,16 @@ export function deleteUser(
   return apiFetch<AdminUserDeleteResponse>(path, { method: "DELETE" });
 }
 
+export type AdminUserRestoreResponse =
+  components["schemas"]["AdminUserRestoreResponse"];
+
+/** Undo a soft delete: the account and the events its soft delete hid come back. */
+export function restoreUser(id: string): Promise<AdminUserRestoreResponse> {
+  return apiFetch<AdminUserRestoreResponse>(`/admin/users/${id}/restore`, {
+    method: "POST",
+  });
+}
+
 export type AdminPurgeDetectedResponse =
   components["schemas"]["AdminPurgeDetectedResponse"];
 

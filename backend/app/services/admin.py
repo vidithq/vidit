@@ -159,6 +159,7 @@ def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInvi
             detected_count=by_status.get((u.id, STATUS_DETECTED), 0),
             geolocated_count=by_status.get((u.id, STATUS_GEOLOCATED), 0),
             last_seen_at=u.last_seen_at or logins.get(u.id),
+            deleted_at=u.deleted_at,
         )
         for u in users
     }
@@ -757,6 +758,41 @@ def soft_delete_user(
     db.commit()
     db.refresh(user)
     return user, cascaded_geolocations, len(handed_over)
+
+
+def restore_user(db: Session, *, actor_id: uuid.UUID, user_id: uuid.UUID) -> tuple[User, int]:
+    """Undo a soft delete: clear ``users.deleted_at`` and restore the events it hid.
+
+    An event the soft delete hid carries the user's own ``deleted_at``; an event soft-deleted
+    on its own carries another stamp and stays deleted. The X handle, the handed-over events
+    and the org manager roles the soft delete moved stay where they went. Returns
+    ``(user, restored_events)``. Idempotent on a live user (counts zero, no audit row).
+    """
+    user = db.query(User).filter(User.id == user_id).with_for_update().first()
+    if user is None:
+        raise UserNotFoundError("User not found")
+    if user.deleted_at is None:
+        return user, 0
+
+    restored_events = (
+        db.query(Event)
+        .filter(Event.owner_id == user.id, Event.deleted_at == user.deleted_at)
+        .update({Event.deleted_at: None}, synchronize_session=False)
+    )
+    user.deleted_at = None
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="user_restored",
+        target={
+            "user_id": str(user.id),
+            "username": user.username,
+            "restored_events": restored_events,
+        },
+    )
+    db.commit()
+    db.refresh(user)
+    return user, restored_events
 
 
 def hard_delete_user(

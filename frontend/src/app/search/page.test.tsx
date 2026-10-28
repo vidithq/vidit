@@ -62,6 +62,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   first_date: "2026-06-06",
   last_date: "2026-06-09",
   created_at: "2026-06-20T09:00:00Z",
+  hidden_at: null,
   ...over,
 });
 

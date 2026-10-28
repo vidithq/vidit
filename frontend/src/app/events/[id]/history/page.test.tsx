@@ -51,6 +51,7 @@ function baseEvent(versionNo: number): EventDetail {
     sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null, warnings: [] }],
     proof: "",
     created_at: "2026-06-01T10:00:00Z",
+    hidden_at: null,
     geolocated_at: "2026-06-01T10:00:00Z",
     closed_at: null,
     thumbnail: null,

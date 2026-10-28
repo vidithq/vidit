@@ -897,7 +897,7 @@ flowchart TB
   end
 
   between["`**panels**
-  the panels the actions open, the version banner`"]:::state
+  the withheld banner, the panels the actions open, the version banner`"]:::state
 
   layout["`**EventLayout**
   3. the body, filled by eventPageSlots or eventFormSlots`"]:::core
@@ -940,7 +940,7 @@ Each surface fills the slots this way:
 | `byline` | The author and the geolocators; on version 0, who opened the request or the detection | The geolocators, the pending invitations and **Invite a geolocator** on a published row; you, your picks and **Invite a geolocator** on a request or a detection | You, your picks and **Invite a geolocator** |
 | `actions.pinned` | The actions row, **Geolocate** last in it on a request, the version selector on a version page | The writes and the close ([`PublishActions`](../frontend/src/components/geolocations/PublishActions.tsx)), the error banner | The two publish buttons ([`PublishActions`](../frontend/src/components/geolocations/PublishActions.tsx)), the error banner |
 | `actions.below` | The approvals, a version's approvals | `IncompleteFormAnnouncer`, visually hidden | `IncompleteFormAnnouncer`, visually hidden |
-| `panels` | The geolocator invitation's card, the report form, a dialog, and the receipt a sent report leaves; the version banner | None | None |
+| `panels` | The withheld banner, the geolocator invitation's card, the report form, a dialog, and the receipt a sent report leaves; the version banner | None | None |
 | `sources`, `proof` | The source blocks, the proof | The source editors, the proof editor | The source editors, the proof editor |
 | `location` | The map and its **Coordinates** row, none on a request | The **Location** field, its **Coordinates** label and `?` | The **Location** field, then the duplicate probe |
 | `details` | The Details card | The **Details** fields | The **Details** fields |
@@ -1627,7 +1627,7 @@ flowchart LR
 | byline | The owner and a neutral `Collection` [`<Pill>`](../frontend/src/components/ui/Pill.tsx) | The same, for the analyst who writes it |
 | `actions` | Share on X, Report, then the owner's Edit and Drop | **Cancel**, the submit and the error banner |
 | `below` | None | `IncompleteFormAnnouncer`, visually hidden |
-| `panels` | The report form and its receipt, the drop error | None |
+| `panels` | The withheld banner, the report form and its receipt, the drop error | None |
 | `main` | **Description**, then **Events** | **Description**, then the picker's **Add events** and **Events in this collection** |
 | `side` | **Coverage**, then **Details** | **Coverage** of the held events, then **Details** |
 
@@ -1836,6 +1836,15 @@ flowchart LR
 - [`/sites/{id}/sources/new`](../frontend/src/app/sites/[id]/sources/new/page.tsx), for any signed-in analyst, holds `SiteSourceEditor`, named *Source N* like the edit page's: `<SourceEditor variant="site-source">`, whose capture time is required, sits under the title and has its own `site_source_captured` `?`, whose links run the imagery provider check, and whose **Capture details** is replaced by the note and its `<CharCounter>`. The side column shows the current zone. A filed source lands on a receipt that names any source of the same provider and day the site already holds (`duplicate_source_ids`), and offers the owner **Draw a contour on this source**, which opens the edit page on it.
 
 **Moderation.** Anyone reports a site through the report flag (`useReportContent("site", …)`). [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) lists a site report with the site's name as its link and its owner's byline, and offers **Hide the site** and **Dismiss**. An admin restores a withheld site from its page.
+
+**Withheld items.** An event, a collection or a site an admin withheld (`hidden_at`) reads only for an admin. Its page opens on a [`<WithheldBanner>`](../frontend/src/components/ui/WithheldBanner.tsx) in the panels: an amber line with the takedown time that says only admins read the item until it is restored. The event's panels come from `useEventActions`, the collection's from its page, and the site's from `useSiteActions`.
+
+**Admin console.** The moderation panels name every item so a moderator acts on the right one:
+
+- [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) prints an event report's title as its link and the author's `<AuthorByline>` beside it, as it does for a collection or a site.
+- [`<EventActionsPanel>`](../frontend/src/components/admin/EventActionsPanel.tsx) lists each search hit on two lines, the title, then its date (or *Undated*, or *Requested* and the request date) and author. The picked event's chip keeps that second line.
+- [`<UserActionsCard>`](../frontend/src/components/admin/UserActionsCard.tsx) marks a soft-deleted account with a red *Soft-deleted* pill and the time, and its menu offers **Restore** and **Hard delete** only. The onboarding table marks the account's row the same way.
+- An action leaves an [`ActionReceipt`](../frontend/src/components/admin/ActionReceipt.tsx) whose badge names the action taken (*Hidden*, *Restored*, *Marked graphic*, *Hard delete*). An account action's receipt (`UserOutcomeReceipt`) sums up what changed, such as the events and storage objects a hard delete erased.
 
 ### Requests board
 

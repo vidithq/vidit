@@ -338,13 +338,14 @@ def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[Content
     never serves a row twice. ``ix_content_reports_queue`` carries these three
     expressions in this order; change both together.
 
-    The collection or site and its owner load eagerly to avoid two lazy round
-    trips per report.
+    The event, collection or site and its owner load eagerly to avoid two lazy
+    round trips per report.
     """
     total = db.query(func.count(ContentReport.id)).scalar() or 0
     rows = (
         db.query(ContentReport)
         .options(
+            joinedload(ContentReport.event).joinedload(Event.owner),
             joinedload(ContentReport.collection).joinedload(Collection.owner),
             joinedload(ContentReport.site).joinedload(Site.owner),
         )
