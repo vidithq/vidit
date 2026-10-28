@@ -393,6 +393,34 @@ def test_moderation_hides_then_restores_the_event(db, admin_user, event):
     assert db.query(Event).filter(Event.id == event.id).one().hidden_at is None
 
 
+def test_admin_reads_when_a_withheld_event_was_withheld(db, admin_user, event):
+    """The detail read carries ``hidden_at`` so the page can say the event is withheld."""
+    headers = login_as(client, admin_user)
+    assert client.get(f"/api/v1/events/{event.id}", headers=headers).json()["hidden_at"] is None
+
+    hide = client.patch(
+        f"/api/v1/admin/events/{event.id}/moderation", json={"hidden": True}, headers=headers
+    )
+    read = client.get(f"/api/v1/events/{event.id}", headers=headers)
+    assert read.status_code == 200, read.text
+    assert read.json()["hidden_at"] == hide.json()["hidden_at"]
+
+
+def test_admin_reads_when_a_withheld_collection_was_withheld(db, admin_user, collection):
+    headers = login_as(client, admin_user)
+    path = f"/api/v1/collections/{collection.id}"
+    assert client.get(path, headers=headers).json()["hidden_at"] is None
+
+    hide = client.patch(
+        f"/api/v1/admin/collections/{collection.id}/moderation",
+        json={"hidden": True},
+        headers=headers,
+    )
+    read = client.get(path, headers=headers)
+    assert read.status_code == 200, read.text
+    assert read.json()["hidden_at"] == hide.json()["hidden_at"]
+
+
 def _source_flags(db, event) -> list[bool]:
     db.expire_all()
     return [row.is_graphic for row in db.query(Source).filter(Source.event_id == event.id)]
@@ -462,7 +490,7 @@ def test_moderation_403_for_regular_user(regular_user, event):
 
 
 def test_queue_lists_reports_of_both_kinds(db, admin_user, event, collection, regular_user):
-    """A collection row carries its title and owner (no public index to recognise it by); an event row carries its id."""
+    """Each row names its target by title and owner, so two items with the same title stay apart."""
     event_report = _report(db, event)
     collection_report = _collection_report(db, collection, reason="privacy")
 
@@ -470,11 +498,16 @@ def test_queue_lists_reports_of_both_kinds(db, admin_user, event, collection, re
     assert response.status_code == 200, response.text
     rows = {row["id"]: row for row in response.json()["items"]}
 
-    assert rows[str(event_report.id)]["event_id"] == str(event.id)
-    assert rows[str(event_report.id)]["collection"] is None
+    reported_event = rows[str(event_report.id)]
+    assert reported_event["event_id"] == str(event.id)
+    assert reported_event["event"]["id"] == str(event.id)
+    assert reported_event["event"]["title"] == event.title
+    assert reported_event["event"]["owner"]["username"] == regular_user.username
+    assert reported_event["collection"] is None
 
     reported = rows[str(collection_report.id)]
     assert reported["event_id"] is None
+    assert reported["event"] is None
     assert reported["collection"]["id"] == str(collection.id)
     assert reported["collection"]["title"] == collection.title
     assert reported["collection"]["owner"]["username"] == regular_user.username

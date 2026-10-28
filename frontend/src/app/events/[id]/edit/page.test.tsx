@@ -137,6 +137,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     sources: [source({ kind: "unknown" })],
     proof: '<img src="https://cdn.test/p.jpg">',
     created_at: "2026-06-02T10:00:00Z",
+    hidden_at: null,
     geolocated_at: null,
     closed_at: null,
     thumbnail: null,

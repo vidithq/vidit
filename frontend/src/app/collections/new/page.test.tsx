@@ -118,6 +118,7 @@ const created: Collection = {
   first_date: null,
   last_date: null,
   created_at: "2026-03-21T09:00:00Z",
+  hidden_at: null,
 };
 
 /** Fill both required fields; awaits the description first (the editor loads through `next/dynamic`). */

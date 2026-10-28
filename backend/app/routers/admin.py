@@ -26,6 +26,7 @@ from app.schemas.admin import (
     AdminSiteModerationUpdate,
     AdminUserDeleteResponse,
     AdminUserRead,
+    AdminUserRestoreResponse,
     UserInviteMintingUpdate,
     UserXHandleUpdate,
 )
@@ -307,6 +308,27 @@ def set_user_invite_minting(
         )
     except admin_service.AdminError as exc:
         _raise_admin_error(exc)
+
+
+@router.post("/users/{user_id}/restore", response_model=AdminUserRestoreResponse)
+@limiter.limit("30/hour")
+def restore_user_admin(
+    request: Request,
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> AdminUserRestoreResponse:
+    """Undo a soft delete: the account and the events its soft delete hid come back."""
+    try:
+        user, restored_events = admin_service.restore_user(
+            db, actor_id=current_user.id, user_id=user_id
+        )
+    except admin_service.AdminError as exc:
+        _raise_admin_error(exc)
+    points_cache.invalidate()
+    return AdminUserRestoreResponse(
+        user_id=user.id, username=user.username, restored_events=restored_events
+    )
 
 
 @router.delete(

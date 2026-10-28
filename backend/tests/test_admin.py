@@ -1199,6 +1199,89 @@ def test_soft_delete_user_is_idempotent(admin_user, regular_user, db):
     assert second.json()["cascaded_geolocations"] == 0
 
 
+def test_restore_user_revives_the_account_and_the_events_its_soft_delete_hid(
+    admin_user, regular_user, geolocation, db
+):
+    """An event soft-deleted on its own carries another stamp and stays deleted."""
+    earlier = Event(
+        owner_id=regular_user.id,
+        title=f"Deleted earlier {uuid.uuid4().hex[:8]}",
+        coords=from_shape(Point(34.7, 48.7), srid=4326),
+        geolocated_at=datetime.now(UTC),
+        deleted_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    db.add(earlier)
+    db.commit()
+    headers = login_as(client, admin_user)
+    client.delete(f"/api/v1/admin/users/{regular_user.id}", headers=headers)
+
+    response = client.post(f"/api/v1/admin/users/{regular_user.id}/restore", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "user_id": str(regular_user.id),
+        "username": regular_user.username,
+        "restored_events": 1,
+    }
+
+    db.expire_all()
+    assert db.get(User, regular_user.id).deleted_at is None
+    assert db.get(Event, geolocation.id).deleted_at is None
+    assert db.get(Event, earlier.id).deleted_at is not None
+    assert client.get(f"/api/v1/users/{regular_user.username}").status_code == 200
+    audit = (
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "user_restored")
+        .one()
+    )
+    assert audit.target["restored_events"] == 1
+
+
+def test_restore_user_is_a_no_op_on_a_live_account(admin_user, regular_user, db):
+    response = client.post(
+        f"/api/v1/admin/users/{regular_user.id}/restore", headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["restored_events"] == 0
+    assert (
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == "user_restored")
+        .count()
+        == 0
+    )
+
+
+def test_restore_user_404_for_unknown_id(admin_user):
+    response = client.post(
+        f"/api/v1/admin/users/{uuid.uuid4()}/restore", headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 404
+
+
+def test_restore_user_403_for_regular_user(regular_user):
+    response = client.post(
+        f"/api/v1/admin/users/{regular_user.id}/restore", headers=login_as(client, regular_user)
+    )
+    assert response.status_code == 403
+
+
+def test_list_invite_codes_marks_a_soft_deleted_redeemer(admin_user, regular_user, db):
+    invite = InviteCode(
+        code=f"code{uuid.uuid4().hex[:12]}", used_by_id=regular_user.id, used_at=datetime.now(UTC)
+    )
+    db.add(invite)
+    db.commit()
+    headers = login_as(client, admin_user)
+    try:
+        deleted = client.delete(f"/api/v1/admin/users/{regular_user.id}", headers=headers).json()
+        rows = client.get("/api/v1/admin/invite-codes", headers=headers).json()
+        row = next(r for r in rows if r["code"] == invite.code)
+        assert row["redeemer"]["deleted_at"] == deleted["deleted_at"]
+    finally:
+        db.expire_all()
+        db.query(InviteCode).filter(InviteCode.id == invite.id).delete()
+        db.commit()
+
+
 def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, geolocation, db):
     user_id = regular_user.id
     geo_id = geolocation.id

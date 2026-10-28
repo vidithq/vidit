@@ -104,6 +104,7 @@ const COLLECTIONS: CollectionPage = {
       first_date: "2026-06-01",
       last_date: "2026-06-02",
       created_at: "2026-06-03T09:00:00Z",
+      hidden_at: null,
     },
   ],
   total: 1,

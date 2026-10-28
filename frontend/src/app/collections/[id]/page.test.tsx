@@ -70,6 +70,7 @@ const collection = (over: Partial<Collection> = {}): Collection => ({
   first_date: "2026-03-14",
   last_date: "2026-03-16",
   created_at: "2026-03-21T09:00:00Z",
+  hidden_at: null,
   ...over,
 });
 
@@ -141,6 +142,22 @@ describe("CollectionPage", () => {
       "/profile/ana",
     );
     expect(screen.getByText("Collection")).toBeInTheDocument();
+  });
+
+  it("says a withheld collection is withheld, which only an admin reads", async () => {
+    mockReads(collection({ hidden_at: "2026-10-28T09:30:00Z" }));
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        "Withheld since 28 Oct 2026, 09:30 UTC. Only admins read this collection until it is restored.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no withheld banner on a live collection", async () => {
+    await renderPage();
+    expect(screen.queryByText(/Withheld since/)).toBeNull();
   });
 
   it("prints the description whole, through the proof renderer", async () => {

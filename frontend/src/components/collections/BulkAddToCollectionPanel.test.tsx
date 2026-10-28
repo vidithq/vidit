@@ -38,6 +38,7 @@ const shelf = (id: string, title: string, event_count: number): Collection => ({
   first_date: null,
   last_date: null,
   created_at: "2026-06-20T09:00:00Z",
+  hidden_at: null,
 });
 
 const page = (items: Collection[]) => ({ items, total: items.length, page: 1, per_page: 100 });

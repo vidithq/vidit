@@ -122,6 +122,8 @@ class CollectionRead(BaseModel):
     first_date: date | None
     last_date: date | None
     created_at: datetime
+    # Set only on a withheld collection, which only an admin reads.
+    hidden_at: datetime | None
 
 
 class CollectionList(BaseModel):

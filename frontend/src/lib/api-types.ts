@@ -544,6 +544,26 @@ export interface paths {
         patch: operations["set_user_invite_minting_api_v1_admin_users__user_id__invite_minting_patch"];
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore User Admin
+         * @description Undo a soft delete: the account and the events its soft delete hid come back.
+         */
+        post: operations["restore_user_admin_api_v1_admin_users__user_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users/{user_id}/x-handle": {
         parameters: {
             query?: never;
@@ -3053,6 +3073,8 @@ export interface components {
             archives_imported: number;
             /** Bot Detection Count */
             bot_detection_count: number;
+            /** Deleted At */
+            deleted_at: string | null;
             /** Detected Count */
             detected_count: number;
             /** Email */
@@ -3237,6 +3259,21 @@ export interface components {
             username: string;
             /** X Handle */
             x_handle: string | null;
+        };
+        /**
+         * AdminUserRestoreResponse
+         * @description Response for `POST /admin/users/{id}/restore`.
+         */
+        AdminUserRestoreResponse: {
+            /** Restored Events */
+            restored_events: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Username */
+            username: string;
         };
         /**
          * ApprovalCreate
@@ -3843,6 +3880,8 @@ export interface components {
             event_count: number;
             /** First Date */
             first_date: string | null;
+            /** Hidden At */
+            hidden_at: string | null;
             /**
              * Id
              * Format: uuid
@@ -3945,9 +3984,9 @@ export interface components {
          *     ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
          *     and all set once resolved, so ``resolved_at is None`` is the open test.
          *
-         *     A row names one target: ``event_id``, ``collection`` or ``site``. All are
-         *     NULL once the target is destroyed (the orphan row, closed only by
-         *     ``dismissed``).
+         *     A row names one target: ``event`` (with its ``event_id``), ``collection``
+         *     or ``site``. All are NULL once the target is destroyed (the orphan row,
+         *     closed only by ``dismissed``).
          */
         ContentReportRead: {
             collection?: components["schemas"]["ReportedCollection"] | null;
@@ -3958,6 +3997,7 @@ export interface components {
             created_at: string;
             /** Details */
             details: string | null;
+            event?: components["schemas"]["ReportedEvent"] | null;
             /** Event Id */
             event_id: string | null;
             /**
@@ -4142,6 +4182,8 @@ export interface components {
             geolocated_at: string | null;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
+            /** Hidden At */
+            hidden_at: string | null;
             /**
              * Id
              * Format: uuid
@@ -4856,6 +4898,21 @@ export interface components {
         ReportedCollection: {
             /** Deleted At */
             deleted_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            owner: components["schemas"]["AuthorRef"];
+            /** Title */
+            title: string;
+        };
+        /**
+         * ReportedEvent
+         * @description The reported event as the admin queue names it, read live so an edited
+         *     title shows its current wording.
+         */
+        ReportedEvent: {
             /**
              * Id
              * Format: uuid
@@ -7043,6 +7100,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminUserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_user_admin_api_v1_admin_users__user_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserRestoreResponse"];
                 };
             };
             /** @description Validation Error */
