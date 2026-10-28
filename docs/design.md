@@ -742,7 +742,7 @@ The panel opens on fields that stay in view, each under its `<FieldLabel>` with 
 2. **Show**, the event statuses to list: Requested, Detected and Geolocated. On the map the field ends with the **Sites** chip, passed as `layer` (see [Map](#map)). The search page passes its own Show field as `lead`, with a chip per kind after the statuses (see [Search](#search)). The filter carries one name on every surface, `show` in the code. The URL parameter, `GET /search` and `GET /events` name it `status`, and `GET /feed` names it `kind`.
 3. **Conflict** and **Tags**, the two search fields.
 
-On the map, the status chips and the **Sites** chip follow one rule (`showFieldScope`). With no chip selected, the map shows every event and every site. Once you select a chip, the map shows only what the selected chips name:
+On the map, the status chips and the **Sites** chip follow one rule (`showFieldScope` in [`lib/showField.ts`](../frontend/src/lib/showField.ts)), the rule the search page's Show field follows too (see [Search](#search)). With no chip selected, the map shows every event and every site. Once you select a chip, the map shows only what the selected chips name:
 
 | Selected chips | Events | Sites |
 |---|---|---|
@@ -1924,7 +1924,7 @@ flowchart LR
   rows --> select
 ```
 
-**The Show field.** The panel opens on the **Show** field, a `ChipBucket` passed as the panel's `lead`: **Requested**, **Detected**, **Geolocated**, then **Sites**, **Collections**, **Analysts** and **Organizations** (`SEARCH_KIND_OPTIONS` in [`lib/search.ts`](../frontend/src/lib/search.ts)). The chips carry no counts. The field follows the map's rule: with no chip selected the list holds every kind, and once a chip is selected it holds only what the selected chips name. A status chip names the events in that status. `searchTypes` turns the pick into the `type` and `status` values `GET /search` reads, and the page writes the same values into its URL, so a profile link such as `/search?type=collection&author=ana` opens with **Collections** selected. A link whose `type=event` names no status selects every status chip.
+**The Show field.** The panel opens on the **Show** field, a `ChipBucket` passed as the panel's `lead`: **Requested**, **Detected**, **Geolocated**, then **Sites**, **Collections**, **Analysts** and **Organizations** (`SEARCH_KIND_OPTIONS` in [`lib/search.ts`](../frontend/src/lib/search.ts)). The chips carry no counts. The field follows the map's rule, through the same `showFieldScope`: with no chip selected the list holds every kind, and once a chip is selected it holds only what the selected chips name. A status chip names the events in that status. `searchTypes` turns the pick into the `type` and `status` values `GET /search` reads, and the page writes the same values into its URL, so a profile link such as `/search?type=collection&author=ana` opens with **Collections** selected. A link whose `type=event` names no status selects every status chip.
 
 **The filter sections follow the pick.** While the pick lists events, the panel offers every event section. Once it lists no event, the panel offers only the sections the picked kinds answer (`SEARCH_KIND_SECTIONS`, the mirror of the API's rule): **Tags** and **Author** for collections, **Author** for sites, none for analysts and organizations. A pick that drops the events also drops the values of the sections it no longer offers, so no hidden filter keeps narrowing the list. Each picked kind other than a status shows as a **Show** pill and counts in **Filters (N)**.
 

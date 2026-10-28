@@ -17,7 +17,7 @@ import {
 } from "@/lib/viewport";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
-import { showFieldScope } from "@/components/filters/EventFilterSections";
+import { showFieldScope } from "@/lib/showField";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SitePanel, SitePreview } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -63,7 +63,7 @@ export default function HomePage() {
   const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { tags, conflicts } = useFilterVocabulary();
   const shown = showFieldScope(filters.show, sitesSelected);
-  const sitesShown = shown.layer;
+  const sitesShown = shown.others;
   // Keyed on the selection in context, so returning to the map re-reads it.
   const detail = useApiResource<EventDetail>(
     selectedId ? `/events/${selectedId}` : null,

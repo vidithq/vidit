@@ -134,21 +134,11 @@ interface InjectedSection extends PanelField {
   active: boolean;
 }
 
-/** A map layer offered as one more Show chip after the status chips (`showFieldScope`). */
+/** A map layer offered as one more Show chip after the status chips (`lib/showField.ts`). */
 interface FilterLayer {
   label: string;
   selected: boolean;
   onToggle: () => void;
-}
-
-/** What the Show field leaves on the map. With no chip selected, every event and the layer show;
- * once a chip is selected, only what the selected chips name. */
-export function showFieldScope(
-  show: string[],
-  layerSelected: boolean,
-): { events: boolean; layer: boolean } {
-  const none = show.length === 0 && !layerSelected;
-  return { events: none || show.length > 0, layer: none || layerSelected };
 }
 
 const LAYER_CHIP = "layer";

@@ -10,7 +10,6 @@ import {
   buildActiveFilterPills,
   buildDateWindowPills,
   countActiveFilters,
-  showFieldScope,
   type EventFilterValues,
 } from "./EventFilterSections";
 
@@ -164,18 +163,6 @@ describe("<EventFilterSections>", () => {
 
     fireEvent.click(header("People"));
     expect(header("People")).toHaveAttribute("aria-expanded", "true");
-  });
-});
-
-describe("showFieldScope", () => {
-  it("shows every event and the layer while no chip is selected", () => {
-    expect(showFieldScope([], false)).toEqual({ events: true, layer: true });
-  });
-
-  it("shows only what the selected chips name", () => {
-    expect(showFieldScope(["geolocated"], false)).toEqual({ events: true, layer: false });
-    expect(showFieldScope([], true)).toEqual({ events: false, layer: true });
-    expect(showFieldScope(["requested"], true)).toEqual({ events: true, layer: true });
   });
 });
 

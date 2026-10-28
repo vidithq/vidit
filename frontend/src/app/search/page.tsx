@@ -22,6 +22,7 @@ import {
   searchTypes,
 } from "@/lib/search";
 import { GO_TO_ZOOM, formatCoordinates, parsePastedCoordinates } from "@/lib/coordinates";
+import { showFieldScope } from "@/lib/showField";
 import { useMapState } from "@/contexts/MapStateContext";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { Avatar } from "@/components/ui/Avatar";
@@ -87,8 +88,7 @@ type SearchPick = { values: EventFilterValues; dates: DateWindows; kinds: Search
 /** A pick with the filters it no longer offers dropped: once the list holds no event, only the
  *  author and the tags its kinds answer stay, and the date windows go. */
 function scoped(pick: SearchPick): SearchPick {
-  const types = searchTypes(pick.values.show, pick.kinds);
-  if (types.length === 0 || types.includes("event")) return pick;
+  if (showFieldScope(pick.values.show, pick.kinds.length > 0).events) return pick;
   const offered = sectionsFor(false, pick.kinds);
   return {
     kinds: pick.kinds,
@@ -168,8 +168,7 @@ function SearchPageBody() {
     update({ kinds: kinds.includes(kind) ? kinds.filter((k) => k !== kind) : [...kinds, kind] });
   };
 
-  const types = searchTypes(values.show, kinds);
-  const eventsListed = types.length === 0 || types.includes("event");
+  const eventsListed = showFieldScope(values.show, kinds.length > 0).events;
   const sections = sectionsFor(eventsListed, kinds);
 
   const filterPills = buildActiveFilterPills(values, onPatch);

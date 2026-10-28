@@ -1,5 +1,6 @@
 import type { Account } from "@/components/ui/AccountPicker";
 import { apiFetch } from "./api";
+import { showFieldScope } from "./showField";
 import type { components } from "./api-types";
 import type {
   SearchHit,
@@ -44,11 +45,12 @@ export const SEARCH_KIND_SECTIONS: Record<
   organization: [],
 };
 
-/** The hit types a Show pick lists, the map's Show rule: with no chip selected every type (none
- *  sent), otherwise only what the selected chips name, events while a status chip is selected. */
+/** The hit types a Show pick lists, by the Show field's one rule (`showFieldScope`). Every type
+ *  shows while no chip is selected, which `GET /search` reads as no `type` sent. */
 export function searchTypes(statuses: string[], kinds: SearchHitType[]): SearchHitType[] {
-  if (statuses.length === 0 && kinds.length === 0) return [];
-  return [...(statuses.length > 0 ? (["event"] as const) : []), ...kinds];
+  const scope = showFieldScope(statuses, kinds.length > 0);
+  if (scope.events && scope.others) return statuses.length > 0 ? ["event", ...kinds] : [];
+  return scope.events ? ["event"] : kinds;
 }
 
 function appendSearchTypes(params: URLSearchParams, types: SearchHitType[]): void {
