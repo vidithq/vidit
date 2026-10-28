@@ -1961,7 +1961,7 @@ Decline an approval request addressed to you, or to an organization you are a me
 
 ## Search
 
-Full-text discovery across five result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, and `organizations`. Matching uses the Postgres `simple` dictionary, and the response is grouped by entity. Proof content is not searched.
+Full-text discovery across five result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, and `organizations`. The response is grouped by entity. Proof content is not searched.
 
 ### `GET /search` 🌐
 
@@ -1974,13 +1974,25 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | `cursor` | string | The `geolocations_cursor` of a previous response. Returns the next page of the geolocations group. Requires `type=geolocation`; send the same `q` and filters as the request that returned it. |
 | *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `source_kind`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
 
+**Query syntax.** `q` reads like a web search engine query (Postgres `websearch_to_tsquery`). Text that is not valid syntax is read as words and never returns an error.
+
+| `q` | Matches |
+|-----|---------|
+| `gaza city` | Both words, in any order and position. |
+| `"gaza city"` | The phrase: the words next to each other, in that order. |
+| `taiz OR taizz` | Either word. |
+| `hezbollah -drone` | `hezbollah`, without `drone`. |
+
+Matching is case-insensitive and reads whole words through the `simple` dictionary: no stemming, so `drone` and `drones` are different words, and place names and handles match as typed.
+
 **Rules.**
 
 - An empty `q` with no active filter returns empty groups.
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight.
 - Any active filter empties the users and organizations groups.
 - The collections group reads two filters. `author` narrows it to that analyst's collections, and `tag` to the collections whose [`tags`](#get-collectionsid) hold one of the values. Any other active filter empties it. With an empty `q`, `author` or `tag` lists the matching collections newest first.
-- An event hit matches on its title, on a source's title, or on a source URL that contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. The title highlight and the rank read the event title only.
+- An event hit matches on one document: its title and the titles of its sources together. `-drone` excludes an event when its title or any of its source titles holds `drone`. The title highlight and the rank read the event title only.
+- An event hit also matches when a source URL contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. This applies only when `q` is one word of 4 characters or more, neither quoted nor starting with `-`, so `a` or `the` does not match every URL.
 - A word of `q` that is a live analyst's exact username (case-insensitive, with or without a leading `@`) also matches the events credited to that analyst, as the `author` filter does; a username that holds a space counts only as the whole `q`. The other words narrow those events by text, and only they feed the rank. `osint_analyst` lists that analyst's events, and `strike osint_analyst` lists those whose text matches `strike`.
 - A user hit matches on its username and bio together, or on a word of `q` that is its exact username. An exact username match ranks first.
 - A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable are absent.

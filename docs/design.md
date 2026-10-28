@@ -368,7 +368,7 @@ The vocabulary:
 - `age` adds how long an entity has been open to the compact row's meta line, after the date. The Requests board fills it from `requested_at` (see [Requests board](#requests-board)).
 - `place` adds where the entity lies against the area its surface reads to the compact row's meta line, and `actions` sets controls beside the badge, above the stretched link. A site page's linked events fill both (see [Sites](#sites)).
 - On a phone the compact row narrows the thumbnail to `w-20` and drops the status badge under the text, so the title keeps its width.
-- `uniformHeight` keeps every row of a catalogue list the same height whatever slots it fills (1-line or 2-line title, tags or none), from `sm` up. A list whose rows all share one short shape turns it off (a collection's items). Off, the row stands on its media column, and text shorter than that column centres against it.
+- `uniformHeight` keeps every row of a catalogue list the same height whatever slots it fills (1-line or 2-line title, tags or none), from `sm` up. A list whose rows all share one short shape turns it off (a collection's items), and so do the search page's Geolocations and Requests groups, where each result fits its content. Off, the row stands on its media column, and text shorter than that column centres against it.
 - The thumbnail slot is `self-start`, so a tall card keeps the 16:9 ratio and leaves empty space under the thumbnail at every width. This is intended.
 
 #### Controls
@@ -1699,7 +1699,7 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 **One collection picker.** Both **Add to collection** popovers, the event page's and the search page's bulk add, render [`<CollectionPicker>`](../frontend/src/components/collections/CollectionPicker.tsx), so they share one look:
 
 - From six collections up, a **Find a collection** field narrows the list by title in the browser; *No collection matches.* answers a title nothing holds.
-- Each row leads with the collection's first cover tile as a 40px square (`PickerCover`, a `<CollectionCover>`), then the title at reading size over the item count (`eventCountLabel`), since a title runs to 255 characters. The rows share `PICKER_ROW` padding.
+- Each row leads with the collection's first cover tile as a 40px square (`PickerCover`, a `<CollectionCover>`), or the collection icon (lucide `Layers`) in the same square when the collection is empty, then the title at reading size over the item count (`eventCountLabel`), since a title runs to 255 characters. The rows share `PICKER_ROW` padding.
 - The list scrolls past `18rem`, since the popover is fixed to the viewport.
 - With no collection, *No collections yet.* says what **New collection** does with what is being added.
 - The footer is a ghost **New collection** button.

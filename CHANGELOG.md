@@ -26,6 +26,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Search reads quotes as a phrase, `OR` as either word and `-word` as a word to exclude, and a query shorter than 4 characters no longer matches every source link that holds it ([#787](https://github.com/vidithq/vidit/pull/787)).
 - The event page, the detection queue and the two event groups of search each read one shared eager-load set instead of restating it, and `docs/engineering.md` lists those sets ([#779](https://github.com/vidithq/vidit/pull/779)).
 - On the search page, the Tags filter narrows the Collections group to the collections that hold the tag instead of emptying it, and the Collections scope offers Tags beside Author ([#778](https://github.com/vidithq/vidit/pull/778)).
 - The event page's Add to collection matches the search page's: each collection shows its cover, a field finds one by title once you hold six or more, and New collection sits at the foot of both ([#774](https://github.com/vidithq/vidit/pull/774)).
@@ -65,6 +66,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- The search field's placeholder fits on a phone, search result cards no longer leave an empty band under their details, and an empty collection shows its icon in the Add to collection picker instead of a cramped *no media* ([#789](https://github.com/vidithq/vidit/pull/789)).
 - The API reference now marks a collection's `title` and `description` as required on create, with their limits, and lists a missing field among the 422 causes ([#783](https://github.com/vidithq/vidit/pull/783)).
 - Search finds an analyst's work by their handle: on All and Events, a word that is an analyst's username lists the events credited to them, the other words narrow those events, and the Analysts group keeps the analyst ([#769](https://github.com/vidithq/vidit/pull/769)).
 - The event edit and submit forms no longer scroll sideways when the tag field suggests more tags than fit on its line ([#775](https://github.com/vidithq/vidit/pull/776)).
