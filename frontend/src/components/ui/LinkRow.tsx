@@ -2,15 +2,14 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, ExternalLink, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "./styles";
+import { META_LINE, TAPPABLE_HOVER } from "./styles";
 import { FORM_LABEL } from "./form-styles";
 import { OutboundLink } from "./OutboundLink";
 
 // "icon + label + value" link row (the About page's guide, legal and contact
 // channels; the Notifications feed).
 //
-// - `href` present: a link; the icon and the value read in the accent (`TEXT_LINK`),
-//   with the orange-border hover.
+// - `href` present: a link; the value reads orange with the orange-border hover.
 // - `href` absent: a <div>; the value stays neutral (names a destination without
 //   resolving to one).
 // - `external`: leaves the app through <OutboundLink> and takes the trailing
@@ -86,12 +85,7 @@ export function LinkRow({
   const lead = leading ?? (
     <Icon
       size={14}
-      className={cn(
-        "shrink-0 transition-colors",
-        href && variant === "accent"
-          ? "text-orange-400/70 group-hover:text-orange-400"
-          : "text-neutral-500 group-hover:text-orange-400/70",
-      )}
+      className="text-neutral-500 shrink-0 group-hover:text-orange-400/70 transition-colors"
     />
   );
 
@@ -139,10 +133,11 @@ export function LinkRow({
       <div className="flex-1 min-w-0">
         {label && <span className={FORM_LABEL}>{label}</span>}
         <p
-          className={cn(
-            "text-sm truncate",
-            href ? [TEXT_LINK, "group-hover:text-orange-300 transition-colors"] : "text-neutral-200",
-          )}
+          className={`text-sm truncate ${
+            href
+              ? "text-orange-400 group-hover:text-orange-300 transition-colors"
+              : "text-neutral-200"
+          }`}
         >
           {value}
         </p>
