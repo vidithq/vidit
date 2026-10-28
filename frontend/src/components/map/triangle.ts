@@ -9,25 +9,26 @@ const SDF_PX = 8;
 
 // An equilateral triangle with the area of a circle of radius r has a side of this many r.
 const SIDE_PER_RADIUS = Math.sqrt((4 * Math.PI) / Math.sqrt(3));
-const GAP_PX = 1;
+/** The shortest distance between a cluster's circle and the triangle beside it. MapLibre's circle
+ *  antialiasing reads about half a pixel narrower, so the drawn gap is 1.3 to 2 px. */
+export const BESIDE_GAP_PX = 1;
 
 type Vec = [number, number];
 
-/** How far right of a circle of `circleRadius` px the centroid of a triangle sized like a circle of
- *  `triangleRadius` px sits so the two shapes do not overlap and stay `GAP_PX` apart at their
- *  closest. */
-export function besideOffsetPx(circleRadius: number, triangleRadius: number): number {
-  const side = triangleRadius * SIDE_PER_RADIUS;
+/** The corners of an upward triangle sized like a circle of `radius`, its bounding box centred on
+ *  `[cx, cy]`, clockwise on screen. */
+function corners(radius: number, cx: number, cy: number): Vec[] {
+  const side = radius * SIDE_PER_RADIUS;
   const height = (side * Math.sqrt(3)) / 2;
-  let offset = 0;
-  // y runs down from the apex (-2h/3) to the base (h/3), in the centroid's frame.
-  for (let i = 0; i <= 200; i++) {
-    const y = -(2 * height) / 3 + (height * i) / 200;
-    if (Math.abs(y) > circleRadius) continue;
-    const triangleLeft = (side / 2) * ((y + (2 * height) / 3) / height);
-    offset = Math.max(offset, Math.sqrt(circleRadius ** 2 - y ** 2) + triangleLeft);
-  }
-  return offset + GAP_PX;
+  return [
+    [cx, cy - height / 2],
+    [cx + side / 2, cy + height / 2],
+    [cx - side / 2, cy + height / 2],
+  ];
+}
+
+function edges(points: Vec[]) {
+  return points.map((a, i) => [a, points[(i + 1) % points.length]] as const);
 }
 
 function segmentDistance([px, py]: Vec, [ax, ay]: Vec, [bx, by]: Vec): number {
@@ -37,33 +38,42 @@ function segmentDistance([px, py]: Vec, [ax, ay]: Vec, [bx, by]: Vec): number {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
-/** An upward triangle centred on its centroid, as a signed distance field for `addImage(id, image,
- *  { sdf: true })`, so `icon-color` paints it and `icon-halo-*` rings it. */
+/** How far right of the centre of a circle of `circleRadius` px the centre of a triangle sized like
+ *  a circle of `triangleRadius` px sits, on the same line, for the two shapes to be
+ *  `BESIDE_GAP_PX` apart at their closest. */
+export function besideOffsetPx(circleRadius: number, triangleRadius: number): number {
+  const reach = circleRadius + BESIDE_GAP_PX;
+  const closest = (offset: number) =>
+    Math.min(...edges(corners(triangleRadius, offset, 0)).map(([a, b]) => segmentDistance([0, 0], a, b)));
+  let low = 0;
+  let high = reach + triangleRadius * SIDE_PER_RADIUS;
+  for (let i = 0; i < 40; i++) {
+    const mid = (low + high) / 2;
+    if (closest(mid) < reach) low = mid;
+    else high = mid;
+  }
+  return high;
+}
+
+/** An upward triangle centred on its bounding box, as a signed distance field for `addImage(id,
+ *  image, { sdf: true })`, so `icon-color` paints it, `icon-halo-*` rings it, and the default
+ *  centre anchor sets its apex and base the same distance above and below the point. */
 export function triangleSdf(): { width: number; height: number; data: Uint8Array } {
-  const side = TRIANGLE_RADIUS * SIDE_PER_RADIUS;
-  const height = (side * Math.sqrt(3)) / 2;
-  const extent = Math.max((2 * height) / 3, side / 2) + SDF_PX;
-  const size = Math.ceil(2 * extent);
+  const size = Math.ceil(TRIANGLE_RADIUS * SIDE_PER_RADIUS + 2 * SDF_PX);
   const c = size / 2;
-  const corners: Vec[] = [
-    [c, c - (2 * height) / 3],
-    [c + side / 2, c + height / 3],
-    [c - side / 2, c + height / 3],
-  ];
-  const edges = corners.map((a, i) => [a, corners[(i + 1) % 3]] as const);
+  const sides = edges(corners(TRIANGLE_RADIUS, c, c));
   const data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const p: Vec = [x + 0.5, y + 0.5];
       // The corners run clockwise on screen, so a point inside is at a negative distance from every edge.
-      const sides = edges.map(([[ax, ay], [bx, by]]) => {
+      const signed = sides.map(([[ax, ay], [bx, by]]) => {
         const len = Math.hypot(bx - ax, by - ay);
         return ((p[0] - ax) * (by - ay) - (p[1] - ay) * (bx - ax)) / len;
       });
-      const inside = sides.every((s) => s <= 0);
-      const distance = inside
-        ? Math.max(...sides)
-        : Math.min(...edges.map(([a, b]) => segmentDistance(p, a, b)));
+      const distance = signed.every((s) => s <= 0)
+        ? Math.max(...signed)
+        : Math.min(...sides.map(([a, b]) => segmentDistance(p, a, b)));
       const i = (y * size + x) * 4;
       data[i] = data[i + 1] = data[i + 2] = 255;
       data[i + 3] = Math.max(0, Math.min(255, Math.round(255 * (SDF_EDGE - distance / SDF_PX))));
