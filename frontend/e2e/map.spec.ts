@@ -32,6 +32,33 @@ test.describe("map", () => {
     await expectNarrowViewportLayout(page, filters);
   });
 
+  // The open panel runs down the column, and the map's bottom-left row (zoom,
+  // locate, basemap, attribution) sits under it: the attribution wraps to
+  // three lines at 320px, so the panel has to stop above the tallest of them.
+  test("keeps the open filter panel above the map's bottom-left controls", async ({ page }) => {
+    await mockApi(page);
+    await page.goto("/map");
+
+    const filters = page.getByRole("button", { name: "Filters" });
+    await filters.click();
+    await page.getByRole("button", { name: "Toggle Source" }).click();
+    await page.getByRole("button", { name: "Toggle People" }).click();
+    await expect(page.locator(".maplibregl-ctrl-bottom-left .maplibregl-ctrl-group").first()).toBeVisible();
+
+    const panel = (await filters.locator("..").boundingBox())!;
+    const controls = await page
+      .locator(".maplibregl-ctrl-bottom-left > *")
+      .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
+    for (const control of controls) {
+      if (control.width === 0) continue;
+      if (control.right <= panel.x || control.left >= panel.x + panel.width) continue;
+      expect(
+        panel.y + panel.height,
+        "the filter panel runs over a bottom-left map control",
+      ).toBeLessThanOrEqual(control.top);
+    }
+  });
+
   // `TAP_STEP` sits on each `<FilterSection>` header toggle, not on the row
   // holding the two of them: on the row it sizes the row and leaves each
   // button at its own 16px line box, a 36px strip a thumb misses two thirds of

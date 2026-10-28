@@ -73,8 +73,9 @@ describe("RequestsPage", () => {
     render(<RequestsPage />);
 
     expect(await screen.findByText(REQUEST.title)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Status/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Conflict, tags" })).toBeInTheDocument();
+    expect(screen.queryByText("Show")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Conflict" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Tags" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Location guess" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Source" }));
@@ -132,29 +133,29 @@ describe("RequestsPage", () => {
     expect(screen.getAllByText(/^Open /)).toHaveLength(2);
   });
 
-  it("holds the panel in the Filters rail and applies the dialog's draft on Apply", async () => {
+  it("holds the panel in the Filters rail and applies each change in the dialog at once", async () => {
     render(<RequestsPage />);
     await screen.findByText(REQUEST.title);
     expect(screen.getByRole("complementary", { name: "Filters" })).toContainElement(
-      screen.getByRole("button", { name: "Toggle Conflict, tags" })
+      screen.getByRole("button", { name: "Toggle Source" })
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     const dialog = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Conflict, tags" }));
+    expect(within(dialog).queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
     fireEvent.focus(within(dialog).getByRole("combobox", { name: "Conflict" }));
     fireEvent.click(screen.getByRole("option", { name: /^Russian invasion of Ukraine/ }));
-    expect(lastQuery().has("conflict")).toBe(false);
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
     await waitFor(() =>
       expect(lastQuery().getAll("conflict")).toEqual(["Russian invasion of Ukraine"])
     );
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
     // The applied filter heads the rail as a pill, as it does the narrow row.
     expect(
       within(screen.getByRole("complementary", { name: "Filters" })).getByTitle(
-        "Remove filter: Russian invasion of Ukraine",
+        "Remove filter Conflict: Russian invasion of Ukraine",
       ),
     ).toBeInTheDocument();
   });

@@ -536,7 +536,7 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 | Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile, New collection and Sign out on your own), and Follow on someone else's profile. On the Requests board it is **Post request**. Edit mode moves the save pair to the sticky actions. The event surfaces leave it empty: their controls are sticky actions instead (`stickyActions`). A panel a cluster control opens (the add-to-collection picker, the Geolocators list) is a [`<Popover>`](../frontend/src/components/ui/Popover.tsx) that floats over the page, so nothing under the header moves. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
 | Sticky actions (`stickyActions`) | A zero-height `sticky top-10 max-sm:top-16 z-30` track before the header, the cluster hanging from it at the right, as wide as its actions on one line, up to the column's width | The page's actions, top right of the header, pinned at the top right of the column while the page scrolls, in an `aside` named *Actions* that `PageShell` renders, so no caller spells the landmark. [`EventShell`](#event-layout) sets it, on the event, version and request pages and the event forms. [`CollectionShell`](#collections) sets it on the collection page and the collection forms. The profile and organization edit modes set it for their save pair, the search page for **Add to collection**, and the X post and archive entries of `/submit` for their submit button (**Create the detection**, **Import archive**), which sits outside the form and submits it through its `form` attribute. The header keeps the cluster's room, and the cluster takes a surface once pinned; see [Event layout](#event-layout). `stickyActionsIdle` keeps that room while hiding the cluster (invisible, inert, no surface), for actions that come and go with a page state, so the header never moves when they return. |
 | Header in the column (`headerInColumn`) | The header and `controls` head the main column of a [right rail](#right-rail) page, beside the rail rather than above both | Off by default. The About page sets it, so the rail's first block sits top right, level with the title. The header scrolls with the main column while the rail sticks. The title keeps its x and the back arrow keeps its gutter, since the main column starts where the header did. Below `lg` the header comes first and a stacked rail follows it, so the actions sit under the title. |
-| Controls (`controls`) | `flex flex-wrap items-center justify-between gap-2`, one `space-y-6` step under the header | The view controls: the `<SegmentedControl>` that picks what the page lists or how (the feed scope, the search result type, the Requests sort), left-aligned under the title. A control that acts rather than picks a view goes in `actions` instead. The row sits above a [right rail](#right-rail), so the rail starts level with the list. |
+| Controls (`controls`) | `flex flex-wrap items-center justify-between gap-2`, one `space-y-6` step under the header | The view controls: the `<SegmentedControl>` that picks what the page lists or how (the search result type, the Requests sort), left-aligned under the title. A control that acts rather than picks a view goes in `actions` instead. The row sits above a [right rail](#right-rail), so the rail starts level with the list. |
 | Header side (`headerSide`) | [`PageColumns`](../frontend/src/components/ui/PageShell.tsx): `grid items-start gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]` | Lays the page out as a main column and a side column, 65:35 from `lg` up. The header heads the main column and `headerSide` heads the side column, level with the title, under the sticky actions. The children lay out their own `PageColumns` under the header, on the same split, so the columns line up. Below `lg` each side column follows its main column. [`EventShell`](#event-layout) sets it on every event surface to what reads under the pinned row (`actions.below`), `null` when that is empty, and [`CollectionShell`](#collections) sets it on every collection surface. `PageColumns`' `stickySide` pins the side column from `lg` up, under the sticky actions (`lg:top-24`), while the main column scrolls: the collection surfaces set it, since their main column runs to hundreds of rows. |
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
@@ -666,16 +666,16 @@ flowchart TB
   bar["`**FilterBar**
   Filters (N) button and the active-filter pills`"]:::shared
   dialog["`**MediaOverlay dialog + Card**
-  the same panel on a draft: Cancel, Clear, Apply`"]:::shared
+  the same panel on the applied filters: Clear, Done`"]:::shared
   list["`**the list**
-  refetches once, with the applied filters`"]:::state
+  refetches on each change, as the rail does`"]:::state
 
   pages --> shell --> layout
   layout --> wide
   layout --> narrow
   narrow --> bar
   bar -->|Filters N| dialog
-  dialog -->|Apply| list
+  dialog -->|each change| list
 ```
 
 [`<PageWithRail>`](../frontend/src/components/ui/PageWithRail.tsx) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
@@ -690,13 +690,12 @@ The event forms place their actions in [`EventShell`](#event-layout)'s sticky ac
 - From `lg` up, [`<FilterRail>`](../frontend/src/components/filters/FilterRail.tsx) wraps the panel in the rail and puts the removable pills at its head. It leaves the author pill out when the panel offers the Author section (its `sections` prop, as the panel takes it), since that section already names the analyst in its summary and its picker.
 - Below `lg`, where the rail is gone, [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) sits above the list: the pills, author included, and a **Filters** button that reads **Filters (N)** while N filters are active. From `lg` up the row hides.
 
-The **Filters** button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there edits a draft, so the list refetches once:
+The **Filters** button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there applies each change at once, as the rail and the map's panel do, so the list behind the dialog refetches on every pick:
 
-- **Apply** applies the draft and closes the dialog.
-- **Clear** empties the draft. Apply then clears the list's filters.
-- **Cancel**, Escape or a tap on the backdrop closes the dialog and drops the draft. While a search field's list is open, Escape closes the list only.
+- **Clear** empties the filters. It is disabled while no filter is active.
+- **Done**, Escape or a tap on the backdrop closes the dialog. While a search field's list is open, Escape closes the list only.
 
-The pills act on the applied filters at every width. Every applied value has its pill, the author included (**By** *username*), and counts once in **Filters (N)**. The pill row hides from `lg` up while no filter is active, since the button is off the page there.
+The pills act on the applied filters at every width. Every applied value has its pill, and counts once in **Filters (N)**. A pill is a key/value [`<Pill>`](../frontend/src/components/ui/Pill.tsx): the key is the filter's name, as its field label reads (`FILTER_NAMES`), and the value reads as its chip does, for example **Show:** *Sites*, **Approvals:** *Approved only*, **Author:** *ana* or **Event date:** *Until 1 Jan 2025*. A date window reads *From 1 Jan 2024*, *Until 1 Jan 2025* or *1 Jan 2024 to 1 Jan 2025* (`rangeSummary`). The pill row hides from `lg` up while no filter is active, since the button is off the page there.
 
 #### Filter panel
 
@@ -709,34 +708,46 @@ flowchart TB
   subgraph legend [Legend]
     direction LR
     l1["`the panel`"]:::core
-    l2["`a FilterSection row, every surface`"]:::shared
-    l3["`a row or chip the surface brings or opts into`"]:::page
+    l2["`a field or FilterSection row, every surface`"]:::shared
+    l3["`a field, row or chip the surface brings or opts into`"]:::page
     l1 ~~~ l2 ~~~ l3
   end
 
   panel["`**EventFilterSections**`"]:::core
-  kind["`Kind (feed, **lead**)`"]:::page
-  what["`Status, conflict, tags (Show on the map)`"]:::shared
+  subgraph head [Always in view, one label per field]
+    direction TB
+    lead["`Activity (feed, **lead**)`"]:::page
+    what["`Show, Conflict, Tags`"]:::shared
+    lead --> what
+  end
   sites["`Sites chip after the status chips (map, **layer**)`"]:::page
   dates["`Dates: Event date, Added (**dateSections**)`"]:::page
   guess["`Location guess (Requests board)`"]:::page
   src["`Source: Source kind, Level, Media`"]:::shared
   people["`People: Author, Approvals`"]:::shared
 
-  panel --> kind --> what --> dates --> guess --> src --> people
+  panel --> head --> dates --> guess --> src --> people
   what -.- sites
 ```
 
-[`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx) is the one filter panel of the map overlay, search, the [Requests board](#requests-board) and the feed. It stacks its rows in one `CARD_FRAME`, in a fixed order and with no group heading:
+[`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx) is the one filter panel of the map overlay, search, the [Requests board](#requests-board) and the feed. It lays its filters out in one `CARD_FRAME`, in a fixed order and with no group heading.
 
-1. The surface's own rows, passed as `lead`: **Kind** on the feed. The other surfaces have none.
-2. The **Status, conflict, tags** row. On the map the Status field ends with the **Sites** chip, passed as `layer` (see [Map](#map)), and reads **Show**, since it picks what the map draws: the row reads **Show, conflict, tags**. The URL parameter and the API keep `status`.
-3. The **Dates** row of the surface's `dateSections`.
-4. **Location guess**, on the board alone.
-5. The **Source** row (Source kind, Level, Media).
-6. The **People** row (Author, Approvals).
+The panel opens on fields that stay in view, each under its `<FieldLabel>` with its `?`:
 
-Each row is a [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx). Filters that share a row show as fields, each under a `<FieldLabel>` with its `?`. A row left with one filter on a surface shows that filter as its own row, with its own title and `?`: the Collections scope of search shows **Tags** and **Author**, and the feed shows **Approvals**. A merged row whose filters change per surface names itself after the ones present, so the board reads **Conflict, tags**. The map shows five rows for its eleven filters and the Sites chip.
+1. The surface's own fields, passed as `lead`: **Activity** on the feed. The other surfaces have none.
+2. **Show**, the event statuses to list: Requested, Detected and Geolocated. On the map the field ends with the **Sites** chip, passed as `layer` (see [Map](#map)). The filter carries one name on every surface, `show` in the code. The URL parameter, `GET /search` and `GET /events` name it `status`, and `GET /feed` names it `kind`.
+3. **Conflict** and **Tags**, the two search fields.
+
+Collapsible rows follow:
+
+1. The **Dates** row of the surface's `dateSections`.
+2. **Location guess**, on the board alone.
+3. The **Source** row (Source kind, Level, Media).
+4. The **People** row (Author, Approvals).
+
+Each row is a [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx). Filters that share a row show as fields, each under a `<FieldLabel>` with its `?`. A row left with one filter on a surface shows that filter as its own row, with its own title and `?`: the Collections scope of search shows **Author**, and the feed shows **Approvals**. The map shows Show, Conflict and Tags, then three rows, for its eleven filters and the Sites chip.
+
+A pick in the **Conflict** field closes its list, so the list never covers the **Tags** field under it. A click on the field opens the list again. A pick in **Tags** keeps the list open for the next tag.
 
 A collapsed row sums up its active values, joined by commas, or reads **Any**. Every row opens collapsed, except a row that holds an active value, which opens expanded so the applied filters stay visible. Each header still toggles its row. The panel keeps the open state per row, so a re-render or a scope change on search never resets it.
 
@@ -756,7 +767,7 @@ The nav chrome takes three shapes, and the page offset follows it:
 
 **The beta pill has one live copy at any width** ([`BetaBanner.tsx`](../frontend/src/components/BetaBanner.tsx)). The floating corner pill paints over a phone's content, so it hides below `sm` and the drawer renders the same component inline at its foot.
 
-**The map page lays its overlays out around the chip.** The filter bar starts right of the chip's open control (`left-16`), and the overlay stretches to 16px above the viewport bottom, laying its bar, its active-filter strip and its section stack out as a column: the stack takes the height the other two leave and scrolls the rest, so the tag and author sections stay reachable. The stretched box passes pointers through, so the map keeps every tap outside the blocks themselves. The detail panel becomes a bottom sheet: full width on the bottom edge, capped at `60dvh`, scrolling its own content, under a grab bar above its close control. The bar is decorative, and marks the sheet as the scrolling surface; the close control dismisses it. The map's bottom-left control group keeps the map's own corner below `sm`, since the 60px offset in [`globals.css`](../frontend/src/app/globals.css) clears a rail that is not there; an open sheet covers that group, and closing it hands the group back.
+**The map page lays its overlays out around the chip.** The filter bar starts right of the chip's open control (`left-16`), and the overlay stretches to 72px above the viewport bottom, clear of the map's bottom-left row (zoom, locate, basemap and an attribution that wraps to three lines at 320px), laying its bar, its active-filter strip and its section stack out as a column: the stack takes the height the other two leave and scrolls the rest, so the tag and author sections stay reachable. The stretched box passes pointers through, so the map keeps every tap outside the blocks themselves. The detail panel becomes a bottom sheet: full width on the bottom edge, capped at `60dvh`, scrolling its own content, under a grab bar above its close control. The bar is decorative, and marks the sheet as the scrolling surface; the close control dismisses it. The map's bottom-left control group keeps the map's own corner below `sm`, since the 60px offset in [`globals.css`](../frontend/src/app/globals.css) clears a rail that is not there; an open sheet covers that group, and closing it hands the group back.
 
 **A finger gets slop on the canvas** ([`Map.tsx`](../frontend/src/components/map/Map.tsx), [`stack.ts`](../frontend/src/components/map/stack.ts)). On a coarse pointer, a tap that hits bare canvas is re-tested over a 12px box on each side and takes the feature whose projected centre sits nearest, then does what that feature's own layer would have done: a cluster zooms, a stack badge fans out, a pin selects. A ring dot keeps its 12px paint and grows a 32px hit box around it. A tap arms no hover preview, since the compatibility `mousemove` a tap fires would open the card over the pin the finger just selected. A mouse keeps exact hit testing and its preview. The pointer read has one home, `isCoarsePointer` ([`pointer.ts`](../frontend/src/lib/pointer.ts)), on the same media feature the `pointer-coarse:` variant carries in CSS.
 
@@ -1340,10 +1351,10 @@ flowchart TB
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  toggle["`**SegmentedControl**
+  toggle["`**Activity**, in the filter panel
   scope: Following (default) or All`"]:::page
   filters["`**filter rail**
-  Kind, Conflict, Source kind, Level, Tags`"]:::shared
+  Show, Conflict, Tags, Source kind, Level, Approvals`"]:::shared
   walk["`**useCursorList**
   one walk per scope and filter set; a change starts a new walk`"]:::shared
   api["`**GET /feed**
@@ -1373,11 +1384,11 @@ flowchart TB
 
 `/feed` is a signed-in page, linked from the rail between Requests and Search. [`GET /feed`](api.md#get-feed) decides which rows it lists and in what order. `/timeline` redirects permanently to `/feed`.
 
-**A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) under the title picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
+**The [filter panel](#filter-panel) picks the scope.** Its first field, **Activity**, is a [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) of **Following** (default) and **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen. The scope is not a filter: it has no pill and no place in **Filters (N)**.
 
-**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind** as its first row, then Conflict, Source kind, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
+**The [filter rail](#right-rail) narrows the walk.** The panel offers Show, Conflict, Tags, Source kind, Level and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
 
-**Kind** is one [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) of three chips: **Geolocations**, **Requests** and **Detections**. With no chip selected the feed lists all three kinds, and the page sends no `kind`. Selected chips narrow the feed to those kinds, and the page sends each one as a `kind` value (`geolocation`, `request`, `detected`). Each selected chip has a removable pill, as every other filter does. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
+**Show** is the same field as on the other surfaces, the chips **Requested**, **Detected** and **Geolocated**. With no chip selected the feed lists all three, and the page sends no `kind`. Each selected chip goes out as its `kind` value (`request`, `detected`, `geolocation`), and has a removable pill, as every other filter does. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
 
 **A card names its kind.** Each row is the `feed` [`<EntityCard>`](../frontend/src/components/ui/EntityCard.tsx), which only the feed renders. Read top to bottom, it holds:
 
@@ -1941,7 +1952,7 @@ Every clickable is accent, and red is only for destructive or alerting actions. 
 
 | Action (`action`) | Labels | Icon (lucide) |
 |---|---|---|
-| Accept (`accept`) | Accept (an invitation), Apply (filters), Close (a contour's outline) | `Check` |
+| Accept (`accept`) | Accept (an invitation), Done (filters), Close (a contour's outline) | `Check` |
 | Show all activity (`activity`) | Show all activity | `Activity` |
 | Add (`add`) | Add a source, Add a link, Create organization | `Plus` |
 | Approve (`approve`) | Approve, Approve as *organization* | `Stamp` |

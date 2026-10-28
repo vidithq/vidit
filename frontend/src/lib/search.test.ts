@@ -56,7 +56,7 @@ describe("the event filter keys", () => {
   it("round-trip every filter through a URL", () => {
     const params = new URLSearchParams();
     appendEventFilterParams(params, {
-      statuses: ["geolocated"],
+      show: ["geolocated"],
       conflicts: ["Ukraine"],
       sourceKinds: ["drone"], levels: ["direct"],
       tags: ["drone", "night"],
@@ -74,7 +74,7 @@ describe("the event filter keys", () => {
         "&author=ana&approved=true&approved_by=bo&occurred_date_from=2026-01-01&submitted_to=2026-02-01",
     );
     expect(readEventFilterParams(params)).toEqual({
-      statuses: ["geolocated"],
+      show: ["geolocated"],
       conflicts: ["Ukraine"],
       sourceKinds: ["drone"], levels: ["direct"],
       tags: ["drone", "night"],

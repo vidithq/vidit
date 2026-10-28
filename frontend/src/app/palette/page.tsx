@@ -763,15 +763,15 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
+          <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent key/value chips (filter name, value, ×), shared by the map's filter overlay and the filter rail so active filter state reads identically everywhere. Each pill names its filter as the field label reads and its value as the chip reads (Approvals: Approved only, Author: ana). Entries are {key, filter, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
             <PaletteActiveFilterPills />
           </Item>
 
-          <Item name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections stacks the rows in one fixed order, with no group heading; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
+          <Item name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections opens on Show, Conflict and Tags, each under its <FieldLabel> and always in view, then stacks the collapsible rows in one fixed order; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
             <PaletteFilterSection />
           </Item>
 
-          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (status, which the map labels Show and ends with its Sites layer chip, as in the demo, source kind, level, media, location guess, Approved only, the feed's Kind): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (Show, which the map ends with its Sites layer chip, as in the demo, source kind, level, media, location guess, Approved only): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
             <PaletteChipBucket />
           </Item>
 
@@ -2328,20 +2328,27 @@ function PaletteMediaLightbox() {
   );
 }
 
+const PALETTE_ACTIVE_FILTERS: ReadonlyArray<[string, string]> = [
+  ["Conflict", "Russo-Ukrainian War"],
+  ["Tags", "dashcam"],
+  ["Event date", "Until 1 Jan 2025"],
+];
+
 function PaletteActiveFilterPills() {
-  const [active, setActive] = useState(["Russo-Ukrainian War", "dashcam", "by ana-demo"]);
+  const [active, setActive] = useState(PALETTE_ACTIVE_FILTERS);
   if (active.length === 0)
     return (
-      <button className="text-[11px] text-neutral-500" onClick={() => setActive(["Russo-Ukrainian War", "dashcam", "by ana-demo"])}>
+      <button className="text-[11px] text-neutral-500" onClick={() => setActive(PALETTE_ACTIVE_FILTERS)}>
         All removed. Reset the demo
       </button>
     );
   return (
     <ActiveFilterPills
-      filters={active.map((label) => ({
-        key: label,
+      filters={active.map(([filter, label]) => ({
+        key: filter + label,
+        filter,
         label,
-        onRemove: () => setActive((prev) => prev.filter((l) => l !== label)),
+        onRemove: () => setActive((prev) => prev.filter(([, l]) => l !== label)),
       }))}
       onClearAll={() => setActive([])}
     />
