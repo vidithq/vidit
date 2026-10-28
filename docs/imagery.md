@@ -1,6 +1,6 @@
 # Imagery sources
 
-A satellite or aircraft image proves something only when a reader can reopen the same image at the same date. A screenshot alone proves nothing: the reopening link is what a reader checks. Vidit checks every source of kind `satellite` or `aircraft` against a list of imagery providers and warns, without refusing, when a reader could not reopen the image.
+A satellite or aircraft image proves something only when a reader can reopen the same image at the same date. A screenshot alone proves nothing: the reopening link is what a reader checks. Vidit checks every source of kind `satellite` or `aircraft` against a list of imagery providers. The API reports what keeps a reader from reopening the image, without refusing the source.
 
 ```mermaid
 flowchart LR
@@ -11,7 +11,7 @@ flowchart LR
 
   subgraph legend [Legend]
     direction LR
-    l1["`what the analyst or the reader sees`"]:::spec
+    l1["`what the analyst sees`"]:::spec
     l2["`a reader of the list`"]:::shared
     l3["`the one home of the list and the check`"]:::core
     l4[("`a store`")]:::store
@@ -29,9 +29,7 @@ flowchart LR
   context["`**urls.CONTEXT_HOSTS**
   an imported link on a provider host becomes a context source`"]:::shared
   editor["`**SourceImageryCheck**
-  the provider, how to reopen it, its credit, the warnings`"]:::spec
-  block["`**SourceWarnings**
-  one amber line per warning on the source block`"]:::spec
+  the provider, how to reopen it, its credit`"]:::spec
   rows[("`**sources**, **source_links**
   kind, captured_at, url, snapshot_url`")]:::store
 
@@ -40,7 +38,7 @@ flowchart LR
   providers --> context
   warnings --> check --> editor
   rows --> read
-  warnings --> read --> block
+  warnings --> read
 ```
 
 The list, the shape checks and the credits live in [`services/imagery.py`](../backend/app/services/imagery.py). The event form reads them through [`POST /sources/check`](api.md#post-sourcescheck), every [`SourceRead`](api.md#get-eventsid) carries the warnings, and the import's [context hosts](ingestion.md#context-hosts) take their imagery rows from the same list.
