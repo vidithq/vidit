@@ -10,6 +10,7 @@ import {
   buildActiveFilterPills,
   buildDateWindowPills,
   countActiveFilters,
+  showFieldScope,
   type EventFilterValues,
 } from "./EventFilterSections";
 
@@ -75,31 +76,46 @@ describe("<EventFilterSections>", () => {
   it("names the status filter Show and ends it with a layer chip", () => {
     const onPatch = vi.fn();
     const onToggle = vi.fn();
-    const panel = (on: boolean) => (
+    render(
       <EventFilterSections
         tags={TAGS}
         conflicts={CONFLICTS}
-        values={{ ...EMPTY_EVENT_FILTERS, show: on ? ["detected"] : [] }}
+        values={EMPTY_EVENT_FILTERS}
         onPatch={onPatch}
-        layer={{ label: "Sites", on, onToggle, note: <p>zones note</p> }}
-      />
+        layer={{ label: "Sites", selected: false, onToggle }}
+      />,
     );
-    const { rerender } = render(panel(false));
 
     const chips = ["Requested", "Detected", "Geolocated", "Sites"];
     const row = screen.getByRole("button", { name: "Requested" }).parentElement!;
     expect([...row.children].map((c) => c.textContent)).toEqual(chips);
     expect(screen.getByText("Show")).toBeInTheDocument();
     expect(screen.queryByText("Status")).not.toBeInTheDocument();
-    expect(screen.queryByText("zones note")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Sites" }));
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onPatch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Geolocated" }));
     expect(onPatch).toHaveBeenCalledWith({ show: ["geolocated"] });
+  });
 
-    rerender(panel(true));
+  it("shows the layer note whenever the Show field shows the layer", () => {
+    const panel = (show: string[], selected: boolean) => (
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={CONFLICTS}
+        values={{ ...EMPTY_EVENT_FILTERS, show }}
+        onPatch={vi.fn()}
+        layer={{ label: "Sites", selected, onToggle: vi.fn(), note: <p>zones note</p> }}
+      />
+    );
+    const { rerender } = render(panel([], false));
+    expect(screen.getByText("zones note")).toBeInTheDocument();
+
+    rerender(panel(["geolocated"], false));
+    expect(screen.queryByText("zones note")).not.toBeInTheDocument();
+
+    rerender(panel(["requested"], true));
     expect(screen.getByText("zones note")).toBeInTheDocument();
   });
 
@@ -168,6 +184,18 @@ describe("<EventFilterSections>", () => {
 
     fireEvent.click(header("People"));
     expect(header("People")).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
+describe("showFieldScope", () => {
+  it("shows every event and the layer while no chip is selected", () => {
+    expect(showFieldScope([], false)).toEqual({ events: true, layer: true });
+  });
+
+  it("shows only what the selected chips name", () => {
+    expect(showFieldScope(["geolocated"], false)).toEqual({ events: true, layer: false });
+    expect(showFieldScope([], true)).toEqual({ events: false, layer: true });
+    expect(showFieldScope(["requested"], true)).toEqual({ events: true, layer: true });
   });
 });
 

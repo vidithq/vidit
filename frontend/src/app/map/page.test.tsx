@@ -8,17 +8,21 @@ import type { Site, SiteListItem } from "@/lib/sites";
 import { eventDetail } from "@/test/eventDetail";
 
 // MapLibre touches `window` at module scope. One stub stands for both dynamic imports: the map
-// offers one button per pin and one that reports a viewport, and mounts its children; the sites
-// layer offers one button and the preview of site s1.
+// offers one button per pin and one that reports a viewport, counts the event points and sites it
+// draws, and mounts its children; the sites layer offers one button and the preview of site s1.
 vi.mock("next/dynamic", () => ({
   default: () =>
     function MapStub({
+      points,
+      sites,
       onPointClick,
       onBoundsChange,
       onSelect,
       renderPreview,
       children,
     }: {
+      points?: unknown[];
+      sites?: unknown[];
       onPointClick?: (id: string) => void;
       onBoundsChange?: (bounds: { south: number; west: number; north: number; east: number }) => void;
       onSelect?: (id: string) => void;
@@ -49,6 +53,8 @@ vi.mock("next/dynamic", () => ({
           >
             report viewport
           </button>
+          <output aria-label="event points">{points?.length}</output>
+          <output aria-label="sites">{sites?.length}</output>
           {children}
         </>
       );
@@ -218,10 +224,17 @@ describe("map sites layer", () => {
     linked_events: [],
   } as unknown as Site;
 
-  async function showSites() {
-    fireEvent.click(filtersButton());
-    fireEvent.click(sitesChip());
+  // A detection and a geolocation.
+  const POINTS = [
+    ["d1", 10, 30, "2026-09-01", "2026-09-02", 1],
+    ["g1", 10, 30.002, "2026-09-03", "2026-09-04", 0],
+  ];
+
+  async function loadMap() {
+    renderMap();
     fireEvent.click(screen.getByRole("button", { name: "report viewport" }));
+    const points = reads.find((r) => r.path.startsWith("/events/points?"))!;
+    await act(async () => points.resolve(POINTS));
     // The list read is debounced on the viewport.
     const list = await waitFor(() => {
       const read = reads.find((r) => r.path.startsWith("/sites?"));
@@ -231,9 +244,18 @@ describe("map sites layer", () => {
     await act(async () => list.resolve([ROW]));
   }
 
+  const drawn = () => ({
+    events: Number(screen.getByRole("status", { name: "event points" }).textContent),
+    sites: Number(screen.getByRole("status", { name: "sites" }).textContent),
+  });
+  // The button reads "Filters", the active filter count, then the point count.
+  const filterCount = () => filtersButton().firstElementChild!.textContent!.replace("Filters", "");
+  const chip = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
+  const pills = () =>
+    screen.queryAllByTitle(/^Remove filter Show: /).map((p) => p.title.replace("Remove filter Show: ", ""));
+
   it("previews a site from its list row", async () => {
-    renderMap();
-    await showSites();
+    await loadMap();
     const preview = screen.getByTestId("site preview");
     expect(preview).toHaveTextContent(SITE_NAME);
     expect(preview).toHaveTextContent("Depot");
@@ -242,8 +264,7 @@ describe("map sites layer", () => {
   });
 
   it("opens a site in the event's side panel slot, one record at a time", async () => {
-    renderMap();
-    await showSites();
+    await loadMap();
 
     fireEvent.click(pin("a"));
     await act(async () => readOf("a").resolve(eventDetail("a", TITLE_A)));
@@ -260,39 +281,72 @@ describe("map sites layer", () => {
     expect(screen.getAllByRole("button", { name: "Close detail panel" })).toHaveLength(1);
   });
 
-  it("turns the layer on from the Sites chip and counts it as an active filter", () => {
-    renderMap();
-    fireEvent.click(filtersButton());
-    expect(screen.queryByRole("link", { name: "New site" })).not.toBeInTheDocument();
-    expect(sitesPill()).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
+  it("shows every event and every site while no Show chip is selected", async () => {
+    await loadMap();
+    expect(drawn()).toEqual({ events: 2, sites: 1 });
+    expect(filterCount()).toBe("");
+    expect(pills()).toEqual([]);
 
-    fireEvent.click(sitesChip());
-    expect(sitesPill()).toBeInTheDocument();
+    fireEvent.click(filtersButton());
     expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
-    expect(filtersButton()).toHaveTextContent(/^Filters1/);
-
-    // Collapsed, the count and the pill still say the layer is on.
-    fireEvent.click(filtersButton());
-    expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
-    expect(filtersButton()).toHaveTextContent(/^Filters1/);
-
-    fireEvent.click(sitesPill()!);
-    expect(filtersButton()).not.toHaveTextContent(/^Filters1/);
-    fireEvent.click(filtersButton());
-    expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
   });
 
-  it("clears the Sites chip with Clear all", () => {
-    renderMap();
+  it("hides the sites when Geolocated alone is selected", async () => {
+    await loadMap();
     fireEvent.click(filtersButton());
-    fireEvent.click(screen.getByRole("button", { name: "Detected" }));
+    chip("Geolocated");
+
+    expect(drawn()).toEqual({ events: 1, sites: 0 });
+    expect(screen.queryByRole("button", { name: "site s1" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
+    expect(filterCount()).toBe("1");
+    expect(pills()).toEqual(["Geolocated"]);
+  });
+
+  it("hides every event when Sites alone is selected", async () => {
+    await loadMap();
+    fireEvent.click(filtersButton());
     fireEvent.click(sitesChip());
-    expect(filtersButton()).toHaveTextContent(/^Filters2/);
+
+    expect(drawn()).toEqual({ events: 0, sites: 1 });
+    expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
+    expect(filterCount()).toBe("1");
+    expect(pills()).toEqual(["Sites"]);
+
+    // Collapsed, the count and the pill still say what the map shows.
+    fireEvent.click(filtersButton());
+    expect(filterCount()).toBe("1");
+    fireEvent.click(sitesPill()!);
+    expect(drawn()).toEqual({ events: 2, sites: 1 });
+    expect(filterCount()).toBe("");
+  });
+
+  it("shows the sites and the named statuses when Sites is mixed with status chips", async () => {
+    await loadMap();
+    fireEvent.click(filtersButton());
+    fireEvent.click(sitesChip());
+    chip("Requested");
+    // The map draws no requests, so Sites and Requested leave the sites alone.
+    expect(drawn()).toEqual({ events: 0, sites: 1 });
+
+    chip("Detected");
+    expect(drawn()).toEqual({ events: 1, sites: 1 });
+    expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
+    expect(filterCount()).toBe("3");
+    expect(pills()).toEqual(["Requested", "Detected", "Sites"]);
+  });
+
+  it("shows every event and every site again on Clear all", async () => {
+    await loadMap();
+    fireEvent.click(filtersButton());
+    chip("Detected");
+    chip("Geolocated");
+    expect(drawn()).toEqual({ events: 2, sites: 0 });
 
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
-    expect(sitesPill()).not.toBeInTheDocument();
-    expect(screen.queryByTitle("Remove filter Show: Detected")).not.toBeInTheDocument();
-    expect(filtersButton()).not.toHaveTextContent(/^Filters[12]/);
+    expect(drawn()).toEqual({ events: 2, sites: 1 });
+    expect(pills()).toEqual([]);
+    expect(filterCount()).toBe("");
+    expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
   });
 });

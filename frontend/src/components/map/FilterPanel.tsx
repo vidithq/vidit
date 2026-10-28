@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
-import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, Tag } from "@/types";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
@@ -33,7 +32,8 @@ interface FilterPanelProps {
   tags: Tag[];
   /** Conflicts carried by at least one live event (`/conflicts?used=true`), server-ordered: ongoing first, then name. */
   conflicts: Conflict[];
-  /** Boundary-filtered points, pre-window; the histograms read them through the status pick. */
+  /** The points the Show field leaves, before the date windows: the histograms' set, so no bar
+   *  counts points a scrub can't reveal. */
   points: MapPoint[];
   /** Count of points currently shown (post-window) for the header. */
   pointCount: number;
@@ -43,9 +43,9 @@ interface FilterPanelProps {
 
 /**
  * The map's filter overlay: header button, `ActiveFilterPills`, and the shared
- * `EventFilterSections`, with the sites layer as a chip after the status chips and the two timeline
- * scrubbers as date sections. The sites layer counts as one active filter with its own pill, so the
- * collapsed panel shows it. Filter state lives in MapStateContext so it survives navigation.
+ * `EventFilterSections`, with the Sites chip after the status chips and the two timeline scrubbers as
+ * date sections. The Sites chip counts as one active filter with its own pill, so the collapsed panel
+ * shows it. Filter state lives in MapStateContext so it survives navigation.
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
@@ -59,8 +59,8 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     setAddedPlaying,
     filtersOpen,
     setFiltersOpen,
-    sitesShown,
-    setSitesShown,
+    sitesSelected,
+    setSitesSelected,
   } = useMapState();
   const asOf = sitesAsOf(dateWindows.eventTo, todayUtc());
 
@@ -96,32 +96,25 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   };
 
   const clearFilters = () => {
-    setSitesShown(false);
+    setSitesSelected(false);
     setFilters(EMPTY_EVENT_FILTERS);
     setDateWindows(EMPTY_DATE_WINDOWS);
     setEventPlaying(false);
     setAddedPlaying(false);
   };
 
-  // Histogram the same set the status chips leave on the map (same helper as the canvas), so no
-  // bar counts points a scrub can't reveal.
-  const statusFilteredPoints = useMemo(
-    () => filterPointsByStatus(points, filters.show),
-    [points, filters.show]
-  );
-
   // buildActiveFilterPills emits the Show pills first; the Sites pill follows them, as its chip
   // follows the status chips.
   const eventPills = buildActiveFilterPills(filters, onPatch);
   const activeFilters: ActiveFilter[] = [
     ...eventPills.slice(0, filters.show.length),
-    ...(sitesShown
+    ...(sitesSelected
       ? [
           {
             key: "sites",
             filter: FILTER_NAMES.show,
             label: SITES_LABEL,
-            onRemove: () => setSitesShown(false),
+            onRemove: () => setSitesSelected(false),
           },
         ]
       : []),
@@ -182,8 +175,8 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             onPatch={onPatch}
             layer={{
               label: SITES_LABEL,
-              on: sitesShown,
-              onToggle: () => setSitesShown(!sitesShown),
+              selected: sitesSelected,
+              onToggle: () => setSitesSelected(!sitesSelected),
               note: (
                 <p className={`${META_LINE} mt-2`}>
                   Zones as of {asOf ? formatDate(asOf) : "today"}
@@ -199,7 +192,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                 active: eventWindowActive(dateWindows),
                 children: (
                   <TimelineScrubber
-                    points={statusFilteredPoints}
+                    points={points}
                     dateIndex={3}
                     label={FILTER_NAMES.eventDate}
                     start={dateWindows.eventFrom}
@@ -218,7 +211,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                 active: addedWindowActive(dateWindows),
                 children: (
                   <TimelineScrubber
-                    points={statusFilteredPoints}
+                    points={points}
                     dateIndex={4}
                     label={FILTER_NAMES.added}
                     start={dateWindows.addedFrom}

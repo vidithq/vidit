@@ -17,6 +17,7 @@ import {
 } from "@/lib/viewport";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
+import { showFieldScope } from "@/components/filters/EventFilterSections";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SitePanel, SitePreview } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -46,7 +47,7 @@ export default function HomePage() {
     setSelectedId,
     filters,
     dateWindows,
-    sitesShown,
+    sitesSelected,
     selectedSiteId,
     setSelectedSiteId,
   } = useMapState();
@@ -61,6 +62,8 @@ export default function HomePage() {
   const coveredRef = useRef<MapBounds | null>(null);
   const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { tags, conflicts } = useFilterVocabulary();
+  const shown = showFieldScope(filters.show, sitesSelected);
+  const sitesShown = shown.layer;
   // Keyed on the selection in context, so returning to the map re-reads it.
   const detail = useApiResource<EventDetail>(
     selectedId ? `/events/${selectedId}` : null,
@@ -196,9 +199,12 @@ export default function HomePage() {
     []
   );
 
-  // Status chips and both timeline windows filter client-side (`POINT_DETECTED_FLAG`, event and added dates): any-of status, empty = all.
+  // The Show field and both timeline windows filter client-side (`POINT_DETECTED_FLAG`, event and added dates).
+  const statusFiltered = useMemo(
+    () => (shown.events ? filterPointsByStatus(points, filters.show) : []),
+    [points, filters.show, shown.events],
+  );
   const visiblePoints = useMemo(() => {
-    const statusFiltered = filterPointsByStatus(points, filters.show);
     const { eventFrom, eventTo, addedFrom, addedTo } = dateWindows;
     if (!eventFrom && !eventTo && !addedFrom && !addedTo) return statusFiltered;
     const lo = (iso: string) => (iso ? Date.parse(`${iso}T00:00:00Z`) : -Infinity);
@@ -215,7 +221,7 @@ export default function HomePage() {
       const subOk = Number.isNaN(sub) || (sub >= subLo && sub <= subHi);
       return evOk && subOk;
     });
-  }, [points, filters.show, dateWindows]);
+  }, [statusFiltered, dateWindows]);
 
   return (
     <div className="h-dvh w-screen relative overflow-hidden bg-neutral-950">
@@ -245,7 +251,7 @@ export default function HomePage() {
       <FilterPanel
         tags={tags}
         conflicts={conflicts}
-        points={points}
+        points={statusFiltered}
         pointCount={visiblePoints.length}
         loading={loading}
       />
