@@ -28,23 +28,25 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 /** The page title: avatar and name, the analyst's handle or the organization's name (H1;
  * `<PageShell>` owns the heading markup). The avatar is `edit.avatarPreview`, falling back to the
  * icon if it resolves to nothing, and `aria-hidden` (the name is the accessible name; otherwise
- * the heading reads the alt text first). */
+ * the heading reads the alt text first). Edit mode drops it: the picture picker shows the avatar
+ * there, once. */
 export function ProfileTitle({ name, edit }: { name: string; edit: ProfileEditState }) {
-  // `avatarPreview` is the hook's one derivation, shared with the picker. A staged pick still being
-  // read has no url yet and renders the icon.
+  // A staged pick still being read has no url yet and renders the icon.
   const displayedAvatar =
     edit.avatarPreview.kind === "none" ? null : edit.avatarPreview.url;
   return (
     <span className="flex items-center gap-3 min-w-0">
-      <span aria-hidden="true" className="contents">
-        <Avatar
-          as="span"
-          src={displayedAvatar}
-          username={name}
-          size="w-11 h-11"
-          fallback="icon"
-        />
-      </span>
+      {!edit.editing && (
+        <span aria-hidden="true" className="contents">
+          <Avatar
+            as="span"
+            src={displayedAvatar}
+            username={name}
+            size="w-11 h-11"
+            fallback="icon"
+          />
+        </span>
+      )}
       {/* Wraps rather than truncates: the action cluster leaves the title little room, and a clipped
           handle is the one thing to keep. */}
       <span className="min-w-0 break-words">{name}</span>
