@@ -27,10 +27,7 @@ import { LinkEffectPill } from "./SiteBadges";
 import { SatelliteSourcesOffer, fileOffered, useSatelliteOffer } from "./SatelliteSourcesOffer";
 
 /** The site picker's suggestions line: the sites near the event. */
-export const NEAR_SITES_COPY = {
-  label: `Sites within ${SITE_MARGIN_KM} km of the event`,
-  empty: `No site within ${SITE_MARGIN_KM} km. Search one by name.`,
-};
+export const NEAR_SITES_COPY = { label: `Sites within ${SITE_MARGIN_KM} km of the event` };
 
 /** The words of a site search, in the dialog and in the forms. */
 export const SITE_SEARCH_COPY = {

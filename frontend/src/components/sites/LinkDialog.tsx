@@ -42,7 +42,6 @@ export interface LinkSuggestions {
   label: string;
   /** Null while they load. */
   rows: LinkCandidate[] | null;
-  empty: string;
 }
 
 /** A site as the pickers list it: its name, then its kind and how far it lies from the event. */
@@ -56,7 +55,8 @@ export function siteCandidate(s: SiteSuggestion): LinkCandidate {
   return { id: s.id, label: s.name, meta: [SITE_KIND_LABELS[s.kind], where].filter(Boolean).join(" · ") };
 }
 
-/** The suggestions of a link picker as neutral chips, the first few, then one **Show more**. */
+/** The suggestions of a link picker as neutral chips, the first few, then one **Show more**.
+ *  Nothing renders when there is none: the search follows. */
 export function LinkSuggestionPills({
   suggestions,
   onPick,
@@ -65,14 +65,13 @@ export function LinkSuggestionPills({
   onPick: (picked: LinkCandidate) => void;
 }) {
   const [all, setAll] = useState(false);
-  const { label, rows, empty } = suggestions;
+  const { label, rows } = suggestions;
+  if (rows?.length === 0) return null;
   return (
     <div className="space-y-2">
       <p className="text-xs text-neutral-500">{label}</p>
       {rows === null ? (
         <p className="text-xs text-neutral-500">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-xs text-neutral-500">{empty}</p>
       ) : (
         <>
           <ul className="flex flex-wrap gap-1.5" aria-label={label}>
@@ -170,14 +169,18 @@ export function LinkSearch({
   );
 }
 
-/** The effect of one link, unpicked until the analyst says what the event shows. */
+/** The effect of one link, unpicked until the analyst says what the event shows. `fullWidth`
+ *  shares the width out equally; off, each option keeps its label's width from `sm` up, for a
+ *  column narrower than the dialog. */
 export function EffectControl({
   value,
   onChange,
+  fullWidth = true,
   "aria-label": ariaLabel,
 }: {
   value: LinkEffect | "";
   onChange: (effect: LinkEffect) => void;
+  fullWidth?: boolean;
   "aria-label": string;
 }) {
   return (
@@ -188,7 +191,7 @@ export function EffectControl({
       onChange={(next) => {
         if (next) onChange(next);
       }}
-      fullWidth
+      fullWidth={fullWidth}
     />
   );
 }
