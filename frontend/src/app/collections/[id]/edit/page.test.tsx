@@ -141,10 +141,11 @@ beforeEach(() => {
 describe("EditCollectionPage", () => {
   it("bounces a signed-out visitor to the login form", () => {
     useAuth.mockReturnValue({ user: null, loading: false });
+    window.history.replaceState(null, "", "/collections/c1/edit");
 
     render(<EditCollectionPage />);
 
-    expect(replace).toHaveBeenCalledWith("/login");
+    expect(replace).toHaveBeenCalledWith("/login?next=%2Fcollections%2Fc1%2Fedit");
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 

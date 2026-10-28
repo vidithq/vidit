@@ -15,7 +15,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { hasSessionCookie } from "@/lib/auth";
 import { hardNavigate } from "@/lib/navigation";
 import { clearDisplay } from "@/lib/preferences";
-import { onSessionRejected } from "@/lib/session";
+import { markSessionHeld, onSessionRejected, takeEndedSession } from "@/lib/session";
 
 type RegisterResponse = components["schemas"]["RegisterResponse"];
 
@@ -34,8 +34,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   /** Re-pull the user from /auth/me (used by /confirm-registration after the session cookie is set). */
   refresh: () => Promise<void>;
-  /** True once a signed-in session was rejected by the server and the reader moved to signed
-   *  out, until they sign in again or dismiss the notice. */
+  /** True once a session ended without a sign-out: the server rejected it, or a load found it
+   *  gone. Holds until the reader signs in again or dismisses the notice. */
   sessionEnded: boolean;
   dismissSessionEnded: () => void;
 }
@@ -53,8 +53,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signedIn = useRef(false);
   const setUser = useCallback((next: User | null) => {
     signedIn.current = next !== null;
+    if (next) markSessionHeld(true);
     setUserState(next);
   }, []);
+  // Boot found no live session: one this browser held ended without a sign-out.
+  const settleSignedOut = useCallback(() => {
+    setUser(null);
+    if (takeEndedSession()) setSessionEnded(true);
+  }, [setUser]);
   // Self-reference for the retry branch: `react-hooks` v7 flags a raw `fetchUser(false)` inside
   // its own `useCallback` as a TDZ access, so the call goes through a ref (assigned after,
   // read 500ms later).
@@ -66,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // lifecycle (see `lib/auth.ts`). No `stateVersion` check: this branch is synchronous, so
     // nothing can race it.
     if (!hasSessionCookie()) {
-      setUser(null);
+      settleSignedOut();
       setLoading(false);
       return;
     }
@@ -87,10 +93,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(() => fetchUserRef.current?.(false), 500);
         return;
       }
-      if (isAuthFailure) setUser(null);
+      if (isAuthFailure) settleSignedOut();
       setLoading(false);
     }
-  }, [setUser]);
+  }, [setUser, settleSignedOut]);
 
   useEffect(() => {
     // Assigned in an effect: `react-hooks` v7 forbids ref writes during render.
@@ -123,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (err instanceof ApiError && err.status === 401) {
                 stateVersion.current += 1;
                 setUser(null);
+                markSessionHeld(false);
                 setSessionEnded(true);
               }
             },
@@ -165,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     stateVersion.current += 1;
     setUser(null);
+    markSessionHeld(false);
     // The display cache belongs to the account leaving; the next one on this browser starts clean.
     clearDisplay();
     // Hard navigate here, not in each caller: consistent destination, and it wipes in-memory
