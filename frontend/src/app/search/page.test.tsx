@@ -644,3 +644,28 @@ describe("the active filters on the search page", () => {
     expect(screen.getAllByTitle("Remove filter: drone")).toHaveLength(2);
   });
 });
+
+describe("a search that finds nothing", () => {
+  it("offers the closest spelling, and a click searches it", async () => {
+    searchParams = new URLSearchParams("q=Khan+Younis");
+    const found = eventHit({ title: "Khan Yunis", title_highlight: "Khan Yunis" });
+    search.mockImplementation(({ q }: { q: string }) =>
+      Promise.resolve(
+        q === "Khan Yunis"
+          ? response({ query: q, geolocations: [found], total: { ...NO_TOTALS, geolocations: 1 } })
+          : response({ query: q, suggestion: "Khan Yunis" }),
+      ),
+    );
+    render(<SearchPage />);
+
+    const offer = await screen.findByRole("button", { name: "Khan Yunis" });
+    expect(screen.getByText(/Did you mean/)).toBeInTheDocument();
+    fireEvent.click(offer);
+
+    await waitFor(() =>
+      expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ q: "Khan Yunis" })),
+    );
+    expect(await screen.findByRole("link", { name: "Khan Yunis" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toHaveValue("Khan Yunis");
+  });
+});

@@ -2143,6 +2143,8 @@ export interface paths {
          *
          *     The geolocations group pages: ``geolocations_cursor`` is set exactly when a
          *     further page holds a row, and ``cursor`` with ``type=geolocation`` fetches it.
+         *
+         *     When every group is empty, ``suggestion`` may hold a respelling of ``q`` that finds results.
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -5020,6 +5022,8 @@ export interface components {
             query: string;
             /** Requests */
             requests: components["schemas"]["SearchRequestHit"][];
+            /** Suggestion */
+            suggestion?: string | null;
             total: components["schemas"]["SearchTotals"];
             /**
              * Type

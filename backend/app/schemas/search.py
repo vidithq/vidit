@@ -130,6 +130,10 @@ class SearchResponse(BaseModel):
     # a ``Link`` header: the next page is a different ``type`` than this one.
     geolocations_cursor: str | None
 
+    # A respelling of ``query`` that finds results, set only when every group is empty
+    # (``services.search.spelling_suggestion``).
+    suggestion: str | None = None
+
     # Echoes the inputs so the frontend can match a response to the current
     # query among in-flight requests.
     query: str

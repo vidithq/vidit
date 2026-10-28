@@ -802,6 +802,93 @@ def search_all(
     return result
 
 
+# The words a suggestion may offer: the titles of the events a reader can see, and live handles.
+_VOCABULARY_SQL = (
+    f"SELECT to_tsvector({_TS_CONFIG_NAME}, coalesce(title, '')) FROM events"
+    " WHERE deleted_at IS NULL AND hidden_at IS NULL"
+    f" AND status IN ('{STATUS_GEOLOCATED}', '{STATUS_DETECTED}', '{STATUS_REQUESTED}')"
+    f" UNION ALL SELECT to_tsvector({_TS_CONFIG_NAME}, username) FROM users"
+    " WHERE deleted_at IS NULL"
+)
+
+# ``pg_trgm`` similarity a replacement must reach: ``younis`` and ``yunis`` score 0.44.
+_SIMILARITY_MIN = 0.35
+
+_CLOSEST_WORDS = text(
+    """
+    WITH vocabulary AS MATERIALIZED (SELECT word, nentry FROM ts_stat(:vocabulary))
+    SELECT EXISTS (SELECT 1 FROM vocabulary v WHERE v.word = typed.word) AS known,
+           near.word AS closest,
+           (SELECT u.username FROM users u
+             WHERE u.deleted_at IS NULL AND lower(u.username) = near.word
+             LIMIT 1) AS handle
+    FROM unnest(CAST(:words AS text[])) WITH ORDINALITY AS input(raw, n)
+    CROSS JOIN LATERAL (SELECT unaccent(lower(input.raw)) AS word) AS typed
+    LEFT JOIN LATERAL (
+        SELECT v.word FROM vocabulary v
+        WHERE similarity(v.word, typed.word) >= :similarity
+        ORDER BY similarity(v.word, typed.word) DESC, v.nentry DESC, v.word
+        LIMIT 1
+    ) AS near ON TRUE
+    ORDER BY input.n
+    """
+)
+
+
+def _respelled(db: Session, query: str) -> str | None:
+    """``query`` with each word the catalogue does not hold replaced by its closest word
+    (``pg_trgm`` similarity), spelled as the analyst spells it when it is a handle, or ``None``
+    when no word changes. ``OR`` and excluded words stay as typed, and so do quotes and
+    punctuation around a word."""
+    tokens = query.split()
+    cores = [token.strip("\"'.,;:!?()[]@") for token in tokens]
+    asked = [
+        i
+        for i, (token, core) in enumerate(zip(tokens, cores, strict=True))
+        if core and core.lower() != "or" and not token.startswith("-")
+    ]
+    if not asked:
+        return None
+    rows = db.execute(
+        _CLOSEST_WORDS,
+        {
+            "vocabulary": _VOCABULARY_SQL,
+            "words": [cores[i] for i in asked],
+            "similarity": _SIMILARITY_MIN,
+        },
+    ).all()
+    changed = False
+    for i, row in zip(asked, rows, strict=True):
+        if row.known or row.closest is None:
+            continue
+        changed = True
+        core = cores[i]
+        if row.handle is not None:
+            word = row.handle
+        elif core[:1].isupper():
+            word = row.closest[:1].upper() + row.closest[1:]
+        else:
+            word = row.closest
+        tokens[i] = tokens[i].replace(core, word, 1)
+    return " ".join(tokens) if changed else None
+
+
+def spelling_suggestion(
+    db: Session, *, query: str, types: set[str], filters: EventFilters | None = None
+) -> str | None:
+    """A respelling of ``query`` that finds results in ``types``, for a search that found none:
+    each unknown word becomes the closest word of the catalogue (``Khan Younis`` to ``Khan
+    Yunis``). ``None`` when a filter is active, when no word has a close match, or when the
+    respelling finds nothing either."""
+    if (filters is not None and filters.active) or not query.strip():
+        return None
+    candidate = _respelled(db, query.strip())
+    if candidate is None:
+        return None
+    grouped = search_all(db, query=candidate, types=types, limit=1)
+    return candidate if any(group["total"] for group in grouped.values()) else None
+
+
 def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
     """Usernames matching ``query`` for the author-filter typeahead.
 

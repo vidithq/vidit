@@ -1448,6 +1448,39 @@ def test_accents_fold_on_both_sides(db, caller):
         db.commit()
 
 
+def test_a_search_that_finds_nothing_suggests_the_closest_spelling(db, caller):
+    """A transliteration or a typo the catalogue does not hold is respelled to its closest word,
+    a handle as its analyst spells it, and only when the respelling finds results."""
+    place = f"Novohrodivka{uuid.uuid4().hex[:4]}"
+    geo = _seed_geo(db, caller, f"Strike near {place}")
+    handle = f"KharkivWatch{uuid.uuid4().hex[:4]}"
+    analyst = User(
+        username=handle,
+        email=f"{handle}@example.com",
+        password_hash=hash_password("password123"),
+    )
+    db.add(analyst)
+    db.commit()
+    try:
+
+        def suggestion(q: str, **params) -> str | None:
+            response = client.get("/api/v1/search", params={"q": q, **params})
+            assert response.status_code == 200, response.text
+            return response.json()["suggestion"]
+
+        typo = place.replace("hrod", "grod")
+        assert suggestion(f"strike {typo}") == f"strike {place[0]}{place[1:].lower()}"
+        assert suggestion(f'"{typo}" -drone') == f'"{place}" -drone'
+        assert suggestion(handle.replace("Watch", "Wach")) == handle
+        assert suggestion(place) is None
+        assert suggestion(typo, author=caller.username) is None
+        assert suggestion("qqqzzzxxjj") is None
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.query(User).filter(User.id == analyst.id).delete(synchronize_session=False)
+        db.commit()
+
+
 def test_a_short_query_skips_source_urls(db, caller):
     """Regression: a single letter matched every URL holding it. A URL matches a word of 4
     characters or more, so a pasted link still finds the events that cite it."""
