@@ -2,10 +2,11 @@
 
 import type { EventDetail } from "@/types";
 import { formatDate, hhmm } from "@/lib/format";
-import { formatCoordinates } from "@/lib/coordinates";
 import { conflictLabel } from "@/lib/conflicts";
 import { EVENT_FIELDS, provenanceLabel } from "@/lib/events";
+import { creditProps } from "@/lib/geolocatorCredit";
 import { renderProof } from "@/lib/proof";
+import { eventHref } from "@/lib/routes";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { SourceBlocks } from "@/components/sources/SourceBlock";
@@ -14,21 +15,25 @@ import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EVENT_SECTIONS, type EventLayoutSlots, type EventSlot } from "@/components/event/EventLayout";
 import { ProofSection } from "@/components/ui/ProofSection";
+import type { MapPanelContent } from "@/components/map/MapSidePanel";
 
-/** The map panel's body: one column, stacked sources with `thumbnail` media, bare rows, the proof
- * last, no request-trace row. The author is in the panel's header, so no row repeats it. */
-export function EventDetailBody({ geo }: { geo: EventDetail }) {
-  return (
-    <>
-      <SourceBlocks sources={geo.sources} alt={geo.title} compact />
-      <DetailRows geo={geo} compact />
-      <ProofBlock geo={geo} compact />
-    </>
-  );
+/** The map panel's filling: the credited byline under the title, every source with `thumbnail`
+ * media, bare rows with no request-trace row, the proof last. The author is in the panel's
+ * header, so no row repeats it. */
+export function eventPanelContent(geo: EventDetail): MapPanelContent {
+  return {
+    title: geo.title,
+    href: eventHref(geo.id),
+    byline: <AuthorByline {...creditProps(geo)} size="xs" avatar />,
+    sources: geo.sources,
+    coords: geo.coords,
+    details: <DetailRows geo={geo} compact />,
+    footer: <ProofBlock geo={geo} compact />,
+  };
 }
 
 /**
- * The same fields as `EventDetailBody`, for `EventShell`'s body on the event, version and request
+ * The same fields as `eventPanelContent`, for `EventShell`'s body on the event, version and request
  * pages: the sources as a sideways row with `hero` media, then the proof, in the main column;
  * `location`, then the Details card with the request-trace row, in the side column. One home for
  * the field set, so the panel and the pages can't drift.
@@ -124,35 +129,7 @@ function DetailRows({ geo, compact }: { geo: EventDetail; compact: boolean }) {
     </>
   );
 
-  if (compact) {
-    // Same sections as the page (no map in the panel, so Location is the coordinates), only denser.
-    // Two fragment siblings: the parent's `space-y` separates them.
-    return (
-      <>
-        <div className="space-y-2">
-          <SectionEyebrow as="h3" margin="none" {...EVENT_SECTIONS.location} />
-          <DetailRow
-            {...EVENT_FIELDS.coordinates}
-            compact
-            className="text-sm"
-          >
-            {geo.coords ? (
-              <span className="text-neutral-200 font-mono text-xs">
-                {formatCoordinates(geo.coords.lat, geo.coords.lng)}
-              </span>
-            ) : (
-              <span className="text-neutral-200">Unknown</span>
-            )}
-          </DetailRow>
-        </div>
-        <div className="space-y-2">
-          <SectionEyebrow as="h3" margin="none" {...EVENT_SECTIONS.details} />
-          <div className="space-y-2 text-sm">{rows}</div>
-        </div>
-      </>
-    );
-  }
-  return <DetailCard>{rows}</DetailCard>;
+  return compact ? rows : <DetailCard>{rows}</DetailCard>;
 }
 
 function ProofBlock({ geo, compact }: { geo: EventDetail; compact: boolean }) {
