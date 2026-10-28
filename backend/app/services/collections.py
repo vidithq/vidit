@@ -767,10 +767,10 @@ def list_memberships(
 ) -> list[CollectionMembershipRead]:
     """Every collection ``owner`` holds, and whether ``event_id`` is on each.
 
-    The add-to-collection popover's payload, in three statements: collections
-    newest first, memberships of this event, and counts from :func:`stats_for`
-    (so the number matches the collection's own page). Empty collections are
-    included.
+    The add-to-collection popover's payload: collections newest first,
+    memberships of this event, counts from :func:`stats_for` (so the number
+    matches the collection's own page) and covers from :func:`cover_tiles_for`
+    (the profile card's mosaic). Empty collections are included.
     """
     collections = (
         db.query(Collection)
@@ -792,10 +792,12 @@ def list_memberships(
             .all()
         }
     stats = stats_for(db, collection_ids)
+    tiles = cover_tiles_for(db, collection_ids)
     return [
         CollectionMembershipRead(
             id=collection.id,
             title=collection.title,
+            cover=tiles.get(collection.id, []),
             event_count=stats.get(collection.id, _EMPTY_STATS).event_count,
             in_collection=collection.id in member_ids,
         )

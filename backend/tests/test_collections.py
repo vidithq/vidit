@@ -1310,6 +1310,26 @@ def test_event_collections_report_membership_to_the_owner(db, cleanup, owner):
     assert by_title == {"Holding": True, "Other": False}
 
 
+def test_event_collections_carry_each_collections_cover(db, cleanup, owner):
+    """The popover row wears the profile card's mosaic, so both add surfaces look alike."""
+    holding = _make_collection(db, cleanup, owner=owner, title="Holding")
+    _make_collection(db, cleanup, owner=owner, title="Other")
+    event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 5, 1))
+    _add_media(db, event, "cover.jpg")
+    _add(db, holding, event)
+    db.commit()
+
+    body = client.get(
+        f"/api/v1/events/{event.id}/collections", headers=login_as(client, owner)
+    ).json()
+    covers = {item["title"]: item["cover"] for item in body["items"]}
+    assert covers == {
+        "Holding": client.get(f"/api/v1/collections/{holding.id}").json()["cover"],
+        "Other": [],
+    }
+    assert covers["Holding"][0]["url"] == "https://media.example.com/cover.jpg"
+
+
 def test_event_collections_count_each_collection_on_the_showable_predicate(db, cleanup, owner):
     """The count under a title is the one the collection's own page prints (same predicate)."""
     collection = _make_collection(db, cleanup, owner=owner, title="Holding")
