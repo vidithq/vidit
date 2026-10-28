@@ -29,6 +29,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Search finds results while you type: the last word matches as the start of a longer word, so a partial place name or handle already lists what it begins, and accents no longer matter (`cafe` finds `Café`) ([#788](https://github.com/vidithq/vidit/pull/788)).
 - The settings page shows labels only, with each explanation behind its `?`, and a section says *Saved* for a moment once a setting reaches your account ([#792](https://github.com/vidithq/vidit/pull/792)).
 - The help of the dashed disputed borders switch says the map data, not Vidit, decides which borders are disputed, and what the switch does ([#792](https://github.com/vidithq/vidit/pull/792)).
