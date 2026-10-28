@@ -27,6 +27,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
+- On a request page, the asker sees Edit, which opens the request's form, and every other reader sees Geolocate; the asker no longer gets both for the same page ([#794](https://github.com/vidithq/vidit/pull/794)).
 - Search finds results while you type: the last word matches as the start of a longer word, so a partial place name or handle already lists what it begins, and accents no longer matter (`cafe` finds `Café`) ([#788](https://github.com/vidithq/vidit/pull/788)).
 - Search reads quotes as a phrase, `OR` as either word and `-word` as a word to exclude, and a query shorter than 4 characters no longer matches every source link that holds it ([#787](https://github.com/vidithq/vidit/pull/787)).
 - The event page, the detection queue and the two event groups of search each read one shared eager-load set instead of restating it, and `docs/engineering.md` lists those sets ([#779](https://github.com/vidithq/vidit/pull/779)).
@@ -68,6 +70,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A collection's owner no longer sees Report on their own collection ([#794](https://github.com/vidithq/vidit/pull/794)).
+- On a phone, the pinned actions and the menu button sit on one full-width bar once the page scrolls, so fields and lists no longer show between them ([#794](https://github.com/vidithq/vidit/pull/794)).
+- On a wide screen, the pinned actions stay on one line, such as Approve, Accept and Decline on an invitation ([#794](https://github.com/vidithq/vidit/pull/794)).
+- Share shows Link copied in its tooltip when it copies the link, on a tap too ([#794](https://github.com/vidithq/vidit/pull/794)).
 - The search field's placeholder fits on a phone, search result cards no longer leave an empty band under their details, and an empty collection shows its icon in the Add to collection picker instead of a cramped *no media* ([#789](https://github.com/vidithq/vidit/pull/789)).
 - The API reference now marks a collection's `title` and `description` as required on create, with their limits, and lists a missing field among the 422 causes ([#783](https://github.com/vidithq/vidit/pull/783)).
 - Search finds an analyst's work by their handle: on All and Events, a word that is an analyst's username lists the events credited to them, the other words narrow those events, and the Analysts group keeps the analyst ([#769](https://github.com/vidithq/vidit/pull/769)).
