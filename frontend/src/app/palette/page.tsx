@@ -72,6 +72,7 @@ import { EventShellPreview } from "./eventShellDemo";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
+import { LegalLinks } from "@/components/ui/LegalLinks";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
@@ -763,15 +764,15 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent chips (label + ×), shared by the map's filter overlay and the search page so active filter state reads identically everywhere. Entries are {key, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
+          <Item name="<ActiveFilterPills>" usage="The one rendering of active filters: a row of removable accent key/value chips (filter name, value, ×), shared by the map's filter overlay and the filter rail so active filter state reads identically everywhere. Each pill names its filter as the field label reads and its value as the chip reads (Approvals: Approved only, Author: ana). Entries are {key, filter, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty.">
             <PaletteActiveFilterPills />
           </Item>
 
-          <Item name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections stacks the rows in one fixed order, with no group heading; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
+          <Item name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections opens on Show, Conflict and Tags, each under its <FieldLabel> and always in view, then stacks the collapsible rows in one fixed order; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
             <PaletteFilterSection />
           </Item>
 
-          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (status, which the map labels Show and ends with its Sites layer chip, as in the demo, source kind, level, media, location guess, Approved only, the feed's Kind): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (Show, which the map ends with its Sites layer chip, as in the demo, source kind, level, media, location guess, Approved only): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
             <PaletteChipBucket />
           </Item>
 
@@ -978,11 +979,11 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<CoordinateInputs>" usage="The latitude and longitude pair of every event form (components/geolocations/CoordinateInputs.tsx): the Location card's subject point and each source's capture position. One line at every width, the 320px source editor included: Latitude and Longitude share the room in two shrinking columns with no visible label (each field is named by its aria-label and shows an example value as its placeholder), and <CoordinateActions> follows them as its own two boxes, centred on the fields. The fields run half the usual side padding and tight tracking, so a 6-decimal value shows whole from 375px up and in the forms' side column. A paste that reads as a pair (lat, lng, or a Google Maps URL) fills both fields from either one. `idPrefix` keeps a capture pair's ids apart from the subject's; `required={false}` for the optional capture pair; `invalid` reddens both fields.">
+          <Item name="<CoordinateInputs>" usage="The latitude and longitude pair of every event form (components/geolocations/CoordinateInputs.tsx): the Location block's subject point and each source's capture position. One line at every width, the 320px source editor included: Latitude and Longitude share the room in two shrinking columns with no visible label (each field is named by its aria-label and shows an example value as its placeholder), and <CoordinateActions> follows them as its own two boxes, centred on the fields. The fields run half the usual side padding and tight tracking, so a 6-decimal value shows whole from 375px up and in the forms' side column. A paste that reads as a pair (lat, lng, or a Google Maps URL) fills both fields from either one. `idPrefix` keeps a capture pair's ids apart from the subject's; `required={false}` for the optional capture pair; `invalid` reddens both fields. A typed value that is not a number in decimal degrees or falls out of bounds reddens its field at once with the reason in a <FieldError> under the line (pairProblem in lib/coordinates.ts); a blank half waits for the publish on the subject pair, and on the optional capture pair says the position is not saved.">
             <PaletteCoordinateInputs />
           </Item>
 
-          <Item name="<CoordinateActions> / <CoordinateValue>" usage="The two things anyone does with a coordinate pair (components/event/CoordinateActions.tsx): View on Maps (a new tab) and Copy coordinates (the 6-decimal pair, through <CopyButton>). Two outlined icon buttons, each its own box, everywhere they appear: after the two fields of <CoordinateInputs> and on the event page's Coordinates row. A null pair (half-typed or out of bounds) keeps both in place, disabled and grey; the map link becomes a disabled button then. `small` is the 24px desktop square for a dense row. <CoordinateValue> is a reading row's value: the pair, then the actions; `compact` fits a narrow card on one line, 4 decimals and the small actions.">
+          <Item name="<CoordinateActions> / <CoordinateValue>" usage="The two things anyone does with a coordinate pair (components/event/CoordinateActions.tsx): View on Maps (a new tab) and Copy coordinates (the 6-decimal pair, through <CopyButton>). Two outlined icon buttons, each its own box, everywhere they appear: after the two fields of <CoordinateInputs> and on the event page's Coordinates row. A null pair (half-typed or out of bounds) keeps both in place, disabled and grey; the map link becomes a disabled button then, named and tooltipped with the reason (`problem`): No map link. Latitude must be between -90 and 90. `small` is the 24px desktop square for a dense row. <CoordinateValue> is a reading row's value: the pair, then the actions; `compact` fits a narrow card on one line, 4 decimals and the small actions.">
             <Variant label="a complete pair">
               <CoordinateActions lat={48.015883} lng={37.802411} />
             </Variant>
@@ -1183,7 +1184,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short, following the field on every frame and kept inside the viewport. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row. ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, <ConflictChips>, <TagChips>, the admin event field and the collection picker's Add events build on it.">
+          <Item name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short, following the field on every frame and kept inside the viewport. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row under the options, and a heading as a muted row over them, naming what they are (Search results in the site and event link pickers). ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, <ConflictChips>, <TagChips>, the admin event field and the collection picker's Add events build on it.">
             <PaletteCombobox />
           </Item>
 
@@ -1741,6 +1742,13 @@ export default function PalettePage() {
                 />
               </Variant>
             </div>
+          </Item>
+
+          <Item
+            name="<LegalLinks>"
+            usage="The legal notice and the privacy policy on one muted line, the footer of the landing page and the line under every sign-in and sign-up card, so both stay reachable before an account exists."
+          >
+            <LegalLinks />
           </Item>
 
           <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows and every list on the organization page and the admin Organizations panel): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link; when the value and the action do not fit on one line, the action and the arrow wrap to a second line. `label` is optional. `meta` (arrow only) is a muted line under the value (date, version, who, a role or state pill), inside the link, so it never holds a link. `onClick` runs before an in-app href navigates (the search page's coordinates row sets the map view).">
@@ -2328,20 +2336,27 @@ function PaletteMediaLightbox() {
   );
 }
 
+const PALETTE_ACTIVE_FILTERS: ReadonlyArray<[string, string]> = [
+  ["Conflict", "Russo-Ukrainian War"],
+  ["Tags", "dashcam"],
+  ["Event date", "Until 1 Jan 2025"],
+];
+
 function PaletteActiveFilterPills() {
-  const [active, setActive] = useState(["Russo-Ukrainian War", "dashcam", "by ana-demo"]);
+  const [active, setActive] = useState(PALETTE_ACTIVE_FILTERS);
   if (active.length === 0)
     return (
-      <button className="text-[11px] text-neutral-500" onClick={() => setActive(["Russo-Ukrainian War", "dashcam", "by ana-demo"])}>
+      <button className="text-[11px] text-neutral-500" onClick={() => setActive(PALETTE_ACTIVE_FILTERS)}>
         All removed. Reset the demo
       </button>
     );
   return (
     <ActiveFilterPills
-      filters={active.map((label) => ({
-        key: label,
+      filters={active.map(([filter, label]) => ({
+        key: filter + label,
+        filter,
         label,
-        onRemove: () => setActive((prev) => prev.filter((l) => l !== label)),
+        onRemove: () => setActive((prev) => prev.filter(([, l]) => l !== label)),
       }))}
       onClearAll={() => setActive([])}
     />

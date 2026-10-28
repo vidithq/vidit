@@ -1,7 +1,5 @@
-import Link from "next/link";
-
+import { LegalLinks } from "@/components/ui/LegalLinks";
 import { PageCenter } from "@/components/ui/PageFrame";
-import { TEXT_LINK } from "@/components/ui/styles";
 
 export default function AuthLayout({
   children,
@@ -11,18 +9,9 @@ export default function AuthLayout({
   return (
     <main>
       <PageCenter className="px-4 bg-neutral-950">
-        {/* The legal notice and privacy policy must be reachable before an account exists. */}
         <div className="flex flex-col items-center gap-4">
           {children}
-          <p className="text-[11px] text-neutral-600">
-            <Link href="/legal" className={TEXT_LINK}>
-              Legal notice
-            </Link>
-            {" · "}
-            <Link href="/privacy" className={TEXT_LINK}>
-              Privacy policy
-            </Link>
-          </p>
+          <LegalLinks />
         </div>
       </PageCenter>
     </main>

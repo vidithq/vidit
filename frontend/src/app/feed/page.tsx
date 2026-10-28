@@ -13,8 +13,6 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
-import { ChipBucket } from "@/components/ui/ChipBucket";
-import { chipSummary } from "@/components/ui/FilterSection";
 import {
   EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
@@ -47,33 +45,23 @@ const SCOPES: { value: FeedScope; label: string }[] = [
   { value: "all", label: "All" },
 ];
 
-// No chip chosen sends no `kind`, and `GET /feed` then serves all three.
-const KIND_OPTIONS: { id: FeedKind; name: FeedKind; label: string }[] = [
-  { id: "geolocation", name: "geolocation", label: "Geolocations" },
-  { id: "request", name: "request", label: "Requests" },
-  { id: "detected", name: "detected", label: "Detections" },
-];
-const kindLabel = (kind: FeedKind) =>
-  KIND_OPTIONS.find((o) => o.name === kind)?.label ?? kind;
+// `GET /feed` takes the Show filter as `kind`, one value per status. No status chosen sends no
+// `kind`, and the feed then serves all three.
+const FEED_KINDS: Record<string, FeedKind> = {
+  requested: "request",
+  detected: "detected",
+  geolocated: "geolocation",
+};
 
-// The predicates `GET /feed` serves besides `kind`.
+// The predicates `GET /feed` serves.
 const FEED_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
+  "show",
   "conflict",
   "source_kind",
   "level",
   "tags",
   "approval",
 ];
-
-interface FeedFilters {
-  kinds: FeedKind[];
-  values: EventFilterValues;
-}
-
-const EMPTY_FEED_FILTERS: FeedFilters = {
-  kinds: [],
-  values: EMPTY_EVENT_FILTERS,
-};
 
 const ENTERED_LABEL: Partial<Record<FeedItem["status"], string>> = {
   requested: "Requested",
@@ -100,14 +88,14 @@ function itemDates(item: FeedItem): { label: string; date: string }[] {
 export default function FeedPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const [scope, setScope] = useState<FeedScope>("following");
-  const [filters, setFilters] = useState<FeedFilters>(EMPTY_FEED_FILTERS);
+  const [filters, setFilters] = useState<EventFilterValues>(EMPTY_EVENT_FILTERS);
   const { tags, conflicts } = useFilterVocabulary();
 
   const buildPath = useCallback(
     (cursor: string | null) => {
       const search = new URLSearchParams({ scope });
-      filters.kinds.forEach((k) => search.append("kind", k));
-      appendEventFilterParams(search, filters.values);
+      filters.show.forEach((status) => search.append("kind", FEED_KINDS[status]));
+      appendEventFilterParams(search, { ...filters, show: [] });
       if (cursor) search.set("cursor", cursor);
       return `/feed?${search}`;
     },
@@ -116,50 +104,27 @@ export default function FeedPage() {
   const walk = useCursorList<FeedItem>(buildPath);
   const { items, error, loading } = walk;
 
-  const activeCount =
-    filters.kinds.length +
-    countActiveFilters(filters.values, EMPTY_DATE_WINDOWS);
-  const pills = [
-    ...filters.kinds.map((k) => ({
-      key: `kind:${k}`,
-      label: kindLabel(k),
-      onRemove: () =>
-        setFilters((f) => ({ ...f, kinds: f.kinds.filter((x) => x !== k) })),
-    })),
-    ...buildActiveFilterPills(filters.values, (patch) =>
-      setFilters((f) => ({ ...f, values: { ...f.values, ...patch } }))
-    ),
-  ];
-  const renderPanel = (
-    panel: FeedFilters,
-    setPanel: (next: FeedFilters) => void
-  ) => (
+  const activeCount = countActiveFilters(filters, EMPTY_DATE_WINDOWS);
+  const onPatch = (patch: Partial<EventFilterValues>) => setFilters((f) => ({ ...f, ...patch }));
+  const clearFilters = () => setFilters(EMPTY_EVENT_FILTERS);
+  const pills = buildActiveFilterPills(filters, onPatch);
+  const panel = (
     <EventFilterSections
       tags={tags}
       conflicts={conflicts}
-      values={panel.values}
-      onPatch={(patch) =>
-        setPanel({ ...panel, values: { ...panel.values, ...patch } })
-      }
+      values={filters}
+      onPatch={onPatch}
       sections={FEED_SECTIONS}
       lead={[
         {
-          title: "Kind",
-          summary: chipSummary(panel.kinds.map(kindLabel)),
-          active: panel.kinds.length > 0,
+          title: "Activity",
           children: (
-            <ChipBucket
-              options={KIND_OPTIONS}
-              selected={panel.kinds}
-              onToggle={(name) => {
-                const kind = name as FeedKind;
-                setPanel({
-                  ...panel,
-                  kinds: panel.kinds.includes(kind)
-                    ? panel.kinds.filter((k) => k !== kind)
-                    : [...panel.kinds, kind],
-                });
-              }}
+            <SegmentedControl
+              options={SCOPES}
+              value={scope}
+              onChange={setScope}
+              aria-label="Activity"
+              fullWidth
             />
           ),
         },
@@ -260,34 +225,16 @@ export default function FeedPage() {
     <PageShell
       title="Feed"
       rail={
-        <FilterRail
-          pills={pills}
-          onClearAll={() => setFilters(EMPTY_FEED_FILTERS)}
-          sections={FEED_SECTIONS}
-        >
-          {renderPanel(filters, setFilters)}
+        <FilterRail pills={pills} onClearAll={clearFilters} sections={FEED_SECTIONS}>
+          {panel}
         </FilterRail>
       }
       railLabel="Filters"
       narrowRail="hidden"
-      controls={
-        <SegmentedControl
-          options={SCOPES}
-          value={scope}
-          onChange={setScope}
-          aria-label="Feed scope"
-        />
-      }
     >
-      <FilterBar
-        value={filters}
-        empty={EMPTY_FEED_FILTERS}
-        count={activeCount}
-        pills={pills}
-        onClearAll={() => setFilters(EMPTY_FEED_FILTERS)}
-        onApply={setFilters}
-        renderPanel={renderPanel}
-      />
+      <FilterBar count={activeCount} pills={pills} onClearAll={clearFilters}>
+        {panel}
+      </FilterBar>
       {body}
     </PageShell>
   );

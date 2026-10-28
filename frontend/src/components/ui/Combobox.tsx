@@ -70,6 +70,9 @@ interface ComboboxProps<T> {
   onOpenChange: (open: boolean) => void;
   /** A muted row under the options: loading, a failure, an empty list, a note. */
   status?: string | null;
+  /** A muted row over the options, naming what they are, so a list that opens over other
+   *  suggestions never reads as theirs. */
+  heading?: string;
   /** Takes the trimmed text when Enter finds no highlighted row. */
   onSubmitText?: (text: string) => void;
   inputRef?: RefObject<HTMLInputElement | null>;
@@ -86,8 +89,8 @@ interface ComboboxProps<T> {
 /**
  * A `role="combobox"` field over a `role="listbox"` list: the keyboard and the list of every
  * typeahead. The caller owns the query, the open state and the options. ArrowUp and ArrowDown
- * move and wrap, Enter picks the highlighted row or hands the text to `onSubmitText`, and Escape
- * or a blur closes.
+ * move and wrap, Enter picks the highlighted row or hands the text to `onSubmitText`, Escape or a
+ * blur closes, and a click on the field opens the list again.
  */
 export function Combobox<T>({
   options,
@@ -100,6 +103,7 @@ export function Combobox<T>({
   open,
   onOpenChange,
   status,
+  heading,
   onSubmitText,
   inputRef,
   id,
@@ -176,6 +180,7 @@ export function Combobox<T>({
           onOpenChange(true);
         }}
         onFocus={() => onOpenChange(true)}
+        onClick={() => onOpenChange(true)}
         onBlur={() => onOpenChange(false)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
@@ -194,6 +199,7 @@ export function Combobox<T>({
             style={placement}
             className={cn("z-[2000] overflow-y-auto rounded-md p-1", TOOLTIP_SURFACE)}
           >
+            {heading && options.length > 0 && <p className={STATUS_ROW}>{heading}</p>}
             <ul id={listId} role="listbox" aria-label={ariaLabel} className="space-y-0.5">
               {options.map((option, index) => (
                 <li

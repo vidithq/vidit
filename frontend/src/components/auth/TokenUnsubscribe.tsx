@@ -36,6 +36,21 @@ function TokenUnsubscribeInner({
 
   if (done) return <AuthCard title={text.doneTitle} subtitle={text.doneSubtitle} />;
 
+  if (!token) {
+    return (
+      <AuthCard title="Incomplete link">
+        <p className="text-xs text-neutral-400">
+          This URL doesn&apos;t carry its unsubscribe token. Open the link from the email again,
+          or turn the email off in{" "}
+          <Link href="/settings" className={TEXT_LINK}>
+            Settings
+          </Link>
+          .
+        </p>
+      </AuthCard>
+    );
+  }
+
   return (
     <AuthCard
       title={text.title}
@@ -51,7 +66,7 @@ function TokenUnsubscribeInner({
         action="unsubscribe"
         variant="primary"
         fullWidth
-        disabled={!token || run.loading}
+        disabled={run.loading}
         onClick={() => void run.run()}
       >
         {run.loading ? text.pending : text.action}

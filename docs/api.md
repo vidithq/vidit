@@ -2623,7 +2623,7 @@ The sites a point may link to, nearest first, for an event form whose event is n
 | Param | Rule |
 |---|---|
 | `lat`, `lng` | The point, both or neither, in the event coordinate bounds |
-| `margin_m` | Metres from the point to a site's current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
+| `margin_m` | Metres from the point to a site's current zone, 0 to 10000, default 10000. A value outside the range is a 422 |
 | `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
 
 - **Without `q`:** the visible sites whose current zone lies within `margin_m` of the point. No point gets an empty array.
@@ -2975,7 +2975,7 @@ The sites an event may link to, nearest first. Any signed-in analyst may call it
 
 | Param | Rule |
 |---|---|
-| `margin_m` | Metres from the event's point to a site's current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
+| `margin_m` | Metres from the event's point to a site's current zone, 0 to 10000, default 10000. A value outside the range is a 422 |
 | `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
 
 - **Without `q`:** the visible sites whose current zone lies within `margin_m` of the event's point. An event without a point gets an empty array.

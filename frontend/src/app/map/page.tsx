@@ -198,7 +198,7 @@ export default function HomePage() {
 
   // Status chips and both timeline windows filter client-side (`POINT_DETECTED_FLAG`, event and added dates): any-of status, empty = all.
   const visiblePoints = useMemo(() => {
-    const statusFiltered = filterPointsByStatus(points, filters.statuses);
+    const statusFiltered = filterPointsByStatus(points, filters.show);
     const { eventFrom, eventTo, addedFrom, addedTo } = dateWindows;
     if (!eventFrom && !eventTo && !addedFrom && !addedTo) return statusFiltered;
     const lo = (iso: string) => (iso ? Date.parse(`${iso}T00:00:00Z`) : -Infinity);
@@ -215,7 +215,7 @@ export default function HomePage() {
       const subOk = Number.isNaN(sub) || (sub >= subLo && sub <= subHi);
       return evOk && subOk;
     });
-  }, [points, filters.statuses, dateWindows]);
+  }, [points, filters.show, dateWindows]);
 
   return (
     <div className="h-dvh w-screen relative overflow-hidden bg-neutral-950">

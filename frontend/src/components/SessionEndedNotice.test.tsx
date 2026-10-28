@@ -30,7 +30,14 @@ describe("<SessionEndedNotice>", () => {
     expect(auth.dismissSessionEnded).toHaveBeenCalled();
   });
 
-  it("stays hidden while no session ended, once signed in again, and on the sign-in page", () => {
+  it("says the session ended on the sign-in page, with no link to it", () => {
+    nav.pathname = "/login";
+    render(<SessionEndedNotice />);
+    expect(screen.getByRole("alert")).toHaveTextContent(/^Your session ended\.$/);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("stays hidden while no session ended, once signed in again, and on the other auth pages", () => {
     auth.sessionEnded = false;
     const { rerender } = render(<SessionEndedNotice />);
     expect(screen.queryByRole("alert")).toBeNull();
@@ -39,7 +46,7 @@ describe("<SessionEndedNotice>", () => {
     rerender(<SessionEndedNotice />);
     expect(screen.queryByRole("alert")).toBeNull();
     auth.user = null;
-    nav.pathname = "/login";
+    nav.pathname = "/register";
     rerender(<SessionEndedNotice />);
     expect(screen.queryByRole("alert")).toBeNull();
   });

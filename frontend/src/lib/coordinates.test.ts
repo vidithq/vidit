@@ -6,6 +6,8 @@ import {
   formatCoordinates,
   inBounds,
   mapsUrl,
+  pairInputs,
+  pairProblem,
   parsePastedCoordinates,
   readCoordinates,
 } from "./coordinates";
@@ -33,7 +35,9 @@ describe("readCoordinates", () => {
   it("names the expected form for text that is not a pair", () => {
     for (const text of ["48.01", "48.01, 37.80, 12", "Kyiv", "48.0abc, 37"]) {
       const result = readCoordinates(text);
-      expect("error" in result && result.error).toMatch(/^Type the latitude, a comma/);
+      expect("error" in result && result.error).toMatch(
+        /^Not a coordinate pair\. Type the latitude, a comma/
+      );
     }
   });
 
@@ -45,6 +49,50 @@ describe("readCoordinates", () => {
   it("points at a swapped pair", () => {
     expect(readCoordinates("151.2, -33.9")).toEqual({
       error: "Latitude must be between -90 and 90. The latitude comes first.",
+    });
+  });
+});
+
+describe("pairProblem", () => {
+  it("has nothing to say about a usable pair", () => {
+    expect(pairProblem("48.015883", "37.802411")).toBeNull();
+    expect(pairProblem("-90", "180")).toBeNull();
+  });
+
+  it("names the half typed wrong before a blank one, latitude first", () => {
+    expect(pairProblem("91", "")).toEqual({
+      message: "Latitude must be between -90 and 90.",
+      half: "lat",
+      missing: false,
+    });
+    expect(pairProblem("", "181")).toEqual({
+      message: "Longitude must be between -180 and 180.",
+      half: "lng",
+      missing: false,
+    });
+    expect(pairProblem("48.0abc", "200")).toEqual({
+      message: "Latitude must be a number in decimal degrees, like 48.015883.",
+      half: "lat",
+      missing: false,
+    });
+  });
+
+  it("asks for a blank half", () => {
+    expect(pairProblem("", "")).toEqual({
+      message: "Type a latitude and a longitude.",
+      half: null,
+      missing: true,
+    });
+    expect(pairProblem("48", " ")).toEqual({ message: "Type a longitude.", half: "lng", missing: true });
+    expect(pairProblem("", "37")).toEqual({ message: "Type a latitude.", half: "lat", missing: true });
+  });
+});
+
+describe("pairInputs", () => {
+  it("writes a picked point at the 6 decimals the page shows", () => {
+    expect(pairInputs({ lat: 48.0125999871, lng: 37.80240001 })).toEqual({
+      lat: "48.012600",
+      lng: "37.802400",
     });
   });
 });

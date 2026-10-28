@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, type Ref } from "react";
+import { useMemo, useState, type Ref } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
 import { EventLocation } from "@/components/event/EventLocation";
+import { GoToCoordinates } from "@/components/map/GoToCoordinates";
 import { DetailRow } from "@/components/ui/DetailRow";
+import type { CoordinatePair } from "@/lib/coordinates";
 import { formatInstantDate } from "@/lib/format";
 import { eventHref } from "@/lib/routes";
 import { positionsBounds, zoneAreaKm2, zoneVertices } from "@/lib/siteZone";
@@ -29,13 +31,17 @@ const SiteMap = dynamic(() => import("@/components/map/SiteMap"), { ssr: false }
 export function SiteLocation({
   site,
   source,
+  goToField = false,
   ref,
 }: {
   site: Site;
   source: SiteSource | null;
+  /** Puts the go-to-coordinates field above the map, as the site forms' contour editor has it. */
+  goToField?: boolean;
   ref?: Ref<HTMLDivElement>;
 }) {
   const router = useRouter();
+  const [goTo, setGoTo] = useState<CoordinatePair | null>(null);
   const day = source?.captured_at ? utcDay(source.captured_at) : null;
   const contour = day ? contourOn(site.contours, day) : null;
   const first = site.contours[0] ?? null;
@@ -64,6 +70,8 @@ export function SiteLocation({
       ref={ref}
       coords={site.centroid}
       coordinatesConcept="site_coordinates"
+      // A new object per Go, so the same pair typed twice centres the map twice.
+      header={goToField && <GoToCoordinates onGo={(pair) => setGoTo({ ...pair })} />}
       map={
         bounds && (
           <SiteMap
@@ -74,6 +82,7 @@ export function SiteLocation({
             emphasis={zoneEmphasis(site)}
             events={site.linked_events}
             bounds={bounds}
+            goTo={goTo}
             onEventClick={(id) => router.push(eventHref(id))}
           />
         )

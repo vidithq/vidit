@@ -32,6 +32,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - The Links help on the source forms holds two sentences, and the methodology guide says how to link, archive and permalink a source ([#804](https://github.com/vidithq/vidit/pull/804)).
 - The suggested tags under a tag field wrap instead of running off the card, the first 6 then one Show more ([#804](https://github.com/vidithq/vidit/pull/804)).
+- The event forms' Location block shows the event page's map under the coordinates: click the map or drag the pin to set the coordinates, and typed coordinates move the pin ([#801](https://github.com/vidithq/vidit/pull/801)).
+- Site suggestions reach 10 km from the event instead of 2 km, and sites found by a name search show under their own Search results heading ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The edit form of an open request no longer offers Linked sites, since only a published event links to a site ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The status filter is called Show everywhere and stays in view with Conflict and Tags; filters apply at once on a phone, each active-filter pill names its filter, and the feed's Following or All choice moves into the filter panel ([#799](https://github.com/vidithq/vidit/pull/799)).
 - Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a request page, the asker sees Edit, which opens the request's form, and every other reader sees Geolocate; the asker no longer gets both for the same page ([#794](https://github.com/vidithq/vidit/pull/794)).
@@ -80,6 +84,16 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - A GIF inserted into a proof shows one image per frame, and one past 6 frames is refused under the editor with the reason ([#804](https://github.com/vidithq/vidit/pull/804)).
 - The submit form keeps its draft across a reload, files and proof images included, until you publish ([#804](https://github.com/vidithq/vidit/pull/804)).
+- A latitude or longitude out of bounds or not a number says why under the coordinate fields, and the greyed map link names the real reason ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The map credits on small maps fit on one line in smaller type instead of wrapping over what the map shows ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The File a source page of a site has the Go to coordinates field above its zone map, like the site forms ([#801](https://github.com/vidithq/vidit/pull/801)).
+- Search on All with a tag lists the collections carrying it instead of switching to Events, and a highlighted term reads in the light theme; the conflict list closes on a pick, and the map's filter panel stays clear of the attribution on a phone ([#799](https://github.com/vidithq/vidit/pull/799)).
+- The home page ends on links to the legal notice and the privacy policy, and the About page sets its Commitments text at the size of its other sections ([#797](https://github.com/vidithq/vidit/pull/797)).
+- Vercel Web Analytics and Speed Insights load only when the build sets `NEXT_PUBLIC_VERCEL_ANALYTICS=true`, so an instance hosted elsewhere no longer makes failing `/_vercel/*` requests ([#797](https://github.com/vidithq/vidit/pull/797)).
+- On a profile, Insights and Coverage show each count once; Follow and Unfollow move the followers count at once and put it back on an error; Edit profile shows the avatar once and a refused website under its field ([#798](https://github.com/vidithq/vidit/pull/798)).
+- Opening a page that needs an account while signed out, such as a new collection, a site edit or your profile, sends you to sign in and then back to that page ([#796](https://github.com/vidithq/vidit/pull/796)).
+- When your session ends because its cookies expired or were cleared, the next page you open says so, the sign-in page included ([#796](https://github.com/vidithq/vidit/pull/796)).
+- An unsubscribe link opened without its token says the link is incomplete and points to Settings, instead of showing a disabled button ([#796](https://github.com/vidithq/vidit/pull/796)).
 - A collection's owner no longer sees Report on their own collection ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a phone, the pinned actions and the menu button sit on one full-width bar once the page scrolls, so fields and lists no longer show between them ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a wide screen, the pinned actions stay on one line, such as Approve, Accept and Decline on an invitation ([#794](https://github.com/vidithq/vidit/pull/794)).

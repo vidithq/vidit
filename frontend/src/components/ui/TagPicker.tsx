@@ -337,9 +337,12 @@ export function ConflictChips({
   const key = (c: Conflict) => (filter ? c.name : c.id);
   const offersEnded = filter || includeEnded;
 
+  // An event rarely takes a second conflict, so a pick closes the list rather than leave it over
+  // the next field.
   const select = (c: Conflict) => {
     if (!selected.includes(key(c))) setSelected([...selected, key(c)]);
     setQuery("");
+    setOpen(false);
   };
 
   const picked = filter
