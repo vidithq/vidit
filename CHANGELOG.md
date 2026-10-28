@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- `GET /sites`, an event's site links and the site suggestions carry each site's picture in `media`, the image of its first source in source order that is not graphic; a site search hit carries the same picture ([#812](https://github.com/vidithq/vidit/issues/812)).
 - Search finds sites by their name or by the title or note of one of their sources, and the search page's Show field picks every kind: Requested, Detected, Geolocated, Sites, Collections, Analysts and Organizations ([#807](https://github.com/vidithq/vidit/pull/807)).
 - On the event forms, each source carries Move earlier and Move later, and readers see the sources in the order the author set ([#804](https://github.com/vidithq/vidit/pull/804)).
 - An admin can restore a soft-deleted account from the onboarding table: the account and the events its soft delete hid come back ([#793](https://github.com/vidithq/vidit/pull/793)).
@@ -32,6 +33,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Every list shows an event, a request, a site or a collection one way, as a compact row, a list row or a feed card: its picture or its kind's icon, the title, a line with the kind, date, analyst and place, then its state ([#812](https://github.com/vidithq/vidit/issues/812)).
 - Breaking: `GET /search` returns one ranked list, `hits`, with one `cursor` that pages it, in place of five groups with their totals; `type` repeats to pick the kinds, and `status` narrows only the events ([#807](https://github.com/vidithq/vidit/pull/807)).
 - The search page shows one list of rows, each naming its kind, with the filters in the right rail and no group headings ([#807](https://github.com/vidithq/vidit/pull/807)).
 - The Links help on the source forms holds two sentences, and the methodology guide says how to link, archive and permalink a source ([#804](https://github.com/vidithq/vidit/pull/804)).
