@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { appendEventFilterParams, readEventFilterParams, splitHighlights } from "./search";
+import {
+  appendEventFilterParams,
+  exactProfile,
+  readEventFilterParams,
+  splitHighlights,
+} from "./search";
 
 const STX = "";
 const ETX = "";
@@ -104,5 +109,42 @@ describe("the event filter keys", () => {
     const read = readEventFilterParams(new URLSearchParams("author=a%25b&approved_by=a%25b"));
     expect(read.author).toBe("");
     expect(read.approvedBy).toBeNull();
+  });
+});
+
+describe("exactProfile", () => {
+  const analyst = {
+    id: "u1",
+    username: "Kharkiv_Watch",
+    username_highlight: "Kharkiv_Watch",
+    bio: null,
+    bio_highlight: null,
+    avatar_url: null,
+  };
+  const organization = {
+    id: "o1",
+    slug: "open-source-watch",
+    name: "Open Source Watch",
+    name_highlight: "Open Source Watch",
+    bio: null,
+    bio_highlight: null,
+    avatar_url: null,
+    member_count: 3,
+  };
+  const results = { users: [analyst], organizations: [organization] };
+
+  it("names an analyst by username, ignoring case and a leading @", () => {
+    expect(exactProfile("@kharkiv_watch ", results)).toEqual({ kind: "analyst", hit: analyst });
+  });
+
+  it("names an organization by slug or by name", () => {
+    expect(exactProfile("open-source-watch", results)?.hit).toBe(organization);
+    expect(exactProfile("open source watch", results)?.hit).toBe(organization);
+  });
+
+  it("names no one on a partial or longer query", () => {
+    expect(exactProfile("kharkiv", results)).toBeNull();
+    expect(exactProfile("kharkiv_watch strike", results)).toBeNull();
+    expect(exactProfile("  ", results)).toBeNull();
   });
 });

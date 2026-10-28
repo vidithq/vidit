@@ -109,6 +109,9 @@ export function formatCoordinates(lat: number, lng: number, decimals = 6): strin
   return `${lat.toFixed(decimals)}, ${lng.toFixed(decimals)}`;
 }
 
+/** The least zoom a typed coordinate lands at on the map, where roads and buildings read. */
+export const GO_TO_ZOOM = 14;
+
 /** External map link for checking a point against satellite imagery. */
 export function mapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps?q=${lat},${lng}`;
