@@ -3761,11 +3761,13 @@ export interface components {
          * @description One of the caller's collections, and whether one event is already in it.
          *
          *     The add-to-collection popover's row, thinner than :class:`CollectionRead`
-         *     (no description, mosaic or date range). ``event_count`` uses the same
+         *     (no description or date range). ``event_count`` and ``cover`` use the same
          *     predicate as the collection reads
          *     (``services/event_filters.collectable_events``).
          */
         CollectionMembershipRead: {
+            /** Cover */
+            cover: components["schemas"]["CollectionCoverTile"][];
             /** Event Count */
             event_count: number;
             /**

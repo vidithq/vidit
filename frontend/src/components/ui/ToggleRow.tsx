@@ -53,6 +53,7 @@ export function PreferenceText({
  *  holds, which would fold the description in); the description is its accessible
  *  description. */
 export function ToggleRow({
+  leading,
   label,
   concept,
   description,
@@ -62,6 +63,8 @@ export function ToggleRow({
   disabled = false,
   className = "",
 }: {
+  /** A small picture before the text, in the settings shape, as on `<ActionRow>`. */
+  leading?: ReactNode;
   label: string;
   /** A `?` after the label, in the settings shape. */
   concept?: Concept;
@@ -81,7 +84,8 @@ export function ToggleRow({
   return (
     <div
       className={cn(
-        "relative w-full flex items-center justify-between gap-4 text-left group",
+        "relative w-full flex items-center justify-between text-left group",
+        setting && leading ? "gap-3" : "gap-4",
         TAP_STEP,
         !setting && "py-2.5 border-b border-neutral-800 last:border-b-0",
         disabled && "opacity-50",
@@ -100,6 +104,7 @@ export function ToggleRow({
         disabled={disabled}
         className="absolute inset-0 rounded-xs disabled:cursor-not-allowed"
       />
+      {setting && leading && <span className="shrink-0">{leading}</span>}
       {setting ? (
         <PreferenceText
           label={label}
