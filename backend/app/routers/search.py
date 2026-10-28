@@ -96,6 +96,8 @@ def search(
 
     The geolocations group pages: ``geolocations_cursor`` is set exactly when a
     further page holds a row, and ``cursor`` with ``type=geolocation`` fetches it.
+
+    When every group is empty, ``suggestion`` may hold a respelling of ``q`` that finds results.
     """
     if type not in search_service.ALLOWED_TYPES:
         raise HTTPException(
@@ -130,6 +132,12 @@ def search(
         db, query=q, types=types, limit=limit, filters=filters, after=after
     )
 
+    suggestion = (
+        search_service.spelling_suggestion(db, query=q, types=types, filters=filters)
+        if after is None and not any(group["total"] for group in grouped.values())
+        else None
+    )
+
     # ``total`` is the pre-LIMIT match count (``COUNT(*) OVER ()``), so it can
     # exceed ``len(hits)``.
     return SearchResponse(
@@ -146,6 +154,7 @@ def search(
             organizations=grouped["organizations"]["total"],
         ),
         geolocations_cursor=grouped["geolocations"]["cursor"],
+        suggestion=suggestion,
         query=q,
         # Safe: the ``ALLOWED_TYPES`` guard above proves membership.
         type=cast(SearchType, type),
