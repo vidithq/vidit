@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
+import { SeeAllLink } from "@/components/ui/LoadMoreRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Item } from "@/components/ui/Item";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -31,7 +31,7 @@ const PREVIEW_SIZE = 4;
  * owner an empty list is a first-run surface with the action that fills it;
  * otherwise **New collection** lives in the profile's actions.
  *
- * `Show more` goes to `/search` scoped to this analyst's collections, through
+ * `See all` goes to `/search` scoped to this analyst's collections, through
  * the same builder as the submissions list's control. Its `type=collection`
  * mirrors the one filter `search.search_collections` reads; change both.
  *
@@ -76,7 +76,7 @@ export function CollectionsSection({
             // `type=collection` is the one scope `author` narrows rather than
             // empties, so the expansion serves the set the section previewed.
             <div className="flex justify-center">
-              <ShowMoreLink href={profileSearchHref(username, {}, "collection")} />
+              <SeeAllLink href={profileSearchHref(username, {}, "collection")} />
             </div>
           )}
         </>

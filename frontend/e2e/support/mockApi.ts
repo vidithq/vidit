@@ -42,6 +42,7 @@ import {
   SITE,
   SITE_ID,
   X_HANDLE,
+  SEARCH_SECTIONS,
 } from "./fixtures";
 
 /**
@@ -74,6 +75,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/events\/points$/, []],
   [/^\/feed$/, FEED_ITEMS],
   [/^\/search$/, EMPTY_SEARCH],
+  [/^\/search\/sections$/, SEARCH_SECTIONS],
   [/^\/events\/possible-duplicates$/, []],
   [/^\/tags$/, TAGS],
   [/^\/tags\/suggested$/, SUGGESTED_TAGS],

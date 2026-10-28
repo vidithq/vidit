@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let searchParams = new URLSearchParams();
 const replace = vi.fn();
+const push = vi.fn();
 vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParams,
-  useRouter: () => ({ push: vi.fn(), replace, back: vi.fn() }),
+  useRouter: () => ({ push, replace, back: vi.fn() }),
 }));
 
 // The two pickers the filter panel fills from, read on every render.
@@ -16,10 +17,12 @@ vi.mock("@/hooks/useApiResource", () => ({
 }));
 
 const search = vi.fn();
+const searchSections = vi.fn();
 // The Author typeahead is stubbed: tests drive the field by hand.
 vi.mock("@/lib/search", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/search")>()),
   search: (opts: unknown) => search(opts),
+  searchSections: (opts: unknown) => searchSections(opts),
   suggestAuthors: () => Promise.resolve([]),
 }));
 
@@ -41,8 +44,11 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
 import type {
   SearchCollectionHit,
   SearchEventHit,
+  SearchHit,
   SearchOrganizationHit,
   SearchResponse,
+  SearchSection,
+  SearchSections,
   SearchSiteHit,
   SearchUserHit,
 } from "@/types";
@@ -129,6 +135,28 @@ const response = (over: Partial<SearchResponse> = {}): SearchResponse => ({
   ...over,
 });
 
+/** A sections response: one section per type its hits hold, in the order given. */
+const sections = (
+  hits: SearchHit[],
+  over: Partial<SearchSections> & { more?: SearchHit["type"][] } = {},
+): SearchSections => {
+  const { more = [], ...rest } = over;
+  const types = [...new Set(hits.map((hit) => hit.type))];
+  return {
+    sections: types.map(
+      (type): SearchSection => ({
+        type,
+        hits: hits.filter((hit) => hit.type === type),
+        total: hits.filter((hit) => hit.type === type).length + (more.includes(type) ? 5 : 0),
+        cursor: more.includes(type) ? `next-${type}` : null,
+      }),
+    ),
+    suggestion: null,
+    query: "kakhovka",
+    ...rest,
+  };
+};
+
 const toggle = (title: string) => screen.queryByRole("button", { name: `Toggle ${title}` });
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
 const chip = (name: string) => within(rail()).getByRole("button", { name });
@@ -139,46 +167,80 @@ const rowOf = (href: string) => linkTo(href).parentElement!;
 beforeEach(() => {
   vi.clearAllMocks();
   searchParams = new URLSearchParams("q=kakhovka");
+  search.mockResolvedValue(response());
+  searchSections.mockResolvedValue(sections([]));
 });
 
-describe("the search page's list", () => {
-  it("shows one row per hit, each naming its kind first, with no headings and no count", async () => {
-    search.mockResolvedValue(
-      response({
-        hits: [
-          eventHit(),
-          siteHit(),
-          collectionHit(),
-          userHit(),
-          orgHit(),
-          eventHit({ id: "r1", status: "requested", title: "Open call", title_highlight: "Open call", occurred_date: null }),
-        ],
-      }),
+describe("the search page with no kind picked", () => {
+  it("groups the hits by kind under headings, in the order the API sends, with no count", async () => {
+    searchSections.mockResolvedValue(
+      sections([
+        eventHit(),
+        eventHit({ id: "r1", status: "requested", title: "Open call", title_highlight: "Open call", occurred_date: null }),
+        siteHit(),
+        collectionHit(),
+        userHit(),
+        orgHit(),
+      ]),
     );
 
     render(<SearchPage />);
 
     await screen.findByText("Kakhovka spillway");
-    expect(screen.getByRole("link", { name: "Kakhovka spillway" })).toHaveAttribute(
+    expect(searchSections).toHaveBeenCalledWith(expect.objectContaining({ q: "kakhovka", types: [] }));
+    expect(search).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+      "Events",
+      "Sites",
+      "Collections",
+      "Analysts",
+      "Organizations",
+    ]);
+
+    const events = screen.getByRole("region", { name: "Events" });
+    expect(within(events).getByRole("link", { name: "Kakhovka spillway" })).toHaveAttribute(
       "href",
       "/events/e1",
     );
     expect(rowOf("/events/e1")).toHaveTextContent(/Event·6 Jun 2026·A?anaGeolocated/);
+    expect(rowOf("/requests/r1")).toHaveTextContent(/Open callRequest·A?anaRequested/);
+    expect(events).toContainElement(rowOf("/requests/r1"));
 
     const site = rowOf("/sites/s1");
     expect(site.querySelector("mark")).toHaveTextContent("Kakhovka");
     expect(site).toHaveTextContent(/Site·8 Jun 2026·A?anaDepot/);
-
     expect(rowOf("/collections/c1")).toHaveTextContent(/^Nova Kakhovka damCollection·.*5 events$/);
     expect(rowOf("/profile/kakhovka_watch")).toHaveTextContent(/kakhovka_watchAnalyst$/);
     expect(rowOf("/organizations/kakhovka-watch")).toHaveTextContent(
       "Kakhovka WatchOrganization1 member",
     );
 
-    expect(rowOf("/requests/r1")).toHaveTextContent(/Open callRequest·A?anaRequested/);
-
     expect(screen.queryByText(/result/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Geolocations/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+  });
+
+  it("leads each kind that holds more to its own list through See all", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&tag=dam&author=ana");
+    searchSections.mockResolvedValue(
+      sections([eventHit(), siteHit(), collectionHit()], { more: ["event", "collection"] }),
+    );
+
+    render(<SearchPage />);
+    await screen.findByText("Kakhovka spillway");
+
+    const seeAll = (name: string) =>
+      within(screen.getByRole("region", { name })).queryByRole("link", { name: "See all" });
+    // Events keep the filters and take every status.
+    expect(seeAll("Events")).toHaveAttribute(
+      "href",
+      "/search?q=kakhovka&type=event&status=requested&status=detected&status=geolocated&tag=dam&author=ana",
+    );
+    // A kind other than events keeps only the filters it answers.
+    expect(seeAll("Collections")).toHaveAttribute(
+      "href",
+      "/search?q=kakhovka&type=collection&tag=dam&author=ana",
+    );
+    expect(seeAll("Sites")).not.toBeInTheDocument();
   });
 
   it("covers a graphic picture with the gate", async () => {
@@ -190,13 +252,11 @@ describe("the search page's list", () => {
       sha256: "0".repeat(64),
       original_filename: null,
     };
-    search.mockResolvedValue(
-      response({
-        hits: [
-          eventHit({ media: [media] }),
-          eventHit({ id: "e2", title: "Graphic", title_highlight: "Graphic", media: [media], is_graphic: true }),
-        ],
-      }),
+    searchSections.mockResolvedValue(
+      sections([
+        eventHit({ media: [media] }),
+        eventHit({ id: "e2", title: "Graphic", title_highlight: "Graphic", media: [media], is_graphic: true }),
+      ]),
     );
     const { container } = render(<SearchPage />);
 
@@ -206,11 +266,69 @@ describe("the search page's list", () => {
       screen.getAllByRole("button", { name: "Show graphic content (18 or older)" }),
     ).toHaveLength(1);
   });
+
+  it("lists sections for a pick of several kinds", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&type=site&type=collection");
+    searchSections.mockResolvedValue(sections([siteHit(), collectionHit()]));
+
+    render(<SearchPage />);
+
+    expect(await screen.findByRole("region", { name: "Sites" })).toBeInTheDocument();
+    expect(searchSections).toHaveBeenCalledWith(
+      expect.objectContaining({ types: ["site", "collection"] }),
+    );
+  });
+});
+
+describe("the search page's URL", () => {
+  it("opens the list of one kind from See all, and Back returns to the sections", async () => {
+    searchSections.mockResolvedValue(sections([siteHit(), userHit()], { more: ["site"] }));
+    search.mockResolvedValue(response({ hits: [siteHit()] }));
+    const { rerender } = render(<SearchPage />);
+    const href = within(await screen.findByRole("region", { name: "Sites" }))
+      .getByRole("link", { name: "See all" })
+      .getAttribute("href")!;
+
+    // The link navigates; the page follows the URL it lands on.
+    searchParams = new URLSearchParams(href.split("?")[1]);
+    rerender(<SearchPage />);
+
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(expect.objectContaining({ q: "kakhovka", types: ["site"] })),
+    );
+    expect(await screen.findByRole("link", { name: "Kakhovka depot" })).toBeInTheDocument();
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    expect(within(rail()).getByTitle("Remove filter Show: Sites")).toBeInTheDocument();
+
+    searchParams = new URLSearchParams("q=kakhovka");
+    rerender(<SearchPage />);
+
+    expect(await screen.findByRole("region", { name: "Analysts" })).toBeInTheDocument();
+    expect(within(rail()).queryByTitle("Remove filter Show: Sites")).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toHaveValue("kakhovka");
+    // Reading the URL writes nothing back.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(push).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("pushes a new Show pick and replaces the URL as the query changes", async () => {
+    searchSections.mockResolvedValue(sections([siteHit()]));
+    render(<SearchPage />);
+    await screen.findByRole("link", { name: "Kakhovka depot" });
+
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "kakhovka dam" } });
+    await waitFor(() => expect(replace).toHaveBeenLastCalledWith("/search?q=kakhovka+dam"));
+    expect(push).not.toHaveBeenCalled();
+
+    fireEvent.click(chip("Sites"));
+    await waitFor(() => expect(push).toHaveBeenLastCalledWith("/search?q=kakhovka+dam&type=site"));
+  });
 });
 
 describe("the Show field", () => {
-  it("offers every kind as a chip, without counts, and sends no type while none is picked", async () => {
-    search.mockResolvedValue(response({ hits: [eventHit()] }));
+  it("offers every kind as a chip, without counts", async () => {
+    searchSections.mockResolvedValue(sections([eventHit()]));
     render(<SearchPage />);
 
     await screen.findByText("Kakhovka spillway");
@@ -225,10 +343,10 @@ describe("the Show field", () => {
     ]) {
       expect(chip(name)).toBeInTheDocument();
     }
-    expect(search).toHaveBeenCalledWith(expect.objectContaining({ q: "kakhovka", types: [] }));
   });
 
   it("lists only what the picked chips name, and drops the event filters once no event is listed", async () => {
+    searchSections.mockResolvedValue(sections([siteHit()]));
     search.mockResolvedValue(response({ hits: [siteHit()] }));
     render(<SearchPage />);
     await waitFor(() => expect(linkTo("/sites/s1")).toBeInTheDocument());
@@ -238,7 +356,6 @@ describe("the Show field", () => {
     await waitFor(() =>
       expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ types: ["site"] })),
     );
-    await waitFor(() => expect(replace).toHaveBeenLastCalledWith("/search?q=kakhovka&type=site"));
     expect(toggle("Dates")).not.toBeInTheDocument();
     expect(within(rail()).queryByRole("combobox", { name: "Conflict" })).not.toBeInTheDocument();
     expect(toggle("Author")).toBeInTheDocument();
@@ -246,7 +363,7 @@ describe("the Show field", () => {
 
     fireEvent.click(chip("Geolocated"));
     await waitFor(() =>
-      expect(search).toHaveBeenLastCalledWith(
+      expect(searchSections).toHaveBeenLastCalledWith(
         expect.objectContaining({ types: ["event", "site"], show: ["geolocated"] }),
       ),
     );
@@ -255,7 +372,6 @@ describe("the Show field", () => {
 
   it("keeps the tags and the author when the pick steps from events to collections", async () => {
     searchParams = new URLSearchParams("type=event&status=geolocated&tag=dam&author=ana&conflict=Yemen");
-    search.mockResolvedValue(response({ query: "" }));
 
     render(<SearchPage />);
     await waitFor(() => expect(search).toHaveBeenCalled());
@@ -273,7 +389,7 @@ describe("the Show field", () => {
   });
 
   it("browses one analyst's shelf on an author alone", async () => {
-    // Where the profile's Collections `Show more` lands: author only, no query.
+    // Where the profile's Collections `See all` lands: author only, no query.
     searchParams = new URLSearchParams("type=collection&author=ana");
     search.mockResolvedValue(response({ query: "", hits: [collectionHit()] }));
 
@@ -288,7 +404,6 @@ describe("the Show field", () => {
 
   it("reads a profile link's type=event as every status", async () => {
     searchParams = new URLSearchParams("type=event&author=ana");
-    search.mockResolvedValue(response({ query: "" }));
 
     render(<SearchPage />);
 
@@ -304,7 +419,7 @@ describe("the Show field", () => {
   });
 
   it("offers only the Show field on analysts", async () => {
-    search.mockResolvedValue(response({ hits: [userHit()] }));
+    searchSections.mockResolvedValue(sections([userHit()]));
     render(<SearchPage />);
     await screen.findByText("kakhovka_watch");
 
@@ -319,11 +434,11 @@ describe("the Show field", () => {
   });
 });
 
-describe("the search page's paging", () => {
+describe("the list of one kind", () => {
   const loadMore = () => screen.queryByRole("button", { name: "Show more" });
 
   it("appends the next page from the cursor, with the request that minted it", async () => {
-    searchParams = new URLSearchParams("conflict=Yemen&author=ana");
+    searchParams = new URLSearchParams("type=event&conflict=Yemen&author=ana");
     search
       .mockResolvedValueOnce(response({ query: "", hits: [eventHit()], cursor: "c1", total: 2 }))
       .mockResolvedValueOnce(
@@ -337,27 +452,30 @@ describe("the search page's paging", () => {
     render(<SearchPage />);
 
     expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
     fireEvent.click(loadMore()!);
 
     expect(await screen.findByText("Mukalla port")).toBeInTheDocument();
     expect(screen.getByText("Kakhovka spillway")).toBeInTheDocument();
     expect(search).toHaveBeenLastCalledWith(
-      expect.objectContaining({ q: "", cursor: "c1", conflicts: ["Yemen"], author: "ana" }),
+      expect.objectContaining({ q: "", cursor: "c1", types: ["event"], conflicts: ["Yemen"], author: "ana" }),
     );
     // The last page carries no cursor, so the control leaves.
     expect(loadMore()).not.toBeInTheDocument();
   });
 
   it("offers no Show more when the first page holds every match", async () => {
-    search.mockResolvedValue(response({ hits: [eventHit()] }));
+    searchParams = new URLSearchParams("q=kakhovka&type=site");
+    search.mockResolvedValue(response({ hits: [siteHit()] }));
 
     render(<SearchPage />);
 
-    expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Kakhovka depot" })).toBeInTheDocument();
     expect(loadMore()).not.toBeInTheDocument();
   });
 
   it("keeps the loaded rows and offers a retry when a page fails", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&type=event");
     search
       .mockResolvedValueOnce(response({ hits: [eventHit()], cursor: "c1" }))
       .mockRejectedValueOnce(new ApiError("Vidit does not respond.", 0, null, false, NO_ANSWER));
@@ -372,9 +490,40 @@ describe("the search page's paging", () => {
   });
 });
 
+describe("the search page's states", () => {
+  it("focuses the search field and shows no text before a query", () => {
+    searchParams = new URLSearchParams();
+    render(<SearchPage />);
+
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    expect(searchSections).not.toHaveBeenCalled();
+    expect(screen.queryByText(/search|type/i, { selector: "p" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the shown results while the next ones load", async () => {
+    searchSections.mockResolvedValueOnce(sections([eventHit()]));
+    render(<SearchPage />);
+    await screen.findByText("Kakhovka spillway");
+
+    searchSections.mockReturnValueOnce(new Promise(() => {}));
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "kakhovka spill" } });
+    await waitFor(() => expect(searchSections).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByText("Kakhovka spillway")).toBeInTheDocument();
+    expect(screen.queryByText(/No matches/)).not.toBeInTheDocument();
+  });
+
+  it("says No matches on one line when nothing matches", async () => {
+    render(<SearchPage />);
+
+    expect(await screen.findByText("No matches.")).toBeInTheDocument();
+    expect(screen.queryByText(/Did you mean/)).not.toBeInTheDocument();
+  });
+});
+
 describe("the search page's filter rail", () => {
   it("puts the panel in the rail and applies the dialog's dates at once", async () => {
-    search.mockResolvedValue(response({ hits: [eventHit()] }));
+    searchSections.mockResolvedValue(sections([eventHit()]));
 
     render(<SearchPage />);
     expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
@@ -389,7 +538,9 @@ describe("the search page's filter rail", () => {
     expect(within(dialog).queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
 
     await waitFor(() =>
-      expect(search).toHaveBeenCalledWith(expect.objectContaining({ eventFrom: "2026-06-01" })),
+      expect(searchSections).toHaveBeenCalledWith(
+        expect.objectContaining({ eventFrom: "2026-06-01" }),
+      ),
     );
     fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -398,7 +549,7 @@ describe("the search page's filter rail", () => {
 
   it("heads the rail with the active filters, minus the author its Author section names", async () => {
     searchParams = new URLSearchParams("q=kakhovka&tag=drone&author=ana");
-    search.mockResolvedValue(response({ hits: [eventHit()] }));
+    searchSections.mockResolvedValue(sections([eventHit()]));
     render(<SearchPage />);
 
     expect(await within(rail()).findByTitle("Remove filter Tags: drone")).toBeInTheDocument();
@@ -409,14 +560,14 @@ describe("the search page's filter rail", () => {
 });
 
 describe("the approval filters on the search page", () => {
-  it("reads them off the URL, sends them, shows their pills and writes them back", async () => {
+  it("reads them off the URL, sends them and shows their pills", async () => {
     searchParams = new URLSearchParams("approved=true&approved_by_org=kakhovka-watch");
-    search.mockResolvedValue(response({ query: "", hits: [eventHit()] }));
+    searchSections.mockResolvedValue(sections([eventHit()], { query: "" }));
 
     render(<SearchPage />);
 
     await waitFor(() =>
-      expect(search).toHaveBeenCalledWith(
+      expect(searchSections).toHaveBeenCalledWith(
         expect.objectContaining({
           approved: true,
           approvedBy: { kind: "organization", slug: "kakhovka-watch", name: "kakhovka-watch" },
@@ -426,13 +577,10 @@ describe("the approval filters on the search page", () => {
     expect(screen.getAllByTitle("Remove filter Approved by: kakhovka-watch").length).toBeGreaterThan(0);
     expect(screen.getAllByTitle("Remove filter Approvals: Approved only").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Filters (2)" })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(replace).toHaveBeenCalledWith("/search?approved=true&approved_by_org=kakhovka-watch"),
-    );
   });
 
   it("commits Approved only from the panel into the URL", async () => {
-    search.mockResolvedValue(response({ hits: [eventHit()] }));
+    searchSections.mockResolvedValue(sections([eventHit()]));
 
     render(<SearchPage />);
     await screen.findByText("Kakhovka spillway");
@@ -456,8 +604,9 @@ describe("the selection", () => {
 
   beforeEach(() => {
     currentUser = { id: OWNER.id, username: OWNER.username };
+    searchParams = new URLSearchParams("q=kakhovka&type=event");
     countCollectableMatches.mockResolvedValue(7);
-    search.mockResolvedValue(response({ hits: [eventHit(), siteHit(), theirs()] }));
+    search.mockResolvedValue(response({ hits: [eventHit(), theirs()] }));
   });
 
   afterEach(() => {
@@ -480,7 +629,6 @@ describe("the selection", () => {
       await screen.findByRole("checkbox", { name: "Select Kakhovka spillway" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "Select Their strike" })).not.toBeInTheDocument();
-    // The site row keeps the empty column, so it lines up with the events.
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
     // Mounted but inert: the header keeps its height for when a row is picked.
     expect(actions()).toHaveAttribute("inert");
@@ -508,7 +656,7 @@ describe("the selection", () => {
   });
 
   it("selects every match from the head checkbox, with the statuses of the pick alone", async () => {
-    searchParams = new URLSearchParams("q=kakhovka&type=event&type=site&status=geolocated");
+    searchParams = new URLSearchParams("q=kakhovka&type=event&status=geolocated");
     render(<SearchPage />);
     const head = await screen.findByRole("checkbox", { name: "Select all" });
     // The box stays disabled until the match count lands.
@@ -563,6 +711,16 @@ describe("the selection", () => {
     expect(own()).toBeChecked();
   });
 
+  it("offers no checkbox on the sections", async () => {
+    searchParams = new URLSearchParams("q=kakhovka");
+    searchSections.mockResolvedValue(sections([eventHit(), siteHit()]));
+    render(<SearchPage />);
+
+    expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(actions()).not.toBeInTheDocument();
+  });
+
   it("starts over when the query changes", async () => {
     render(<SearchPage />);
     await screen.findByRole("checkbox", { name: "Select all" });
@@ -581,7 +739,6 @@ describe("the selection", () => {
 describe("the shortcut under the search field", () => {
   it("opens a typed coordinate pair on the map", async () => {
     searchParams = new URLSearchParams("q=31.46939%2C+34.38510");
-    search.mockResolvedValue(response({ query: "31.46939, 34.38510" }));
     render(<SearchPage />);
 
     const row = screen.getByRole("link", { name: /31\.469390, 34\.385100/ });
@@ -593,7 +750,7 @@ describe("the shortcut under the search field", () => {
 
   it("leads to the analyst a query names exactly", async () => {
     searchParams = new URLSearchParams("q=%40KAKHOVKA_WATCH");
-    search.mockResolvedValue(response({ query: "@KAKHOVKA_WATCH", hits: [userHit()] }));
+    searchSections.mockResolvedValue(sections([userHit()], { query: "@KAKHOVKA_WATCH" }));
     render(<SearchPage />);
 
     const rows = await screen.findAllByRole("link", { name: "kakhovka_watch" });
@@ -603,7 +760,7 @@ describe("the shortcut under the search field", () => {
 
   it("leads to the organization a query names by its name", async () => {
     searchParams = new URLSearchParams("q=kakhovka+watch");
-    search.mockResolvedValue(response({ query: "kakhovka watch", hits: [orgHit()] }));
+    searchSections.mockResolvedValue(sections([orgHit()], { query: "kakhovka watch" }));
     render(<SearchPage />);
 
     const rows = await screen.findAllByRole("link", { name: "Kakhovka Watch" });
@@ -616,21 +773,21 @@ describe("a search that finds nothing", () => {
   it("offers the closest spelling, and a click searches it", async () => {
     searchParams = new URLSearchParams("q=Khan+Younis");
     const found = eventHit({ title: "Khan Yunis", title_highlight: "Khan Yunis" });
-    search.mockImplementation(({ q }: { q: string }) =>
+    searchSections.mockImplementation(({ q }: { q: string }) =>
       Promise.resolve(
         q === "Khan Yunis"
-          ? response({ query: q, hits: [found] })
-          : response({ query: q, suggestion: "Khan Yunis" }),
+          ? sections([found], { query: q })
+          : sections([], { query: q, suggestion: "Khan Yunis" }),
       ),
     );
     render(<SearchPage />);
 
     const offer = await screen.findByRole("button", { name: "Khan Yunis" });
-    expect(screen.getByText(/Did you mean/)).toBeInTheDocument();
+    expect(screen.getByText(/No matches\. Did you mean/)).toBeInTheDocument();
     fireEvent.click(offer);
 
     await waitFor(() =>
-      expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ q: "Khan Yunis" })),
+      expect(searchSections).toHaveBeenLastCalledWith(expect.objectContaining({ q: "Khan Yunis" })),
     );
     expect(await screen.findByRole("link", { name: /^Khan Yunis/ })).toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toHaveValue("Khan Yunis");

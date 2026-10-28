@@ -498,8 +498,8 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/proof.tsx::LOCAL_STORAGE_URL_PREFIX` | `storage.LOCAL_STORAGE_URL_PREFIX` | a development proof image fails the image source check |
 | `lib/search.ts::AUTHOR_FILTER_RE` | `event_filters.AUTHOR_FILTER_PATTERN` | author filter parses differently |
 | `components/filters/EventFilterSections.tsx` media options, `FILTER_STATUSES` | `event_filters.MEDIA_TYPES`; `STATUSES` minus `closed`, in declared order | filter offers a value the API refuses |
-| `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *Show more* expands a different set than the preview |
-| `components/collections/CollectionsSection.tsx` link `type=collection` | `search._TYPE_FILTERS`, where `author` narrows collections | *Show more* lands on an empty list |
+| `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *See all* expands a different set than the preview |
+| `components/collections/CollectionsSection.tsx` link `type=collection` | `search._TYPE_FILTERS`, where `author` narrows collections | *See all* lands on an empty list |
 | `lib/search.ts::SEARCH_KIND_SECTIONS` | `search._TYPE_FILTERS` | the search panel offers a filter that leaves the picked kind out, or hides one that narrows it |
 | `lib/archive.ts` keep-allowlist, root discovery, `MAX_UPLOAD_BYTES` | `tweet_ingest/archive_zip.py` | client trims files the server needs, or uploads an export it refuses |
 | `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`) | a source image requests a derivative that does not exist (403) |

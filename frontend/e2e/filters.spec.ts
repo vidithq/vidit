@@ -50,10 +50,10 @@ const PAGES = [
   },
   {
     name: "search",
-    path: "/search",
+    path: "/search?q=rail",
     signedIn: false,
     pick: pickConflict,
-    column: (page: Page) => page.getByText(/^Start typing to search/),
+    column: (page: Page) => page.getByRole("link", { name: REQUESTED_EVENT.title }),
   },
 ];
 

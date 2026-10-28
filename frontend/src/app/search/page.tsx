@@ -10,7 +10,7 @@ import {
   useSearchSelection,
 } from "@/components/collections/SearchSelection";
 import {
-  SEARCH_KIND_OPTIONS,
+  SEARCH_KINDS,
   SEARCH_KIND_SECTIONS,
   exactProfile,
   hitsOf,
@@ -18,6 +18,7 @@ import {
   readShowPick,
   search,
   searchPageParams,
+  searchSections,
   searchTypes,
 } from "@/lib/search";
 import { GO_TO_ZOOM, formatCoordinates, parsePastedCoordinates } from "@/lib/coordinates";
@@ -25,12 +26,13 @@ import { showFieldScope } from "@/lib/showField";
 import { useMapState } from "@/contexts/MapStateContext";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { Item } from "@/components/ui/Item";
-import { searchHitItem } from "@/lib/items";
-import type { SearchHitType, SearchResponse } from "@/types";
+import { searchHitItem, searchTypeLabel } from "@/lib/items";
+import type { SearchHit, SearchHitType, SearchResponse, SearchSection } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
-import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
+import { LoadMoreRow, SeeAllLink } from "@/components/ui/LoadMoreRow";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
@@ -61,12 +63,10 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { readError, type ReadableError } from "@/lib/errors";
 
 const STATUS_VALUES = SHOW_OPTIONS.map(([value]) => value);
-const KIND_LABELS: Record<string, string> = Object.fromEntries(SEARCH_KIND_OPTIONS);
-const SHOW_CHIPS = [...SHOW_OPTIONS, ...SEARCH_KIND_OPTIONS].map(([id, label]) => ({
-  id,
-  name: id,
-  label,
-}));
+const SHOW_CHIPS = [
+  ...SHOW_OPTIONS,
+  ...SEARCH_KINDS.map((kind) => [kind, searchTypeLabel(kind)] as const),
+].map(([id, label]) => ({ id, name: id, label }));
 
 // The Show field heads the panel through `lead`, so the panel's own status-only one stays off.
 const EVENT_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "show");
@@ -99,7 +99,52 @@ function scoped(pick: SearchPick): SearchPick {
   };
 }
 
+/** The pick of a section's See all: that kind alone. Events keep the statuses the pick names,
+ *  or take every status. */
+function seeAllPick(pick: SearchPick, type: SearchHitType): SearchPick {
+  if (type === "event") {
+    const show = pick.values.show.length > 0 ? pick.values.show : STATUS_VALUES;
+    return { ...pick, kinds: [], values: { ...pick.values, show } };
+  }
+  return scoped({ ...pick, kinds: [type], values: { ...pick.values, show: [] } });
+}
+
+/** The query and the pick a URL names. */
+function readPage(params: URLSearchParams): { q: string; pick: SearchPick } {
+  const { eventFrom, eventTo, addedFrom, addedTo, ...read } = readEventFilterParams(params);
+  const shown = readShowPick(params, STATUS_VALUES);
+  return {
+    q: params.get("q") ?? "",
+    pick: scoped({
+      // The search list serves no location-guess predicate, so the panel never offers it here.
+      values: { ...read, show: shown.statuses, locationGuess: [] },
+      dates: { eventFrom, eventTo, addedFrom, addedTo },
+      kinds: shown.kinds,
+    }),
+  };
+}
+
+/** The page's query string for a query and a pick. */
+function pageQuery(q: string, pick: SearchPick): string {
+  return searchPageParams(q, pick.kinds, { ...pick.values, ...pick.dates }).toString();
+}
+
+const pageHref = (query: string) => (query ? `/search?${query}` : "/search");
+
+/** The Show pick of a query string: what a history entry stands for. */
+function shownKinds(query: string): string {
+  const params = new URLSearchParams(query);
+  return [...params.getAll("type"), ...params.getAll("status")].join(",");
+}
+
 type SearchRequest = Parameters<typeof search>[0];
+
+/** What the page shows: the sections of every kind the pick lists, or the list of its one kind.
+ *  `request` is the request behind it, which a further page repeats. */
+type Results = { request: SearchRequest; suggestion: string | null | undefined } & (
+  | { mode: "sections"; sections: SearchSection[] }
+  | { mode: "list"; page: SearchResponse }
+);
 
 // Debounce window: live-feeling, but not one request per keystroke.
 const DEBOUNCE_MS = 300;
@@ -117,34 +162,37 @@ function SearchPageBody() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // The URL is the source of truth so shared links land in the same view; inputs bind to local
-  // state so typing isn't gated on URL round-trips.
-  const initialQ = searchParams.get("q") ?? "";
-  const { eventFrom, eventTo, addedFrom, addedTo, ...read } = readEventFilterParams(searchParams);
-  const shown = readShowPick(searchParams, STATUS_VALUES);
-  const initialPick = scoped({
-    // The search list serves no location-guess predicate, so the panel never offers it here.
-    values: { ...read, show: shown.statuses, locationGuess: [] },
-    dates: { eventFrom, eventTo, addedFrom, addedTo },
-    kinds: shown.kinds,
-  });
+  // The URL is the source of truth, so shared links and Back land in the same view; inputs bind
+  // to local state so typing isn't gated on URL round-trips.
+  const initial = readPage(searchParams);
 
-  const [queryInput, setQueryInput] = useState(initialQ);
-  const [pick, setPick] = useState<SearchPick>(initialPick);
+  const [queryInput, setQueryInput] = useState(initial.q);
+  const [pick, setPick] = useState<SearchPick>(initial.pick);
   const { values, dates, kinds } = pick;
   const update = (next: Partial<SearchPick>) => setPick((p) => scoped({ ...p, ...next }));
 
   // The debounced snapshot the fetch and URL run on, so typing doesn't fire a request per keystroke.
-  const [committed, setCommitted] = useState({ q: initialQ, ...initialPick });
+  const [committed, setCommitted] = useState({ q: initial.q, ...initial.pick });
 
-  const [results, setResults] = useState<SearchResponse | null>(null);
+  // The query string the page last wrote or read, so its own write is not read back as a move.
+  const written = useRef(pageQuery(initial.q, initial.pick));
+  const urlQuery = searchParams.toString();
+  // Back, Forward and a See all link move the URL: the page takes the view it names at once.
+  useEffect(() => {
+    const read = readPage(new URLSearchParams(urlQuery));
+    const query = pageQuery(read.q, read.pick);
+    if (query === written.current) return;
+    written.current = query;
+    setQueryInput(read.q);
+    setPick(read.pick);
+    setCommitted({ q: read.q, ...read.pick });
+  }, [urlQuery]);
+
+  const [results, setResults] = useState<Results | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ReadableError | null>(null);
   // Bumped by Retry, to run the same search again.
   const [attempt, setAttempt] = useState(0);
-  // The request behind `results`: a further page must repeat its query and filters, not the
-  // live inputs, which may have moved on since.
-  const resultsRequest = useRef<SearchRequest | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<ReadableError | null>(null);
 
@@ -176,7 +224,7 @@ function SearchPageBody() {
     ...kinds.map((kind) => ({
       key: `kind:${kind}`,
       filter: FILTER_NAMES.show,
-      label: KIND_LABELS[kind],
+      label: searchTypeLabel(kind),
       onRemove: () => update({ kinds: kinds.filter((k) => k !== kind) }),
     })),
     ...filterPills.slice(statusPillCount),
@@ -187,7 +235,6 @@ function SearchPageBody() {
     ),
   ];
   const filterCount = countActiveFilters(values, dates) + kinds.length;
-  const hasActiveFilters = filterCount > 0;
 
   // Monotonic request token: late responses apply only if still latest.
   const latestRequestId = useRef<number>(0);
@@ -253,8 +300,9 @@ function SearchPageBody() {
     />
   );
 
-  // Debounced commit of inputs to the snapshot and URL via `replace`, so Back doesn't fill
-  // with intermediate states.
+  // Debounced commit of inputs to the snapshot and the URL. A new Show pick is a history entry;
+  // typing and the other filters replace the current one, so Back doesn't fill with
+  // intermediate states.
   useDebouncedEffect(
     () => {
       // Identity-preserving: if nothing changed, keep the previous object so the fetch doesn't
@@ -263,18 +311,25 @@ function SearchPageBody() {
         const next = { q: queryInput, ...pick };
         return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       });
-      const qs = searchPageParams(queryInput, kinds, { ...values, ...dates }).toString();
-      router.replace(qs ? `/search?${qs}` : "/search");
+      const query = pageQuery(queryInput, pick);
+      if (query === written.current) return;
+      const moved = shownKinds(query) !== shownKinds(written.current);
+      written.current = query;
+      if (moved) router.push(pageHref(query));
+      else router.replace(pageHref(query));
     },
     [queryInput, pick, router],
     DEBOUNCE_MS,
   );
 
-  // Fetch whenever the committed snapshot changes. Any active filter with an empty query is a
-  // valid search (browse mode, the profile's "Show more" landing).
+  // Fetch whenever the committed snapshot changes. A pick of one kind reads its ranked list, any
+  // other pick the sections of its kinds. Any active filter with an empty query is a valid search
+  // (browse mode, the profile's "See all" landing). The shown results stay until the next ones
+  // land, so typing never blanks the page.
   useEffect(() => {
     const q = committed.q.trim();
-    if (!q && !hasAnyFilter(committed.values, committed.dates) && committed.kinds.length === 0) {
+    if (!q && !hasAnyFilter(committed.values, committed.dates)) {
+      latestRequestId.current++;
       setResults(null);
       setLoading(false);
       setError(null);
@@ -289,12 +344,25 @@ function SearchPageBody() {
       ...committed.values,
       ...committed.dates,
     };
-    search(request)
-      .then((response) => {
+    const read: Promise<Results> =
+      request.types?.length === 1
+        ? search(request).then((page) => ({
+            mode: "list",
+            request,
+            page,
+            suggestion: page.suggestion,
+          }))
+        : searchSections(request).then((data) => ({
+            mode: "sections",
+            request,
+            sections: data.sections,
+            suggestion: data.suggestion,
+          }));
+    read
+      .then((next) => {
         // Stale response (a newer request started): drop it.
         if (requestId !== latestRequestId.current) return;
-        resultsRequest.current = request;
-        setResults(response);
+        setResults(next);
         setMoreError(null);
         setLoading(false);
       })
@@ -305,31 +373,44 @@ function SearchPageBody() {
       });
   }, [committed, attempt]);
 
-  const activeQuery = committed.q;
   const { setViewState, setSelectedId } = useMapState();
   const point = parsePastedCoordinates(queryInput);
+  const shownHits: SearchHit[] = !results
+    ? []
+    : results.mode === "list"
+      ? results.page.hits
+      : results.sections.flatMap((section) => section.hits);
   const named =
-    results && queryInput.trim() === activeQuery.trim()
-      ? exactProfile(activeQuery, results.hits)
+    results && queryInput.trim() === results.request.q
+      ? exactProfile(results.request.q, shownHits)
       : null;
+  // The bulk add serves the list of events alone, where Select all reads as every match.
   const selection = useSearchSelection(
     { q: committed.q, ...committed.values, ...committed.dates },
-    results ? hitsOf(results.hits, "event") : [],
+    results?.mode === "list" ? hitsOf(results.page.hits, "event") : [],
   );
 
-  // Appends the next page. A page that lands after a new search started is dropped, like a
-  // stale first page.
+  // Appends the next page, with the request that minted the cursor rather than the live inputs,
+  // which may have moved on since. A page that lands after a new search started is dropped, like
+  // a stale first page.
   const loadMore = () => {
-    const cursor = results?.cursor;
-    const request = resultsRequest.current;
-    if (!cursor || !request || loadingMore) return;
+    if (results?.mode !== "list" || !results.page.cursor || loadingMore) return;
+    const { request } = results;
+    const cursor = results.page.cursor;
     const requestId = latestRequestId.current;
     setLoadingMore(true);
     search({ ...request, cursor })
       .then((page) => {
         if (requestId !== latestRequestId.current) return;
         setMoreError(null);
-        setResults((prev) => prev && { ...prev, hits: [...prev.hits, ...page.hits], cursor: page.cursor });
+        setResults((prev) =>
+          prev?.mode === "list"
+            ? {
+                ...prev,
+                page: { ...prev.page, hits: [...prev.page.hits, ...page.hits], cursor: page.cursor },
+              }
+            : prev,
+        );
       })
       .catch((err: unknown) => {
         if (requestId !== latestRequestId.current) return;
@@ -344,7 +425,17 @@ function SearchPageBody() {
     setCommitted({ q, ...pick });
   };
 
-  const searching = !!(queryInput.trim() || hasActiveFilters);
+  // Emptiness gates read the LIVE inputs, so clearing the field doesn't flash stale results
+  // under the empty state for a debounce window.
+  const searching = !!(queryInput.trim() || hasAnyFilter(values, dates));
+  const empty =
+    !!results &&
+    (results.mode === "list" ? results.page.hits.length === 0 : results.sections.length === 0);
+  const committedPick: SearchPick = {
+    values: committed.values,
+    dates: committed.dates,
+    kinds: committed.kinds,
+  };
 
   return (
     <PageShell
@@ -395,25 +486,15 @@ function SearchPageBody() {
         {panel}
       </FilterBar>
 
-      {searching && results && <SelectAllRow selection={selection} />}
+      {searching && results?.mode === "list" && <SelectAllRow selection={selection} />}
 
       <ErrorNotice error={error} onRetry={() => setAttempt((n) => n + 1)} />
 
-      {/* Emptiness gates read the LIVE inputs, so clearing filters doesn't flash stale results
-          under the start-typing prompt for a debounce window. */}
-      {!searching && (
-        <EmptyState>
-          Start typing to search across events, sites, collections, analysts and organizations.
-        </EmptyState>
-      )}
+      {!searching && <EmptyState variant="plain" icon={SearchIcon} />}
 
-      {searching && results && results.hits.length === 0 && !loading && (
+      {searching && empty && !loading && (
         <EmptyState>
-          No matches
-          {activeQuery.trim() && (
-            <> for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span></>
-          )}
-          {hasActiveFilters && <> with the active filters</>}.
+          No matches.
           {results.suggestion && (
             <>
               {" "}Did you mean{" "}
@@ -430,16 +511,30 @@ function SearchPageBody() {
         </EmptyState>
       )}
 
-      {searching && results && results.hits.length > 0 && (
-        <div className="space-y-1.5">
-          {results.hits.map((hit) => (
+      {searching && results?.mode === "sections" && !empty && (
+        <div className="space-y-6" aria-busy={loading}>
+          {results.sections.map((section) => (
+            <ResultSection
+              key={section.type}
+              section={section}
+              seeAllHref={pageHref(
+                pageQuery(results.request.q, seeAllPick(committedPick, section.type)),
+              )}
+            />
+          ))}
+        </div>
+      )}
+
+      {searching && results?.mode === "list" && !empty && (
+        <div className="space-y-1.5" aria-busy={loading}>
+          {results.page.hits.map((hit) => (
             <SelectableHit key={`${hit.type}:${hit.id}`} hit={hit} selection={selection}>
               <Item variant="list" {...searchHitItem(hit)} />
             </SelectableHit>
           ))}
           <LoadMoreRow
             walk={{
-              hasMore: results.cursor !== null,
+              hasMore: results.page.cursor !== null,
               loadingMore,
               loadMore,
               error: moreError,
@@ -448,6 +543,24 @@ function SearchPageBody() {
         </div>
       )}
     </PageShell>
+  );
+}
+
+/** One kind's top hits under its name, with See all while the kind holds more. */
+function ResultSection({ section, seeAllHref }: { section: SearchSection; seeAllHref: string }) {
+  const label = searchTypeLabel(section.type);
+  return (
+    <section aria-label={label} className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <SectionEyebrow title={label} margin="none" />
+        {section.cursor !== null && <SeeAllLink href={seeAllHref} className="shrink-0" />}
+      </div>
+      <div className="space-y-1.5">
+        {section.hits.map((hit) => (
+          <Item key={hit.id} variant="list" {...searchHitItem(hit)} />
+        ))}
+      </div>
+    </section>
   );
 }
 

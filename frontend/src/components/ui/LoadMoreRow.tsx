@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { ActionIcon, Button, buttonClasses } from "./Button";
 import { ErrorNotice } from "./ErrorNotice";
 
-/** The one label of the control that shows more of a list, in place or on another page. */
+/** The label of the control that grows a list in place. */
 const SHOW_MORE = "Show more";
 
 type CursorWalk = Pick<
@@ -59,18 +59,19 @@ export function LoadMoreRow({
 }
 
 /**
- * `<LoadMoreRow>`'s control as a link, for a preview whose whole list lives on another page (a
- * profile block that opens in search): the same label and the same secondary button, so the two
- * read as one control. `className` places it (`shrink-0` in a heading row).
+ * **See all**: the link from a preview to its whole list, on another page or in another view of
+ * the same page (a profile block that opens in search, a search section that opens its kind). The
+ * secondary button of `<LoadMoreRow>`, so the two read as one family. `className` places it
+ * (`shrink-0` in a heading row).
  */
-export function ShowMoreLink({ href, className }: { href: string; className?: string }) {
+export function SeeAllLink({ href, className }: { href: string; className?: string }) {
   return (
     <Link
       href={href}
       className={buttonClasses("secondary", { className: cn("whitespace-nowrap", className) })}
     >
-      <ActionIcon action="more" />
-      {SHOW_MORE}
+      <ActionIcon action="seeAll" />
+      See all
     </Link>
   );
 }

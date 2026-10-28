@@ -1,6 +1,6 @@
 
 import { Card } from "@/components/ui/Card";
-import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
+import { SeeAllLink } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Item } from "@/components/ui/Item";
 import { eventItem } from "@/lib/items";
@@ -39,7 +39,7 @@ export function OpenRequests({
         {/* `status=requested` so the expansion states its narrowing rather than inheriting it: it lands as
             a removable chip and the link stays honest whatever the search group serves. Same builder as
             the Insights tiles. */}
-        <ShowMoreLink
+        <SeeAllLink
           href={profileSearchHref(profile.username, { status: "requested" })}
           className="shrink-0"
         />

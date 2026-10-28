@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
-import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
+import { SeeAllLink } from "@/components/ui/LoadMoreRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Item } from "@/components/ui/Item";
@@ -51,7 +51,7 @@ export function RecentSubmissions({
           // Mirrors backend `event_filters.published_events()`: `status=geolocated` makes the expansion serve the
           // same work as the block above (search's located group otherwise widens to machine detections). In the
           // panel's own vocabulary, so it lands as a removable chip. Same builder as the Insights tiles.
-          <ShowMoreLink
+          <SeeAllLink
             href={profileSearchHref(profile.username, { status: "geolocated" })}
             className="shrink-0"
           />

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LoadMoreRow, ShowMoreLink } from "./LoadMoreRow";
+import { LoadMoreRow, SeeAllLink } from "./LoadMoreRow";
 
 const walk = (extra: Partial<Parameters<typeof LoadMoreRow>[0]["walk"]> = {}) => ({
   hasMore: true,
@@ -65,11 +65,11 @@ describe("LoadMoreRow", () => {
   });
 });
 
-describe("ShowMoreLink", () => {
-  it("is the same Show more control, as a link to the whole list", () => {
-    render(<ShowMoreLink href="/search?type=event&author=ana" />);
+describe("SeeAllLink", () => {
+  it("links a preview to its whole list", () => {
+    render(<SeeAllLink href="/search?type=event&author=ana" />);
 
-    const link = screen.getByRole("link", { name: "Show more" });
+    const link = screen.getByRole("link", { name: "See all" });
     expect(link).toHaveAttribute("href", "/search?type=event&author=ana");
   });
 });

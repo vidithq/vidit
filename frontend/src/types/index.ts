@@ -122,3 +122,8 @@ export type SearchResponse = components["schemas"]["SearchResponse"];
 export type SearchHit = SearchResponse["hits"][number];
 
 export type SearchHitType = SearchHit["type"];
+
+/** `GET /search/sections`: one section per type with a hit. */
+export type SearchSections = components["schemas"]["SearchSections"];
+
+export type SearchSection = SearchSections["sections"][number];

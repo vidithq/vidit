@@ -29,6 +29,7 @@ import type {
   EventDetail,
   EventListItem,
   SearchResponse,
+  SearchSections,
   Tag,
   User,
 } from "@/types";
@@ -655,4 +656,53 @@ export const SITE: Site = {
   ],
   created_at: "2026-01-01T10:00:00Z",
   updated_at: "2026-01-01T10:00:00Z",
+};
+
+/** The search page's sections for a query: the open request among the events, with more to
+ *  see, and the site with the longest name, whose rows are the narrowest at phone width. */
+export const SEARCH_SECTIONS: SearchSections = {
+  sections: [
+    {
+      type: "event",
+      hits: [
+        {
+          type: "event",
+          id: REQUESTED_EVENT.id,
+          title: REQUESTED_EVENT.title,
+          title_highlight: REQUESTED_EVENT.title.replace("rail", "\u0002rail\u0003"),
+          status: "requested",
+          occurred_date: REQUESTED_EVENT.occurred_date,
+          created_at: "2025-01-02T10:00:00Z",
+          lat: null,
+          lng: null,
+          is_graphic: false,
+          owner: REQUESTED_EVENT.owner,
+          geolocators: [],
+          media: [],
+          tags: REQUESTED_EVENT.tags,
+        },
+      ],
+      total: 7,
+      cursor: "next-events",
+    },
+    {
+      type: "site",
+      hits: [
+        {
+          type: "site",
+          id: SITE.id,
+          name: SITE.name,
+          name_highlight: SITE.name,
+          kind: SITE.kind,
+          owner: SITE.owner,
+          last_source: SITE.last_source,
+          media: SITE.media ? [SITE.media] : [],
+        },
+      ],
+      total: 1,
+      cursor: null,
+    },
+  ],
+  suggestion: null,
+  query: "rail",
 };

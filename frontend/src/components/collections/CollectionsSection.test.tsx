@@ -115,7 +115,7 @@ describe("CollectionsSection", () => {
     );
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
     expect(
-      screen.queryByRole("link", { name: "Show more" }),
+      screen.queryByRole("link", { name: "See all" }),
     ).not.toBeInTheDocument();
   });
 
@@ -126,7 +126,7 @@ describe("CollectionsSection", () => {
 
     // The section previews four; search walks the shelf, scoped to this analyst.
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
-    expect(screen.getByRole("link", { name: "Show more" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "See all" })).toHaveAttribute(
       "href",
       "/search?type=collection&author=ana",
     );

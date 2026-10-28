@@ -7,30 +7,44 @@ import type {
   SearchHitType,
   SearchOrganizationHit,
   SearchResponse,
+  SearchSections,
   SearchUserHit,
 } from "@/types";
+
+type SearchOptions = { q: string; types?: SearchHitType[] } & EventFilterParams;
+
+function searchQuery(opts: SearchOptions, extra: Record<string, string>): string {
+  const params = new URLSearchParams({ q: opts.q, ...extra });
+  appendSearchTypes(params, opts.types ?? []);
+  appendEventFilterParams(params, opts);
+  return params.toString();
+}
 
 /** `GET /search`: one ranked list. Debouncing is the caller's job; the endpoint short-circuits
  *  empty queries. `types` picks the hit types (every type when empty), `show` narrows the events
  *  to those statuses, and the other filters follow the rule `docs/api.md` states. With an empty
- *  `q` and any filter the backend browses the filtered view (the profile's "Show more").
+ *  `q` and any filter the backend browses the filtered view (the profile's "See all").
  *  `cursor` is a response's `cursor`, sent with the options that minted it. */
 export function search(
-  opts: { q: string; types?: SearchHitType[]; limit?: number; cursor?: string } & EventFilterParams,
+  opts: SearchOptions & { limit?: number; cursor?: string },
 ): Promise<SearchResponse> {
-  const params = new URLSearchParams({ q: opts.q, limit: String(opts.limit ?? 20) });
-  appendSearchTypes(params, opts.types ?? []);
-  if (opts.cursor) params.set("cursor", opts.cursor);
-  appendEventFilterParams(params, opts);
-  return apiFetch<SearchResponse>(`/search?${params.toString()}`);
+  const extra: Record<string, string> = { limit: String(opts.limit ?? 20) };
+  if (opts.cursor) extra.cursor = opts.cursor;
+  return apiFetch<SearchResponse>(`/search?${searchQuery(opts, extra)}`);
 }
 
-/** The Show chips that name a type other than events, after the status chips, with their labels. */
-export const SEARCH_KIND_OPTIONS: ReadonlyArray<[SearchHitType, string]> = [
-  ["site", "Sites"],
-  ["collection", "Collections"],
-  ["user", "Analysts"],
-  ["organization", "Organizations"],
+/** `GET /search/sections`: the top hits of each type, with the options of `search`. A section's
+ *  `cursor` continues its type's list through `search`. */
+export function searchSections(opts: SearchOptions): Promise<SearchSections> {
+  return apiFetch<SearchSections>(`/search/sections?${searchQuery(opts, {})}`);
+}
+
+/** The types other than events, in the order of their Show chips and sections. */
+export const SEARCH_KINDS: ReadonlyArray<Exclude<SearchHitType, "event">> = [
+  "site",
+  "collection",
+  "user",
+  "organization",
 ];
 
 /** The filter sections each kind answers, the rest leaving it out of the list. Mirrors backend
@@ -80,7 +94,7 @@ export function readShowPick(
 ): { statuses: string[]; kinds: SearchHitType[] } {
   const types = params.getAll("type");
   const named = params.getAll("status").filter((s) => statusOptions.includes(s));
-  const kinds = SEARCH_KIND_OPTIONS.map(([kind]) => kind).filter((kind) => types.includes(kind));
+  const kinds = SEARCH_KINDS.filter((kind) => types.includes(kind));
   const statuses = named.length === 0 && types.includes("event") ? [...statusOptions] : named;
   return { statuses, kinds };
 }
@@ -211,7 +225,7 @@ export function hitsOf<T extends SearchHitType>(
 }
 
 /** A `/search` URL scoped to one analyst: the profile's one entry into the filtered catalogue
- *  (Insights tiles, *Show more* links). `author` is an exact username match
+ *  (Insights tiles, *See all* links). `author` is an exact username match
  *  (`services/event_filters.apply_author_filter`). `type` defaults to the analyst's events;
  *  `collection` lists the analyst's shelf, which `author` narrows to the collections they own.
  *  `filters` takes the search page's URL vocabulary, one value per key. */

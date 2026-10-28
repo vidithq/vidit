@@ -16,14 +16,15 @@ export type ItemKind = "event" | "request" | "site" | "collection" | "analyst" |
 
 export type ItemVariant = "compact" | "list" | "card";
 
-/** The word that opens an item's detail line, and the icon of its empty media slot. */
-export const ITEM_KINDS: Record<ItemKind, { label: string; icon: LucideIcon }> = {
-  event: { label: "Event", icon: ACTION_ICONS.geolocate },
-  request: { label: "Request", icon: ACTION_ICONS.request },
-  site: { label: "Site", icon: ACTION_ICONS.site },
-  collection: { label: "Collection", icon: ACTION_ICONS.collect },
-  analyst: { label: "Analyst", icon: Users },
-  organization: { label: "Organization", icon: Building2 },
+/** The word that opens an item's detail line, its plural that heads a list of the kind, and the
+ *  icon of its empty media slot. */
+export const ITEM_KINDS: Record<ItemKind, { label: string; plural: string; icon: LucideIcon }> = {
+  event: { label: "Event", plural: "Events", icon: ACTION_ICONS.geolocate },
+  request: { label: "Request", plural: "Requests", icon: ACTION_ICONS.request },
+  site: { label: "Site", plural: "Sites", icon: ACTION_ICONS.site },
+  collection: { label: "Collection", plural: "Collections", icon: ACTION_ICONS.collect },
+  analyst: { label: "Analyst", plural: "Analysts", icon: Users },
+  organization: { label: "Organization", plural: "Organizations", icon: Building2 },
 };
 
 /** What fills the media slot: a file, a collection's mosaic, or a profile picture. */

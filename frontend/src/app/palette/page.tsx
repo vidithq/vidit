@@ -96,7 +96,7 @@ import { ToggleRow } from "@/components/ui/ToggleRow";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { SwatchPicker } from "@/components/ui/SwatchPicker";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { LoadMoreRow, ShowMoreLink } from "@/components/ui/LoadMoreRow";
+import { LoadMoreRow, SeeAllLink } from "@/components/ui/LoadMoreRow";
 import { Avatar } from "@/components/ui/Avatar";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { AvatarStack } from "@/components/ui/AvatarStack";
@@ -255,6 +255,7 @@ const ACTION_LABELS: Record<ButtonAction, string> = {
   role: "Make org manager",
   save: "Save version 2",
   search: "Your geolocations",
+  seeAll: "See all",
   send: "Send reset link",
   show: "Restore",
   signIn: "Sign in",
@@ -1940,7 +1941,7 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<LoadMoreRow> / <ShowMoreLink>" usage="The one Show more control, a secondary button with one label wherever a list has more. <LoadMoreRow> is the foot of a paged list that grows in place (requests, feed, version history, notifications, an organization's approvals, the admin reports queue and onboarding, the search page's Geolocations group, the create page's matched geolocations, and the detections queue, whose pages are numbered): Show more while a next page exists, a spinner with Loading… while it loads, a failed page's ErrorNotice with its Retry, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click. <ShowMoreLink href> is the same control as a link, for a preview whose whole list lives on another page: the profile's geolocations, open requests and collections, each opening its list in search.">
+          <Entry name="<LoadMoreRow> / <SeeAllLink>" usage="The two controls of a list that has more, one secondary button each. <LoadMoreRow> is Show more, the foot of a paged list that grows in place (requests, feed, version history, notifications, an organization's approvals, the admin reports queue and onboarding, the search page's list of one kind, the create page's matched geolocations, and the detections queue, whose pages are numbered): Show more while a next page exists, a spinner with Loading… while it loads, a failed page's ErrorNotice with its Retry, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click. <SeeAllLink href> is See all, the link from a preview to its whole list: the profile's geolocations, open requests and collections, each opening its list in search, and each section of the search page, opening its kind.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
@@ -1953,9 +1954,9 @@ export default function PalettePage() {
                   walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: MOCK_SERVER_FAULT }}
                 />
               </Variant>
-              <Variant label="link (ShowMoreLink)">
+              <Variant label="link (SeeAllLink)">
                 <div className="flex justify-center">
-                  <ShowMoreLink href="/search?type=event&author=ana" />
+                  <SeeAllLink href="/search?type=event&author=ana" />
                 </div>
               </Variant>
             </div>

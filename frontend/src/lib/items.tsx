@@ -1,6 +1,6 @@
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { SiteKindPill } from "@/components/sites/SiteBadges";
-import { Highlighted, type ItemData } from "@/components/ui/Item";
+import { Highlighted, ITEM_KINDS, type ItemData, type ItemKind } from "@/components/ui/Item";
 import { Pill } from "@/components/ui/Pill";
 import {
   collectionHref,
@@ -14,7 +14,7 @@ import type { DisplayMedia } from "@/lib/mediaUrls";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
 import { eventHref, profileHref, requestHref } from "@/lib/routes";
 import { siteHref, type SiteKind } from "@/lib/sites";
-import type { AuthorRef, EventStatus, SearchHit } from "@/types";
+import type { AuthorRef, EventStatus, SearchHit, SearchHitType } from "@/types";
 
 /** The fields of an event every list payload carries; the others are optional. */
 export interface ItemEvent {
@@ -92,6 +92,20 @@ export function collectionItem(collection: ItemCollection): ItemData {
     badge: <Pill tone="neutral">{eventCountLabel(collection.event_count)}</Pill>,
     href: collectionHref(collection.id),
   };
+}
+
+/** The item kind of each `GET /search` type. A request is an event hit. */
+const SEARCH_TYPE_KINDS: Record<SearchHitType, ItemKind> = {
+  event: "event",
+  site: "site",
+  collection: "collection",
+  user: "analyst",
+  organization: "organization",
+};
+
+/** The name of a search type's section and of its Show chip: *Events*, *Sites*, *Analysts*. */
+export function searchTypeLabel(type: SearchHitType): string {
+  return ITEM_KINDS[SEARCH_TYPE_KINDS[type]].plural;
 }
 
 /** One hit of `GET /search`, with the words the query matched marked in its title. */

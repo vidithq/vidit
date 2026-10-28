@@ -334,8 +334,8 @@ The vocabulary:
 - **Usernames.** A Vidit username prints bare, with no `@`: bylines, cards, admin panels, the search author filter, page titles, metadata, share text, and share cards. An `@` marks an external account only: a linked X or GitHub account (`displayLinkValue`), an X post author, the bot's replies on X, and `@viditbot`.
   - [`<Dot>`](../frontend/src/components/ui/Dot.tsx) is the accent "new content awaits" dot: sidebar nav badges (through `notify`), the rail's identity row when detections are pending, the profile's detections entry, the map filter panel's in-flight pulse, and the same pulse above the basemap control while a satellite overlay loads. Position, ring, size and colour come through `className`.
   - [`<EmptyState>`](../frontend/src/components/ui/EmptyState.tsx) owns the empty-state grammar (`boxed` / `plain` / `invite`).
-  - **Show more** is one control with one label wherever a list has more, a secondary button, in two shapes from [`LoadMoreRow.tsx`](../frontend/src/components/ui/LoadMoreRow.tsx). [`<ShowMoreLink href>`](../frontend/src/components/ui/LoadMoreRow.tsx) is the shape for a preview whose whole list lives on another page: the profile's geolocations, open requests and collections, each opening its list in search.
-  - [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) is the shape that grows a list in place, the foot of every [`useCursorList`](../frontend/src/hooks/useCursorList.ts) list: **Show more**, a spinner while the page loads, a failed page's [`<ErrorNotice>`](#errors), with **Retry** when the fault is not the reader's, and nothing once the walk ends. `infinite` loads the next page as the row nears the viewport (the feed). A failed first page leaves no rows and no row, so the list shows that error itself. The Requests board, the feed, the version history, the notifications page, an organization's Approvals card, the admin invite codes, the admin reports queue, the search page's list and the create page's matched geolocations end on it. The create page's walk posts the search match as `useCursorList`'s `body`, and a `null` path is no walk, so a page whose list comes and goes keeps one hook. The search page follows the `cursor` of [`GET /search`](api.md#get-search), which travels in the response body rather than a `Link` header, so the page drives the row without `useCursorList`. The reports queue is offset-paged, so it passes `useCursorList` a `next` reader that turns the payload's `page`, `per_page` and `total` into the next page number.
+  - A list that has more ends on one of two secondary buttons from [`LoadMoreRow.tsx`](../frontend/src/components/ui/LoadMoreRow.tsx). **Show more** grows the list in place. **See all** ([`<SeeAllLink href>`](../frontend/src/components/ui/LoadMoreRow.tsx)) links a preview to its whole list: the profile's geolocations, open requests and collections, each opening its list in search, and each section of the [search page](#search), opening its kind.
+  - [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) is the shape that grows a list in place, the foot of every [`useCursorList`](../frontend/src/hooks/useCursorList.ts) list: **Show more**, a spinner while the page loads, a failed page's [`<ErrorNotice>`](#errors), with **Retry** when the fault is not the reader's, and nothing once the walk ends. `infinite` loads the next page as the row nears the viewport (the feed). A failed first page leaves no rows and no row, so the list shows that error itself. The Requests board, the feed, the version history, the notifications page, an organization's Approvals card, the admin invite codes, the admin reports queue, the search page's list of one kind and the create page's matched geolocations end on it. The create page's walk posts the search match as `useCursorList`'s `body`, and a `null` path is no walk, so a page whose list comes and goes keeps one hook. The search page follows the `cursor` of [`GET /search`](api.md#get-search), which travels in the response body rather than a `Link` header, so the page drives the row without `useCursorList`. The reports queue is offset-paged, so it passes `useCursorList` a `next` reader that turns the payload's `page`, `per_page` and `total` into the next page number.
   - [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) is one filter family as a multi-select row of `<Pill>` chips. A selected option is accent, and a click toggles it. Any option in a bucket matches; combining buckets is the caller's rule (AND on the server). On the map the Status field reads **Show** and ends with the **Sites** chip, which names the sites layer, outside the bucket's match. Use it for a small fixed set: the shared filter panel's Status, Source kind, Level, Media, Location guess and Approved only, and the feed's Kind. An open catalogue (conflicts, tags) takes a search field instead (`<ConflictChips>`, `<TagChips>`).
   - [`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx) is the one rendering of the applied filters: a removable accent `<Pill>` per filter, with **Clear all** after them once two or more are on. The map's filter overlay, [`<FilterRail>`](../frontend/src/components/filters/FilterRail.tsx) and [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) render it.
   - [`<StatTile>`](../frontend/src/components/ui/StatTile.tsx) is a labelled metric tile (icon, uppercase label, value), and `StatGrid` lays a row of them out in two columns, four from `sm` up. With an `href` the tile is one link into the view the figure was read from, with `TAPPABLE_HOVER` and an accent value. The profile insights use it.
@@ -1525,10 +1525,10 @@ A geolocation or a detection opens `/events/{id}` and a request opens `/requests
 - **Insights** (`ProfileInsights`): see [Insights](#insights).
 - **Collections** (`CollectionsSection`): the analyst's collections as list [`<Item>`](#items) rows, the turn from readings of the whole body of work to the work itself (see [Collections](#collections)).
   - The endpoint narrows by viewer. On an empty list a visitor sees no section, and the owner keeps the heading and a first-run state that says the list is empty once and carries the action that fills it.
-  - The section holds four rows. Past four, `Show more` opens the shelf in `/search` through `profileSearchHref`, carrying `type=collection`, which lists the collections that analyst owns.
+  - The section holds four rows. Past four, **See all** opens the shelf in `/search` through `profileSearchHref`, carrying `type=collection`, which lists the collections that analyst owns.
   - The owner's **New collection** is in the header's action cluster (see [Linked accounts](#linked-accounts)). The first-run state carries it too, as its call to action. Both link to `/collections/new`.
 - **Recent submissions** (`RecentSubmissions`): the five newest rows from an endpoint that serves published work only, so the block is what the analyst vouched for. It counts the same set as the `Geolocated` tile.
-  - The heading copy and `Show more` key off the returned rows: an analyst with detections alone gets "No geolocations yet.", and `Show more` carries `status=geolocated` into `/search`.
+  - The heading copy and **See all** key off the returned rows: an analyst with detections alone gets "No geolocations yet.", and **See all** carries `status=geolocated` into `/search`.
   - Every visitor sees the same rows, the owner included. When the block is empty, a visitor gets the heading and "No geolocations yet.", and the owner gets the heading and an empty state that links to the submit form, so the block says it is empty once.
   - It reads last because it is the block that grows.
 
@@ -1536,7 +1536,7 @@ A geolocation or a detection opens `/events/{id}` and a request opens `/requests
 
 `ProfileInsights` is the page's only home for work figures: a `<StatGrid>` of four tiles (`Geolocated`, `Detected`, `Top conflict`, `Top source kind`), then the source-origin bar and the month grid. It sits under the map because it interprets it: the map says where, the card says what kind, how much, and when.
 
-- **Every tile links into `/search`** through `profileSearchHref` ([`lib/search.ts`](../frontend/src/lib/search.ts)), the one builder for the profile's search links, both `Show more` links included. The status pair carries `status=geolocated` and `status=detected`, the leaders carry `conflict=` and `source_kind=`, and `author` is an exact username match, so a tile lands on the rows it summed. A tile takes `TAPPABLE_HOVER` plus a `focus-visible` ring.
+- **Every tile links into `/search`** through `profileSearchHref` ([`lib/search.ts`](../frontend/src/lib/search.ts)), the one builder for the profile's search links, every **See all** link included. The status pair carries `status=geolocated` and `status=detected`, the leaders carry `conflict=` and `source_kind=`, and `author` is an exact username match, so a tile lands on the rows it summed. A tile takes `TAPPABLE_HOVER` plus a `focus-visible` ring.
 - A leader with no value prints `None` and carries no link. The two counts stay linked at zero.
 - A leader tile names who leads, and the search behind it says by how much. There is no `Media` tile; `media_count` is served and the share card prints it.
 - **One population.** Every field counts visible `geolocated` and `detected` events. A `requested` or `closed` row counts in no figure: an open ask is not documented work, and a closed row is work the analyst discarded.
@@ -1943,7 +1943,7 @@ flowchart LR
 
 ### Search
 
-[`/search`](../frontend/src/app/search/page.tsx) finds events, sites, collections, analysts and organizations in one ranked list from [`GET /search`](api.md#get-search). It takes the standard page shell: the search field in the title's place (`PageShell titleField`, the `Search` title kept as the visually hidden `h1`), the list in the main column and the filter panel in the [right rail](#right-rail).
+[`/search`](../frontend/src/app/search/page.tsx) finds events, sites, collections, analysts and organizations. With no kind picked, it lists the top hits of each kind under the kind's name, from [`GET /search/sections`](api.md#get-searchsections). With one kind picked, it lists every hit of that kind in rank order, from [`GET /search`](api.md#get-search). It takes the standard page shell: the search field in the title's place (`PageShell titleField`, the `Search` title kept as the visually hidden `h1`), the results in the main column and the filter panel in the [right rail](#right-rail).
 
 ```mermaid
 flowchart LR
@@ -1959,38 +1959,49 @@ flowchart LR
     l1 ~~~ l2 ~~~ l3
   end
 
-  page["`**/search**
-  search field in the title's place`"]:::spec
+  url["`**the URL**
+  q, type, status, filters`"]:::spec
   show["`**Show** field
   status chips, then Sites, Collections, Analysts, Organizations`"]:::spec
   panel["`**EventFilterSections**
   the sections the pick offers`"]:::shared
-  rows["`**Item variant=list**
-  one per hit, through searchHitItem`"]:::shared
-  select["`**SelectableHit**, **SelectAllRow**
-  the events the reader can shelve`"]:::shared
-  api["`**GET /search**
-  type, status, filters, cursor`"]:::core
+  sectionsApi["`**GET /search/sections**
+  the top 5 of each kind`"]:::core
+  listApi["`**GET /search**
+  one kind, cursor`"]:::core
+  sections["`**ResultSection**
+  the kind's name, its items, See all`"]:::spec
+  list["`**Item variant=list**, **LoadMoreRow**
+  SelectableHit around the events`"]:::shared
 
-  page --> show
-  page --> panel
-  show -->|"searchTypes"| api
-  panel --> api
-  api -->|"hits in rank order"| rows
-  rows --> select
+  show -->|"push"| url
+  panel -->|"replace"| url
+  url -->|"no kind or several"| sectionsApi
+  url -->|"one kind"| listApi
+  sectionsApi --> sections
+  listApi --> list
+  sections -->|"See all"| url
 ```
 
-**The Show field.** The panel opens on the **Show** field, a `ChipBucket` passed as the panel's `lead`: **Requested**, **Detected**, **Geolocated**, then **Sites**, **Collections**, **Analysts** and **Organizations** (`SEARCH_KIND_OPTIONS` in [`lib/search.ts`](../frontend/src/lib/search.ts)). The chips carry no counts. The field follows the map's rule, through the same `showFieldScope`: with no chip selected the list holds every kind, and once a chip is selected it holds only what the selected chips name. A status chip names the events in that status. `searchTypes` turns the pick into the `type` and `status` values `GET /search` reads, and the page writes the same values into its URL, so a profile link such as `/search?type=collection&author=ana` opens with **Collections** selected. A link whose `type=event` names no status selects every status chip.
+**The URL holds the view.** The query, the Show pick and the filters live in the URL in the vocabulary of `GET /search` (`searchPageParams` in [`lib/search.ts`](../frontend/src/lib/search.ts)), so a shared link opens the same view and a profile link such as `/search?type=collection&author=ana` opens with **Collections** selected. The page writes the URL 300 ms after the last keystroke or change. A new Show pick adds a history entry, so **Back** returns to the previous kind; a new query or filter replaces the current entry. When the URL moves (**Back**, **Forward** or **See all**), the page takes the view it names at once.
+
+**The Show field.** The panel opens on the **Show** field, a `ChipBucket` passed as the panel's `lead`: **Requested**, **Detected**, **Geolocated**, then **Sites**, **Collections**, **Analysts** and **Organizations** (`SEARCH_KINDS` in `lib/search.ts`, named by the plural of `ITEM_KINDS`). The chips carry no counts. The field follows the map's rule, through the same `showFieldScope`: with no chip selected the page lists every kind, and once a chip is selected it lists only what the selected chips name. A status chip names the events in that status. `searchTypes` turns the pick into the `type` and `status` values the API reads. A link whose `type=event` names no status selects every status chip.
 
 **The filter sections follow the pick.** While the pick lists events, the panel offers every event section. Once it lists no event, the panel offers only the sections the picked kinds answer (`SEARCH_KIND_SECTIONS`, the mirror of the API's rule): **Tags** and **Author** for collections, **Author** for sites, none for analysts and organizations. A pick that drops the events also drops the values of the sections it no longer offers, so no hidden filter keeps narrowing the list. Each picked kind other than a status shows as a **Show** pill and counts in **Filters (N)**.
 
-**The list.** One column of list [`<Item>`](#items) rows, one per hit, through `searchHitItem` ([`lib/items.tsx`](../frontend/src/lib/items.tsx)). Each title marks the words the query matched, and an analyst's or an organization's detail line ends with the bio excerpt when the bio matched. An event opens the event page or the request page, and every other hit opens its own page.
+**Sections.** A pick of no kind, or of several, lists one section per kind that has a hit, in a fixed order: Events, Sites, Collections, Analysts, Organizations. A request is an event and sits in the Events section with its *Requested* badge. Each section is a `SectionEyebrow` with the kind's name, then the kind's top 5 hits as list [`<Item>`](#items) rows through `searchHitItem` ([`lib/items.tsx`](../frontend/src/lib/items.tsx)). A section whose kind holds more ends its heading row on **See all**, which opens the page on that kind alone: the events keep the statuses the pick names, or take every status, and another kind keeps the filters it answers. A kind with no hit has no section, and no section prints a count.
 
-The list prints no result count and no group heading. It ends on a `<LoadMoreRow>` that follows the response's `cursor`, with the query, types and filters of the page that minted it. An empty result says *No matches* and, when the API offers one, *Did you mean* with the respelling as a link that searches it at once.
+**The list of one kind.** A pick of one kind lists every hit of that kind in rank order, and ends on a `<LoadMoreRow>` that follows the response's `cursor` with the query, kind and filters of the page that minted it. On the events, each row the reader may shelve takes a checkbox (`SelectableHit`), with **Select all** (`SelectAllRow`) over the list and **Add to collection** in the page's actions.
+
+In both views, each title marks the words the query matched, and an analyst's or an organization's detail line ends with the bio excerpt when the bio matched. An event opens the event page or the request page, and every other hit opens its own page.
+
+**Typing.** The page searches 300 ms after the last keystroke, and a response that lands after a newer request started is dropped. The results on screen stay until the next ones land, so typing never blanks the page.
+
+**States.** The search field takes the focus when the page opens. An empty field with no filter shows the search icon alone. A search that finds nothing says *No matches.* on one line and, when the API offers one, *Did you mean* with the respelling as a link that searches it at once.
 
 **The shortcut row.** Under the search field, one row offers the fastest exit: an arrow `LinkRow` opens the map at a query that reads as a coordinate pair, and the list [`<Item>`](#items) of an analyst or an organization a query names exactly (`exactProfile`) opens their page.
 
-**Phone.** Below `lg` the rail leaves the page and [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) sits above the list, as on the feed and the Requests board.
+**Phone.** Below `lg` the rail leaves the page and [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) sits above the results, as on the feed and the Requests board.
 
 ### Share cards
 
@@ -2166,6 +2177,7 @@ Every destructive action in the app:
 | Role (`role`) | Name org manager, Make org manager, Make member | `UserCog` |
 | Save (`save`) | Save, Save version *N*, Save collection | `Save` |
 | Search (`search`) | Your geolocations | `Search` |
+| See all (`seeAll`) | See all | `ChevronsRight` |
 | Send (`send`) | Send reset link, Send a fresh link, Resend confirmation link | `Send` |
 | Show (`show`) | Restore, I am 18 or older, show it, the graphic content cover | `Eye` |
 | Sign in (`signIn`) | Sign in | `LogIn` |
