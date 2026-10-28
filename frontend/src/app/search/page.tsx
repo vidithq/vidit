@@ -53,7 +53,8 @@ import {
   EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
   EventFilterSections,
-  STATUS_FILTER_OPTIONS,
+  FILTER_NAMES,
+  SHOW_OPTIONS,
   addedWindowActive,
   buildActiveFilterPills,
   buildDateWindowPills,
@@ -109,21 +110,14 @@ const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request
 // The requests group serves status `requested` only, so on the legacy request scope both
 // status chips could only empty the result. A URL-carried status still shows as a removable pill.
 // Approvals stay off too: a request carries none.
-const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "status" && s !== "approval");
+const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "show" && s !== "approval");
 
 // The backend narrows collections on `author` and `tag` (a collection's tags are its items') and
 // empties the group on every other event predicate, so that scope offers those two sections.
 const COLLECTION_SECTIONS: ReadonlyArray<EventFilterSectionName> = ["tags", "author"];
 
-interface SearchFilters {
-  values: EventFilterValues;
-  dates: DateWindows;
-}
-
-const EMPTY_SEARCH_FILTERS: SearchFilters = {
-  values: EMPTY_EVENT_FILTERS,
-  dates: EMPTY_DATE_WINDOWS,
-};
+// The filters the collections group reads, emptied: what is left narrows the event groups alone.
+const SHARED_EMPTY: Pick<EventFilterValues, "author" | "tags"> = { author: "", tags: [] };
 
 type SearchRequest = Parameters<typeof search>[0];
 
@@ -150,16 +144,16 @@ function SearchPageBody() {
   const initialValues: EventFilterValues = {
     ...read,
     // Only the vocabulary the panel offers: a crafted `?status=` the chips can't represent is dropped.
-    statuses: read.statuses.filter((s) => STATUS_FILTER_OPTIONS.some(([value]) => value === s)),
+    show: read.show.filter((s) => SHOW_OPTIONS.some(([value]) => value === s)),
     // The search groups serve no location-guess predicate, so the panel never offers it here.
     locationGuess: [],
   };
   const initialDates: DateWindows = { eventFrom, eventTo, addedFrom, addedTo };
-  const arrivedFiltered = hasAnyFilter(initialValues, initialDates);
-  // A filtered link without a type (the profile's "Show more") lands on Events: filters are
-  // event predicates.
+  // A link without a type lands on All, unless it carries a filter only the event groups read: an
+  // author and tags narrow the collections group as well, so All keeps them.
+  const eventFiltered = hasAnyFilter({ ...initialValues, ...SHARED_EMPTY }, initialDates);
   const initialType =
-    (searchParams.get("type") as SearchType) || (arrivedFiltered ? "event" : "all");
+    (searchParams.get("type") as SearchType) || (eventFiltered ? "event" : "all");
 
   const [queryInput, setQueryInput] = useState(initialQ);
   const [typeFilter, setTypeFilter] = useState<SearchType>(initialType);
@@ -212,61 +206,46 @@ function SearchPageBody() {
   // `response.query` alone missed the type-filter race (same `q`, different `type`).
   const latestRequestId = useRef<number>(0);
 
-  const applyFilters = (next: SearchFilters) => {
-    setValues(next.values);
-    setDates(next.dates);
-  };
   // The date windows are event predicates, so they stay off the Collections scope.
-  const renderPanel = (
-    panel: SearchFilters,
-    setPanel: (next: SearchFilters) => void
-  ) =>
+  const panel =
     filterSections && (
       <EventFilterSections
         tags={tags}
         conflicts={conflicts}
-        values={panel.values}
-        onPatch={(patch) =>
-          setPanel({ ...panel, values: { ...panel.values, ...patch } })
-        }
+        values={values}
+        onPatch={onPatch}
         sections={filterSections}
         dateSections={
           onEventScope
             ? [
                 {
-                  title: "Event date",
+                  title: FILTER_NAMES.eventDate,
                   concept: "occurred_date",
-                  summary: rangeSummary(panel.dates.eventFrom, panel.dates.eventTo),
-                  active: eventWindowActive(panel.dates),
+                  summary: rangeSummary(dates.eventFrom, dates.eventTo),
+                  active: eventWindowActive(dates),
                   children: (
                     <DateRange
-                      label="Event date"
-                      from={panel.dates.eventFrom}
-                      to={panel.dates.eventTo}
+                      label={FILTER_NAMES.eventDate}
+                      from={dates.eventFrom}
+                      to={dates.eventTo}
                       onChange={(from, to) =>
-                        setPanel({
-                          ...panel,
-                          dates: { ...panel.dates, eventFrom: from, eventTo: to },
-                        })
+                        setDates((d) => ({ ...d, eventFrom: from, eventTo: to }))
                       }
                     />
                   ),
                 },
                 {
-                  title: "Added",
+                  title: FILTER_NAMES.added,
                   concept: "added",
-                  summary: rangeSummary(panel.dates.addedFrom, panel.dates.addedTo),
-                  active: addedWindowActive(panel.dates),
+                  summary: rangeSummary(dates.addedFrom, dates.addedTo),
+                  active: addedWindowActive(dates),
                   children: (
                     <DateRange
-                      label="Added"
-                      from={panel.dates.addedFrom}
-                      to={panel.dates.addedTo}
+                      label={FILTER_NAMES.added}
+                      from={dates.addedFrom}
+                      to={dates.addedTo}
                       onChange={(from, to) =>
-                        setPanel({
-                          ...panel,
-                          dates: { ...panel.dates, addedFrom: from, addedTo: to },
-                        })
+                        setDates((d) => ({ ...d, addedFrom: from, addedTo: to }))
                       }
                     />
                   ),
@@ -383,14 +362,14 @@ function SearchPageBody() {
 
   const onChipClick = (t: SearchType) => {
     // Filters are event predicates: leaving Events with some active would silently keep
-    // constraining the event groups, so they clear with the scope. Collections keep the author
-    // and the tags (the predicates that narrow that group), so stepping from an analyst's events
-    // to their shelf stays on them. The snapshot updates in the same render: waiting for the
-    // 300 ms debounce would fire one request with stale filters first (`type=user&conflict=…`
-    // flashing "No matches").
+    // constraining the event groups, so they clear with the scope. Collections and All keep the
+    // author and the tags (the predicates that narrow the collections group too), so stepping
+    // from an analyst's events to their shelf stays on them. The snapshot updates in the same
+    // render: waiting for the 300 ms debounce would fire one request with stale filters first
+    // (`type=user&conflict=…` flashing "No matches").
     if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
       const kept: EventFilterValues =
-        t === "collection"
+        t === "collection" || t === "all"
           ? { ...EMPTY_EVENT_FILTERS, author: values.author.trim(), tags: values.tags }
           : EMPTY_EVENT_FILTERS;
       setValues(kept);
@@ -434,7 +413,7 @@ function SearchPageBody() {
       rail={
         filterSections ? (
           <FilterRail pills={activeFilters} onClearAll={clearFilters} sections={filterSections}>
-            {renderPanel({ values, dates }, applyFilters)}
+            {panel}
           </FilterRail>
         ) : null
       }
@@ -510,14 +489,12 @@ function SearchPageBody() {
 
         {filterSections ? (
           <FilterBar
-            value={{ values, dates }}
-            empty={EMPTY_SEARCH_FILTERS}
             count={countActiveFilters(values, dates)}
             pills={activeFilters}
             onClearAll={clearFilters}
-            onApply={applyFilters}
-            renderPanel={renderPanel}
-          />
+          >
+            {panel}
+          </FilterBar>
         ) : (
           <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
         )}
@@ -702,7 +679,7 @@ function Highlighted({ value }: { value: string }) {
         seg.highlighted ? (
           <mark
             key={i}
-            className="bg-orange-500/30 text-orange-200 rounded-sm px-0.5"
+            className="bg-orange-500/30 text-inherit rounded-sm px-0.5"
           >
             {seg.text}
           </mark>

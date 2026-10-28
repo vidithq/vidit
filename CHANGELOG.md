@@ -32,6 +32,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - A site zone covers at most 1,000 km², down from 10,000 km²: the contour editor says so while you draw, and areas read with thousands separators ([#800](https://github.com/vidithq/vidit/pull/800)).
 - Filing a source on a site opens the site page, like the other submit forms, in place of a separate confirmation page ([#800](https://github.com/vidithq/vidit/pull/800)).
+- The status filter is called Show everywhere and stays in view with Conflict and Tags; filters apply at once on a phone, each active-filter pill names its filter, and the feed's Following or All choice moves into the filter panel ([#799](https://github.com/vidithq/vidit/pull/799)).
 - Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a request page, the asker sees Edit, which opens the request's form, and every other reader sees Geolocate; the asker no longer gets both for the same page ([#794](https://github.com/vidithq/vidit/pull/794)).
@@ -80,6 +81,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - A source shows when it was posted on its own Posted row, so an unknown post date no longer reads as an unknown capture date ([#800](https://github.com/vidithq/vidit/pull/800)).
 - The site edit form no longer shows a missing count on Save before you change anything ([#800](https://github.com/vidithq/vidit/pull/800)).
+- Search on All with a tag lists the collections carrying it instead of switching to Events, and a highlighted term reads in the light theme; the conflict list closes on a pick, and the map's filter panel stays clear of the attribution on a phone ([#799](https://github.com/vidithq/vidit/pull/799)).
 - The home page ends on links to the legal notice and the privacy policy, and the About page sets its Commitments text at the size of its other sections ([#797](https://github.com/vidithq/vidit/pull/797)).
 - Vercel Web Analytics and Speed Insights load only when the build sets `NEXT_PUBLIC_VERCEL_ANALYTICS=true`, so an instance hosted elsewhere no longer makes failing `/_vercel/*` requests ([#797](https://github.com/vidithq/vidit/pull/797)).
 - On a profile, Insights and Coverage show each count once; Follow and Unfollow move the followers count at once and put it back on an error; Edit profile shows the avatar once and a refused website under its field ([#798](https://github.com/vidithq/vidit/pull/798)).

@@ -5,8 +5,8 @@ import { AUTHOR_PILL_KEY } from "./EventFilterSections";
 import { FilterRail } from "./FilterRail";
 
 const pills = (onRemove = vi.fn()) => [
-  { key: "tag:drone", label: "drone", onRemove },
-  { key: AUTHOR_PILL_KEY, label: "By ana", onRemove },
+  { key: "tags:drone", filter: "Tags", label: "drone", onRemove },
+  { key: AUTHOR_PILL_KEY, filter: "Author", label: "ana", onRemove },
 ];
 
 describe("FilterRail", () => {
@@ -17,9 +17,9 @@ describe("FilterRail", () => {
       </FilterRail>,
     );
 
-    expect(screen.getByTitle("Remove filter: drone")).toBeInTheDocument();
-    expect(screen.queryByTitle("Remove filter: By ana")).not.toBeInTheDocument();
-    expect(screen.getByTitle("Remove filter: drone").compareDocumentPosition(screen.getByText("panel")))
+    expect(screen.getByTitle("Remove filter Tags: drone")).toBeInTheDocument();
+    expect(screen.queryByTitle("Remove filter Author: ana")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Remove filter Tags: drone").compareDocumentPosition(screen.getByText("panel")))
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
@@ -30,7 +30,7 @@ describe("FilterRail", () => {
       </FilterRail>,
     );
 
-    expect(screen.getByTitle("Remove filter: By ana")).toBeInTheDocument();
+    expect(screen.getByTitle("Remove filter Author: ana")).toBeInTheDocument();
   });
 
   it("removes a filter from its pill", () => {
@@ -41,7 +41,7 @@ describe("FilterRail", () => {
       </FilterRail>,
     );
 
-    fireEvent.click(screen.getByTitle("Remove filter: drone"));
+    fireEvent.click(screen.getByTitle("Remove filter Tags: drone"));
     expect(onRemove).toHaveBeenCalledOnce();
   });
 });

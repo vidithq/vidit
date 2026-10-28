@@ -4,18 +4,21 @@ import { X } from "lucide-react";
 import { TAP_STEP } from "./Button";
 import { Pill } from "./Pill";
 
-/** `key` must be unique across the row (e.g. `conflict:<name>`). */
+/** `key` must be unique across the row (e.g. `conflicts:<name>`). */
 export interface ActiveFilter {
   key: string;
+  /** The filter's name, as its field label reads (`Conflict`). */
+  filter: string;
+  /** The value, as its chip reads. */
   label: string;
   icon?: ReactNode;
   onRemove: () => void;
 }
 
 /**
- * The one rendering of active filters: a row of removable accent chips, shared by
- * the map's filter overlay and the search page. `onClearAll` adds a clear
- * affordance once two or more are on.
+ * The one rendering of active filters: a row of removable accent chips, each a key/value pill
+ * naming its filter, shared by the map's filter overlay and the filter rail. `onClearAll` adds a
+ * clear affordance once two or more are on.
  */
 export function ActiveFilterPills({
   filters,
@@ -32,7 +35,8 @@ export function ActiveFilterPills({
           key={f.key}
           tone="accent"
           icon={f.icon}
-          title={`Remove filter: ${f.label}`}
+          label={f.filter}
+          title={`Remove filter ${f.filter}: ${f.label}`}
           onClick={f.onRemove}
         >
           {f.label}
