@@ -546,7 +546,7 @@ The public guides use the same shell, signed in or out: `/guide` ("Getting start
 
 The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) (a `max-w-sm` centered card). The two single-email pages (`/forgot-password`, `/resend-confirmation`) also share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), whose sent-state copy stays anti-enumeration ("if X is registered…", never confirming the address exists).
 
-`/unsubscribe/notifications` is an `<AuthCard>` too: it turns off the email of one notification kind only on a click of its button, so a mail scanner that opens the link changes nothing.
+`/unsubscribe/notifications` is an `<AuthCard>` too: it turns off the email of one notification kind only on a click of its button, so a mail scanner that opens the link changes nothing. Opened without its token, it reads *Incomplete link*, the title `/reset-password` shows without its token, and links to Settings.
 
 `/confirm-registration` consumes the token, signs you in, and then stays on its success card rather than redirecting. The card offers the two next steps as full-width links with `buttonClasses`: **Import your X archive** (primary, `/submit?import=1`) and **Read Getting started** (secondary, `/guide`).
 
