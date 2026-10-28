@@ -321,7 +321,7 @@ SEARCH_TYPES: tuple[str, ...] = get_args(SearchType)
 
 # The filters each type other than ``event`` answers. ``status`` narrows events alone and never
 # drops another type; any other active filter drops a type that does not answer it. Mirrored by
-# ``frontend/src/lib/search.ts::SEARCH_KIND_SECTIONS``; change both.
+# ``frontend/src/components/filters/model.ts::KIND_DIMENSIONS``; change both.
 _TYPE_FILTERS: dict[str, tuple[str, ...]] = {
     "site": ("status", "author"),
     "collection": ("status", "author", "tag"),

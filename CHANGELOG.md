@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- `GET /feed` takes the date, media, author and location guess filters, `GET /search` takes `has_coords` and `GET /events` takes `media`; `GET /search/dates` and `GET /feed/dates` count the matching events per day ([#813](https://github.com/vidithq/vidit/pull/813)).
 - `GET /sites`, an event's site links and the site suggestions carry each site's picture in `media`, the image of its first source in source order that is not graphic; a site search hit carries the same picture ([#812](https://github.com/vidithq/vidit/issues/812)).
 - `GET /search/sections` returns the top hits of each kind in one request, each section the first page of that kind's list with its cursor ([#813](https://github.com/vidithq/vidit/pull/813)).
 - Search finds sites by their name or by the title or note of one of their sources, and the search page's Show field picks every kind: Requested, Detected, Geolocated, Sites, Collections, Analysts and Organizations ([#807](https://github.com/vidithq/vidit/pull/807)).
@@ -34,6 +35,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- One filter panel serves the map, search, the feed and the Requests board: the Event date and Added timelines, then one line per filter under What, Source, Where and Who, each opening its editor over the page; a phone opens it in a sheet ([#813](https://github.com/vidithq/vidit/pull/813)).
+- The feed keeps its filters in the URL, and its Following choice is a switch in the filter panel; search lists an analyst or an organization the query names once, first in its section ([#813](https://github.com/vidithq/vidit/pull/813)).
 - Every list shows an event, a request, a site or a collection one way, as a compact row, a list row or a feed card: its picture or its kind's icon, the title, a line with the kind, date, analyst and place, then its state ([#812](https://github.com/vidithq/vidit/issues/812)).
 - Breaking: `GET /search` returns one ranked list, `hits`, with one `cursor` that pages it, in place of five groups with their totals; `type` repeats to pick the kinds, and `status` narrows only the events ([#807](https://github.com/vidithq/vidit/pull/807)).
 - The search page lists the top hits of each kind under its name, and See all opens one kind's list with Show more; the URL keeps the query and the kind, so Back and shared links work. The profile's links into search read See all ([#813](https://github.com/vidithq/vidit/pull/813)).

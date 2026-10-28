@@ -104,7 +104,8 @@ export interface DimensionSpec {
 const ALL: ReadonlyArray<Surface> = ["map", "search", "feed", "requests"];
 
 /** Every dimension the panel offers, its control, the surfaces whose data can serve it, and its
- *  parameter. Show goes out as `kind` on `GET /feed`; Following goes out as `scope=all` when off. */
+ *  parameter. Show goes out as `kind` on `GET /feed`; Following goes out as `scope=all` when off.
+ *  The surfaces mirror backend `routers/_filters.event_filters`; change both. */
 export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
   show: {
     name: "Show",

@@ -1,5 +1,8 @@
 """The standard event filter set (``services/event_filters.EventFilters``) as query parameters,
-one dependency for every read that lists events."""
+one dependency for every read that lists events.
+
+Mirrored by the surfaces of ``frontend/src/components/filters/model.ts::DIMENSIONS``; change both.
+"""
 
 from fastapi import Query
 

@@ -255,8 +255,8 @@ flowchart BT
   - Ordinary clusters keep zoom-on-click.
 - **Cluster to points crossfade.** The map sets `fadeDuration: 0`, so count labels and their circles swap on the same frame; basemap place labels pop in instead of fading. Count labels skip symbol placement (`text-allow-overlap` + `text-ignore-placement`), so a count is never culled apart from its circle. Around the clustering ceiling, a zoom-interpolated opacity crossfade runs in paint expressions, with stops derived from `CLUSTER_MAX_ZOOM`: clusters and counts thin approaching one zoom past the ceiling, and points and stack badges rise just past it. The crossfade applies **only while a zoom is in flight**; at rest every layer holds full opacity, and a cluster click that resolves past the ceiling lands its pins at full opacity.
 - **Sites layer.** A map draws sites through `<Map>`'s `children`, the slot for extra sources and layers. [`SiteLayers`](../frontend/src/components/map/SiteLayers.tsx) keeps them under the event pins through `useUnderEventPins`, so an event always draws above a zone.
-  - On `/map` the **Sites** chip follows the Requested, Detected and Geolocated chips in the filter panel's **Show** field (see [Filter panel](#filter-panel)), and the field's rule sets when the layer shows. The map reads the zones valid at the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. The panel creates no site: a site starts from Submit.
-  - The **Sites** chip counts as one active filter. While it is selected, the **Filters** button counts it and a **Sites** pill follows the status pills. Removing the pill or **Clear all** deselects it.
+  - On `/map` the filter panel's **Show** line offers **Sites** after **Detected** and **Geolocated** (see [Filter panel](#filter-panel)), and the Show rule sets when the layer shows. The map reads the zones valid at the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. The panel creates no site: a site starts from Submit.
+  - While **Sites** is selected, a **Show:** *Sites* pill names it, after the status pills. Removing the pill or **Clear all** deselects it.
   - The map draws every zone at every zoom. Below zoom 10 (`SITE_POINT_MAX_ZOOM`) each site also joins the event clusters as a point at its centroid. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
   - Below zoom 10 the sites cluster with the event points, in one source:
 
@@ -323,10 +323,10 @@ The vocabulary:
   - [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx) is a row of 28px `<Avatar>` pictures: the approval stamps under the event page's actions (see [Event actions and approvals](#event-actions-and-approvals)) and the organization logos in a profile header. `size="sm"` is the 20px picture of a page byline, with a 16px remove disc: `<AuthorByline coAuthorsAs="avatars">` draws the event page's co-geolocators with it and an event form's byline manages them with it, so the two bylines keep one height and one layout. `size="xs"` is the 16px picture of a card's byline. `trailing` follows the last picture on its line, out of the list's items (the approvals' `?`). An item's `variant` picks the circle (`analyst`) or the rounded square (`organization`). Each picture is a link to the item's `href`, named by its `label`, which a `<Tooltip tapToShow>` shows on hover or keyboard focus. On a touch screen the first tap on a picture shows the label and the second tap follows the link. By default the pictures overlap, and a ring in the page colour separates them; set apart, a picture takes the focus ring alone. `spacing="gap"` sets them apart and wraps them onto further lines. `checked` puts a 14px check badge on each picture's bottom-right corner: a disc in the reader's accent (`bg-orange-500`, which the accent setting re-points) with a dark check, ringed in the page colour so it reads on any picture. An item's `remove` puts a 20px remove disc on the picture's top-right corner, which `HOVER_REVEAL` shows on hover or keyboard focus and pins visible on a touch screen: with `remove.confirms`, a `<ConfirmButton icon>` trash that confirms in place, else a `<RemoveButton>` cross that removes at once (see [Destructive actions](#destructive-actions)). A 36px disc would cover the 28px picture, so on a touch screen the disc keeps its size and its hit area becomes a 36px square up and right of it, starting 6px into the disc so the picture's centre stays its link. Each such picture then takes 16px more room above and 24px more on its right, which keeps the square clear of the line above and of the next picture. At most `max` show (5 by default); the rest fold into a `+N` bubble, a button when `onOverflow` is set.
   - [`<ActionMenu>`](../frontend/src/components/ui/ActionMenu.tsx) is the one menu of links and actions: a ghost trigger named by `label` (icon-only, or `text` printed before the icon, as the version selector's *v2*) that opens a `role="menu"` list painted with `TOOLTIP_SURFACE` and named by `menuLabel`. Each item is a link (`href`) or an action (`onSelect`, which closes the menu and gives focus back to the trigger before it runs), with an optional icon; `current` marks the link to the page on screen (`aria-current`), which takes focus when the menu opens, and `iconOnly` prints the icon alone, with the label as its accessible name and a `<Tooltip>`. A click, Enter or ArrowDown opens it and ArrowUp opens on the last item; the arrows, Home and End move between items; Space or Enter follows one; Escape closes and returns focus to the trigger; Tab or an outside click closes. The list is `14rem` wide, aligns to the trigger's right edge, shifts sideways to stay 8px inside the viewport, and scrolls past `20rem`. It renders in a portal fixed to the viewport and follows the trigger on scroll, so a box that scrolls sideways (the admin invite table) never clips it. `matchTriggerWidth`, off by default, makes the list exactly as wide as the trigger, for a compact picker. The event page's version selector is its consumer and sets it. The admin user card and the admin invite rows hold actions, and each destructive action opens a `<ConfirmDialog>`.
   - [`<Combobox>`](../frontend/src/components/ui/Combobox.tsx) is the keyboard and the list of every typeahead: a `role="combobox"` `<Input>` over a `role="listbox"` list painted with `TOOLTIP_SURFACE`, with `aria-activedescendant` on the highlighted row. The caller owns the query, the open state, the filtered options and how a row renders, and a `status` string shows as a muted row under the options. `pillOption` shows a row inside a neutral `<Pill>`, the chip a pick becomes. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up, and Escape, Tab or an outside click closes. The list spans the field's width and scrolls past `15rem`. It renders in a portal fixed to the viewport, so a card or a scrolling rail never clips it, and it opens above the field when the room below is shorter than `15rem` and the room above is larger. While open it measures the field on every frame, so it follows the field when the page shifts around it without a scroll (an image above loading), and its edges stay 8px inside the viewport even while the field is partly out of it. `<AccountPicker>`, `<ConflictChips>`, `<TagChips>`, the admin event field and the collection picker's **Add events** field build on it.
-  - [`<AccountPicker>`](../frontend/src/components/ui/AccountPicker.tsx) is the one way to pick an analyst or an organization, on `<Combobox>`. Each row shows the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug in muted text. The caller owns the data: `options` filters a local list by name and handle, and `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters. A `note` that `search` returns shows as a muted row, as do loading, a failed search and `emptyText`. With `selected`, the pick shows as an accent `<Pill>` chip that `onClear` removes; without it, the field empties after each pick. The approval request, the search Author filter, the co-geolocator invite, the organization invite, the admin org manager fields and the admin analyst search are its consumers.
-  - [`<TagChips>`](../frontend/src/components/ui/TagPicker.tsx) picks tags from the one catalogue that serves events and sources. The picked tags show as accent `<Pill>` chips, and a click on a chip removes the tag. Under them, a `<Combobox>` suggests the other tags whose name holds the typed text, ignoring case. When no tag bears the exact typed name (case-sensitive, like the backend uniqueness rule), the list ends with *Create "name"*, which creates the tag through [`POST /tags`](api.md#post-tags) and picks it. A name that already exists on the server prints *That tag already exists.* under the field and keeps the typed text. The list stays open after a pick, so you can pick several tags in a row. Each tag in the list shows as a neutral `<Pill>`, and the *Create "name"* row stays plain text. On a form, the suggested tags follow the search: neutral `<Pill>` chips with a plus, from [`GET /tags/suggested`](api.md#get-tagssuggested), the picked ones left out. The chips wrap onto as many lines as they need, so each chip shows whole. The first 6 show, then one **Show more** (`<LoadMoreRow>`) shows the rest. A click on a suggestion picks it. The filter panel shows no suggestions. The field's accessible name is *Tags* in the event's Details card and names the source in a source editor (*Source 1 tags*). On a form it spans its card; in the filter panel it stays at `max-w-xs`. With `filter`, the field is the Tags section of the [filter panel](#right-rail): it suggests the tags of the panel's catalogue, picks by name, the value the URL carries, and has no *Create "name"* row.
-  - [`<ConflictChips>`](../frontend/src/components/ui/TagPicker.tsx), the conflict field of `<TagPicker>`, picks the event's conflicts from the conflicts referential, which the form fetches whole and filters in the browser. The picked conflicts show as accent `<Pill>` chips, and a click on a chip removes the conflict. Under them, a `<Combobox>` named *Conflict* lists nothing at rest. On focus or typing, it lists the ongoing conflicts whose name holds the typed text, ignoring case, each as a neutral `<Pill>`, ordered by tier then name (`sortConflicts` in [`lib/conflicts.ts`](../frontend/src/lib/conflicts.ts)). *Other* is pinned last and always offered, so a conflict outside the referential has a pick. The *Include ended conflicts* switch adds the ended conflicts. It sits on the label row, above the field, out of the way of a list that opens below the field. A picked ended conflict stays on show when the switch is off. The list stays open after a pick. When the publish floor misses the conflict, the label turns red and the field takes the `invalid` outline of every field (`FORM_INVALID_FIELD`). On a form the field spans its card like every other field; only the filter panel keeps it at `max-w-xs`. With `filter`, the field is the Conflict section of the filter panel: it lists every conflict in use (`GET /conflicts?used=true`), ended ones included, picks by name, and has no label row and no switch, since the section header carries the title and the `?`.
-  - [`<LinkRow>`](../frontend/src/components/ui/LinkRow.tsx) is the icon, label and value row of the About page's links and the Notifications page. With an `href` it is one link; `external` leaves the app through `<OutboundLink>` with a trailing glyph. The opt-in `leading` node replaces the icon: each notification row leads with the 28px `<Avatar>` of who is behind it (`notificationAvatar` in [`lib/notifications.ts`](../frontend/src/lib/notifications.ts)), the organization's square logo on the rows where the organization acts (its approval landed, or it declined a request), the actor's circle otherwise, and the kind's icon when the row has no actor (a system kind or an erased account). The opt-in `variant="arrow"`, which the Notifications page uses, keeps the value in the neutral text colour, wraps it instead of truncating it, and ends the block with an orange `ArrowRight`, the in-app navigation glyph. Its link is stretched over the block, so the whole block is the click target, and hover or keyboard focus lights the border and the arrow. Its `action` node sits inside the block, left of the arrow, above the stretched link, so a click on it never follows the row. When the value and the action do not fit on one line, the action and the arrow wrap to a second line, right-aligned. `label` is optional, and the arrow variant takes a `meta` node, a muted `META_LINE` under the value for the date, the version, who, or a role or state pill. `meta` renders inside the link, so it holds text and pills, never a link. The organization page's lists and the admin Organizations panel use the arrow variant with `meta`. `value` takes a node. `onClick` runs before an in-app `href` navigates. The search page's shortcut is one arrow row under its search field: a query that reads as a coordinate pair (`parsePastedCoordinates`) shows the pair and *Open on the map*, and its `onClick` puts the point in the map state at `GO_TO_ZOOM` before the row opens `/map`. Otherwise a query that names an analyst or an organization exactly (`exactProfile` in [`lib/search.ts`](../frontend/src/lib/search.ts)) shows them as a list [`<Item>`](#items) that leads to their page. The About page rows keep the default variant: their orange value and trailing `ExternalLink` glyph mark where they leave the app.
+  - [`<AccountPicker>`](../frontend/src/components/ui/AccountPicker.tsx) is the one way to pick an analyst or an organization, on `<Combobox>`. Each row shows the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug in muted text. The caller owns the data: `options` filters a local list by name and handle, and `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters. A `note` that `search` returns shows as a muted row, as do loading, a failed search and `emptyText`. With `selected`, the pick shows as an accent `<Pill>` chip that `onClear` removes; without it, the field empties after each pick. The approval request, the filter panel's Author and Approved by editors, the co-geolocator invite, the organization invite, the admin org manager fields and the admin analyst search are its consumers.
+  - [`<TagChips>`](../frontend/src/components/ui/TagPicker.tsx) picks tags from the one catalogue that serves events and sources. The picked tags show as accent `<Pill>` chips, and a click on a chip removes the tag. Under them, a `<Combobox>` suggests the other tags whose name holds the typed text, ignoring case. When no tag bears the exact typed name (case-sensitive, like the backend uniqueness rule), the list ends with *Create "name"*, which creates the tag through [`POST /tags`](api.md#post-tags) and picks it. A name that already exists on the server prints *That tag already exists.* under the field and keeps the typed text. The list stays open after a pick, so you can pick several tags in a row. Each tag in the list shows as a neutral `<Pill>`, and the *Create "name"* row stays plain text. On a form, the suggested tags follow the search: neutral `<Pill>` chips with a plus, from [`GET /tags/suggested`](api.md#get-tagssuggested), the picked ones left out. The chips wrap onto as many lines as they need, so each chip shows whole. The first 6 show, then one **Show more** (`<LoadMoreRow>`) shows the rest. A click on a suggestion picks it. The field's accessible name is *Tags* in the event's Details card and names the source in a source editor (*Source 1 tags*). It spans its card.
+  - [`<ConflictChips>`](../frontend/src/components/ui/TagPicker.tsx), the conflict field of `<TagPicker>`, picks the event's conflicts from the conflicts referential, which the form fetches whole and filters in the browser. The picked conflicts show as accent `<Pill>` chips, and a click on a chip removes the conflict. Under them, a `<Combobox>` named *Conflict* lists nothing at rest. On focus or typing, it lists the ongoing conflicts whose name holds the typed text, ignoring case, each as a neutral `<Pill>`, ordered by tier then name (`sortConflicts` in [`lib/conflicts.ts`](../frontend/src/lib/conflicts.ts)). *Other* is pinned last and always offered, so a conflict outside the referential has a pick. The *Include ended conflicts* switch adds the ended conflicts. It sits on the label row, above the field, out of the way of a list that opens below the field. A picked ended conflict stays on show when the switch is off. The list stays open after a pick. When the publish floor misses the conflict, the label turns red and the field takes the `invalid` outline of every field (`FORM_INVALID_FIELD`). The field spans its card like every other field.
+  - [`<LinkRow>`](../frontend/src/components/ui/LinkRow.tsx) is the icon, label and value row of the About page's links and the Notifications page. With an `href` it is one link; `external` leaves the app through `<OutboundLink>` with a trailing glyph. The opt-in `leading` node replaces the icon: each notification row leads with the 28px `<Avatar>` of who is behind it (`notificationAvatar` in [`lib/notifications.ts`](../frontend/src/lib/notifications.ts)), the organization's square logo on the rows where the organization acts (its approval landed, or it declined a request), the actor's circle otherwise, and the kind's icon when the row has no actor (a system kind or an erased account). The opt-in `variant="arrow"`, which the Notifications page uses, keeps the value in the neutral text colour, wraps it instead of truncating it, and ends the block with an orange `ArrowRight`, the in-app navigation glyph. Its link is stretched over the block, so the whole block is the click target, and hover or keyboard focus lights the border and the arrow. Its `action` node sits inside the block, left of the arrow, above the stretched link, so a click on it never follows the row. When the value and the action do not fit on one line, the action and the arrow wrap to a second line, right-aligned. `label` is optional, and the arrow variant takes a `meta` node, a muted `META_LINE` under the value for the date, the version, who, or a role or state pill. `meta` renders inside the link, so it holds text and pills, never a link. The organization page's lists and the admin Organizations panel use the arrow variant with `meta`. `value` takes a node. `onClick` runs before an in-app `href` navigates. The search page's shortcut is one arrow row under its search field: a query that reads as a coordinate pair (`parsePastedCoordinates`) shows the pair and *Open on the map*, and its `onClick` puts the point in the map state at `GO_TO_ZOOM` before the row opens `/map`. The About page rows keep the default variant: their orange value and trailing `ExternalLink` glyph mark where they leave the app.
   - [`<Tooltip>`](../frontend/src/components/ui/Tooltip.tsx) shows an icon-only control's label in a `TOOLTIP_SURFACE` bubble while a mouse rests on it or the keyboard focuses it. A touch never opens it, so a tap leaves no bubble standing. It reuses `usePinnedPopover`'s placement and dismissal. `tapToShow` is the one exception, for a control whose label is the only place a fact shows (an approval stamp, a count badge): a touch's first tap pins the bubble instead of acting, and a second tap on the same control acts. An outside tap, a scroll or Escape closes the pinned bubble. `underParent` hangs the bubble under the wrapper's parent rather than under the control, so a count badge's list drops under its button instead of over it. `<Button icon>` renders through it, so every icon button gets it with no call-site change; an icon link wraps itself in `<Tooltip label>`, a `display: contents` span.
   - [`<MapControlButton>`](../frontend/src/components/ui/MapControlButton.tsx) is a 29px square icon button drawn like the MapLibre controls beside it, for a control the app adds to the map: the basemap control (see [Map](#map)). `active` paints the accent while what it opens is open.
   - [`<CountBadge>`](../frontend/src/components/ui/CountBadge.tsx) puts a red count on a control's top-right corner, of what the control still lacks: the missing conditions of a publish button, or the fields a collection's submit still refuses. The count is a `danger` `<Pill>` on a button beside the control, never inside it, so a tap on the control still acts. The badge's accessible name lists what is missing (*2 missing: Title, Conflict*), and a `<Tooltip tapToShow underParent>` shows that list under the control on hover, on keyboard focus, or on a tap on a touch screen, where the badge's hit area grows to about 36px. The control's `aria-describedby` reads the same list. A count of 0 shows no badge.
@@ -336,8 +336,10 @@ The vocabulary:
   - [`<EmptyState>`](../frontend/src/components/ui/EmptyState.tsx) owns the empty-state grammar (`boxed` / `plain` / `invite`).
   - A list that has more ends on one of two secondary buttons from [`LoadMoreRow.tsx`](../frontend/src/components/ui/LoadMoreRow.tsx). **Show more** grows the list in place. **See all** ([`<SeeAllLink href>`](../frontend/src/components/ui/LoadMoreRow.tsx)) links a preview to its whole list: the profile's geolocations, open requests and collections, each opening its list in search, and each section of the [search page](#search), opening its kind.
   - [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) is the shape that grows a list in place, the foot of every [`useCursorList`](../frontend/src/hooks/useCursorList.ts) list: **Show more**, a spinner while the page loads, a failed page's [`<ErrorNotice>`](#errors), with **Retry** when the fault is not the reader's, and nothing once the walk ends. `infinite` loads the next page as the row nears the viewport (the feed). A failed first page leaves no rows and no row, so the list shows that error itself. The Requests board, the feed, the version history, the notifications page, an organization's Approvals card, the admin invite codes, the admin reports queue, the search page's list of one kind and the create page's matched geolocations end on it. The create page's walk posts the search match as `useCursorList`'s `body`, and a `null` path is no walk, so a page whose list comes and goes keeps one hook. The search page follows the `cursor` of [`GET /search`](api.md#get-search), which travels in the response body rather than a `Link` header, so the page drives the row without `useCursorList`. The reports queue is offset-paged, so it passes `useCursorList` a `next` reader that turns the payload's `page`, `per_page` and `total` into the next page number.
-  - [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) is one filter family as a multi-select row of `<Pill>` chips. A selected option is accent, and a click toggles it. Any option in a bucket matches; combining buckets is the caller's rule (AND on the server). On the map the Status field reads **Show** and ends with the **Sites** chip, which names the sites layer, outside the bucket's match. Use it for a small fixed set: the shared filter panel's Status, Source kind, Level, Media, Location guess and Approved only, and the feed's Kind. An open catalogue (conflicts, tags) takes a search field instead (`<ConflictChips>`, `<TagChips>`).
-  - [`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx) is the one rendering of the applied filters: a removable accent `<Pill>` per filter, with **Clear all** after them once two or more are on. The map's filter overlay, [`<FilterRail>`](../frontend/src/components/filters/FilterRail.tsx) and [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) render it.
+  - [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) is a multi-select row of `<Pill>` chips over a small fixed set. A selected option is accent, and a click toggles it. Any option in a bucket matches; combining buckets is the caller's rule (AND on the server). `<OptionPicker>` draws a short list through it.
+  - [`<OptionPicker>`](../frontend/src/components/ui/OptionPicker.tsx) is a multi-select over a fixed list of options, the editor of every list dimension of the [filter panel](#filter-panel). Up to eight options show whole as a `<ChipBucket>`. A longer list is a search field, the picks as removable accent chips (`PickedPills`, which `<TagChips>` and `<ConflictChips>` share), then the first eight unpicked options the search matches as neutral chips, with one **Show more** (`<LoadMoreRow>`). A pick of a value the list lacks, which a crafted URL can name, still shows by its value. After a pick in a long list the focus returns to the search field.
+  - [`<PropertyRow>`](../frontend/src/components/ui/PropertyRow.tsx) is one property on one line: its name, with an optional `?`, at the left, and its values as removable accent `<Pill>`s at the right, or a muted chevron while it holds none. An empty button over the whole line opens `editor` in a `<PopoverPanel>` anchored under the line, so the line and what follows it never move. The popover sits over the map's floating panel and over a sheet. Escape closes it and returns the focus to the line, and the editor is handed the close for a pick that ends the edit. `PropertyName` is the name alone, for a control that takes its own line under it. Each pill's accessible name is *Remove* and its value.
+  - [`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx) is the one rendering of the applied filters outside the panel: a removable accent `<Pill>` per filter, with **Clear all** after them once two or more are on. The phone filter bar and the map's collapsed panel render it.
   - [`<StatTile>`](../frontend/src/components/ui/StatTile.tsx) is a labelled metric tile (icon, uppercase label, value), and `StatGrid` lays a row of them out in two columns, four from `sm` up. With an `href` the tile is one link into the view the figure was read from, with `TAPPABLE_HOVER` and an accent value. The profile insights use it.
   - [`<IconTile>`](../frontend/src/components/ui/IconTile.tsx) is an icon, a title and an optional one-line note in a bordered tile: the choosers on `/import` and `/submit`, and the concept rows on `/guide`. With an `href` the whole tile is one link with `TAPPABLE_HOVER` and an accent title on hover; without it the tile is inert. The icon is a node, so a brand mark such as `XGlyph` fits. `needs` adds a **Needs** row of neutral `<Pill>`s at the tile's foot: what you need in hand to follow the tile. `preview` puts a drawing of the result over the title from `sm` up; below `sm` the tile becomes a row, the same drawing scaled to a 112x56 thumbnail beside the text. The preview is decorative and hidden from assistive tech. In a grid with `auto-rows-fr` the previewed tiles share one height and their **Needs** rows line up. The file also exports the tile's box and title classes, `TILE` and `TILE_TITLE`, for the plain example panels on `/import`.
   - [`<TileNotice>`](../frontend/src/components/ui/TileNotice.tsx) is the one muted line a media box says when it has nothing to show: an empty media set, or *File unavailable* (`FILE_UNAVAILABLE`) for a file that does not load, in the player and in a form's file slot.
@@ -445,13 +447,13 @@ The variants:
 - An icon action that stands beside a field as its own item on the field's line is the outlined icon button, `<Button icon variant="secondary">`, so each action reads as its own box. The coordinate actions take it after the pair's two fields, and on every coordinates line, so the form and the reading surfaces show one look.
 - A control with nothing to act on is that button `disabled`, which paints it grey and drops it from the tab order. An inert link becomes a disabled button.
 - `aria-label` is the whole name, and every icon-only control shows it as a [`<Tooltip>`](../frontend/src/components/ui/Tooltip.tsx): `<Button icon>` does so on its own, and an icon link wraps itself in one. A `title` on an icon button becomes the tooltip text instead, for a longer hint such as *Edit (saves a new version)*, and the native `title` attribute is dropped so no second tooltip appears.
-- [`<Switch>`](../frontend/src/components/ui/Switch.tsx) is the one boolean toggle (`md` settings rows, `sm` map filter rows; `as="span"` when a whole-row parent owns the click).
-- [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) is the exclusive-choice bar (submit type, admin delete mode, the detections queue filter, the Requests board sort, the feed scope; `tone="danger"` for a destructive active option). It stretches below `sm`, where each option starts from its label's width (see [Phone chrome](#phone-chrome)). A bar whose one-word labels need a sentence takes a `<FieldHelp>` beside it.
+- [`<Switch>`](../frontend/src/components/ui/Switch.tsx) is the one boolean toggle (`md` settings rows and the filter panel's switch lines, `sm` dense rows; `as="span"` when a whole-row parent owns the click).
+- [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) is the exclusive-choice bar (submit type, admin delete mode, the detections queue filter, the Requests board sort; `tone="danger"` for a destructive active option). It stretches below `sm`, where each option starts from its label's width (see [Phone chrome](#phone-chrome)). A bar whose one-word labels need a sentence takes a `<FieldHelp>` beside it.
 - `<Input icon>` overlays a leading icon (the search box). `<Input trailing>` overlays the field's own actions at the other edge, centred on the field's height and taking the pointer: the picker of a date field, the Wayback Machine door of a snapshot field.
   - Each trailing control is the ghost icon button, set a hair apart so two hover plates read as two controls.
   - The field is one height across its three variants, so the square sits inside any of them with a 3px gutter.
   - The field's text padding grows by `TRAILING_ROOM`, so a long value never runs under the marks. `FieldAdornment` and that constant are exported for `<LockedUrl>`, which renders as an anchor and clears the same marks by the same amount.
-- [`<DateTimeInput>`](../frontend/src/components/ui/DateTimeInput.tsx) is the date / time / instant field. It sets `.picker-glyph`, which hides the engine's picker button (Webkit and Chromium only), puts a ghost icon button in the trailing slot (`Calendar` for a day, `Clock` for a time of day), and opens the native picker through `showPicker()`, falling back to focusing the field. It owns `has-value`, the class that mutes an empty field's `dd/mm/yyyy` placeholder. A date field too narrow for an adornment (the search filters, the map scrubber) stays a bare `<Input type="date">` with the native button.
+- [`<DateTimeInput>`](../frontend/src/components/ui/DateTimeInput.tsx) is the date / time / instant field. It sets `.picker-glyph`, which hides the engine's picker button (Webkit and Chromium only), puts a ghost icon button in the trailing slot (`Calendar` for a day, `Clock` for a time of day), and opens the native picker through `showPicker()`, falling back to focusing the field. It owns `has-value`, the class that mutes an empty field's `dd/mm/yyyy` placeholder. A date field too narrow for an adornment (the filter panel's timelines) stays a bare date input with the native button.
 - [`<Select>`](../frontend/src/components/ui/Input.tsx) is the pick-one-from-a-short-list field. It runs `<Input>`'s shape recipe under a custom caret, so a select and a text field on one row stay alike.
 - [`<LinkListInput>`](../frontend/src/components/ui/LinkListInput.tsx) is the ordered list of links (each source editor's links): one row per link, and an add button that disables at its `max`. A row is the URL `<Input>`, the caller's `columns`, then the remove control, so the control ends the row it removes. A row is the caller's own value, read and written through `urlOf` and `withUrl`, so what else a row carries moves with it through every add and removal. Each column names its header and its grid track. `expansion` is a line across the row while the row is toggled open; the list owns which rows are open, and every row starts closed. The list is its own container (`@container`). From `@xl` (36rem) its rows share one grid under a header line, so a column keeps one width down the list. Narrower, each row is a small card: the URL with the remove control at the top right, the columns wrapping under it, where a fixed track is the cell's minimum width, capped at the card's width.
 - [`<Disclosure>`](../frontend/src/components/ui/Disclosure.tsx) is a ghost toggle, a chevron and a label, that shows or hides a block of secondary fields under it (a source editor's **Capture details**). The parent owns `open`, so it picks the first state. The block stays mounted while closed, so its fields keep their values.
@@ -725,16 +727,15 @@ flowchart TB
   layout["`**PageWithRail**
   53rem main column plus a 17.5rem rail`"]:::core
   pages["`**Feed, Requests board, Search**
-  rail: FilterRail around EventFilterSections; narrowRail=hidden`"]:::page
+  rail: FilterRailPanel; narrowRail=hidden`"]:::page
   wide["`**lg and up**
-  rail sticks beside the list, scrolls on its own when taller;
-  the active-filter pills head it`"]:::state
+  rail sticks beside the list, scrolls on its own when taller`"]:::state
   narrow["`**below lg**
   rail leaves the page`"]:::state
-  bar["`**FilterBar**
-  Filters (N) button and the active-filter pills`"]:::shared
-  dialog["`**MediaOverlay dialog + Card**
-  the same panel on the applied filters: Clear, Done`"]:::shared
+  bar["`**FilterSheetBar**
+  Filters button and the active-filter pills`"]:::shared
+  sheet["`**MediaOverlay sheet**
+  the same panel, Done`"]:::shared
   list["`**the list**
   refetches on each change, as the rail does`"]:::state
 
@@ -742,8 +743,8 @@ flowchart TB
   layout --> wide
   layout --> narrow
   narrow --> bar
-  bar -->|Filters N| dialog
-  dialog -->|each change| list
+  bar -->|Filters| sheet
+  sheet -->|each change| list
 ```
 
 [`<PageWithRail>`](../frontend/src/components/ui/PageWithRail.tsx) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
@@ -753,82 +754,115 @@ flowchart TB
 - **Without a `rail`** (`null`) the page takes the `reading` column, so a page can drop the rail on a view it does not apply to.
 - **With `headerInColumn`** `PageShell` passes its header to `PageWithRail` as `header`, which heads the main column (`lg:grid-rows-[auto_1fr]`, the rail spanning both rows). The rail's top is then level with the title.
 
-The event forms place their actions in [`EventShell`](#event-layout)'s sticky actions instead of a rail. The feed, the [Requests board](#requests-board) and search mount the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the rail with `narrowRail="hidden"`. The [About page](../frontend/src/app/about/page.tsx) mounts its links in the rail with `headerInColumn` and `narrowRail="below"`: three dense `Card`s (Guides, Stay in touch, Legal) of `LinkRow`s, while the main column keeps the prose (Commitments, Funding, Privacy, Behind Vidit), so the rail's links stay in view while the prose scrolls. The map keeps its floating overlay panel. The active-filter pills follow the rail, as the map's overlay stacks them over its sections:
-
-- From `lg` up, [`<FilterRail>`](../frontend/src/components/filters/FilterRail.tsx) wraps the panel in the rail and puts the removable pills at its head. It leaves the author pill out when the panel offers the Author section (its `sections` prop, as the panel takes it), since that section already names the analyst in its summary and its picker.
-- Below `lg`, where the rail is gone, [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) sits above the list: the pills, author included, and a **Filters** button that reads **Filters (N)** while N filters are active. From `lg` up the row hides.
-
-The **Filters** button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there applies each change at once, as the rail and the map's panel do, so the list behind the dialog refetches on every pick:
-
-- **Clear** empties the filters. It is disabled while no filter is active.
-- **Done**, Escape or a tap on the backdrop closes the dialog. While a search field's list is open, Escape closes the list only.
-
-The pills act on the applied filters at every width. Every applied value has its pill, and counts once in **Filters (N)**. A pill is a key/value [`<Pill>`](../frontend/src/components/ui/Pill.tsx): the key is the filter's name, as its field label reads (`FILTER_NAMES`), and the value reads as its chip does, for example **Show:** *Sites*, **Approvals:** *Approved only*, **Author:** *ana* or **Event date:** *Until 1 Jan 2025*. A date window reads *From 1 Jan 2024*, *Until 1 Jan 2025* or *1 Jan 2024 to 1 Jan 2025* (`rangeSummary`). The pill row hides from `lg` up while no filter is active, since the button is off the page there.
+The event forms place their actions in [`EventShell`](#event-layout)'s sticky actions instead of a rail. The feed, the [Requests board](#requests-board) and search mount the [filter panel](#filter-panel) in the rail (`FilterRailPanel`, the panel in a `CARD_FRAME`) with `narrowRail="hidden"`, and below `lg` they show its phone bar above the list. The [About page](../frontend/src/app/about/page.tsx) mounts its links in the rail with `headerInColumn` and `narrowRail="below"`: three dense `Card`s (Guides, Stay in touch, Legal) of `LinkRow`s, while the main column keeps the prose (Commitments, Funding, Privacy, Behind Vidit), so the rail's links stay in view while the prose scrolls.
 
 #### Filter panel
 
 ```mermaid
 flowchart TB
-  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
   classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+  classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
   classDef page fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+  classDef state fill:#fdf3e7,stroke:#b8661a,color:#7a430f
 
   subgraph legend [Legend]
     direction LR
-    l1["`the panel`"]:::core
-    l2["`a field or FilterSection row, every surface`"]:::shared
-    l3["`a field, row or chip the surface brings or opts into`"]:::page
-    l1 ~~~ l2 ~~~ l3
+    l1["`the one model, thick-bordered`"]:::core
+    l2["`a shared filter piece`"]:::shared
+    l3["`a placement`"]:::page
+    l4["`what a line opens`"]:::state
+    l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  panel["`**EventFilterSections**`"]:::core
-  subgraph head [Always in view, one label per field]
-    direction TB
-    lead["`Activity (feed, **lead**)`"]:::page
-    what["`Show, Conflict, Tags`"]:::shared
-    lead --> what
-  end
-  sites["`Sites chip after the status chips (map, **layer**)`"]:::page
-  dates["`Dates: Event date, Added (**dateSections**)`"]:::page
-  guess["`Location guess (Requests board)`"]:::page
-  src["`Source: Source kind, Level, Media`"]:::shared
-  people["`People: Author, Approvals`"]:::shared
+  model["`**model.ts**
+  DIMENSIONS, FILTER_GROUPS, DATE_DIMENSIONS
+  offeredDimensions, scopeState, the Show rule`"]:::core
+  labels["`**labels.ts**
+  option labels, activePills`"]:::shared
+  panel["`**FilterPanel**
+  When, What, Source, Where, Who, Clear all`"]:::shared
+  timeline["`**TimelineScrubber**
+  day counts, from and to dates; play on the map`"]:::shared
+  line["`**PropertyRow**
+  name, value pills`"]:::shared
+  toggle["`**ToggleRow**
+  a switch line`"]:::shared
+  editor["`**PopoverPanel**
+  OptionPicker or AccountPicker`"]:::state
+  map["`**MapFilters**
+  floating panel under its header, from lg`"]:::page
+  rail["`**FilterRailPanel**
+  search, feed, Requests board, from lg`"]:::page
+  phone["`**FilterSheetBar**
+  every surface below lg: pills, a sheet`"]:::page
 
-  panel --> head --> dates --> guess --> src --> people
-  what -.- sites
+  model --> labels --> panel
+  model --> panel
+  panel --> timeline
+  panel --> line --> editor
+  panel --> toggle
+  panel --> map
+  panel --> rail
+  panel --> phone
 ```
 
-[`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx) is the one filter panel of the map overlay, search, the [Requests board](#requests-board) and the feed. It lays its filters out in one `CARD_FRAME`, in a fixed order and with no group heading.
+One filter model drives the filter panel of the map, search, the feed and the [Requests board](#requests-board). [`model.ts`](../frontend/src/components/filters/model.ts) lists every dimension once: its name, its `?`, its control, the surfaces whose data can serve it, and the query parameter that carries it in the page URL and the API. [`labels.ts`](../frontend/src/components/filters/labels.ts) names each value and builds the removable pills. [`<FilterPanel>`](../frontend/src/components/filters/FilterPanel.tsx) draws the model in one order on every surface, so the same dimension reads the same way everywhere. A surface leaves out only the dimensions its data cannot serve (`offeredDimensions`).
 
-The panel opens on fields that stay in view, each under its `<FieldLabel>` with its `?`:
+**The panel.** In reading order:
 
-1. The surface's own fields, passed as `lead`: **Activity** on the feed. The other surfaces have none.
-2. **Show**, the event statuses to list: Requested, Detected and Geolocated. On the map the field ends with the **Sites** chip, passed as `layer` (see [Map](#map)). The search page passes its own Show field as `lead`, with a chip per kind after the statuses (see [Search](#search)). The filter carries one name on every surface, `show` in the code. The URL parameter, `GET /search` and `GET /events` name it `status`, and `GET /feed` names it `kind`.
-3. **Conflict** and **Tags**, the two search fields.
+1. **When**: the two date timelines, **Event date** and **Added**. Each is a `<TimelineScrubber>`: a histogram of the rows per day, two handles, and the from and to date fields under it. A histogram counts the rows under every filter but its own window, so dragging a handle never reshapes the axis it moves on. Only the map plays a window.
+2. **What**: Show, Conflict and Tags.
+3. **Source**: Source kind, Level and Media.
+4. **Where**: Location guess.
+5. **Who**: Following, Author, Approved only and Approved by.
+6. **Clear all**, once a filter is on.
 
-On the map, the status chips and the **Sites** chip follow one rule (`showFieldScope` in [`lib/showField.ts`](../frontend/src/lib/showField.ts)), the rule the search page's Show field follows too (see [Search](#search)). With no chip selected, the map shows every event and every site. Once you select a chip, the map shows only what the selected chips name:
+A heading shows only while it holds a line. Each dimension is one line. A list or an account is a [`<PropertyRow>`](../frontend/src/components/ui/PropertyRow.tsx): its name at the left, its values as removable accent pills at the right. A click on the line opens its editor in a popover anchored to it, over the panel, so nothing in the panel expands or moves:
 
-| Selected chips | Events | Sites |
+- A list of up to eight options is a row of chips. A longer list (Conflict, Tags) is a search field, the picks, then a short list with one **Show more** ([`<OptionPicker>`](#controls)).
+- Author and Approved by take the [`<AccountPicker>`](../frontend/src/components/ui/AccountPicker.tsx). A pick closes the popover.
+- Following and Approved only are switch lines (`<ToggleRow>`), with no popover.
+
+Escape or a click outside closes the popover. A pill on a line removes its value without opening the editor. No line, chip or pill carries a count, and the panel prints no helper line.
+
+**Dimensions by surface.** The page URL and the API name each dimension by its parameter, so a link round-trips the view. The search page and the feed keep their filters in the URL; the map keeps them in `MapStateContext` and the Requests board in page state.
+
+| Dimension | Parameter | Map | Search | Feed | Requests board |
+|---|---|---|---|---|---|
+| Event date | `occurred_date_from`, `occurred_date_to` | In memory, with play | While events are listed | Yes | Yes |
+| Added | `submitted_from`, `submitted_to` | In memory, with play | While events are listed | Yes | Yes |
+| Show | `status`, `type` on search, `kind` on `GET /feed` | Detected, Geolocated, Sites | The statuses, Sites, Collections, Analysts, Organizations | The statuses | No: fixed to Requested |
+| Conflict | `conflict` | Yes | Yes | Yes | Yes |
+| Tags | `tag` | Yes | Yes | Yes | Yes |
+| Source kind | `source_kind` | Yes | Yes | Yes | Yes |
+| Level | `level` | Yes | Yes | Yes | Yes |
+| Media | `media` | Yes | Yes | Yes | Yes |
+| Location guess | `has_coords` | No: every point has one | Yes | Yes | Yes |
+| Following | `scope` | No | No | Yes, on by default | No |
+| Author | `author` | Yes | Yes | Yes | Yes |
+| Approved only | `approved` | Yes | Yes | Yes | No: a request holds no approval |
+| Approved by | `approved_by`, `approved_by_org` | Yes | Yes | Yes | No: a request holds no approval |
+
+On search, a Show pick that lists no event offers only the dimensions its kinds answer (`KIND_DIMENSIONS`, the mirror of the API's rule), and drops the values of the others (`scopeState`), so no hidden filter keeps narrowing the list. Each timeline reads its counts from the surface's histogram: [`GET /search/dates`](api.md#get-searchdates) on search and on the Requests board (the open requests search lists), [`GET /feed/dates`](api.md#get-feeddates) on the feed (`useTimelines`), and the loaded points on the map, which hold a day for each row.
+
+**The Show rule.** The Show line follows one rule on every surface (`showScope`, on `showFieldScope` in [`lib/showField.ts`](../frontend/src/lib/showField.ts)). With nothing selected, the surface shows everything. Once you select an option, it shows only what the selected options name. On the map:
+
+| Selected | Events | Sites |
 |---|---|---|
-| None | All | All |
-| Status chips, such as Geolocated | The selected statuses | None |
+| Nothing | All | All |
+| Statuses, such as Geolocated | The selected statuses | None |
 | Sites | None | All |
-| Sites and status chips, such as Sites and Detected | The selected statuses | All |
+| Sites and statuses, such as Sites and Detected | The selected statuses | All |
 
-The map draws no request (`GET /events/points` serves detections and geolocations), so Sites and Requested shows the sites alone. The **Filters** count and the pills name the selected chips, and **Clear all** deselects them, so the map shows every event and every site again. The selection lives in `MapStateContext`: it survives a visit to another page and resets on reload.
+On search, Show holds the kinds the page lists and drives its sections (see [Search](#search)). On the feed it holds the statuses `GET /feed` takes as `kind`.
 
-Collapsible rows follow:
+**Placement.** The panel's content is the same in every placement:
 
-1. The **Dates** row of the surface's `dateSections`.
-2. **Location guess**, on the board alone.
-3. The **Source** row (Source kind, Level, Media).
-4. The **People** row (Author, Approvals).
+- **The map, from `lg` up**: [`MapFilters`](../frontend/src/components/map/MapFilters.tsx) floats the panel under its **Filters** header, which shows the point count and the loading `<Dot>`. Collapsed, the header heads the active pills alone. Open, the panel stops above the map's bottom-left controls and scrolls the rest. The state lives in `MapStateContext`: it survives a visit to another page and resets on reload.
+- **Search, the feed and the Requests board, from `lg` up**: the panel in the [right rail](#right-rail).
+- **Every surface below `lg`**: [`FilterSheetBar`](../frontend/src/components/filters/FilterPanel.tsx), a **Filters** button and every active filter as a removable pill ([`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx)). The button opens the panel in `MediaOverlay`'s sheet variant, docked to the bottom edge. Each change applies at once. **Done**, Escape or a tap on the backdrop closes the sheet. On the map the bar floats over the canvas, right of the menu chip.
 
-Each row is a [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx). Filters that share a row show as fields, each under a `<FieldLabel>` with its `?`. A row left with one filter on a surface shows that filter as its own row, with its own title and `?`: search shows **Author** while its Show pick lists sites and no event, and the feed shows **Approvals**. The map shows Show, Conflict and Tags, then three rows, for its eleven filters and the Sites chip.
-
-A pick in the **Conflict** field closes its list, so the list never covers the **Tags** field under it. A click on the field opens the list again. A pick in **Tags** keeps the list open for the next tag.
-
-A collapsed row sums up its active values, joined by commas, or reads **Any**. Every row opens collapsed, except a row that holds an active value, which opens expanded so the applied filters stay visible. Each header still toggles its row. The panel keeps the open state per row, so a re-render or a scope change on search never resets it.
+A pill reads as **name:** *value*, for example **Show:** *Sites*, **Author:** *ana* or **Event date:** *Until 1 Jan 2025*; a switch's pill reads as its label alone (*Approved only*). A date window reads *From 1 Jan 2024*, *Until 1 Jan 2025* or *1 Jan 2024 to 1 Jan 2025* (`rangeSummary`).
 
 #### Phone chrome
 
@@ -846,7 +880,7 @@ The nav chrome takes three shapes, and the page offset follows it:
 
 **The beta pill has one live copy at any width** ([`BetaBanner.tsx`](../frontend/src/components/BetaBanner.tsx)). The floating corner pill paints over a phone's content, so it hides below `sm` and the drawer renders the same component inline at its foot.
 
-**The map page lays its overlays out around the chip.** The filter bar starts right of the chip's open control (`left-16`), and the overlay stretches to 72px above the viewport bottom, clear of the map's bottom-left row (zoom, locate, basemap and an attribution that wraps to three lines at 320px), laying its bar, its active-filter strip and its section stack out as a column: the stack takes the height the other two leave and scrolls the rest, so the tag and author sections stay reachable. The stretched box passes pointers through, so the map keeps every tap outside the blocks themselves. The detail panel becomes a bottom sheet: full width on the bottom edge, capped at `60dvh`, scrolling its own content, under a grab bar above its close control. The bar is decorative, and marks the sheet as the scrolling surface; the close control dismisses it. The map's bottom-left control group keeps the map's own corner below `sm`, since the 60px offset in [`globals.css`](../frontend/src/app/globals.css) clears a rail that is not there; an open sheet covers that group, and closing it hands the group back.
+**The map page lays its overlays out around the chip.** The filter bar starts right of the chip's open control (`left-16`) and takes the width its button and pills need, so the map keeps every tap outside it. Its **Filters** button opens the [filter panel](#filter-panel) in a sheet over the whole screen. The detail panel becomes a bottom sheet: full width on the bottom edge, capped at `60dvh`, scrolling its own content, under a grab bar above its close control. The bar is decorative, and marks the sheet as the scrolling surface; the close control dismisses it. The map's bottom-left control group keeps the map's own corner below `sm`, since the 60px offset in [`globals.css`](../frontend/src/app/globals.css) clears a rail that is not there; an open sheet covers that group, and closing it hands the group back.
 
 **A finger gets slop on the canvas** ([`Map.tsx`](../frontend/src/components/map/Map.tsx), [`stack.ts`](../frontend/src/components/map/stack.ts)). On a coarse pointer, a tap that hits bare canvas is re-tested over a 12px box on each side and takes the feature whose projected centre sits nearest, then does what that feature's own layer would have done: a cluster zooms, a stack badge fans out, a pin selects. A ring dot keeps its 12px paint and grows a 32px hit box around it. A tap arms no hover preview, since the compatibility `mousemove` a tap fires would open the card over the pin the finger just selected. A mouse keeps exact hit testing and its preview. The pointer read has one home, `isCoarsePointer` ([`pointer.ts`](../frontend/src/lib/pointer.ts)), on the same media feature the `pointer-coarse:` variant carries in CSS.
 
@@ -870,7 +904,7 @@ The nav chrome takes three shapes, and the page offset follows it:
 
 **The media lightbox scrolls instead of overflowing** ([`MediaLightbox.tsx`](../frontend/src/components/ui/MediaLightbox.tsx)). The frame is `80dvh` inside an `overflow-y-auto` overlay, so a video's control bar stays on screen with the iOS URL bar visible. The content sits at the top of the overlay with auto vertical margins, which centre it while it fits and collapse to 0 when it does not, so nothing lands above scroll origin. The content is sized by what it holds rather than clamped to the overlay's height, so a tall frame scrolls.
 
-**An interactive chip and a filter-section header are tap targets.** `TAP_STEP` ([`Button.tsx`](../frontend/src/components/ui/Button.tsx)) is the one phone floor, 36px below `sm` and the exact desktop shape from `sm` up. It raises the tappable height only, so a control keeps its own type scale and its own horizontal padding. [`<Pill>`](../frontend/src/components/ui/Pill.tsx) takes it whenever it carries an `onClick`, which is every conflict, source kind, level, tag and status chip, every removable active filter, the `<AccountPicker>` chip and every `<TagPicker>` conflict and tag chip; a static pill is a label and keeps its resting height. [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx) makes its whole header row the target the way [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx) makes its row the switch: each of the two toggles carries the step and the row's vertical padding, and the summary and chevron one grows into every pixel right of the title, so the `?` is the only part of the header that is not a toggle. Put the step on the row instead and it sizes the row while each button keeps its own 16px line box, which is a 36px strip holding two 16px targets. The quiet text control of the same surfaces, `Clear all`, takes the step as well. A square control smaller than the icon button takes the same floor through `ICON_TAP_STEP`, the width and the height together: the settings accent swatch, a `<FileManager>` tile's remove control, the map scrubber's play and reset controls, and the sidebar's three community links, each naming its own desktop square beside it.
+**An interactive chip and a filter line are tap targets.** `TAP_STEP` ([`Button.tsx`](../frontend/src/components/ui/Button.tsx)) is the one phone floor, 36px below `sm` and the exact desktop shape from `sm` up. It raises the tappable height only, so a control keeps its own type scale and its own horizontal padding. [`<Pill>`](../frontend/src/components/ui/Pill.tsx) takes it whenever it carries an `onClick`, which is every conflict, source kind, level, tag and status chip, every removable active filter, the `<AccountPicker>` chip and every `<TagPicker>` conflict and tag chip; a static pill is a label and keeps its resting height. [`<PropertyRow>`](../frontend/src/components/ui/PropertyRow.tsx) makes its whole line the target the way [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx) makes its row the switch: an empty button over the line takes the click, and the line carries the step, so the `?` and the value pills, stacked above it, are the only parts of the line that do not open the editor. The quiet text control of the same surfaces, `Clear all`, takes the step as well. A square control smaller than the icon button takes the same floor through `ICON_TAP_STEP`, the width and the height together: the settings accent swatch, a `<FileManager>` tile's remove control, the map scrubber's play and reset controls, and the sidebar's three community links, each naming its own desktop square beside it.
 
 **A boolean preference is a [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx).** Its accessible name is its label alone (`aria-label`), and its description is its accessible description. An empty button laid over the whole row carries `role="switch"` and the click, and `<Switch>` renders as its visual span, so a tap anywhere on the row toggles rather than having to land on the 20x36px track, and the row takes `TAP_STEP`. The span takes no pointer event (`pointer-events-none`), so a click on the track or its knob reaches the button under it. `concept` puts a [`FieldHelp`](#field-help-) `?` after the label in the `setting` shape. The `?` stacks above the row's button rather than inside it, so a tap on it opens its help and never toggles. `variant` picks the shape, and defaults from `description`: `filter` is the filter toggle, a micro uppercase label on a divided list; `setting` is a settings preference, the label at reading size over a line saying what the preference does when there is one. The basemap panel uses `setting` rows without a description. The accessible name is the label alone (`aria-labelledby` on it), so a screen reader announces the switch by what it switches, and the description is its accessible description. `disabled` reads the state but refuses the toggle and dims the row; give it a `description` that says when the switch applies.
 
@@ -1428,14 +1462,14 @@ flowchart TB
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  toggle["`**Activity**, in the filter panel
-  scope: Following (default) or All`"]:::page
-  filters["`**filter rail**
-  Show, Conflict, Tags, Source kind, Level, Approvals`"]:::shared
+  toggle["`**Following**, a switch line of the filter panel
+  scope: following while on (default), all while off`"]:::page
+  filters["`**filter panel**
+  When, What, Source, Where, Who; the URL holds them`"]:::shared
   walk["`**useCursorList**
   one walk per scope and filter set; a change starts a new walk`"]:::shared
   api["`**GET /feed**
-  scope, kind, conflict, source_kind, level, tag, limit 10, cursor`"]:::core
+  scope, kind, the filter set of GET /events, limit 10, cursor`"]:::core
   cards["`**Item variant=card**
   one card per row, appended page by page`"]:::page
   row["`**LoadMoreRow infinite**
@@ -1461,24 +1495,24 @@ flowchart TB
 
 `/feed` is a signed-in page, linked from the rail between Requests and Search. [`GET /feed`](api.md#get-feed) decides which rows it lists and in what order. `/timeline` redirects permanently to `/feed`.
 
-**The [filter panel](#filter-panel) picks the scope.** Its first field, **Activity**, is a [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) of **Following** (default) and **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen. The scope is not a filter: it has no pill and no place in **Filters (N)**.
+**The [filter panel](#filter-panel) holds the scope.** Its **Following** switch line, under **Who**, is on by default and sends `scope=following`; off, it sends `scope=all`. A change starts a new walk, so the list and its empty state describe the scope on screen. Like every filter, Following shows as a pill on the phone bar while it is on, and **Clear all** turns it off.
 
-**The [filter rail](#right-rail) narrows the walk.** The panel offers Show, Conflict, Tags, Source kind, Level and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
+**The panel narrows the walk.** The feed offers every dimension of the panel: the two timelines, Show, Conflict, Tags, Source kind, Level, Media, Location guess, Following, Author, Approved only and Approved by. A change starts a new walk with `scope`, `kind` and the filter set `GET /events` takes. The timelines count the rows of the same walk per day ([`GET /feed/dates`](api.md#get-feeddates)).
 
-**Show** is the same field as on the other surfaces, the chips **Requested**, **Detected** and **Geolocated**. With no chip selected the feed lists all three, and the page sends no `kind`. Each selected chip goes out as its `kind` value (`request`, `detected`, `geolocation`), and has a removable pill, as every other filter does. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
+**Show** offers **Requested**, **Detected** and **Geolocated**. With nothing selected the feed lists all three, and the page sends no `kind`. Each selected status goes out as its `kind` value (`request`, `detected`, `geolocation`). The filters live in the page URL in the `GET /events` vocabulary, with `scope=all` while Following is off (`feedPageParams` and `readFeedPage` in [`lib/feed.ts`](../frontend/src/lib/feed.ts)), so a shared link and **Back** land on the same view; each change replaces the current history entry. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
 
 **A card names its kind.** Each row is the card [`<Item>`](#items), which only the feed renders: the media on top, then the title with its [`<StatusBadge>`](../frontend/src/components/event/StatusBadge.tsx), then the detail line. The detail line reads *Event* or *Request*, the event date when it is known, the credit line, then when the row entered the feed (`feed_at`): *Published 3 Oct 2026* on a geolocation, *Requested 3 Oct 2026* on a request or *Detected 3 Oct 2026* on a detection. An open request's owner is its requester, and a detection's owner is the analyst whose post was imported.
 
 A geolocation or a detection opens `/events/{id}` and a request opens `/requests/{id}`.
 
-**An empty first page names its cause.** An unfiltered empty **Following** view reads the viewer's `following_count` from [`GET /users/{username}`](api.md#get-usersusername) to tell two cases apart:
+**An empty first page names its cause.** An empty **Following** view with no other filter reads the viewer's `following_count` from [`GET /users/{username}`](api.md#get-usersusername) to tell two cases apart:
 
 | Case | Empty state | Actions |
 |---|---|---|
 | The viewer follows nobody | `invite`, *You follow no analysts yet* | **Show all activity**, **Explore the map** |
 | The analysts followed have posted nothing | `plain`, *Nothing from analysts you follow yet* | **Show all activity** |
 
-**Show all activity** switches the scope to **All**. An empty **All** view is a `boxed` line. A first page that fails shows its `ErrorNotice` alone.
+**Show all activity** turns Following off. An empty view with Following off is a `boxed` line. A first page that fails shows its `ErrorNotice` alone.
 
 **The list walks the shared cursor and scrolls without a click.** A page is 10 rows. [`useCursorList`](../frontend/src/hooks/useCursorList.ts) holds the walk, and the foot is [`<LoadMoreRow infinite>`](../frontend/src/components/ui/LoadMoreRow.tsx), the foot every cursor list shares. Its [`useInfiniteScroll`](../frontend/src/hooks/useInfiniteScroll.ts) calls `loadMore` when the row comes within one screen of the viewport, from the render that mounts the row. While the next page loads, the button is disabled and shows a spinner with *Loading…*.
 
@@ -1782,9 +1816,9 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 
 #### Search, shelving, and moderation
 
-**Search.** `/search` finds a collection by its title and description (see [Search](#search)). The row is the collection's list [`<Item>`](#items). A **Collections** pick offers the Tags and Author sections only, since every other filter leaves the collections out of the list (see [`api.md`](api.md#get-search)); a step from events to collections keeps the tags and the analyst.
+**Search.** `/search` finds a collection by its title and description (see [Search](#search)). The row is the collection's list [`<Item>`](#items). A **Collections** pick offers the Tags and Author lines only, since every other filter leaves the collections out of the list (see [`api.md`](api.md#get-search)); a step from events to collections keeps the tags and the analyst.
 
-**Approvals filter.** The map, the search page while its pick lists events, and the feed offer an **Approvals** filter, in the panel's **People** row. **Approved only** is a one-chip `ChipBucket` that sends [`approved`](api.md#get-events). **Approved by** is an `<AccountPicker>` over the `user` and `organization` groups of `GET /search` (`suggestApprovers` in [`lib/search.ts`](../frontend/src/lib/search.ts)). An analyst sends `approved_by` and an organization sends `approved_by_org`, and Enter on a typed handle picks it as an analyst. Each value has a removable pill (**Approved**, **Approved by** *name*) and counts once in **Filters (N)**. `appendApprovalFilters` writes the keys into every request and the search page's URL, and `approvalFiltersFromParams` reads them back. The Requests board leaves the section out, because a request carries no approval.
+**Approval filters.** The map, the search page while its pick lists events, and the feed offer two lines under the panel's **Who** heading. **Approved only** is a switch line that sends [`approved`](api.md#get-events). **Approved by** opens an `<AccountPicker>` over the `user` and `organization` groups of `GET /search` (`suggestApprovers` in [`lib/search.ts`](../frontend/src/lib/search.ts)). An analyst sends `approved_by` and an organization sends `approved_by_org`, and Enter on a typed handle picks it as an analyst. Each value has a removable pill (*Approved only*, **Approved by:** *name*). `eventFilterFields` writes the keys into every request and the page URL, and `readEventFilterParams` reads them back. The Requests board leaves both lines out, because a request carries no approval.
 
 **One collection picker.** Both **Add to collection** popovers, the event page's and the search page's bulk add, render [`<CollectionPicker>`](../frontend/src/components/collections/CollectionPicker.tsx), so they share one look:
 
@@ -1935,8 +1969,8 @@ flowchart LR
 
 [`/requests`](../frontend/src/app/requests/page.tsx) lists open requests from [`GET /events`](api.md#get-events) with `view=requested&status=requested`, cursor-paged behind a **Show more** button. The board is public by link, but the rail lists it only for a signed-in reader. **Post request** is the board's action, top right of the title, and opens the submit form; the sort sits alone under the title. On a request page, a signed-out reader sees **Geolocate** last in the actions row, which opens the sign-in page and returns to the submit form.
 
-- The status is fixed to `requested`. The board mounts the shared filter panel ([`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx)) in the [filter rail](#right-rail) without its Status section, because a `closed` chip would read as "done" on a work queue. The media filter is also left out, because `GET /events` takes no `media` filter.
-- The panel offers Conflict, Source kind, Level, Location guess, Tags and Author. Location guess is offered on the board alone, as a row of its own in the Event group. **With a guess** keeps requests that carry a guessed point, **No guess** keeps the blind ones, and picking both or neither drops the filter. The section sends [`has_coords`](api.md#get-events).
+- The status is fixed to `requested`, so the board mounts the [filter panel](#filter-panel) in the [right rail](#right-rail) without the Show line. It leaves out Approved only and Approved by too, since a request carries no approval.
+- The panel offers the two timelines, Conflict, Tags, Source kind, Level, Media, Location guess and Author. The timelines count the open requests per day, the set search lists for that status ([`GET /search/dates`](api.md#get-searchdates)). Under **Where**, **With a guess** keeps the requests that carry a guessed point, **No guess** keeps the blind ones, and picking both or neither drops the filter. The line sends [`has_coords`](api.md#get-events).
 - A `<SegmentedControl>` orders the list **Newest** (the default) or **Oldest**. It sends [`sort`](api.md#get-events), so every page of the cursor walk keeps that order.
 - Each request is a list [`<Item>`](#items) whose detail line ends with how long the request has been open, in whole days from `requested_at`: *Open today*, *Open 1 day*, *Open 12 days*. A row with no `requested_at` shows no age.
 - Filters and sort live in page state and reset on reload.
@@ -1961,10 +1995,12 @@ flowchart LR
 
   url["`**the URL**
   q, type, status, filters`"]:::spec
-  show["`**Show** field
-  status chips, then Sites, Collections, Analysts, Organizations`"]:::spec
-  panel["`**EventFilterSections**
-  the sections the pick offers`"]:::shared
+  show["`**Show** line
+  the statuses, then Sites, Collections, Analysts, Organizations`"]:::spec
+  panel["`**FilterPanel**
+  the dimensions the pick offers`"]:::shared
+  datesApi["`**GET /search/dates**
+  the events' days, per axis`"]:::core
   sectionsApi["`**GET /search/sections**
   the top 5 of each kind`"]:::core
   listApi["`**GET /search**
@@ -1981,13 +2017,15 @@ flowchart LR
   sectionsApi --> sections
   listApi --> list
   sections -->|"See all"| url
+  url -->|"while events are listed"| datesApi
+  datesApi -->|"timelines"| panel
 ```
 
 **The URL holds the view.** The query, the Show pick and the filters live in the URL in the vocabulary of `GET /search` (`searchPageParams` in [`lib/search.ts`](../frontend/src/lib/search.ts)), so a shared link opens the same view and a profile link such as `/search?type=collection&author=ana` opens with **Collections** selected. The page writes the URL 300 ms after the last keystroke or change. A new Show pick adds a history entry, so **Back** returns to the previous kind; a new query or filter replaces the current entry. When the URL moves (**Back**, **Forward** or **See all**), the page takes the view it names at once.
 
-**The Show field.** The panel opens on the **Show** field, a `ChipBucket` passed as the panel's `lead`: **Requested**, **Detected**, **Geolocated**, then **Sites**, **Collections**, **Analysts** and **Organizations** (`SEARCH_KINDS` in `lib/search.ts`, named by the plural of `ITEM_KINDS`). The chips carry no counts. The field follows the map's rule, through the same `showFieldScope`: with no chip selected the page lists every kind, and once a chip is selected it lists only what the selected chips name. A status chip names the events in that status. `searchTypes` turns the pick into the `type` and `status` values the API reads. A link whose `type=event` names no status selects every status chip.
+**The Show line.** The panel's **Show** line offers **Requested**, **Detected**, **Geolocated**, then **Sites**, **Collections**, **Analysts** and **Organizations** (`SHOW_KINDS` in [`model.ts`](../frontend/src/components/filters/model.ts), named by the plural of `ITEM_KINDS`). The line follows the [Show rule](#filter-panel): with nothing selected the page lists every kind, and once something is selected it lists only what the selection names. A status names the events in that status. `searchTypes` turns the pick into the `type` and `status` values the API reads. A link whose `type=event` names no status selects every status.
 
-**The filter sections follow the pick.** While the pick lists events, the panel offers every event section. Once it lists no event, the panel offers only the sections the picked kinds answer (`SEARCH_KIND_SECTIONS`, the mirror of the API's rule): **Tags** and **Author** for collections, **Author** for sites, none for analysts and organizations. A pick that drops the events also drops the values of the sections it no longer offers, so no hidden filter keeps narrowing the list. Each picked kind other than a status shows as a **Show** pill and counts in **Filters (N)**.
+**The dimensions follow the pick.** While the pick lists events, the panel offers every dimension but Following, the timelines included, which count the events the query and the filters match ([`GET /search/dates`](api.md#get-searchdates)). Once it lists no event, the panel offers only Show and the lines the picked kinds answer (`KIND_DIMENSIONS`, the mirror of the API's rule): **Tags** and **Author** for collections, **Author** for sites, none for analysts and organizations. A pick that drops the events also drops the values of the lines it no longer offers, so no hidden filter keeps narrowing the list.
 
 **Sections.** A pick of no kind, or of several, lists one section per kind that has a hit, in a fixed order: Events, Sites, Collections, Analysts, Organizations. A request is an event and sits in the Events section with its *Requested* badge. Each section is a `SectionEyebrow` with the kind's name, then the kind's top 5 hits as list [`<Item>`](#items) rows through `searchHitItem` ([`lib/items.tsx`](../frontend/src/lib/items.tsx)). A section whose kind holds more ends its heading row on **See all**, which opens the page on that kind alone: the events keep the statuses the pick names, or take every status, and another kind keeps the filters it answers. A kind with no hit has no section, and no section prints a count.
 
@@ -1999,9 +2037,9 @@ In both views, each title marks the words the query matched, and an analyst's or
 
 **States.** The search field takes the focus when the page opens. An empty field with no filter shows the search icon alone. A search that finds nothing says *No matches.* on one line and, when the API offers one, *Did you mean* with the respelling as a link that searches it at once.
 
-**The shortcut row.** Under the search field, one row offers the fastest exit: an arrow `LinkRow` opens the map at a query that reads as a coordinate pair, and the list [`<Item>`](#items) of an analyst or an organization a query names exactly (`exactProfile`) opens their page.
+**The coordinate row.** Under the search field, a query that reads as a coordinate pair shows one arrow `LinkRow` that opens the map there. An analyst or an organization the query names exactly (`exactProfile` in [`lib/search.ts`](../frontend/src/lib/search.ts)) shows once, first in its section or its list.
 
-**Phone.** Below `lg` the rail leaves the page and [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) sits above the results, as on the feed and the Requests board.
+**Phone.** Below `lg` the rail leaves the page and the panel's phone bar sits above the results, as on the feed and the Requests board.
 
 ### Share cards
 
