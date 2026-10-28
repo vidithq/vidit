@@ -49,7 +49,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
-- Search finds an analyst's work by their handle: on All and Events, a word that is an analyst's username lists the events credited to them, the other words narrow those events, and the Analysts group keeps the analyst ([#PRNUM](https://github.com/vidithq/vidit/pull/PRNUM)).
+- Search finds an analyst's work by their handle: on All and Events, a word that is an analyst's username lists the events credited to them, the other words narrow those events, and the Analysts group keeps the analyst ([#769](https://github.com/vidithq/vidit/pull/769)).
 - A Telegram post whose text holds a custom emoji now imports with its photo instead of the date alone ([#697](https://github.com/vidithq/vidit/pull/697)).
 
 ## v0.8.0, 2026-10-25
