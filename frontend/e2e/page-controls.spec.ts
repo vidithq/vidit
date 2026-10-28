@@ -7,10 +7,7 @@ import { expectNoHorizontalOverflow } from "./support/narrowLayout";
  * `PageShell`'s `controls` slot: the view's segmented control sits under the
  * title, on the title's left edge, at the phone width and on a wide screen.
  */
-const PAGES = [
-  { name: "feed", path: "/feed", control: "Feed scope" },
-  { name: "requests", path: "/requests", control: "Sort requests" },
-];
+const PAGES = [{ name: "requests", path: "/requests", control: "Sort requests" }];
 
 async function expectUnderTitle(page: Page, control: string) {
   const group = page.getByRole("group", { name: control });

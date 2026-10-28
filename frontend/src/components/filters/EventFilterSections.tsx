@@ -35,13 +35,14 @@ import {
 
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
- * feed: one component owns the row order, so a vocabulary change lands on all four. The rows: the
- * surface's `lead` rows, a "Status, conflict, tags" row ("Show, conflict, tags" with a `layer`), a
- * Dates row of the surface's `dateSections`, Location guess, a Source row of Source kind, Level and
- * Media, and a People row of Author and Approvals. Sections that share a row show as fields under one collapsible header; a
- * row left with one section shows it as its own row. Surfaces differ in `lead`, `layer`,
- * `dateSections` and `sections`, the subset they offer (the search page's Collections group is
- * narrowed by `author` alone, and only the board offers Location guess).
+ * feed: one component owns the order, so a vocabulary change lands on all four. It opens on the
+ * surface's `lead` fields, then Show, Conflict and Tags, each under its own label and always in
+ * view. Collapsible rows follow: Dates of the surface's `dateSections`, Location guess, a Source
+ * row of Source kind, Level and Media, and a People row of Author and Approvals. Sections that
+ * share a row show as fields under one header; a row left with one section shows it as its own
+ * row. Surfaces differ in `lead`, `layer`, `dateSections` and `sections`, the subset they offer
+ * (the search page's Collections group is narrowed by `tags` and `author` alone, and only the
+ * board offers Location guess).
  *
  * State stays surface-owned: this component takes one `values` object and emits patches.
  * `buildActiveFilterPills` derives the matching pill entries from the same shape so the
@@ -50,7 +51,8 @@ import {
 
 /** The common event filter values (the server vocabulary minus the surface-specific date windows). */
 export interface EventFilterValues extends ApprovalFilters {
-  statuses: string[];
+  /** The Show filter: the event statuses to list. */
+  show: string[];
   conflicts: string[];
   sourceKinds: string[];
   levels: string[];
@@ -62,7 +64,7 @@ export interface EventFilterValues extends ApprovalFilters {
 }
 
 export const EMPTY_EVENT_FILTERS: EventFilterValues = {
-  statuses: [],
+  show: [],
   conflicts: [],
   sourceKinds: [],
   levels: [],
@@ -78,7 +80,7 @@ export type EventFilterPatch = (patch: Partial<EventFilterValues>) => void;
 
 /** The panel's own sections, so a surface can offer a subset. Date sections are dropped by passing no `dateSections`. */
 export type EventFilterSectionName =
-  | "status"
+  | "show"
   | "conflict"
   | "source_kind"
   | "level"
@@ -90,7 +92,7 @@ export type EventFilterSectionName =
 
 /** The default set. `location_guess` is opt-in: only `GET /events` serves it. */
 export const ALL_FILTER_SECTIONS: ReadonlyArray<EventFilterSectionName> = [
-  "status",
+  "show",
   "conflict",
   "source_kind",
   "level",
@@ -118,18 +120,22 @@ export const EMPTY_DATE_WINDOWS: DateWindows = {
 export const eventWindowActive = (w: DateWindows) => !!(w.eventFrom || w.eventTo);
 export const addedWindowActive = (w: DateWindows) => !!(w.addedFrom || w.addedTo);
 
-/** One filter: its own row, or one field of a merged row. A surface passes its own (the date
- * controls, the lead rows) in the same shape. */
-interface InjectedSection {
+/** One field at the head of the panel, always in view under its label. */
+interface PanelField {
   title: string;
   concept?: Concept;
-  summary: string;
-  active: boolean;
   children: ReactNode;
 }
 
-/** A map layer offered as one more chip after the status chips: on shows the layer, and `note`
- * shows under the chips while it is on. With a layer, the field reads "Show" instead of "Status". */
+/** One filter in a collapsible row: its own row, or one field of a merged row. A surface passes
+ * its date controls in the same shape. */
+interface InjectedSection extends PanelField {
+  summary: string;
+  active: boolean;
+}
+
+/** A map layer offered as one more Show chip after the status chips: on shows the layer, and
+ * `note` shows under the chips while it is on. */
 interface FilterLayer {
   label: string;
   on: boolean;
@@ -169,6 +175,8 @@ const MEDIA_TYPES: ReadonlyArray<[string, string]> = [
   ["image", "Image"],
   ["video", "Video"],
 ];
+const MEDIA_LABELS: Record<string, string> = Object.fromEntries(MEDIA_TYPES);
+const mediaLabel = (value: string) => MEDIA_LABELS[value] ?? value;
 
 /** The lifecycle statuses this panel offers (Event.status values), in the backend vocabulary's
  * order. Hand-kept mirror of `event_filters.STATUSES` (see AGENTS.md): every status but `closed`,
@@ -180,80 +188,101 @@ const FILTER_STATUSES = [
   "geolocated",
 ] as const;
 
-/** The status filter's options, each labelled like the status badge (`EVENT_STATUS_META`).
+/** The Show filter's options, each labelled like the status badge (`EVENT_STATUS_META`).
  *  Exported so the search page can gate crafted-URL values to the same vocabulary. */
-export const STATUS_FILTER_OPTIONS: ReadonlyArray<[string, string]> = FILTER_STATUSES.map(
+export const SHOW_OPTIONS: ReadonlyArray<[string, string]> = FILTER_STATUSES.map(
   (status) => [status, EVENT_STATUS_META[status].label],
 );
 
 // Value to chip label, shared by the pill row and the section summary.
-const STATUS_FILTER_LABELS: Record<string, string> = Object.fromEntries(STATUS_FILTER_OPTIONS);
-const statusLabel = (value: string) => STATUS_FILTER_LABELS[value] ?? value;
-
-const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const SHOW_LABELS: Record<string, string> = Object.fromEntries(SHOW_OPTIONS);
+const showLabel = (value: string) => SHOW_LABELS[value] ?? value;
 
 const APPROVED_ONLY = "approved";
+const APPROVED_ONLY_LABEL = "Approved only";
 
-/** The removable-pill entries for the common values, one per value; surfaces append their
- * date-window entries. */
+/** Every filter's name, shared by its field label and its active-filter pill, so a pill says
+ *  which filter it removes. */
+export const FILTER_NAMES = {
+  show: "Show",
+  conflict: "Conflict",
+  tags: "Tags",
+  eventDate: "Event date",
+  added: "Added",
+  locationGuess: "Location guess",
+  sourceKind: "Source kind",
+  level: "Level",
+  media: "Media",
+  author: "Author",
+  approvals: "Approvals",
+  approvedBy: "Approved by",
+} as const;
+
 /** The key of the author pill `buildActiveFilterPills` emits. The filter rail leaves that pill
  *  out: the Author section already names the analyst, in its summary and its picker. */
 export const AUTHOR_PILL_KEY = "author";
 
+type ListFilter =
+  | "show"
+  | "conflicts"
+  | "tags"
+  | "locationGuess"
+  | "sourceKinds"
+  | "levels"
+  | "mediaTypes";
+
+/** The removable-pill entries for the common values, one per value, each named by its filter and
+ *  reading as its chip does; surfaces append their date-window entries. */
 export function buildActiveFilterPills(
   values: EventFilterValues,
   onPatch: EventFilterPatch
 ): ActiveFilter[] {
-  const drop = (key: keyof EventFilterValues, name: string) =>
-    onPatch({ [key]: (values[key] as string[]).filter((n) => n !== name) });
+  const each = (
+    key: ListFilter,
+    filter: string,
+    label: (value: string) => string = (value) => value,
+  ): ActiveFilter[] =>
+    values[key].map((n) => ({
+      key: `${key}:${n}`,
+      filter,
+      label: label(n),
+      onRemove: () => onPatch({ [key]: values[key].filter((v) => v !== n) }),
+    }));
   const author = values.author.trim();
   return [
-    ...values.statuses.map((n) => ({
-      key: `status:${n}`,
-      label: statusLabel(n),
-      onRemove: () => drop("statuses", n),
-    })),
-    ...values.conflicts.map((n) => ({
-      key: `conflict:${n}`,
-      label: n,
-      onRemove: () => drop("conflicts", n),
-    })),
-    ...values.sourceKinds.map((n) => ({
-      key: `source_kind:${n}`,
-      label: sourceKindLabel(n),
-      onRemove: () => drop("sourceKinds", n),
-    })),
-    ...values.levels.map((n) => ({
-      key: `level:${n}`,
-      label: levelLabel(n),
-      onRemove: () => drop("levels", n),
-    })),
-    ...values.tags.map((n) => ({
-      key: `tag:${n}`,
-      label: n,
-      onRemove: () => drop("tags", n),
-    })),
+    ...each("show", FILTER_NAMES.show, showLabel),
+    ...each("conflicts", FILTER_NAMES.conflict),
+    ...each("tags", FILTER_NAMES.tags),
+    ...each("locationGuess", FILTER_NAMES.locationGuess, locationGuessLabel),
+    ...each("sourceKinds", FILTER_NAMES.sourceKind, sourceKindLabel),
+    ...each("levels", FILTER_NAMES.level, levelLabel),
+    ...each("mediaTypes", FILTER_NAMES.media, mediaLabel),
     ...(author
-      ? [{ key: AUTHOR_PILL_KEY, label: `By ${author}`, onRemove: () => onPatch({ author: "" }) }]
+      ? [
+          {
+            key: AUTHOR_PILL_KEY,
+            filter: FILTER_NAMES.author,
+            label: author,
+            onRemove: () => onPatch({ author: "" }),
+          },
+        ]
       : []),
-    ...values.mediaTypes.map((n) => ({
-      key: `media:${n}`,
-      label: capitalize(n),
-      onRemove: () => drop("mediaTypes", n),
-    })),
-    ...values.locationGuess.map((n) => ({
-      key: `location:${n}`,
-      label: locationGuessLabel(n),
-      onRemove: () => drop("locationGuess", n),
-    })),
     ...(values.approved
-      ? [{ key: "approved", label: "Approved", onRemove: () => onPatch({ approved: false }) }]
+      ? [
+          {
+            key: "approved",
+            filter: FILTER_NAMES.approvals,
+            label: APPROVED_ONLY_LABEL,
+            onRemove: () => onPatch({ approved: false }),
+          },
+        ]
       : []),
     ...(values.approvedBy
       ? [
           {
             key: "approved-by",
-            label: `Approved by ${accountName(values.approvedBy)}`,
+            filter: FILTER_NAMES.approvedBy,
+            label: accountName(values.approvedBy),
             onRemove: () => onPatch({ approvedBy: null }),
           },
         ]
@@ -273,7 +302,8 @@ export function buildDateWindowPills(
       ? [
           {
             key: "event-window",
-            label: `Event: ${rangeSummary(windows.eventFrom, windows.eventTo)}`,
+            filter: FILTER_NAMES.eventDate,
+            label: rangeSummary(windows.eventFrom, windows.eventTo),
             onRemove: onClearEvent,
           },
         ]
@@ -282,7 +312,8 @@ export function buildDateWindowPills(
       ? [
           {
             key: "added-window",
-            label: `Added: ${rangeSummary(windows.addedFrom, windows.addedTo)}`,
+            filter: FILTER_NAMES.added,
+            label: rangeSummary(windows.addedFrom, windows.addedTo),
             onRemove: onClearAdded,
           },
         ]
@@ -296,7 +327,7 @@ export function countActiveFilters(
   windows: DateWindows
 ): number {
   return (
-    values.statuses.length +
+    values.show.length +
     values.conflicts.length +
     values.sourceKinds.length +
     values.levels.length +
@@ -330,11 +361,11 @@ export function EventFilterSections({
   conflicts: Conflict[];
   values: EventFilterValues;
   onPatch: EventFilterPatch;
-  /** Surface-specific rows above the shared ones (the feed's Kind). */
-  lead?: InjectedSection[];
+  /** Surface-specific fields above the shared ones (the feed's scope). */
+  lead?: PanelField[];
   /** A layer chip after the status chips (the map's Sites). */
   layer?: FilterLayer;
-  /** The surface's date windows, merged into the Event group's Dates row. */
+  /** The surface's date windows, merged into the Dates row. */
   dateSections?: InjectedSection[];
   /** Which sections this surface offers (default: all). A surface scoped to a view a section can't
    * narrow leaves it out rather than offer a control that can only empty the result. */
@@ -349,77 +380,71 @@ export function EventFilterSections({
   };
   const author = values.author.trim();
 
-  const toggleIn = (key: keyof EventFilterValues, name: string) => {
-    const bucket = values[key] as string[];
+  const toggleIn = (key: ListFilter, name: string) => {
+    const bucket = values[key];
     onPatch({
       [key]: bucket.includes(name) ? bucket.filter((n) => n !== name) : [...bucket, name],
     });
   };
 
   const sortedTags = [...tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name));
-  const when = (offered: boolean, section: InjectedSection) => (offered ? [section] : []);
+  function when(offered: boolean, field: InjectedSection): InjectedSection[];
+  function when(offered: boolean, field: PanelField): PanelField[];
+  function when(offered: boolean, field: PanelField) {
+    return offered ? [field] : [];
+  }
+
+  const headFields: PanelField[] = [
+    ...lead,
+    ...when(offers("show"), {
+      title: FILTER_NAMES.show,
+      concept: "status",
+      children: (
+        <>
+          <ChipBucket
+            options={[
+              ...SHOW_OPTIONS.map(([value, label]) => ({ id: value, name: value, label })),
+              ...(layer ? [{ id: LAYER_CHIP, name: LAYER_CHIP, label: layer.label }] : []),
+            ]}
+            selected={[...values.show, ...(layer?.on ? [LAYER_CHIP] : [])]}
+            onToggle={(n) => (n === LAYER_CHIP ? layer?.onToggle() : toggleIn("show", n))}
+          />
+          {layer?.on && layer.note}
+        </>
+      ),
+    }),
+    ...when(offers("conflict") && conflicts.length > 0, {
+      title: FILTER_NAMES.conflict,
+      concept: "conflict",
+      children: (
+        <ConflictChips
+          filter
+          conflicts={conflicts}
+          selected={values.conflicts}
+          setSelected={(next) => onPatch({ conflicts: next })}
+        />
+      ),
+    }),
+    ...when(offers("tags") && tags.length > 0, {
+      title: FILTER_NAMES.tags,
+      children: (
+        <TagChips
+          filter
+          tags={sortedTags}
+          selected={values.tags}
+          setSelected={(next) => onPatch({ tags: next })}
+        />
+      ),
+    }),
+  ];
 
   const allRows: FilterRow[] = [
-    ...lead.map((s) => ({ key: s.title, fields: [s] })),
-    {
-      key: "event",
-      fields: [
-        ...when(offers("status"), {
-          title: layer ? "Show" : "Status",
-          concept: "status",
-          summary: chipSummary([
-            ...values.statuses.map(statusLabel),
-            ...(layer?.on ? [layer.label] : []),
-          ]),
-          active: values.statuses.length > 0 || !!layer?.on,
-          children: (
-            <>
-              <ChipBucket
-                options={[
-                  ...STATUS_FILTER_OPTIONS.map(([value, label]) => ({ id: value, name: value, label })),
-                  ...(layer ? [{ id: LAYER_CHIP, name: LAYER_CHIP, label: layer.label }] : []),
-                ]}
-                selected={[...values.statuses, ...(layer?.on ? [LAYER_CHIP] : [])]}
-                onToggle={(n) => (n === LAYER_CHIP ? layer?.onToggle() : toggleIn("statuses", n))}
-              />
-              {layer?.on && layer.note}
-            </>
-          ),
-        }),
-        ...when(offers("conflict") && conflicts.length > 0, {
-          title: "Conflict",
-          concept: "conflict",
-          summary: chipSummary(values.conflicts),
-          active: values.conflicts.length > 0,
-          children: (
-            <ConflictChips
-              filter
-              conflicts={conflicts}
-              selected={values.conflicts}
-              setSelected={(next) => onPatch({ conflicts: next })}
-            />
-          ),
-        }),
-        ...when(offers("tags") && tags.length > 0, {
-          title: "Tags",
-          summary: chipSummary(values.tags),
-          active: values.tags.length > 0,
-          children: (
-            <TagChips
-              filter
-              tags={sortedTags}
-              selected={values.tags}
-              setSelected={(next) => onPatch({ tags: next })}
-            />
-          ),
-        }),
-      ],
-    },
     { key: "dates", title: "Dates", fields: dateSections },
     {
       key: "location",
+      title: FILTER_NAMES.locationGuess,
       fields: when(offers("location_guess"), {
-        title: "Location guess",
+        title: FILTER_NAMES.locationGuess,
         summary: chipSummary(values.locationGuess.map(locationGuessLabel)),
         active: values.locationGuess.length > 0,
         children: (
@@ -436,7 +461,7 @@ export function EventFilterSections({
       title: "Source",
       fields: [
         ...when(offers("source_kind"), {
-          title: "Source kind",
+          title: FILTER_NAMES.sourceKind,
           concept: "source_kind",
           summary: chipSummary(values.sourceKinds.map(sourceKindLabel)),
           active: values.sourceKinds.length > 0,
@@ -449,7 +474,7 @@ export function EventFilterSections({
           ),
         }),
         ...when(offers("level"), {
-          title: "Level",
+          title: FILTER_NAMES.level,
           concept: "source_level",
           summary: chipSummary(values.levels.map(levelLabel)),
           active: values.levels.length > 0,
@@ -458,8 +483,8 @@ export function EventFilterSections({
           ),
         }),
         ...when(offers("media"), {
-          title: "Media",
-          summary: chipSummary(values.mediaTypes.map(capitalize)),
+          title: FILTER_NAMES.media,
+          summary: chipSummary(values.mediaTypes.map(mediaLabel)),
           active: values.mediaTypes.length > 0,
           children: (
             <ChipBucket
@@ -476,7 +501,7 @@ export function EventFilterSections({
       title: "People",
       fields: [
         ...when(offers("author"), {
-          title: "Author",
+          title: FILTER_NAMES.author,
           summary: author || "Any",
           active: !!author,
           children: (
@@ -494,23 +519,23 @@ export function EventFilterSections({
           ),
         }),
         ...when(offers("approval"), {
-          title: "Approvals",
+          title: FILTER_NAMES.approvals,
           concept: "approval_filter",
           summary: values.approvedBy
             ? accountName(values.approvedBy)
             : values.approved
-              ? "Approved"
+              ? APPROVED_ONLY_LABEL
               : "Any",
           active: values.approved || !!values.approvedBy,
           children: (
             <div className="space-y-2">
               <ChipBucket
-                options={[{ id: APPROVED_ONLY, name: APPROVED_ONLY, label: "Approved only" }]}
+                options={[{ id: APPROVED_ONLY, name: APPROVED_ONLY, label: APPROVED_ONLY_LABEL }]}
                 selected={values.approved ? [APPROVED_ONLY] : []}
                 onToggle={() => onPatch({ approved: !values.approved })}
               />
               <label htmlFor={approvedById} className={FORM_LABEL}>
-                Approved by
+                {FILTER_NAMES.approvedBy}
               </label>
               <AccountPicker
                 id={approvedById}
@@ -543,6 +568,13 @@ export function EventFilterSections({
   );
   const toggleRow = (key: string) => setOpenRows((o) => ({ ...o, [key]: !o[key] }));
 
+  const renderField = (f: PanelField) => (
+    <div key={f.title} className="space-y-1.5">
+      <FieldLabel label={f.title} concept={f.concept} />
+      {f.children}
+    </div>
+  );
+
   const renderRow = (row: FilterRow) => {
     const [only] = row.fields;
     const merged = row.fields.length > 1;
@@ -550,40 +582,35 @@ export function EventFilterSections({
     return (
       <FilterSection
         key={row.key}
-        title={merged ? rowTitle(row) : only.title}
+        title={merged ? row.title : only.title}
         concept={merged ? undefined : only.concept}
         summary={merged ? active.map((f) => f.summary).join(", ") || "Any" : only.summary}
         active={active.length > 0}
         open={!!openRows[row.key]}
         onToggle={() => toggleRow(row.key)}
       >
-        {merged ? (
-          <div className="space-y-3">
-            {row.fields.map((f) => (
-              <div key={f.title} className="space-y-1.5">
-                <FieldLabel label={f.title} concept={f.concept} />
-                {f.children}
-              </div>
-            ))}
-          </div>
-        ) : (
-          only.children
-        )}
+        {merged ? <div className="space-y-3">{row.fields.map(renderField)}</div> : only.children}
       </FilterSection>
     );
   };
 
-  return <div className={`${CARD_FRAME} px-3`}>{rows.map(renderRow)}</div>;
+  return (
+    <div className={`${CARD_FRAME} px-3`}>
+      {headFields.length > 0 && (
+        <div className="space-y-3 border-b border-neutral-800 py-3 last:border-b-0">
+          {headFields.map(renderField)}
+        </div>
+      )}
+      {rows.map(renderRow)}
+    </div>
+  );
 }
 
-/** One collapsible row: a lone section, or several that share it under a field label each. */
+/** One collapsible row: a lone section under its own title, or several under the row's title,
+ *  each under its field label. */
 interface FilterRow {
   /** Stable across scopes, so the open state holds while the row's members change. */
   key: string;
-  /** A merged row's name; without one, the row lists its members ("Conflict, tags"). */
-  title?: string;
+  title: string;
   fields: InjectedSection[];
 }
-
-const rowTitle = (row: FilterRow) =>
-  row.title ?? row.fields.map((f, i) => (i ? f.title.toLowerCase() : f.title)).join(", ");

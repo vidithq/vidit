@@ -152,7 +152,7 @@ export function pickerBrowsePath(
 ): string {
   return eventListPath({
     view: "located",
-    statuses: COLLECTABLE_STATUSES,
+    show: COLLECTABLE_STATUSES,
     author: username,
     limit: PICKER_ROW_LIMIT,
     cursor,
@@ -198,7 +198,7 @@ export async function searchPickableEvents(
     q,
     type: "event",
     author: username,
-    statuses: COLLECTABLE_STATUSES,
+    show: COLLECTABLE_STATUSES,
     limit: PICKER_ROW_LIMIT,
   });
   return {

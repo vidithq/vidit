@@ -89,8 +89,8 @@ interface ComboboxProps<T> {
 /**
  * A `role="combobox"` field over a `role="listbox"` list: the keyboard and the list of every
  * typeahead. The caller owns the query, the open state and the options. ArrowUp and ArrowDown
- * move and wrap, Enter picks the highlighted row or hands the text to `onSubmitText`, and Escape
- * or a blur closes.
+ * move and wrap, Enter picks the highlighted row or hands the text to `onSubmitText`, Escape or a
+ * blur closes, and a click on the field opens the list again.
  */
 export function Combobox<T>({
   options,
@@ -180,6 +180,7 @@ export function Combobox<T>({
           onOpenChange(true);
         }}
         onFocus={() => onOpenChange(true)}
+        onClick={() => onOpenChange(true)}
         onBlur={() => onOpenChange(false)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
