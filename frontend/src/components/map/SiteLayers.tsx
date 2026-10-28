@@ -5,31 +5,24 @@ import { Layer, Source, useMap } from "react-map-gl/maplibre";
 import type { ExpressionSpecification, MapLayerMouseEvent } from "maplibre-gl";
 import type { FeatureCollection } from "geojson";
 
-import { SITE_MAP_COLORS } from "@/lib/palette";
+import { usePalette } from "@/hooks/usePalette";
+import { paletteMapColors } from "@/lib/palette";
 import { isCoarsePointer } from "@/lib/pointer";
 import type { Zone } from "@/lib/sites";
-import { useBasemapBrightness } from "./basemapSettings";
-import { CLUSTER_LAYER, TAP_TARGET_LAYERS } from "./layers";
+import { CLUSTER_LAYER, SITE_POINT_LAYER, TAP_TARGET_LAYERS, ZONE_MIN_ZOOM } from "./layers";
 import { MapPreviewCard, PREVIEW_INTENT_MS } from "./MapPreviewCard";
-
-/** From this zoom the map draws zones; below it each site is one square. */
-export const ZONE_MIN_ZOOM = 10;
 
 const FILL = "sites-zone-fill";
 const LINE = "sites-zone-line";
-const MARKER = "sites-marker";
-const CLICK_LAYERS = [FILL, MARKER];
-const ALL_LAYERS = [FILL, LINE, MARKER];
+const SITE_LAYERS = [FILL, SITE_POINT_LAYER];
+const ZONE_LAYERS = [FILL, LINE];
 
-const ICON_PX = 24;
-const ICON_BORDER_PX = 3;
-const ICON_PIXEL_RATIO = 2;
+const SELECTED: ExpressionSpecification = ["==", ["get", "selected"], 1];
 
 export interface MapSite {
   id: string;
   zone: Zone;
   centroid: { lat: number; lng: number };
-  emphasis?: "damage" | "destruction" | null;
 }
 
 /** Keeps `layerIds` under the event pins: a layer mounted after the pins (a toggled layer) lands on
@@ -57,31 +50,6 @@ export function useUnderEventPins(layerIds: readonly string[]) {
   }, [map, key]);
 }
 
-function iconId(color: string): string {
-  return `site-square-${color.replace("#", "")}`;
-}
-
-// A filled square with a solid border, built by hand: `addImage` takes raw RGBA, and a symbol icon
-// is the only way to keep a site square under the round event pins in the same paint stack.
-function squareIcon(color: string) {
-  const r = parseInt(color.slice(1, 3), 16);
-  const g = parseInt(color.slice(3, 5), 16);
-  const b = parseInt(color.slice(5, 7), 16);
-  const data = new Uint8Array(ICON_PX * ICON_PX * 4);
-  for (let y = 0; y < ICON_PX; y++) {
-    for (let x = 0; x < ICON_PX; x++) {
-      const edge =
-        x < ICON_BORDER_PX || y < ICON_BORDER_PX || x >= ICON_PX - ICON_BORDER_PX || y >= ICON_PX - ICON_BORDER_PX;
-      const i = (y * ICON_PX + x) * 4;
-      data[i] = r;
-      data[i + 1] = g;
-      data[i + 2] = b;
-      data[i + 3] = edge ? 255 : 110;
-    }
-  }
-  return { width: ICON_PX, height: ICON_PX, data };
-}
-
 /** A hovered site: its id and the pointer in map-container px. */
 interface HoverTarget {
   id: string;
@@ -90,65 +58,36 @@ interface HoverTarget {
 }
 
 /**
- * The sites layer of a map, mounted as `<Map>` children: zones from `zoneMinZoom`, one square per
- * site below it, with no name: the preview and the side panel carry it. Every layer sits under
- * the event pins.
+ * The sites layer of a map, mounted as `<Map>` children: the zones from `ZONE_MIN_ZOOM`, under
+ * the event pins, in the event pin colour. Below it the sites are
+ * triangles in `<Map>`'s clusters (its `sites`). The map prints no site name: the preview and the
+ * side panel carry it.
  *
- * With `onSelect`, a site takes the pointer like an event pin: the hand cursor, a click selects it,
- * and with `renderPreview` a mouse resting on it shows that content in the map's preview card after
- * the same hover intent. A pin over the site takes the click and the hover instead.
+ * With `onSelect`, a zone or a triangle takes the pointer like an event pin: the hand cursor, a
+ * click selects it, and with `renderPreview` a mouse resting on it shows that content in the
+ * map's preview card after the same hover intent. A pin over the site takes the click and the
+ * hover instead.
  */
 export function SiteLayers({
   sites,
   selectedId,
   onSelect,
   renderPreview,
-  zoneMinZoom = ZONE_MIN_ZOOM,
 }: {
   sites: MapSite[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   /** The preview of a hovered site, or null for none. */
   renderPreview?: (id: string) => ReactNode;
-  zoneMinZoom?: number;
 }) {
   const { current: map } = useMap();
-  const colors = SITE_MAP_COLORS[useBasemapBrightness()];
+  const accent = paletteMapColors(usePalette()).base;
   const [hover, setHover] = useState<HoverTarget | null>(null);
   // The hover whose intent delay ran out; a new hover object restarts the delay.
   const [shownHover, setShownHover] = useState<HoverTarget | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
-  // One square per paint a zone can take, so a marker wears its zone's emphasis.
-  const icons = useMemo(
-    () => ({ zone: colors.zone, damage: colors.damage, destruction: colors.destruction }),
-    [colors.zone, colors.damage, colors.destruction],
-  );
 
-  useEffect(() => {
-    if (!map) return;
-    const raw = map.getMap();
-    // A style reload drops every image, so the icons are re-added after each one.
-    const ensure = () => {
-      for (const color of Object.values(icons)) {
-        const id = iconId(color);
-        if (raw.hasImage(id)) continue;
-        try {
-          raw.addImage(id, squareIcon(color), { pixelRatio: ICON_PIXEL_RATIO });
-        } catch {
-          // The style is not ready yet; its `styledata` event retries.
-        }
-      }
-    };
-    ensure();
-    raw.on("styledata", ensure);
-    raw.on("styleimagemissing", ensure);
-    return () => {
-      raw.off("styledata", ensure);
-      raw.off("styleimagemissing", ensure);
-    };
-  }, [map, icons]);
-
-  useUnderEventPins(ALL_LAYERS);
+  useUnderEventPins(ZONE_LAYERS);
 
   useEffect(() => {
     if (!map || !onSelect) return;
@@ -185,14 +124,14 @@ export function SiteLayers({
       map.getCanvas().style.cursor = "";
       clearHover();
     };
-    map.on("click", CLICK_LAYERS, click);
-    map.on("mousemove", CLICK_LAYERS, move);
-    map.on("mouseleave", CLICK_LAYERS, leave);
+    map.on("click", SITE_LAYERS, click);
+    map.on("mousemove", SITE_LAYERS, move);
+    map.on("mouseleave", SITE_LAYERS, leave);
     map.on("movestart", clearHover);
     return () => {
-      map.off("click", CLICK_LAYERS, click);
-      map.off("mousemove", CLICK_LAYERS, move);
-      map.off("mouseleave", CLICK_LAYERS, leave);
+      map.off("click", SITE_LAYERS, click);
+      map.off("mousemove", SITE_LAYERS, move);
+      map.off("mouseleave", SITE_LAYERS, leave);
       map.off("movestart", clearHover);
     };
   }, [map, onSelect]);
@@ -210,41 +149,12 @@ export function SiteLayers({
       type: "FeatureCollection",
       features: sites.map((site) => ({
         type: "Feature",
-        properties: {
-          id: site.id,
-          selected: site.id === selectedId ? 1 : 0,
-          emphasis: site.emphasis ?? "none",
-        },
+        properties: { id: site.id, selected: site.id === selectedId ? 1 : 0 },
         geometry: site.zone,
       })),
     }),
     [sites, selectedId],
   );
-  const markers = useMemo<FeatureCollection>(
-    () => ({
-      type: "FeatureCollection",
-      features: sites.map((site) => ({
-        type: "Feature",
-        properties: {
-          id: site.id,
-          selected: site.id === selectedId ? 1 : 0,
-          emphasis: site.emphasis ?? "none",
-        },
-        geometry: { type: "Point", coordinates: [site.centroid.lng, site.centroid.lat] },
-      })),
-    }),
-    [sites, selectedId],
-  );
-
-  const color: ExpressionSpecification = [
-    "match",
-    ["get", "emphasis"],
-    "damage",
-    colors.damage,
-    "destruction",
-    colors.destruction,
-    colors.zone,
-  ];
 
   return (
     <>
@@ -252,44 +162,22 @@ export function SiteLayers({
         <Layer
           id={FILL}
           type="fill"
-          minzoom={zoneMinZoom}
+          minzoom={ZONE_MIN_ZOOM}
           paint={{
-            "fill-color": color,
-            "fill-opacity": ["case", ["==", ["get", "selected"], 1], 0.22, 0.12],
+            "fill-color": accent,
+            "fill-opacity": ["case", SELECTED, 0.22, 0.12],
           }}
         />
         <Layer
           id={LINE}
           type="line"
-          minzoom={zoneMinZoom}
+          minzoom={ZONE_MIN_ZOOM}
           paint={{
-            "line-color": color,
-            "line-width": ["case", ["==", ["get", "selected"], 1], 3, 2],
+            "line-color": accent,
+            "line-width": ["case", SELECTED, 3, 2],
           }}
         />
       </Source>
-      {zoneMinZoom > 0 && (
-        <Source id="sites-markers" type="geojson" data={markers}>
-          <Layer
-            id={MARKER}
-            type="symbol"
-            maxzoom={zoneMinZoom}
-            layout={{
-              "icon-image": [
-                "match",
-                ["get", "emphasis"],
-                "damage",
-                iconId(icons.damage),
-                "destruction",
-                iconId(icons.destruction),
-                iconId(icons.zone),
-              ],
-              "icon-allow-overlap": true,
-              "icon-size": ["case", ["==", ["get", "selected"], 1], 1.4, 1],
-            }}
-          />
-        </Source>
-      )}
       {hover && preview && (
         <MapPreviewCard x={hover.x} y={hover.y}>
           {preview}

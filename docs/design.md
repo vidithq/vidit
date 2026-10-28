@@ -198,8 +198,8 @@ flowchart BT
     imagery["`**SatelliteOverlays**
     daily imagery, then fire detections, placed by **aboveBasemap**`"]:::shared
     grid["`**CoordinateGrid**`"]:::shared
-    sites["`**SiteLayers**, a drawn zone`"]:::shared
-    pins["`**Map.tsx** event points, clusters and stacks`"]:::core
+    sites["`**SiteLayers** site zones, a drawn zone`"]:::shared
+    pins["`**Map.tsx** event points, site triangles, clusters and stacks`"]:::core
     basemap --> imagery --> grid --> sites --> pins
   end
 ```
@@ -254,17 +254,54 @@ flowchart BT
 - **Sites layer.** A map draws sites through `<Map>`'s `children`, the slot for extra sources and layers. [`SiteLayers`](../frontend/src/components/map/SiteLayers.tsx) keeps them under the event pins through `useUnderEventPins`, so an event always draws above a zone.
   - On `/map` the **Sites** chip turns the layer on. It follows the Requested, Detected and Geolocated chips in the filter panel's **Show** field (see [Filter panel](#filter-panel)) and, like them, starts off. While it is on, a line under the chips names the date the zones are read at, with the layer's `?`: the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. The panel creates no site: a site starts from Submit.
   - The layer counts as one active filter. While it is on, the **Filters** button counts it, a **Sites** pill follows the status pills, and the collapsed row's summary names it. Removing the pill or **Clear all** turns the layer off.
-  - Below zoom 10 (`ZONE_MIN_ZOOM`) each site is one square symbol at its centroid, the shape that tells a site from a round event pin. From zoom 10 the map draws every zone. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
-  - A zone and its square take Tailwind fuchsia, the `400` stop on a dark basemap and the `700` stop on a light one (`SITE_MAP_COLORS` in [`lib/palette.ts`](../frontend/src/lib/palette.ts), read by the basemap's brightness like the highlights). No accent palette and no basemap highlight uses that hue, so a site on a military area or an airport reads as its own zone over the lime or cyan highlight. Only the effect of the latest linked event changes the colour, read at the same date as the zone: damage takes the warning amber, destruction the danger red. A zone draws like the military and airport highlights, a fill at 12% opacity (22% when selected) under a solid outline of 2 px (3 px when selected), so the pins and labels inside it stay readable. `zoneEmphasis` in [`lib/sites.ts`](../frontend/src/lib/sites.ts) holds this mapping for `/map` and the site page. A link effect shows as a `<Pill>` (`LinkEffectPill`), in the warning or danger tone for those two effects and neutral for the others.
-  - On `/map` a site takes the pointer like an event pin: a zone or a square turns the cursor to a pointer, and an event pin over a site takes the hover and the click. A mouse resting on a site shows its preview after the pins' 150 ms hover intent, on the pins' `MapPreviewCard`: the name, the kind, the latest effect and the last source (`SitePreview` in [`SitePanel.tsx`](../frontend/src/components/map/SitePanel.tsx)), read from the list the layer already holds, so the preview fetches nothing. A coarse pointer arms no preview, and a tap opens the panel. A site, like a pin, is not a keyboard stop on the canvas.
+  - Below zoom 10 (`ZONE_MIN_ZOOM`) each site is one triangle at its centroid, the shape that tells a site from a round event pin. From zoom 10 the map draws every zone. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
+  - Below zoom 10 the sites cluster with the event points, in one source:
+
+    ```mermaid
+    flowchart LR
+      classDef spec fill:#eef1fb,stroke:#4a5fa5,color:#33417a
+      classDef shared fill:#e3f2f1,stroke:#0f7b7a,color:#0b5c5b
+      classDef core fill:#0f7b7a,stroke:#083f3e,stroke-width:3px,color:#ffffff
+
+      subgraph legend [Legend]
+        direction LR
+        l1["`input from the map page`"]:::spec
+        l2["`the shared **points** source`"]:::core
+        l3["`a layer of that source`"]:::shared
+        l1 ~~~ l2 ~~~ l3
+      end
+
+      events["`filtered event points`"]:::spec
+      sites["`site centroids, while the **Sites** chip is on and the zoom is under 10`"]:::spec
+      source["`**points** source, **CLUSTER_SOURCE**
+      counts **events** and **sites** per cluster`"]:::core
+      circle["`**clusters** circle, event count`"]:::shared
+      triangle["`**sites-cluster** triangle, site count, right of the circle`"]:::shared
+      single["`**points-circle** for one event, **sites-point** for one site`"]:::shared
+      events --> source
+      sites --> source
+      source --> circle
+      source --> triangle
+      source --> single
+    ```
+
+  - `CLUSTER_SOURCE` in [`layers.ts`](../frontend/src/components/map/layers.ts) sets the clustering radius and the maximum zoom, and its `clusterProperties` count the events and the sites of each cluster apart. A cluster draws its circle with the event count. When it holds sites, a triangle with the site count sits right of the circle, its bounding box centred on the circle's centre line, 1 px from the circle at their closest (`BESIDE_GAP_PX` and `besideOffsetPx` in [`triangle.ts`](../frontend/src/components/map/triangle.ts)). The circle's antialiasing makes the drawn gap 1.3 to 2 px. A cluster of sites only draws the triangle, and a cluster of events only draws the circle.
+  - A click on the circle or on the triangle zooms to the cluster's expansion zoom. A cluster that holds a site never opens the hover ring: past the clustering ceiling the site is a zone.
+  - The event filters narrow the points before they reach the source, so they never drop a site. While the **Sites** chip is off, no site reaches the source or the counts. From zoom 10 the map leaves the sites out of the source (`zonesShown` in `Map.tsx`), so the clusters count events only and the zones stand for the sites.
+  - A zone, a triangle and a cluster triangle take the event point colour: the accent palette's `base` (`paletteMapColors` in [`lib/palette.ts`](../frontend/src/lib/palette.ts)), and the darker ramp stops for a large count, like an event cluster. The triangle is one signed distance field image (`triangleSdf`), so `icon-color` paints it in any palette.
+  - A triangle is as tall as the circle it pairs with is wide (`triangleHeight`): a single site pairs with an event point, 6 px in radius or 7 px when selected, and a cluster triangle with the event cluster circle for the same count.
+  - The site count sits on the triangle's incentre, a third of its height above the base. A triangle too small to hold the longest count of its range with a 1.5 px margin grows to the next circle tier's triangle (`siteTriangleHeight` in `layers.ts`, `heightToHold` in `triangle.ts`): a cluster of 2 to 9 sites keeps the triangle of its circle, and a count of two digits or more takes a larger one.
+  - The latest link effect does not tint the map: the warning amber and the danger red sit too close to the orange and rose palettes to read. The preview and the side panel show it as a `<Pill>` (`LinkEffectPill`), in the warning or danger tone for damage and destruction and neutral for the others.
+  - A zone draws like the military and airport highlights, a fill at 12% opacity (22% when selected) under a solid outline of 2 px (3 px when selected), so the pins and labels inside it stay readable.
+  - On `/map` a site takes the pointer like an event pin: a zone, a triangle or a cluster turns the cursor to a pointer, and an event pin over a site takes the hover and the click. A mouse resting on a site shows its preview after the pins' 150 ms hover intent, on the pins' `MapPreviewCard`: the name, the kind, the latest effect and the last source (`SitePreview` in [`SitePanel.tsx`](../frontend/src/components/map/SitePanel.tsx)), read from the list the layer already holds, so the preview fetches nothing. A coarse pointer arms no preview, and a tap opens the panel. A site, like a pin, is not a keyboard stop on the canvas.
   - A click on a site opens the map's side panel ([`MapSidePanel`](../frontend/src/components/map/MapSidePanel.tsx)), the one the event pins open, in the same place and with the same blocks. The event fills it with `eventPanelContent` ([`EventDetailBody.tsx`](../frontend/src/components/event/EventDetailBody.tsx)) and the site with `sitePanelContent` ([`SitePanel.tsx`](../frontend/src/components/map/SitePanel.tsx)); `MapPanelBody` lays out the blocks for both.
     - The title is the record's name, the permalink to its page, and the byline under it names who documents it: the credited geolocators of an event, the owner of a site.
     - **Sources** holds the event's sources, or the site's latest source by the site page's order (`latestSource`, newest capture first), in the compact source block with its thumbnail.
     - **Location** holds the Coordinates row: the event's point, or the centre of the site's current zone.
     - **Details** holds the event's rows, or the site's kind, last source, latest effect and its counts of sources and linked events. An event's proof follows.
     - The page holds one panel slot, so a site closes the event panel and a pin closes the site panel.
-  - A site page's own map ([`SiteMap.tsx`](../frontend/src/components/map/SiteMap.tsx)) frames every contour and linked event (`fitMaxZoom` 15). It draws the zone of the date on show solid and the contour before it dashed. A linked event outside the contour it was measured against gets a dotted line to that contour's nearest edge, labelled with its distance. Events measured against another contour than the one on show are dimmed through `dimmedIds`, and so are their lines.
-  - The contour editor ([`ZoneDrawMap.tsx`](../frontend/src/components/map/ZoneDrawMap.tsx)) adds a corner per click and closes the ring on a click on the first corner. A closed ring edits in place: a corner drags, a click picks it, and the dot in the middle of each edge drags out a new corner. The contour being redrawn shows dashed under the drawing, and on `/sites/new` the nearby sites draw under it with their zones at every zoom. Its frame, [`ZoneEditor`](../frontend/src/components/sites/ZoneEditor.tsx), holds the go-to-coordinates field between the hint line and the map, and **Go** centres the map through `<Map>`'s `goTo` target, a new object per **Go**, so the same pair typed twice centres the map twice.
+  - A site page's own map ([`SiteMap.tsx`](../frontend/src/components/map/SiteMap.tsx)) frames every contour and linked event (`fitMaxZoom` 15). It draws the zone of the date on show solid and the contour before it dashed, in Tailwind fuchsia, the `400` stop on a dark basemap and the `700` stop on a light one (`SITE_MAP_COLORS` in [`lib/palette.ts`](../frontend/src/lib/palette.ts)), so the zone stands apart from the linked events in the accent. The effect of the latest linked event changes the zone colour, read at the same date as the zone: damage takes the warning amber, destruction the danger red (`zoneEmphasis` in [`lib/sites.ts`](../frontend/src/lib/sites.ts)). A linked event outside the contour it was measured against gets a dotted line to that contour's nearest edge, labelled with its distance. Events measured against another contour than the one on show are dimmed through `dimmedIds`, and so are their lines.
+  - The contour editor ([`ZoneDrawMap.tsx`](../frontend/src/components/map/ZoneDrawMap.tsx)) adds a corner per click and closes the ring on a click on the first corner. A closed ring edits in place: a corner drags, a click picks it, and the dot in the middle of each edge drags out a new corner. The contour being redrawn shows dashed under the drawing. The editor draws no other site, so nothing on its map shares the drawing's accent. Its frame, [`ZoneEditor`](../frontend/src/components/sites/ZoneEditor.tsx), holds the go-to-coordinates field between the hint line and the map, and **Go** centres the map through `<Map>`'s `goTo` target, a new object per **Go**, so the same pair typed twice centres the map twice.
 
 ## Components
 

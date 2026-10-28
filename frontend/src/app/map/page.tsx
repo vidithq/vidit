@@ -20,13 +20,11 @@ import { SitePanel, SitePreview } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
-import { toMapSite } from "@/components/sites/useSitesInView";
 import {
   sitePath,
   sitesAsOf,
   sitesPath,
   todayUtc,
-  zoneEmphasis,
   type Site,
   type SiteListItem,
 } from "@/lib/sites";
@@ -135,16 +133,7 @@ export default function HomePage() {
     VIEWPORT_DEBOUNCE_MS,
   );
 
-  const mapSites = useMemo(
-    () =>
-      sitesShown
-        ? sites.map((site) => ({
-            ...toMapSite(site),
-            emphasis: zoneEmphasis(site),
-          }))
-        : [],
-    [sites, sitesShown],
-  );
+  const mapSites = useMemo(() => (sitesShown ? sites : []), [sites, sitesShown]);
 
   const renderSitePreview = useCallback(
     (id: string) => {
@@ -225,6 +214,8 @@ export default function HomePage() {
         points={visiblePoints}
         selectedId={selectedId}
         onPointClick={selectEvent}
+        sites={mapSites}
+        selectedSiteId={selectedSiteId}
         className="map-fullscreen"
         center={{ lat: viewState.latitude, lng: viewState.longitude }}
         zoom={viewState.zoom}

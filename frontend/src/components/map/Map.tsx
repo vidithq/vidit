@@ -49,7 +49,34 @@ import {
   ringRadius,
 } from "./stack";
 import { creditProps } from "@/lib/geolocatorCredit";
-import { CLUSTER_LAYER, POINT_LAYERS, STACK_LAYER, TAP_TARGET_LAYERS } from "./layers";
+import {
+  CLUSTER_COUNT_COLOR,
+  CLUSTER_LAYER,
+  CLUSTER_OPACITY,
+  CLUSTER_SOURCE,
+  EVENT_COUNT,
+  POINT_LAYERS,
+  POINT_RADIUS,
+  SELECTED_POINT_RADIUS,
+  SELECTED_SITE_POINT_SIZE,
+  SELECTED_STROKE,
+  SELECTED_STROKE_WIDTH,
+  SITE_CLUSTER_LAYER,
+  SITE_COUNT,
+  SITE_POINT_FILTER,
+  SITE_POINT_LAYER,
+  SITE_POINT_SIZE,
+  STACK_LAYER,
+  TAP_TARGET_LAYERS,
+  TRIANGLE_ICON,
+  ZONE_MIN_ZOOM,
+  clusterColor,
+  clusterCountLayout,
+  clusterRadius,
+  siteClusterStyle,
+} from "./layers";
+import type { MapSite } from "./SiteLayers";
+import { triangleSdf } from "./triangle";
 import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
 import { BasemapControl } from "./BasemapControl";
 import { CoordinateGrid } from "./CoordinateGrid";
@@ -61,6 +88,8 @@ import { useMapAssets } from "./mapAssets";
 import { MapPreviewCard, PREVIEW_INTENT_MS } from "./MapPreviewCard";
 
 const POINTS_SOURCE = "points";
+// A cluster circle and the site triangle beside it: a click or a hover on either is the cluster's.
+const CLUSTER_LAYERS = [CLUSTER_LAYER, SITE_CLUSTER_LAYER];
 
 // Hover ring: dot geometry and the grace margin (px) the pointer may roam before it collapses.
 const SPIDER_DOT_PX = 12;
@@ -203,6 +232,8 @@ function StackInteractions({
       const zoom = await source.getClusterExpansionZoom(clusterId);
       if (zoom <= CLUSTER_MAX_ZOOM) return { zoom, points: null };
       const leaves = await source.getClusterLeaves(clusterId, Infinity, 0);
+      // A site never joins the ring: the zoom past the ceiling draws it as a zone.
+      if (leaves.some((leaf) => leaf.properties?.kind === "site")) return { zoom, points: null };
       if (!isCoincidentStack(leaves)) return { zoom, points: null };
       const points = toSpiderPoints(leaves);
       return { zoom, points: points.length > 1 ? points : null };
@@ -372,39 +403,39 @@ function StackInteractions({
       map.getCanvas().style.cursor = "";
     };
 
-    map.on("click", CLUSTER_LAYER, handleClusterClick);
-    map.on("mouseenter", CLUSTER_LAYER, handleClusterEnter);
+    map.on("click", CLUSTER_LAYERS, handleClusterClick);
+    map.on("mouseenter", CLUSTER_LAYERS, handleClusterEnter);
     map.on("click", STACK_LAYER, handleStackClick);
     map.on("mouseenter", STACK_LAYER, handleStackEnter);
     map.on("click", POINT_LAYERS, handlePointClick);
     map.on("mousemove", POINT_LAYERS, handlePointMove);
     map.on("mouseleave", POINT_LAYERS, clearPinHover);
     map.on("movestart", clearPinHover);
-    map.on("mouseleave", CLUSTER_LAYER, invalidateClusterHover);
+    map.on("mouseleave", CLUSTER_LAYERS, invalidateClusterHover);
     map.on("movestart", invalidateClusterHover);
     // Registered last so every layer click handler runs first and can report it took the tap.
     if (isCoarsePointer()) map.on("click", handleCanvasTap);
-    map.on("mouseenter", CLUSTER_LAYER, pointerOn);
-    map.on("mouseleave", CLUSTER_LAYER, pointerOff);
+    map.on("mouseenter", CLUSTER_LAYERS, pointerOn);
+    map.on("mouseleave", CLUSTER_LAYERS, pointerOff);
     map.on("mouseenter", STACK_LAYER, pointerOn);
     map.on("mouseleave", STACK_LAYER, pointerOff);
     map.on("mouseenter", POINT_LAYERS, pointerOn);
     map.on("mouseleave", POINT_LAYERS, pointerOff);
 
     return () => {
-      map.off("click", CLUSTER_LAYER, handleClusterClick);
-      map.off("mouseenter", CLUSTER_LAYER, handleClusterEnter);
+      map.off("click", CLUSTER_LAYERS, handleClusterClick);
+      map.off("mouseenter", CLUSTER_LAYERS, handleClusterEnter);
       map.off("click", STACK_LAYER, handleStackClick);
       map.off("mouseenter", STACK_LAYER, handleStackEnter);
       map.off("click", POINT_LAYERS, handlePointClick);
       map.off("mousemove", POINT_LAYERS, handlePointMove);
       map.off("mouseleave", POINT_LAYERS, clearPinHover);
       map.off("movestart", clearPinHover);
-      map.off("mouseleave", CLUSTER_LAYER, invalidateClusterHover);
+      map.off("mouseleave", CLUSTER_LAYERS, invalidateClusterHover);
       map.off("movestart", invalidateClusterHover);
       map.off("click", handleCanvasTap);
-      map.off("mouseenter", CLUSTER_LAYER, pointerOn);
-      map.off("mouseleave", CLUSTER_LAYER, pointerOff);
+      map.off("mouseenter", CLUSTER_LAYERS, pointerOn);
+      map.off("mouseleave", CLUSTER_LAYERS, pointerOff);
       map.off("mouseenter", STACK_LAYER, pointerOn);
       map.off("mouseleave", STACK_LAYER, pointerOff);
       map.off("mouseenter", POINT_LAYERS, pointerOn);
@@ -636,6 +667,10 @@ interface MapProps {
   points: MapPoint[];
   selectedId?: string | null;
   onPointClick?: (id: string) => void;
+  /** Sites drawn as triangles below `ZONE_MIN_ZOOM`, clustered with the points. `SiteLayers`
+   * draws their zones and takes their clicks. */
+  sites?: readonly Pick<MapSite, "id" | "centroid">[];
+  selectedSiteId?: string | null;
   className?: string;
   center?: { lat: number; lng: number };
   zoom?: number;
@@ -788,6 +823,31 @@ function BasemapStyle({ style }: { style: StyleSpecification | null }) {
 
 // Dev-only camera handle for the promo recordings, whose tooling is maintained separately: exposes the
 // maplibre instance for Playwright easeTo moves. Gated at the render site, so never mounted in production.
+// A style reload drops every image, so the site triangle is added again after each one.
+function TriangleImage() {
+  const { current: map } = useMap();
+  useEffect(() => {
+    if (!map) return;
+    const raw = map.getMap();
+    const ensure = () => {
+      if (raw.hasImage(TRIANGLE_ICON)) return;
+      try {
+        raw.addImage(TRIANGLE_ICON, triangleSdf(), { sdf: true });
+      } catch {
+        // The style is not ready yet; its `styledata` event retries.
+      }
+    };
+    ensure();
+    raw.on("styledata", ensure);
+    raw.on("styleimagemissing", ensure);
+    return () => {
+      raw.off("styledata", ensure);
+      raw.off("styleimagemissing", ensure);
+    };
+  }, [map]);
+  return null;
+}
+
 function DevMapHandle() {
   const { current: map } = useMap();
   useEffect(() => {
@@ -805,6 +865,8 @@ export default function Map({
   points,
   selectedId,
   onPointClick,
+  sites,
+  selectedSiteId,
   className,
   center,
   zoom,
@@ -840,8 +902,7 @@ export default function Map({
     () => (mapAssets === undefined ? null : applyMapAssets(BASEMAP_PRESETS[presetId].style(basemap), mapAssets)),
     [presetId, basemap, mapAssets],
   );
-  // Halo around the selected point: white on a dark basemap, a dark ring on a light one.
-  const SELECTED_STROKE = brightness === "light" ? "#1a1a1a" : "#ffffff";
+  const selectedStroke = SELECTED_STROKE[brightness];
 
   // Open hover ring. Closing is two-phase: `spiderClosing` runs the dots back to the center, then
   // the timer unmounts the ring and the hidden circle reappears.
@@ -852,6 +913,9 @@ export default function Map({
   // The ceiling crossfade dip applies only while a zoom is in flight; a static ramp would dim
   // layers that come to rest inside the band (e.g. z14.8).
   const [zoomInFlight, setZoomInFlight] = useState(false);
+  // From `ZONE_MIN_ZOOM` sites leave the clusters, so the zones stand for them and the event
+  // clusters count only events.
+  const [zonesShown, setZonesShown] = useState(() => (zoom ?? 5) >= ZONE_MIN_ZOOM);
 
   // Hovered pin preview: shown, and its detail fetched, only after the intent delay. The bounded
   // cache holds settled details and in-flight promises so a re-hover reuses them.
@@ -982,16 +1046,14 @@ export default function Map({
 
   // While a ring is out its stack is hidden underneath: the cluster circle by `cluster_id`,
   // unclustered circles by event id. On close the filters relax so circles re-merge.
-  const clusterFilter = useMemo<FilterSpecification>(() => {
-    const base: unknown = ["has", "point_count"];
-    if (spider?.clusterId == null) return base as FilterSpecification;
-    const hidden: unknown = [
-      "all",
-      base,
-      ["!=", ["get", "cluster_id"], spider.clusterId],
-    ];
-    return hidden as FilterSpecification;
-  }, [spider]);
+  const clusterFilter = useCallback(
+    (count: ExpressionSpecification): FilterSpecification => {
+      const base: unknown[] = ["all", ["has", "point_count"], [">", count, 0]];
+      if (spider?.clusterId != null) base.push(["!=", ["get", "cluster_id"], spider.clusterId]);
+      return base as FilterSpecification;
+    },
+    [spider]
+  );
   const spiderHiddenIds = useMemo<unknown | null>(() => {
     if (!spider || spider.clusterId != null) return null;
     return [
@@ -1062,8 +1124,17 @@ export default function Map({
         });
       });
     }
+    if (!zonesShown) {
+      for (const site of sites ?? []) {
+        features.push({
+          type: "Feature",
+          properties: { id: site.id, kind: "site", selected: site.id === selectedSiteId ? 1 : 0 },
+          geometry: { type: "Point", coordinates: [site.centroid.lng, site.centroid.lat] },
+        });
+      }
+    }
     return { type: "FeatureCollection", features };
-  }, [points, selectedId, dimmedIds]);
+  }, [points, selectedId, dimmedIds, sites, selectedSiteId, zonesShown]);
 
   // A walked-past pin loses strength only. Applied per opacity value because a `zoom` expression is
   // legal only as input of a top-level `step`/`interpolate`: the crossfade stays outside and this
@@ -1133,6 +1204,7 @@ export default function Map({
         onViewChange({ latitude, longitude, zoom: z });
       }}
       onZoomStart={() => setZoomInFlight(true)}
+      onZoom={(evt) => setZonesShown(evt.viewState.zoom >= ZONE_MIN_ZOOM)}
       onZoomEnd={() => setZoomInFlight(false)}
       style={{ width: "100%", height: "100%" }}
       mapStyle={BLANK_STYLE}
@@ -1152,6 +1224,7 @@ export default function Map({
       <GoToCamera target={goTo} />
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
+      <TriangleImage />
       <BasemapStyle style={basemapStyle} />
       <BasemapControl
         settings={basemap}
@@ -1178,64 +1251,34 @@ export default function Map({
         id={POINTS_SOURCE}
         type="geojson"
         data={geojson}
-        cluster={true}
-        clusterMaxZoom={CLUSTER_MAX_ZOOM}
-        clusterRadius={50}
+        {...CLUSTER_SOURCE}
       >
         <Layer
           id="clusters"
           type="circle"
-          filter={clusterFilter}
+          filter={clusterFilter(EVENT_COUNT)}
           paint={{
-            "circle-color": [
-              "step",
-              ["get", "point_count"],
-              marker.base,
-              1000, marker.rampMid,
-              10000, marker.rampHigh,
-            ],
+            "circle-color": clusterColor(marker, EVENT_COUNT),
             // Ease the ceiling handoff: clusters thin out approaching it, replacements fade in from the same
             // level. Zoom-interpolated, only while a zoom is in flight (`zoomInFlight`).
             "circle-opacity": zoomInFlight
               ? [
                   "interpolate", ["linear"], ["zoom"],
-                  FADE_OUT_START, 0.85,
+                  FADE_OUT_START, CLUSTER_OPACITY,
                   POINTS_ZOOM, 0.35,
                 ]
-              : 0.85,
-            "circle-radius": [
-              "step",
-              ["get", "point_count"],
-              12,       // < 50
-              50, 16,   // 50-199
-              200, 20,  // 200-999
-              1000, 26, // 1k-4999
-              5000, 34, // 5k-9999
-              10000, 42, // 10k+
-            ],
+              : CLUSTER_OPACITY,
+            "circle-radius": clusterRadius(EVENT_COUNT),
           }}
         />
 
         <Layer
           id="cluster-count"
           type="symbol"
-          filter={clusterFilter}
-          layout={{
-            "text-field": "{point_count_abbreviated}",
-            "text-font": ["Montserrat Medium"],
-            "text-size": [
-              "step",
-              ["get", "point_count"],
-              11,
-              1000, 13,
-              10000, 15,
-            ],
-            // Skip symbol placement and its collision fade: a count must appear and vanish with its circle.
-            "text-allow-overlap": true,
-            "text-ignore-placement": true,
-          }}
+          filter={clusterFilter(EVENT_COUNT)}
+          layout={clusterCountLayout(EVENT_COUNT)}
           paint={{
-            "text-color": "#ffffff",
+            "text-color": CLUSTER_COUNT_COLOR,
             // Mirrors the cluster circle's ceiling fade above.
             "text-opacity": zoomInFlight
               ? [
@@ -1248,14 +1291,40 @@ export default function Map({
         />
 
         <Layer
+          id={SITE_CLUSTER_LAYER}
+          type="symbol"
+          maxzoom={ZONE_MIN_ZOOM}
+          filter={clusterFilter(SITE_COUNT)}
+          {...siteClusterStyle(marker)}
+        />
+
+        <Layer
+          id={SITE_POINT_LAYER}
+          type="symbol"
+          maxzoom={ZONE_MIN_ZOOM}
+          filter={SITE_POINT_FILTER}
+          layout={{
+            "icon-image": TRIANGLE_ICON,
+            "icon-size": ["case", ["==", ["get", "selected"], 1], SELECTED_SITE_POINT_SIZE, SITE_POINT_SIZE],
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          }}
+          paint={{
+            "icon-color": marker.base,
+            "icon-halo-color": selectedStroke,
+            "icon-halo-width": ["case", ["==", ["get", "selected"], 1], SELECTED_STROKE_WIDTH, 0],
+          }}
+        />
+
+        <Layer
           id="points-selected"
           type="circle"
           filter={pointFilter(1)}
           paint={{
-            "circle-radius": 7,
+            "circle-radius": SELECTED_POINT_RADIUS,
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
-            "circle-stroke-color": SELECTED_STROKE,
-            "circle-stroke-width": 2,
+            "circle-stroke-color": selectedStroke,
+            "circle-stroke-width": SELECTED_STROKE_WIDTH,
             // No crossfade dip: the selected pin keeps full prominence through the handoff.
             "circle-opacity": 1,
           }}
@@ -1266,7 +1335,7 @@ export default function Map({
           type="circle"
           filter={pointFilter(0)}
           paint={{
-            "circle-radius": 6,
+            "circle-radius": POINT_RADIUS,
             // Lighter accent shade for a machine detection, full accent for a submitted row.
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
@@ -1299,11 +1368,11 @@ export default function Map({
               ? [
                   "interpolate", ["linear"], ["zoom"],
                   POINTS_ZOOM, 0.35,
-                  FADE_IN_END, 0.85,
+                  FADE_IN_END, CLUSTER_OPACITY,
                 ]
-              : 0.85,
-            "circle-stroke-color": SELECTED_STROKE,
-            "circle-stroke-width": ["case", ["==", ["get", "stack_selected"], 1], 2, 0],
+              : CLUSTER_OPACITY,
+            "circle-stroke-color": selectedStroke,
+            "circle-stroke-width": ["case", ["==", ["get", "stack_selected"], 1], SELECTED_STROKE_WIDTH, 0],
           }}
         />
 
@@ -1319,7 +1388,7 @@ export default function Map({
             "text-ignore-placement": true,
           }}
           paint={{
-            "text-color": "#ffffff",
+            "text-color": CLUSTER_COUNT_COLOR,
             // Mirrors the stack circle's fade-in above.
             "text-opacity": zoomInFlight
               ? [
@@ -1341,7 +1410,7 @@ export default function Map({
         colors={{
           base: marker.base,
           detected: DETECTED,
-          stroke: SELECTED_STROKE,
+          stroke: selectedStroke,
         }}
         collapsing={spiderClosing}
         onSelect={selectFromSpider}
