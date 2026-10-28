@@ -28,8 +28,8 @@ export type LinkEffect = EventSiteLink["effect"];
 export const SITE_NAME_MAX_LEN = 255;
 /** Mirrors backend `schemas/site.SITE_SOURCE_NOTE_MAX_LENGTH`; change both. */
 export const SITE_SOURCE_NOTE_MAX_LEN = 500;
-/** Mirrors the `margin_m` default (2000 m) of backend `routers/events/sites`; change both. */
-export const SITE_MARGIN_KM = 2;
+/** Mirrors backend `services/sites.DEFAULT_MARGIN_M`, the `margin_m` default; change both. */
+export const SITE_MARGIN_KM = 10;
 
 /** Keyed by the generated union, so a kind the backend adds fails the type-check. */
 export const SITE_KIND_LABELS: Record<SiteKind, string> = {
@@ -417,7 +417,7 @@ export function siteVersion(
     view,
     editor: producedBy ? producedBy.edited_by : first ? current.owner : null,
     createdAt: producedBy ? producedBy.created_at : first ? current.created_at : null,
-    note: null,
+    note: producedBy?.note ?? null,
     redacted: false,
     changed: view && previous ? siteChangedFields(view, previous) : null,
   };

@@ -12,7 +12,7 @@ import { DetailRow } from "@/components/ui/DetailRow";
 import { META_LINE } from "@/components/ui/styles";
 import { cn } from "@/lib/cn";
 
-const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
+const PointMap = dynamic(() => import("@/components/map/PointMap"), { ssr: false });
 
 /**
  * The Location slot of the event and version pages: the map with its coordinates row, or null
@@ -26,16 +26,7 @@ export function eventLocation(geo: EventDetail): EventSlot | null {
     content: (
       <EventLocation
         coords={coords}
-        map={
-          // Single-point map reads [id, lat, lng] plus the detected flag (marker colours match the
-          // app); the two date slots are inert, so empty strings.
-          <Map
-            points={[[geo.id, coords.lat, coords.lng, "", "", geo.status === "detected" ? 1 : 0]]}
-            center={{ lat: coords.lat, lng: coords.lng }}
-            zoom={12}
-            embedded
-          />
-        }
+        map={<PointMap point={coords} id={geo.id} detected={geo.status === "detected"} />}
       />
     ),
   };
@@ -45,10 +36,12 @@ export function eventLocation(geo: EventDetail): EventSlot | null {
  * The Location module: a map with its coordinates row fused to its foot. The event page passes
  * its single pin; the site page passes its zone map, more `rows` under the coordinates and its
  * map legend as `footer` lines. A collection passes its coverage map, with the coordinates of the
- * event it stands on, if any, and no foot at all on its forms.
+ * event it stands on, if any, and no foot at all on its forms. A `header` sits above the map: the
+ * event forms' coordinate inputs, the go-to-coordinates field of a site source form.
  */
 export function EventLocation({
   map,
+  header,
   coords,
   coordinatesConcept = EVENT_FIELDS.coordinates.concept,
   rows,
@@ -56,6 +49,7 @@ export function EventLocation({
   ref,
 }: {
   map: ReactNode;
+  header?: ReactNode;
   coords?: { lat: number; lng: number } | null;
   /** The coordinates row's `?`, when the pair is not an event's subject (a site's centroid). */
   coordinatesConcept?: Concept;
@@ -68,7 +62,16 @@ export function EventLocation({
     // `overflow-hidden` sits on the map alone, to clip its rounded corners, since the whole module
     // would clip the rows' `?` tooltips.
     <div ref={ref} className="scroll-mt-20 rounded-lg border border-neutral-700">
-      <div className={cn("h-56 overflow-hidden", foot ? "rounded-t-lg" : "rounded-lg")}>{map}</div>
+      {header && (
+        <div className="space-y-1.5 rounded-t-lg border-b border-neutral-800 bg-neutral-900 p-4">
+          {header}
+        </div>
+      )}
+      <div
+        className={cn("h-56 overflow-hidden", !header && "rounded-t-lg", !foot && "rounded-b-lg")}
+      >
+        {map}
+      </div>
       {foot && (
         <div className="divide-y divide-neutral-800 rounded-b-lg border-t border-neutral-800 bg-neutral-900">
           {coords && (

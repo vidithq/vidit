@@ -10,7 +10,7 @@ import { DetailRow } from "@/components/ui/DetailRow";
 import { Pill } from "@/components/ui/Pill";
 import { cn } from "@/lib/cn";
 import { formatDate, formatInstantDate } from "@/lib/format";
-import { zoneAreaKm2, zoneVertices } from "@/lib/siteZone";
+import { formatAreaKm2, zoneAreaKm2, zoneVertices } from "@/lib/siteZone";
 import type { SiteContour, SiteSource } from "@/lib/sites";
 
 /** A site source's name, by its capture day: *Source of 7 Sept 2026*. */
@@ -125,7 +125,7 @@ export function siteSourceExtras({
           <DetailRow
             label="Contour"
             concept="site_zone"
-            value={`Drawn on this source, ${zoneAreaKm2(zoneVertices(contour.zone)).toFixed(2)} km²`}
+            value={`Drawn on this source, ${formatAreaKm2(zoneAreaKm2(zoneVertices(contour.zone)))}`}
           />
         )}
       </>

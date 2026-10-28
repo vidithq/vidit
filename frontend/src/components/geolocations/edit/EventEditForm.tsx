@@ -15,8 +15,6 @@ import {
 } from "@/components/geolocations/PublishActions";
 import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
 
-import { CharCounter } from "@/components/ui/CharCounter";
-import { FieldLabel } from "@/components/ui/FieldLabel";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { RemoveButton } from "@/components/ui/RemoveButton";
@@ -26,9 +24,8 @@ import {
   useDraftGeolocatorsByline,
 } from "@/components/event/useGeolocatorsByline";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
-import { Input } from "@/components/ui/Input";
+import { VersionNotePanel } from "@/components/event/VersionNotePanel";
 import {
-  VERSION_NOTE_MAX_LEN,
   hasVersionChanges,
   nothingChangedMessage,
   saveVersion,
@@ -290,53 +287,7 @@ export function EventEditForm({
       actions={actions}
       formId={EDIT_FORM_ID}
       onSubmit={submit.action.attempt}
-      fields={{ row: geo }}
+      fields={{ row: geo, siteLinks: !isRequest }}
     />
-  );
-}
-
-/** The panel the first click on **Save version N** opens: the optional note the version keeps,
- *  then the save. Enter in the note saves; the panel's Escape or an outside click writes nothing. */
-function VersionNotePanel({
-  note,
-  setNote,
-  saveLabel,
-  onSave,
-}: {
-  note: string;
-  setNote: (note: string) => void;
-  saveLabel: string;
-  onSave: () => void;
-}) {
-  return (
-    <>
-      <div className="space-y-1.5 px-1">
-        <FieldLabel
-          label="Version note"
-          concept="version_note"
-          htmlFor="version_note"
-          trailing={<CharCounter length={note.length} max={VERSION_NOTE_MAX_LEN} />}
-        />
-        <Input
-          id="version_note"
-          type="text"
-          value={note}
-          maxLength={VERSION_NOTE_MAX_LEN}
-          onChange={(e) => setNote(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-            e.preventDefault();
-            onSave();
-          }}
-          placeholder="What changed, and why"
-          autoFocus
-        />
-      </div>
-      <div className="flex justify-end">
-        <Button action="save" variant="primary" onClick={onSave}>
-          {saveLabel}
-        </Button>
-      </div>
-    </>
   );
 }

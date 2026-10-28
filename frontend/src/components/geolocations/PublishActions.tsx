@@ -95,7 +95,7 @@ interface PublishButton {
   icon: ButtonAction;
   /** The conditions this write still misses: the count on the button, which dims it while short.
    *  Left out, nothing is counted. */
-  missing?: MissingField[];
+  missing?: (Partial<MissingField> & { label: string })[];
   /** The `<form>` the button submits, so Enter in a field takes the same path (`form`'s
    *  `onSubmit` calls `action.attempt`). Left out, a click runs it. */
   form?: string;

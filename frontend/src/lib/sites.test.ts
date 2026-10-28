@@ -281,9 +281,10 @@ describe("site versions", () => {
       last_source: null,
       sources: [first],
       contours: [NOV],
+      note: null,
       ...rest,
     }) as SiteVersion;
-  const rows = [row(2, {}), row(1, { name: "Depot North", edited_by: OWNER })];
+  const rows = [row(2, { note: "New June source" }), row(1, { name: "Depot North", edited_by: OWNER })];
 
   it("addresses the live version at the site page and older ones at /vN", () => {
     const record = siteVersioned(site);
@@ -298,6 +299,7 @@ describe("site versions", () => {
     expect(versions.map((v) => v.number)).toEqual([3, 2, 1]);
     expect(versions.map((v) => v.editor?.username)).toEqual(["ben", "ana", "ana"]);
     expect(versions[2].createdAt).toBe(site.created_at);
+    expect(versions.map((v) => v.note)).toEqual(["New June source", null, null]);
     expect(versions[0].changed).toEqual(["Sources", "Contour"]);
     expect(versions[1].changed).toEqual(["Name"]);
     expect(versions[2].changed).toBeNull();

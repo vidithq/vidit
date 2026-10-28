@@ -6,9 +6,12 @@ import { RotateCcw } from "lucide-react";
 
 import { EventSection } from "@/components/event/EventLayout";
 import { EventShell } from "@/components/event/EventShell";
+import { VersionNotePanel } from "@/components/event/VersionNotePanel";
+import { PublishActions, SAVING_LABEL, usePublishAction } from "@/components/geolocations/PublishActions";
 import { SourceBlock } from "@/components/sources/SourceBlock";
 import { SourcesRow } from "@/components/sources/SourcesRow";
 import { Button } from "@/components/ui/Button";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import type { HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
 import { PageColumns } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
@@ -17,8 +20,9 @@ import { WARNING_CALLOUT } from "@/components/ui/styles";
 import { useMutation } from "@/hooks/useMutation";
 import { cn } from "@/lib/cn";
 import type { components } from "@/lib/api-types";
+import { nothingChangedMessage } from "@/lib/events";
 import { formatInstantDate } from "@/lib/format";
-import { positionsBounds, zoneVertices } from "@/lib/siteZone";
+import { CONTOUR_REQUIREMENT, positionsBounds, zoneVertices } from "@/lib/siteZone";
 import {
   contourOfSource,
   saveSiteVersion,
@@ -35,7 +39,7 @@ import { sourceName, sourceWriteError } from "@/lib/sources";
 import { padBounds } from "@/lib/viewport";
 import { ContourDraft, SiteKindCard, SiteNameField, type ContourDraftValue } from "./SiteFormFields";
 import { ShowOnMap, removeSourceLabel, siteSourceExtras, siteSourceMention } from "./SiteSourceBlock";
-import { SiteSourceEditor, SiteWriteActions, useSiteSourceDraft } from "./SiteSourceEditor";
+import { SiteSourceEditor, useSiteSourceDraft } from "./SiteSourceEditor";
 
 type Author = components["schemas"]["AuthorRef"];
 
@@ -46,8 +50,10 @@ const ADDED = "added";
  * The owner's edit of a site, laid out like the site page: the name typed in the page title, the
  * Sources section (each source with its filer's Remove, and **Add a source**) in the main column;
  * the Location block, where the owner draws the contour of one
- * source, then the Details block with the kind, in the side column. One **Save** writes
- * everything through `POST /sites/{id}/versions`, which files one version.
+ * source, then the Details block with the kind, in the side column. One **Save version N** writes
+ * everything through `POST /sites/{id}/versions`, which files one version: like an event edit, its
+ * first click asks for the optional note that version keeps, and an edit that changes nothing is
+ * refused there, not counted on the button.
  *
  * A source is removed once it carries no contour: the owner first redraws that contour on another
  * source, or clears it with **Start over**. The site keeps at least one source with a contour.
@@ -75,6 +81,7 @@ export function SiteEditForm({
   const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, ContourDraftValue>>({});
   const [attempt, setAttempt] = useState(0);
+  const [note, setNote] = useState("");
 
   const sources = sortSources(site.sources);
   const addedName = sourceName(sources.length);
@@ -122,9 +129,8 @@ export function SiteEditForm({
   const missing = [
     ...(name.trim() ? [] : ["Name"]),
     ...(adding ? newSource.missing : []),
-    ...(open ? ["A closed contour whose edges do not cross"] : []),
+    ...(open ? [CONTOUR_REQUIREMENT] : []),
     ...(anyContour ? [] : ["A source with a contour"]),
-    ...(changed ? [] : ["A change to the site"]),
   ];
   const flagged = attempt > 0;
 
@@ -137,6 +143,7 @@ export function SiteEditForm({
         added_sources: adding ? [newSource.payload()] : [],
         removed_source_ids: [...removed],
         contours,
+        note,
       }),
     {
       fallback: "The site was not saved. Try again.",
@@ -144,15 +151,18 @@ export function SiteEditForm({
       onSuccess: () => router.push(siteHref(site.id)),
     },
   );
-  const submit = () => {
-    setAttempt((n) => n + 1);
-    if (missing.length > 0) return;
-    if (adding && newSource.held) {
-      save.setError(newSource.held);
-      return;
-    }
-    void save.run();
-  };
+  const saveLabel = `Save version ${site.version_no + 1}`;
+  const write = usePublishAction({
+    check: () => {
+      setAttempt((n) => n + 1);
+      if (missing.length > 0) return false;
+      const held = !changed ? nothingChangedMessage(site.version_no) : adding ? newSource.held : null;
+      save.setError(held);
+      return held === null;
+    },
+    write: () => void save.run(),
+    ask: true,
+  });
 
   const sourceControls = (source: SiteSource) => {
     if (source.author?.id !== owner.id) return null;
@@ -195,17 +205,34 @@ export function SiteEditForm({
       backFallback={siteHref(site.id)}
       actions={{
         pinned: (
-          <SiteWriteActions
-            label="Save"
-            busyLabel="Saving…"
-            action="save"
-            missing={missing}
-            attempt={attempt}
-            busy={save.loading}
+          <PublishActions
+            disabled={save.loading}
             error={save.error}
-            onWrite={submit}
+            buttons={[
+              {
+                action: write,
+                label: saveLabel,
+                busyLabel: SAVING_LABEL,
+                busy: save.loading,
+                variant: "primary",
+                icon: "save",
+                missing: missing.map((label) => ({ label })),
+                ask: {
+                  label: "Version note",
+                  content: (
+                    <VersionNotePanel
+                      note={note}
+                      setNote={setNote}
+                      saveLabel={saveLabel}
+                      onSave={write.confirmAsk}
+                    />
+                  ),
+                },
+              },
+            ]}
           />
         ),
+        below: <IncompleteFormAnnouncer attempt={attempt} missing={attempt > 0 ? missing : []} />,
       }}
       panels={
         <PageColumns

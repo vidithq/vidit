@@ -7,7 +7,6 @@ import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { LIST_TILE } from "@/components/ui/form-styles";
-import { META_LINE } from "@/components/ui/styles";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
@@ -26,8 +25,8 @@ import { SourcesRow } from "./SourcesRow";
 /**
  * One source of an event on a reading surface, read like the event's Details card: its file
  * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
- * each for the title, level, kind (with the file's kind), links, capture time, capture position
- * and tags, the order of the editor's fields. A row with no value drops out. A context source
+ * each for the title, level, kind (with the file's kind), links, post time, capture time, capture
+ * position and tags, the order of the editor's fields. A row with no value drops out. A context source
  * without a file has no file area at all: a URL alone (an article, a statement) is no gap.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
@@ -128,6 +127,7 @@ function SourceRows({
       </DetailRow>
       {kind && <DetailRow {...SOURCE_FIELDS.kind} compact={compact} value={kind} />}
       <LinksRow source={source} name={name.charAt(0).toLowerCase() + name.slice(1)} compact={compact} />
+      <PostedRow source={source} compact={compact} />
       <CapturedRow source={source} compact={compact} />
       {position && (
         <DetailRow
@@ -148,7 +148,7 @@ function SourceRows({
   );
 }
 
-/** A source's links, each with its archived copy and post time. */
+/** A source's links, each with its archived copy. */
 function LinksRow({
   source,
   name,
@@ -169,17 +169,37 @@ function LinksRow({
     >
       <ul className="space-y-1.5 text-right" aria-label={`Links of ${name}`}>
         {links.map((link, i) => (
+          <li key={link.url} className="flex items-center justify-end">
+            <SourceLabel url={link.url} variant="link" className="text-sm" />
+            <ArchivedCopies
+              copy={link.archived}
+              describes={linkDescription(name, safeHostname(link.url), i, links.length)}
+            />
+          </li>
+        ))}
+      </ul>
+    </DetailRow>
+  );
+}
+
+const postedText = (postedAt: string | null): string =>
+  postedAt ? formatInstantOrDate(postedAt) : "Unknown";
+
+/** When the file went up at each link, apart from the capture time under it. Links posted at the
+ *  same time read as one value; otherwise each line names its link's host. */
+function PostedRow({ source, compact }: { source: Source; compact: boolean }) {
+  const links = source.links;
+  if (links.length === 0) return null;
+  const times = new Set(links.map((link) => link.posted_at));
+  if (times.size === 1) {
+    return <DetailRow {...SOURCE_FIELDS.posted} compact={compact} value={postedText(links[0].posted_at)} />;
+  }
+  return (
+    <DetailRow {...SOURCE_FIELDS.posted} compact={compact} align="start">
+      <ul className={cn("space-y-1.5 text-right text-neutral-200 [overflow-wrap:anywhere]", !compact && "text-sm")}>
+        {links.map((link) => (
           <li key={link.url}>
-            <div className="flex items-center justify-end">
-              <SourceLabel url={link.url} variant="link" className="text-sm" />
-              <ArchivedCopies
-                copy={link.archived}
-                describes={linkDescription(name, safeHostname(link.url), i, links.length)}
-              />
-            </div>
-            <p className={META_LINE}>
-              {link.posted_at ? `Posted ${formatInstantOrDate(link.posted_at)}` : "Date unknown"}
-            </p>
+            {safeHostname(link.url)} · {postedText(link.posted_at)}
           </li>
         ))}
       </ul>
