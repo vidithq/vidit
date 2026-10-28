@@ -5772,7 +5772,7 @@ export interface components {
         };
         /**
          * SourceRead
-         * @description One source of an event, in the event's derived source order.
+         * @description One source of an event, in the event's source order.
          */
         SourceRead: {
             capture_position: components["schemas"]["CoordsRead"] | null;

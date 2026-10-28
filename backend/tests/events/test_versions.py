@@ -367,6 +367,32 @@ def test_a_new_archived_copy_is_a_change_and_the_same_one_is_not(db, author, con
     assert db.get(Event, geo.id).version_no == 3
 
 
+def test_moving_a_source_is_a_change_that_files_a_version(db, author, conflict):
+    """The order is part of what the event says: a save that only moves a source files one."""
+    mirror = "https://example.com/mirror"
+    geo = _published(db, author, conflict, secondary_source_urls=[mirror])
+    first, second = geo.sources
+    keep_first = _keep(first.id, first.media.id)
+    keep_second = source_spec(mirror, id=str(second.id), kind="unknown", posted_at=None)
+
+    data = _form(conflict, sources_field(keep_first, keep_second))
+    assert _save_version(geo.id, author, data=data).status_code == 200
+    assert _save_version(geo.id, author, data=data).status_code == 409
+
+    data["sources"] = sources_field(keep_second, keep_first)
+    response = _save_version(geo.id, author, data=data)
+    assert response.status_code == 200, response.text
+    assert [s["id"] for s in response.json()["sources"]] == [str(second.id), str(first.id)]
+    db.expire_all()
+    [_, filed] = (
+        db.query(EventVersion)
+        .filter(EventVersion.event_id == geo.id)
+        .order_by(EventVersion.version_no)
+        .all()
+    )
+    assert [s["links"][0]["url"] for s in filed.snapshot["sources"]] == [SOURCE_URL, mirror]
+
+
 def test_a_non_canonical_re_paste_of_the_stored_copy_is_no_change(db, author, conflict):
     """A trailing slash added in a browser names the same capture, so the save is refused."""
     geo = _published(db, author, conflict)

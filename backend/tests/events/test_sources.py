@@ -61,7 +61,7 @@ def _key(url: str) -> str:
 # ── Several sources ──────────────────────────────────────────────────────────
 
 
-def test_an_event_holds_several_sources_in_level_then_capture_order(author, conflict):
+def test_an_event_holds_several_sources_in_the_posted_order(author, conflict):
     later = stage_file(author)
     earlier = stage_file(author)
     indirect = stage_file(author)
@@ -88,18 +88,50 @@ def test_an_event_holds_several_sources_in_level_then_capture_order(author, conf
     assert response.status_code == 201, response.text
     read = response.json()["sources"]
     assert [(s["level"], s["links"][0]["url"]) for s in read] == [
-        ("direct", "https://t.me/c/1"),
+        ("context", "https://ctx.example/article"),
         ("direct", "https://x.com/a/status/2"),
         ("indirect", "https://sat.example/after"),
-        ("context", "https://ctx.example/article"),
+        ("direct", "https://t.me/c/1"),
     ]
-    assert read[0]["kind"] == "drone"
-    assert read[0]["capture_position"] == {"lat": 48.4, "lng": 34.4}
+    assert read[3]["kind"] == "drone"
+    assert read[3]["capture_position"] == {"lat": 48.4, "lng": 34.4}
     assert read[1]["title"] == "Second angle"
-    assert read[3]["media"] is None and read[3]["kind"] == "article"
-    assert all(s["media"] is not None for s in read[:3])
-    # The first source's file is the card thumbnail.
-    assert response.json()["thumbnail"]["id"] == read[0]["media"]["id"]
+    assert read[0]["media"] is None and read[0]["kind"] == "article"
+    assert all(s["media"] is not None for s in read[1:])
+    # The first source with a file gives the card thumbnail.
+    assert response.json()["thumbnail"]["id"] == read[1]["media"]["id"]
+
+
+def test_an_edit_that_moves_the_sources_saves_their_new_order(author):
+    created = client.post(
+        "/api/v1/events/requests",
+        headers=login_as(client, author),
+        data={
+            "title": "Where?",
+            "sources": sources_field(
+                source_spec("https://a.example", upload_id=stage_file(author)),
+                source_spec("https://b.example", level="context"),
+                source_spec("https://c.example", level="context"),
+            ),
+        },
+    )
+    a, b, c = created.json()["sources"]
+
+    def kept(source: dict) -> dict:
+        media = source["media"]["id"] if source["media"] else None
+        return source_spec(
+            source["links"][0]["url"], id=source["id"], level=source["level"], media_id=media
+        )
+
+    edited = client.post(
+        f"/api/v1/events/{created.json()['id']}/request",
+        headers=login_as(client, author),
+        data={"title": "Where?", "sources": sources_field(kept(c), kept(a), kept(b))},
+    )
+    assert edited.status_code == 200, edited.text
+    assert [s["id"] for s in edited.json()["sources"]] == [c["id"], a["id"], b["id"]]
+    read = client.get(f"/api/v1/events/{created.json()['id']}")
+    assert [s["id"] for s in read.json()["sources"]] == [c["id"], a["id"], b["id"]]
 
 
 def test_a_document_source_drops_its_capture_position(author, conflict):

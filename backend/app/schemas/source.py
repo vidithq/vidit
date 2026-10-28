@@ -138,7 +138,7 @@ class SourceWarning(BaseModel):
 
 
 class SourceRead(BaseModel):
-    """One source of an event, in the event's derived source order."""
+    """One source of an event, in the event's source order."""
 
     id: uuid.UUID
     title: str

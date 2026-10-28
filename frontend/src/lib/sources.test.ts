@@ -184,6 +184,13 @@ describe("sourcesChanged", () => {
     expect(sourcesChanged([STORED], [])).toBe(true);
   });
 
+  it("reads two sources swapped in the list as a change", () => {
+    const other = { ...STORED, id: "s2" };
+    const drafts = [sourceDraftFrom(STORED), sourceDraftFrom(other)];
+    expect(sourcesChanged([STORED, other], drafts)).toBe(false);
+    expect(sourcesChanged([STORED, other], [...drafts].reverse())).toBe(true);
+  });
+
   it("reads a cleared graphic switch on a flagged source as no change", () => {
     const flagged = { ...STORED, is_graphic: true };
     expect(sourcesChanged([flagged], [{ ...sourceDraftFrom(flagged), isGraphic: false }])).toBe(

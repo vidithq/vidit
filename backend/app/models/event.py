@@ -340,7 +340,7 @@ class Event(Base):
     requested_by = relationship("User", foreign_keys=[requested_by_id])
     # Proof-body images only; a source's file hangs off its source.
     media = relationship("Media", back_populates="event", cascade="all, delete-orphan")
-    # In their derived order (``models/source.source_order``).
+    # In the order the author set (``models/source.source_order``).
     sources = relationship(
         "Source",
         back_populates="event",

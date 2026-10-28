@@ -10,11 +10,11 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    SmallInteger,
     String,
     Table,
     Text,
     UniqueConstraint,
-    case,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -84,8 +84,8 @@ class Source(Base):
 
     Its owner is an event (the evidence the event rests on) or a site (a dated satellite
     capture of the site), never both (``ck_sources_one_owner``). An event holds up to
-    :data:`MAX_SOURCES_PER_EVENT` sources and none is the main one. The order is derived
-    (:func:`source_order`). An event's source is versioned with its event
+    :data:`MAX_SOURCES_PER_EVENT` sources and none is the main one. Their order is the one the
+    last write posted (:func:`source_order`). An event's source is versioned with its event
     (``services/versions.build_snapshot``): an edit to it is an edit to the event. A site's
     source is never edited, and its removal only stamps ``removed_at``.
     """
@@ -112,6 +112,10 @@ class Source(Base):
         String(SOURCE_TITLE_MAX_LENGTH), nullable=False, default="", server_default=text("''")
     )
     level: Mapped[SourceLevel] = mapped_column(String(10), nullable=False)
+    # An event's source's place in its list, 0 first. 0 on a site source, read by capture time.
+    position: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default=text("0")
+    )
     # A machine source is ``unknown`` until a review names it.
     kind: Mapped[SourceKind] = mapped_column(String(20), nullable=False)
     # When the media was captured (UTC). Distinct from the event's ``occurred_date`` and a
@@ -205,17 +209,6 @@ class SourceLink(Base):
     )
 
 
-def level_rank():
-    """``direct`` first, then ``indirect``, then ``context``: the leading sort key of
-    :func:`source_order`."""
-    return case({"direct": 0, "indirect": 1}, value=Source.level, else_=2)
-
-
 def source_order():
-    """The derived order of an event's sources: level, then capture time (unknown last)."""
-    return (
-        level_rank(),
-        Source.captured_at.asc().nulls_last(),
-        Source.created_at,
-        Source.id,
-    )
+    """The order of an event's sources: the posted one (``position``), then creation."""
+    return (Source.position, Source.created_at, Source.id)

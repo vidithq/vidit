@@ -267,6 +267,7 @@ erDiagram
         TIMESTAMPTZ removed_at "nullable, a site source out of the live state"
         VARCHAR title "empty string for none"
         VARCHAR level "direct | indirect | context"
+        SMALLINT position "an event's source's place in its list"
         VARCHAR kind "where the source comes from"
         TIMESTAMPTZ captured_at "nullable, when the media was captured"
         GEOMETRY capture_position "nullable, where a capture was shot from"
@@ -918,6 +919,7 @@ One piece of evidence: at most one file, the URLs that file was posted at, and w
 | `removed_at` | `TIMESTAMPTZ` | nullable. When the analyst who filed a site source removed it from the site's live state. The row stays, so every [site version](#site_versions) that names the source stays readable. NULL on an event's source. |
 | `title` | `VARCHAR(255)` | NOT NULL, server_default `''`. An optional label; `''` is no title. Searched by `GET /search` as part of its event's document. |
 | `level` | `VARCHAR(10)` | NOT NULL, CHECK in `('direct', 'indirect', 'context')` (constraint `ck_sources_level_valid`). The evidence level: how close the source stands to the act. See the table below. |
+| `position` | `SMALLINT` | NOT NULL, default `0`. An event's source's place in its list, `0` first, as the last write posted it. `0` on a site source, whose sources read by `captured_at`. |
 | `kind` | `VARCHAR(20)` | NOT NULL, CHECK in `('smartphone', 'camera', 'static_camera', 'drone', 'aircraft', 'satellite', 'dashcam', 'body_cam', 'article', 'official_statement', 'other', 'unknown')` (constraint `ck_sources_kind_valid`). Where the source comes from, on every source, a file-less one included: what captured it (`camera` is a handheld or press camera, `static_camera` a CCTV or a webcam, `aircraft` a plane or a helicopter, historical aerial photos included) or the kind of document it is. A `satellite` or `aircraft` source is checked against the [imagery providers](imagery.md). Whether its file is a photo or a video is the file's own [`media.kind`](#media). A machine source is `unknown` until a review names it, and `unknown` keeps the choice satisfiable for a source of uncertain provenance. |
 | `captured_at` | `TIMESTAMPTZ` | nullable. When the media was captured (UTC). Distinct from the event's `occurred_date` and from a link's `posted_at`. |
 | `capture_position` | `GEOMETRY(Point, 4326)` | nullable. Where a capture was shot from; a document has none. Not indexed, because no spatial read consumes it. |
@@ -943,7 +945,7 @@ The `kind` and `level` value domains have one home, the `SourceKind` and `Source
 - `ix_sources_site_id` on `(site_id)`. Serves a site's sources and the cascade.
 - `ix_sources_author_id` on `(author_id)` `WHERE author_id IS NOT NULL`. Serves the `ON DELETE SET NULL` of an account erasure; only site sources set `author_id`, so the index skips every event source.
 
-**The order is derived, not stored.** An event's sources read by level (`direct`, then `indirect`, then `context`), then by `captured_at` with unknown last, then by `created_at` and `id` (`models/source.source_order`). There is no position column, so no write reorders a list by hand.
+**The author sets the order.** An event's sources read by `position`, then by `created_at` and `id` (`models/source.source_order`). Each write stores the place every source holds in the posted list, so the author orders the list on the form. A detection's sources take the order its post declares them in.
 
 **A write posts the whole list.** Every event write posts the event's full source list, and the stored sources follow it (`services/events/sources.apply_sources`): an entry naming a stored source's `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted, its links, tags and `media` row with it. The source's file outlives its row while another `media` row or a readable version names it (see [`media`](#media)). A request's sources are not locked: the analyst who publishes a request rewrites them like any other field.
 

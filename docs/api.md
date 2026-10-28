@@ -704,7 +704,7 @@ flowchart LR
 
 A site source names one file, through `upload_id` or `media_id`, or none; both is a 422. Every other field outside this table is a 422 too. `/openapi.json` lists `SourceCreate` and `SourceLinkCreate` among its component schemas.
 
-**The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while another file row or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The order is derived (level, then `captured_at`), so the posted order is not stored.
+**The posted list replaces the stored one.** An entry with `id` updates that source in place, an entry without one creates a source, and a stored source the list leaves out is deleted with its links, tags and file row. Its stored object stays while another file row or a readable version names it ([`data-model.md`](data-model.md#media)). A source's links are replaced whole too, so post back each link's `snapshot_url` to keep its copy. The posted order is stored, and every read serves the sources in it. A write that only moves a source is a change: on a `geolocated` event it files a version.
 
 **Every source a person writes needs a URL.** A source posted with no link left after the blanks and repeats are dropped is `source_link_required`. Machine sources may lack one until they are published.
 
@@ -1178,7 +1178,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | Field | Meaning |
 |---|---|
 | `coords` | The subject point. `null` on a coordinate-less `requested` event; every `geolocated` row carries it |
-| `sources` | Every source, as `SourceRead`, in the derived order: `direct`, then `indirect`, then `context`, then by `captured_at` with unknown last. Empty on a detection that declared none. A published row always carries a `direct` or `indirect` source with a file |
+| `sources` | Every source, as `SourceRead`, in the order the last write posted. Empty on a detection that declared none. A published row always carries a `direct` or `indirect` source with a file |
 | `sources[].links` | The source's URLs, ordered by `posted_at` with unknown last. `archived` is the link's archived copy: `url` is the snapshot, `provider` is `wayback`, `archive_today` or `ghostarchive`, read off the snapshot's host, and `archived_at` is when it was recorded. `null` until an analyst records one (see [`archival.md`](archival.md)) |
 | `sources[].media` | The source's file, `null` for a source that is only URLs. A proof image lives inline in the `proof` HTML as an `img` src |
 | `sources[].media.role` | `source` for a source's file, `proof` for a proof image, derived from the row's parent. Every `MediaRead` carries it, `thumbnail` and snapshot `proof_media` included. Only a `source` image has `_hero` / `_thumb` derivatives, so read a `proof` `storage_url` as is |

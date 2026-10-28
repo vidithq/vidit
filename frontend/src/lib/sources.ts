@@ -6,7 +6,7 @@ import { toDatetimeLocalUTC } from "./format";
 import type { FieldName } from "./fieldHelp";
 import type { ArchivedLink, Media } from "@/types";
 
-/** One source of an event, in the event's derived order (level, then capture time). */
+/** One source of an event, in the event's source order. */
 export type Source = components["schemas"]["SourceRead"];
 type SourceLink = components["schemas"]["SourceLinkRead"];
 /** A staged source file (`POST /uploads`), referenced by a source's `upload_id`. */
@@ -333,15 +333,14 @@ export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
   };
 }
 
-/** The editors whose post would differ from the stored list. A copied or uploaded file, a new
- *  or removed source, or any moved field counts. Archived copies count too, since a pasted copy
- *  is an edit. */
+/** The editors whose post would differ from the stored list. A copied or uploaded file, a new,
+ *  removed or moved source, or any changed field counts. Archived copies count too, since a
+ *  pasted copy is an edit. */
 export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean {
   if (stored.length !== drafts.length) return true;
-  const byId = new Map(stored.map((s) => [s.id, s]));
-  return drafts.some((draft) => {
-    const source = draft.id ? byId.get(draft.id) : undefined;
-    if (!source) return true;
+  return drafts.some((draft, index) => {
+    const source = stored[index];
+    if (draft.id !== source.id) return true;
     const posted = sourceCreatePayload(draft);
     if (posted.media_id !== (source.media?.id ?? null) || posted.upload_id) return true;
     if (fileRunning(draft.file) || draft.file?.state === "failed") return true;

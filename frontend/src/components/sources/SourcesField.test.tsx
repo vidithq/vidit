@@ -130,6 +130,41 @@ describe("SourcesField", () => {
     expect(seen.current.map((d) => d.links[0].url)).toEqual(["https://b.example/2"]);
   });
 
+  it("moves a source earlier or later, shows it and keeps the focus on the control", () => {
+    render(
+      <Host
+        initial={[
+          withUrl("https://a.example/1"),
+          withUrl("https://b.example/2"),
+          withUrl("https://c.example/3"),
+        ]}
+      />
+    );
+    const urls = () => seen.current.map((d) => d.links[0].url);
+    expect(screen.getByRole("button", { name: "Move source 1 earlier" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move source 3 later" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Move source 1 later" }));
+    expect(urls()).toEqual(["https://b.example/2", "https://a.example/1", "https://c.example/3"]);
+    expect(screen.getByRole("textbox", { name: "Source 2 link 1" })).toHaveValue("https://a.example/1");
+    expect(scrolledTo).toHaveBeenLastCalledWith(ITEM_LEFT);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Move source 2 later" }));
+
+    // At the end of the row the control turns disabled and its pair takes the focus.
+    fireEvent.click(screen.getByRole("button", { name: "Move source 2 later" }));
+    expect(urls()).toEqual(["https://b.example/2", "https://c.example/3", "https://a.example/1"]);
+    expect(screen.getByRole("button", { name: "Move source 3 later" })).toBeDisabled();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Move source 3 earlier" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Move source 3 earlier" }));
+    expect(urls()).toEqual(["https://b.example/2", "https://a.example/1", "https://c.example/3"]);
+  });
+
+  it("offers no move with a lone source", () => {
+    render(<Host initial={[newSourceDraft()]} />);
+    expect(screen.queryByRole("button", { name: /^Move source/ })).toBeNull();
+  });
+
   it("shows the first source with a gap on a publish attempt", () => {
     const complete = { ...withUrl("https://a.example/1"), kind: "drone" as const };
     const { rerender } = render(<Host initial={[complete, withUrl("https://b.example/2")]} />);
