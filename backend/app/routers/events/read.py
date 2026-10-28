@@ -14,7 +14,7 @@ from fastapi import (
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import ColumnElement, func, not_
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db
@@ -25,7 +25,7 @@ from app.models.event import (
 )
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers.events._common import SOURCE_LOAD, build_event_list, build_event_read
+from app.routers.events._common import DETAIL_LOADS, build_event_list, build_event_read
 from app.schemas.event import (
     EventList,
     EventListSort,
@@ -421,20 +421,7 @@ def list_detections(
             ST_Y(Event.coords).label("lat"),
             ST_X(Event.coords).label("lng"),
         )
-        # Loader rule for every paged event query: ``selectinload`` for
-        # many-to-many / one-to-many sets, since ``joinedload`` would
-        # row-multiply against ``LIMIT`` and truncate the page. ``joinedload``
-        # is safe only for many-to-one owner / requested_by.
-        .options(
-            joinedload(Event.owner),
-            joinedload(Event.requested_by),
-            selectinload(Event.tags),
-            selectinload(Event.conflicts),
-            *thumbnail_loads(),
-            CREDIT_LOAD,
-            SOURCE_LOAD,
-            selectinload(Event.detection),
-        )
+        .options(*DETAIL_LOADS)
         .filter(*page_filters)
         .order_by(Event.created_at.desc(), Event.id.desc())
         .offset((page - 1) * per_page)

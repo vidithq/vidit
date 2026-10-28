@@ -10,7 +10,7 @@ from typing import Annotated, NoReturn
 
 from fastapi import HTTPException
 from pydantic import Field, TypeAdapter, ValidationError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.event import Event, EventVersion
 from app.models.source import Source
@@ -28,13 +28,14 @@ from app.services.event_filters import visible_events
 from app.services.events.sources import build_source_read
 from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.geolocator_credit import (
+    CREDIT_LOAD,
     GEOLOCATOR_CREDIT_ERROR_STATUS,
     MAX_EVENT_GEOLOCATORS,
     GeolocatorCreditError,
     live_geolocators,
 )
 from app.services.source_archive import SnapshotRejected
-from app.services.thumbnails import pick_thumbnail
+from app.services.thumbnails import pick_thumbnail, thumbnail_loads
 from app.services.uploads import UPLOAD_ERROR_STATUS
 from app.services.versions import VersionLimitError
 
@@ -80,6 +81,20 @@ _EVENT_ERROR_STATUS: dict[str, int] = {
 # Every relationship ``build_source_read`` reads, for a query that serves sources.
 SOURCE_LOAD = selectinload(Event.sources).options(
     selectinload(Source.links), selectinload(Source.tags), selectinload(Source.media)
+)
+
+# Every relationship ``build_event_read`` reads: the event page and the detection queue. A
+# paged query may take it, since ``joinedload`` covers the many-to-one owner and requested_by
+# only and every set is a ``selectinload``, which never row-multiplies against ``LIMIT``.
+DETAIL_LOADS = (
+    joinedload(Event.owner),
+    joinedload(Event.requested_by),
+    *thumbnail_loads(),
+    selectinload(Event.tags),
+    selectinload(Event.conflicts),
+    CREDIT_LOAD,
+    SOURCE_LOAD,
+    selectinload(Event.detection),
 )
 
 _SOURCES_ADAPTER = TypeAdapter(list[SourceCreate])
