@@ -1,4 +1,5 @@
-"""Full-text search across events (located + requested), collections, users and organizations.
+"""Full-text search across events (located + requested), collections, users, organizations and
+sites.
 
 Postgres FTS: ``websearch_to_tsquery`` parses user input (quoted phrases, ``OR``
 and ``-word``, never a syntax error), and ``ts_headline`` returns fragments with
@@ -8,7 +9,8 @@ so XSS-safe). Soft-deleted rows are filtered at query time.
 One FTS path serves both event views (:func:`_search_events`), composed with
 the standard event filters (``services/event_filters``). An event's document is
 its title and its sources' titles together, so ``-word`` excludes an event
-whichever of them holds the word. The collections, users and organizations
+whichever of them holds the word. A site's document is its name and its live sources' titles
+and notes, the same way (:func:`_site_document`). The collections, users and organizations
 TSVECTOR expressions must stay expression-tree-equal to their GIN indexes
 (config name as a SQL literal, never a bound parameter) or Postgres falls back to
 a sequential scan: ``_collection_tsvector`` and the ``_USER_TSVECTOR`` and
@@ -49,6 +51,7 @@ from app.models.event import (
     Event,
 )
 from app.models.organization import Organization
+from app.models.site import Site
 from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.schemas.collection import CollectionRead
@@ -68,6 +71,7 @@ from app.services.event_filters import (
 )
 from app.services.geolocator_credit import CREDIT_LOAD, live_geolocators
 from app.services.pagination import encode_ranked_cursor
+from app.services.sites import live_sources, visible_sites
 from app.services.thumbnails import pick_thumbnail, thumbnail_loads
 
 # ``ts_headline`` sentinels: STX / ETX, not an ASCII marker like ``[[HL]]``,
@@ -738,6 +742,64 @@ def search_organizations(db: Session, *, query: str, limit: int) -> tuple[list[d
     return out, total
 
 
+def _site_name_tsvector():
+    """The site name's ``tsvector``, which the rank reads."""
+    return func.to_tsvector(_TS_CONFIG, func.coalesce(Site.name, literal_column("''")))
+
+
+def _site_document():
+    """The site name and its live sources' titles and notes as one ``tsvector``, like
+    :func:`_event_document`."""
+    source_text = (
+        select(
+            func.string_agg(
+                func.concat_ws(literal_column("' '"), Source.title, Source.note),
+                literal_column("' '"),
+            )
+        )
+        .where(Source.site_id == Site.id, *live_sources())
+        .scalar_subquery()
+    )
+    return _site_name_tsvector().op("||")(
+        func.to_tsvector(_TS_CONFIG, func.coalesce(source_text, literal_column("''")))
+    )
+
+
+def search_sites(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
+    """Top-N visible sites matching ``query`` (:func:`_site_document`) + the pre-LIMIT total.
+
+    ``services/sites.visible_sites`` is the rule ``GET /sites`` reads: a withheld site, or one
+    whose owner is soft-deleted, never matches. Ranked by ``ts_rank`` of the name, then
+    ``created_at`` desc and ``id`` desc.
+    """
+    parsed = _parse(db, query)[0]
+    name = func.translate(Site.name, literal_column("chr(2) || chr(3)"), literal_column("''"))
+    rows = (
+        db.query(
+            Site.id,
+            Site.name,
+            Site.kind,
+            func.ts_headline(_TS_CONFIG, name, _tsquery(parsed.typed), _HEADLINE_OPTS_FULL).label(
+                "name_highlight"
+            ),
+            func.count().over().label("total_count"),
+        )
+        .filter(*visible_sites(), _site_document().op("@@")(_tsquery(parsed.typed)))
+        .order_by(
+            _rank(_site_name_tsvector(), parsed).desc(), Site.created_at.desc(), Site.id.desc()
+        )
+        .limit(limit)
+        .all()
+    )
+    if not rows:
+        return [], 0
+    hits = [
+        {"id": r.id, "name": r.name, "name_highlight": r.name_highlight, "kind": r.kind}
+        for r in rows
+    ]
+    return hits, int(rows[0].total_count)
+
+
 def search_all(
     db: Session,
     *,
@@ -750,12 +812,12 @@ def search_all(
     """Run grouped FTS across the requested entity types.
 
     ``types`` is a subset of ``{"geolocation", "request", "collection",
-    "user", "organization"}`` (the router expands ``type=all``). An empty query
-    returns empty unless a filter is active, which puts the event groups in
+    "user", "organization", "site"}`` (the router expands ``type=all``). An empty
+    query returns empty unless a filter is active, which puts the event groups in
     browse mode.
 
     ``filters`` scopes the two event groups. While any filter is active the
-    users and organizations groups empty, since the filters are event
+    users, organizations and sites groups empty, since the filters are event
     predicates. The
     collections group follows the same rule except for ``author`` and ``tag``,
     which narrow it (and enable browse mode); any other filter names an event
@@ -776,6 +838,7 @@ def search_all(
         "collections": {"hits": [], "total": 0},
         "users": {"hits": [], "total": 0},
         "organizations": {"hits": [], "total": 0},
+        "sites": {"hits": [], "total": 0},
     }
     if not query.strip() and not filters.active:
         return result
@@ -799,6 +862,9 @@ def search_all(
     if "organization" in types and not filters.active:
         hits, total = search_organizations(db, query=query, limit=limit)
         result["organizations"] = {"hits": hits, "total": total}
+    if "site" in types and not filters.active:
+        hits, total = search_sites(db, query=query, limit=limit)
+        result["sites"] = {"hits": hits, "total": total}
     return result
 
 
@@ -917,13 +983,22 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
 
 # Allowed ``type`` values, re-exported by the router for its 422 message.
 # ``event`` is the union of the two event groups (the unified "Events" chip).
-ALLOWED_TYPES = {"all", "event", "geolocation", "request", "collection", "user", "organization"}
+ALLOWED_TYPES = {
+    "all",
+    "event",
+    "geolocation",
+    "request",
+    "collection",
+    "user",
+    "organization",
+    "site",
+}
 
 
 def types_from_param(param: str) -> set[str]:
     """Expand the ``type`` parameter (already validated by the router) into the group set."""
     if param == "all":
-        return {"geolocation", "request", "collection", "user", "organization"}
+        return {"geolocation", "request", "collection", "user", "organization", "site"}
     if param == "event":
         return {"geolocation", "request"}
     return {param}

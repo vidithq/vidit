@@ -104,7 +104,14 @@ const orgHit = (): SearchOrganizationHit => ({
   member_count: 1,
 });
 
-const NO_TOTALS = { geolocations: 0, requests: 0, collections: 0, users: 0, organizations: 0 };
+const NO_TOTALS = {
+  geolocations: 0,
+  requests: 0,
+  collections: 0,
+  users: 0,
+  organizations: 0,
+  sites: 0,
+};
 
 const response = (over: Partial<SearchResponse> = {}): SearchResponse => ({
   geolocations: [],
@@ -112,6 +119,7 @@ const response = (over: Partial<SearchResponse> = {}): SearchResponse => ({
   collections: [],
   users: [],
   organizations: [],
+  sites: [],
   total: NO_TOTALS,
   geolocations_cursor: null,
   query: "kakhovka",

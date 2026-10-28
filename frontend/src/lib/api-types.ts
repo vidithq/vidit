@@ -2148,13 +2148,13 @@ export interface paths {
         };
         /**
          * Search
-         * @description Grouped FTS across the five result groups.
+         * @description Grouped FTS across the six result groups.
          *
          *     Empty or whitespace-only ``q`` returns an empty response (keeps the
          *     still-typing hits cheap).
          *
-         *     Any active filter scopes the event groups and empties the users and
-         *     organizations groups;
+         *     Any active filter scopes the event groups and empties the users,
+         *     organizations and sites groups;
          *     ``author`` narrows the collections group to that owner and every other
          *     filter empties it. With an empty ``q`` the response browses the filtered
          *     view, collections included when ``author`` is the only filter (the
@@ -5079,6 +5079,8 @@ export interface components {
             query: string;
             /** Requests */
             requests: components["schemas"]["SearchRequestHit"][];
+            /** Sites */
+            sites: components["schemas"]["SearchSiteHit"][];
             /** Suggestion */
             suggestion?: string | null;
             total: components["schemas"]["SearchTotals"];
@@ -5086,9 +5088,29 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "all" | "event" | "geolocation" | "request" | "collection" | "user" | "organization";
+            type: "all" | "event" | "geolocation" | "request" | "collection" | "user" | "organization" | "site";
             /** Users */
             users: components["schemas"]["SearchUserHit"][];
+        };
+        /**
+         * SearchSiteHit
+         * @description A site's name, highlighted, and its kind.
+         */
+        SearchSiteHit: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            /** Name */
+            name: string;
+            /** Name Highlight */
+            name_highlight: string;
         };
         /**
          * SearchTotals
@@ -5103,6 +5125,8 @@ export interface components {
             organizations: number;
             /** Requests */
             requests: number;
+            /** Sites */
+            sites: number;
             /** Users */
             users: number;
         };
@@ -9865,7 +9889,7 @@ export interface operations {
             query?: {
                 /** @description Free-text query (empty returns an empty result set) */
                 q?: string;
-                /** @description One of 'all', 'event', 'geolocation', 'request', 'collection', 'user', 'organization' */
+                /** @description One of 'all', 'event', 'geolocation', 'request', 'collection', 'user', 'organization', 'site' */
                 type?: string;
                 /** @description Per-group cap */
                 limit?: number;

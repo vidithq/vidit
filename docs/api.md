@@ -1963,7 +1963,7 @@ Decline an approval request addressed to you, or to an organization you are a me
 
 ## Search
 
-Full-text discovery across five result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, and `organizations`. The response is grouped by entity. Proof content is not searched.
+Full-text discovery across six result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, `organizations`, and `sites`. The response is grouped by entity. Proof content is not searched.
 
 ### `GET /search` 🌐
 
@@ -1971,7 +1971,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | Param | Type | Description |
 |-------|------|-------------|
 | `q` | string | Free-text query. |
-| `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, or `organization`. Anything else → 422. |
+| `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, `organization`, or `site`. Anything else → 422. |
 | `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
 | `cursor` | string | The `geolocations_cursor` of a previous response. Returns the next page of the geolocations group. Requires `type=geolocation`; send the same `q` and filters as the request that returned it. |
 | *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `source_kind`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
@@ -1993,7 +1993,7 @@ The last word of `q` also matches as a prefix, so a word you are still typing fi
 
 - An empty `q` with no active filter returns empty groups.
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight.
-- Any active filter empties the users and organizations groups.
+- Any active filter empties the users, organizations and sites groups.
 - The collections group reads two filters. `author` narrows it to that analyst's collections, and `tag` to the collections whose [`tags`](#get-collectionsid) hold one of the values. Any other active filter empties it. With an empty `q`, `author` or `tag` lists the matching collections newest first.
 - An event hit matches on one document: its title and the titles of its sources together. `-drone` excludes an event when its title or any of its source titles holds `drone`. The title highlight and the rank read the event title only.
 - An event hit also matches when a source URL contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. This applies only when `q` is one word of 4 characters or more, neither quoted nor starting with `-`, so `a` or `the` does not match every URL.
@@ -2001,12 +2001,13 @@ The last word of `q` also matches as a prefix, so a word you are still typing fi
 - A user hit matches on its username and bio together, or on a word of `q` that is its exact username. An exact username match ranks first.
 - A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable are absent.
 - An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no approval request audience and no creator. `member_count` counts live members.
+- A site hit matches on one document: its name and the titles and notes of its live sources together, the way an event hit matches. The name highlight and the rank read the name only. A site hit carries the name, `name_highlight` and the `kind`. A withheld site and one whose owner is soft-deleted are absent, as on [`GET /sites`](#get-sites).
 - Ranking is `ts_rank` descending, then `created_at` descending, then `id` descending. In browse mode every row ranks equal, so the order is newest first.
 - The geolocations group pages by cursor. `geolocations_cursor` is set when another page holds at least one row, and `null` on the last page. To read the next page, repeat the request with `type=geolocation` and `cursor` set to that value. The cursor encodes the last row's position in the ranking, so a walk never repeats or skips a row. The other groups return their first `limit` rows only.
 - Every group excludes soft-deleted rows.
 - When every group is empty, no filter is active and no `cursor` is sent, `suggestion` may hold a respelling of `q` that finds results. Each word that no visible event title and no live username holds is replaced by the closest one that does, by trigram similarity (`pg_trgm`, at least 0.35): `Khan Younis` suggests `Khan Yunis`. A word that names an analyst is spelled as their username. `OR`, excluded words, quotes and punctuation stay as typed. `suggestion` is `null` when no word has a close match, or when the respelling finds nothing either.
 
-**Highlight markers:** each event, user and organization hit carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
+**Highlight markers:** each event, user, organization and site hit carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
 
 **Response 200:**
 ```json
@@ -2063,7 +2064,17 @@ The last word of `q` also matches as a prefix, so a word you are still typing fi
       "member_count": 4
     }
   ],
-  "total": { "geolocations": 1, "requests": 1, "collections": 1, "users": 1, "organizations": 1 },
+  "sites": [
+    {
+      "id": "uuid",
+      "name": "Kharkiv north depot",
+      "name_highlight": "Kharkiv north depot",
+      "kind": "depot"
+    }
+  ],
+  "total": {
+    "geolocations": 1, "requests": 1, "collections": 1, "users": 1, "organizations": 1, "sites": 1
+  },
   "geolocations_cursor": null,
   "suggestion": null,
   "query": "kharkiv",

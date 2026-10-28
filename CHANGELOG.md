@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- `GET /search` finds sites by name or by the title or note of one of their live sources, in a `sites` group that `type=site` narrows to ([#807](https://github.com/vidithq/vidit/pull/807)).
 - On the event forms, each source carries Move earlier and Move later, and readers see the sources in the order the author set ([#804](https://github.com/vidithq/vidit/pull/804)).
 - An admin can restore a soft-deleted account from the onboarding table: the account and the events its soft delete hid come back ([#793](https://github.com/vidithq/vidit/pull/793)).
 - On the search page, a typed coordinate pair offers to open that point on the map, and on All a query that names an analyst or an organization exactly puts a link to their page right under the search field ([#791](https://github.com/vidithq/vidit/pull/791)).

@@ -1,6 +1,6 @@
 """Pydantic shapes for ``GET /search``.
 
-Five groups: the two event views, collections, analysts and organizations. Hits carry
+Six groups: the two event views, collections, analysts, organizations and sites. Hits carry
 ``*_highlight`` fields with sentinel-delimited match fragments
 (``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
 turns into ``<mark>`` tags, so no raw HTML crosses the wire. Field sets mirror
@@ -17,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.models.event import EventStatus
+from app.models.site import SiteKind
 from app.schemas.collection import CollectionRead
 from app.schemas.media import MediaRead
 from app.schemas.tag import TagRead
@@ -24,7 +25,9 @@ from app.schemas.user import AuthorRef
 
 # The ``type=`` values, echoed on the response. Mirrors
 # ``services.search.ALLOWED_TYPES`` (a plain set there for the runtime check).
-SearchType = Literal["all", "event", "geolocation", "request", "collection", "user", "organization"]
+SearchType = Literal[
+    "all", "event", "geolocation", "request", "collection", "user", "organization", "site"
+]
 
 
 class SearchTotals(BaseModel):
@@ -35,6 +38,7 @@ class SearchTotals(BaseModel):
     collections: int
     users: int
     organizations: int
+    sites: int
 
 
 class SearchEventHit(BaseModel):
@@ -109,6 +113,15 @@ class SearchOrganizationHit(BaseModel):
     member_count: int
 
 
+class SearchSiteHit(BaseModel):
+    """A site's name, highlighted, and its kind."""
+
+    id: uuid.UUID
+    name: str
+    name_highlight: str
+    kind: SiteKind
+
+
 class SearchResponse(BaseModel):
     """Grouped result set. Groups not requested via ``type=`` are empty arrays,
     keeping the JSON shape stable."""
@@ -121,6 +134,7 @@ class SearchResponse(BaseModel):
     collections: list[CollectionRead]
     users: list[SearchUserHit]
     organizations: list[SearchOrganizationHit]
+    sites: list[SearchSiteHit]
 
     # Group totals, so the UI needn't re-sum the lists.
     total: SearchTotals

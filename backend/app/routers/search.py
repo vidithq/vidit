@@ -1,5 +1,5 @@
-"""``GET /search``: full-text search across geolocations, requests, collections, users
-and organizations.
+"""``GET /search``: full-text search across geolocations, requests, collections, users,
+organizations and sites.
 
 Anonymous like the rest of the read surface; the 60/min per-IP limit is the
 abuse floor. FTS plumbing is in ``services/search.py``.
@@ -40,7 +40,8 @@ def search(
     type: str = Query(
         "all",
         description=(
-            "One of 'all', 'event', 'geolocation', 'request', 'collection', 'user', 'organization'"
+            "One of 'all', 'event', 'geolocation', 'request', 'collection', 'user',"
+            " 'organization', 'site'"
         ),
     ),
     limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
@@ -81,13 +82,13 @@ def search(
     ),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
-    """Grouped FTS across the five result groups.
+    """Grouped FTS across the six result groups.
 
     Empty or whitespace-only ``q`` returns an empty response (keeps the
     still-typing hits cheap).
 
-    Any active filter scopes the event groups and empties the users and
-    organizations groups;
+    Any active filter scopes the event groups and empties the users,
+    organizations and sites groups;
     ``author`` narrows the collections group to that owner and every other
     filter empties it. With an empty ``q`` the response browses the filtered
     view, collections included when ``author`` is the only filter (the
@@ -146,12 +147,14 @@ def search(
         collections=grouped["collections"]["hits"],
         users=grouped["users"]["hits"],
         organizations=grouped["organizations"]["hits"],
+        sites=grouped["sites"]["hits"],
         total=SearchTotals(
             geolocations=grouped["geolocations"]["total"],
             requests=grouped["requests"]["total"],
             collections=grouped["collections"]["total"],
             users=grouped["users"]["total"],
             organizations=grouped["organizations"]["total"],
+            sites=grouped["sites"]["total"],
         ),
         geolocations_cursor=grouped["geolocations"]["cursor"],
         suggestion=suggestion,

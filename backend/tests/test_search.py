@@ -15,7 +15,7 @@ from datetime import UTC, date, datetime
 import pytest
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon
 
 from app.database import SessionLocal
 from app.main import app
@@ -23,6 +23,7 @@ from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.media import Media
 from app.models.organization import Organization, OrganizationMember
+from app.models.site import Site, SiteContour
 from app.models.source import Source, SourceLink
 from app.models.tag import Tag
 from app.models.user import User
@@ -101,12 +102,14 @@ def test_empty_query_returns_empty_groups(caller):
     assert body["users"] == []
     assert body["collections"] == []
     assert body["organizations"] == []
+    assert body["sites"] == []
     assert body["total"] == {
         "geolocations": 0,
         "requests": 0,
         "collections": 0,
         "users": 0,
         "organizations": 0,
+        "sites": 0,
     }
     assert body["query"] == ""
     assert body["type"] == "all"
@@ -117,7 +120,7 @@ def test_whitespace_only_query_returns_empty_groups(caller):
     assert response.status_code == 200
     assert all(
         response.json()[k] == []
-        for k in ("geolocations", "requests", "collections", "users", "organizations")
+        for k in ("geolocations", "requests", "collections", "users", "organizations", "sites")
     )
 
 
@@ -822,6 +825,7 @@ def test_search_type_all_returns_every_group(db, caller, seed_collection):
             "collections": 1,
             "users": 1,
             "organizations": 1,
+            "sites": 0,
         }
         assert body["query"] == token
         assert body["type"] == "all"
@@ -1166,7 +1170,7 @@ def test_author_unknown_returns_empty_groups(caller):
     assert response.status_code == 200
     assert all(
         response.json()[k] == []
-        for k in ("geolocations", "requests", "collections", "users", "organizations")
+        for k in ("geolocations", "requests", "collections", "users", "organizations", "sites")
     )
 
 
@@ -1664,3 +1668,189 @@ def test_organization_fts_query_uses_the_gin_index(db):
     finally:
         db.execute(satext("RESET enable_seqscan"))
     assert "ix_organizations_search_fts" in plan, plan
+
+
+@pytest.fixture
+def seed_site(db, caller):
+    """Create a site with one live source carrying a contour, and a removed one on request."""
+    made: list[uuid.UUID] = []
+
+    def _make(
+        name: str,
+        *,
+        owner=None,
+        kind: str = "airbase",
+        source_title: str = "",
+        note: str | None = None,
+        removed_title: str = "",
+        hidden: bool = False,
+    ) -> uuid.UUID:
+        site = Site(
+            owner_id=(owner or caller).id,
+            name=name,
+            kind=kind,
+            hidden_at=datetime.now(UTC) if hidden else None,
+        )
+        db.add(site)
+        db.flush()
+        captured = datetime(2025, 1, 1, 10, 0, tzinfo=UTC)
+        live = Source(
+            site_id=site.id,
+            kind="satellite",
+            level="context",
+            title=source_title,
+            note=note,
+            captured_at=captured,
+        )
+        db.add(live)
+        if removed_title:
+            db.add(
+                Source(
+                    site_id=site.id,
+                    kind="satellite",
+                    level="context",
+                    title=removed_title,
+                    captured_at=captured,
+                    removed_at=datetime.now(UTC),
+                )
+            )
+        db.flush()
+        square = Polygon([(30.0, 10.0), (30.01, 10.0), (30.01, 10.01), (30.0, 10.01)])
+        db.add(SiteContour(site_id=site.id, source_id=live.id, zone=from_shape(square, srid=4326)))
+        db.commit()
+        made.append(site.id)
+        return site.id
+
+    yield _make
+    db.expire_all()
+    db.query(Site).filter(Site.id.in_(made)).delete(synchronize_session=False)
+    db.commit()
+
+
+def _site_ids(**params) -> list[str]:
+    response = client.get("/api/v1/search", params={"type": "site", **params})
+    assert response.status_code == 200
+    return [hit["id"] for hit in response.json()["sites"]]
+
+
+def test_search_matches_a_site_by_name(caller, seed_site):
+    token = _unique_token()
+    site_id = seed_site(f"Northern {token} airfield", kind="depot")
+    response = client.get(f"/api/v1/search?q={token}&type=site", headers=login_as(client, caller))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"]["sites"] == 1
+    hit = body["sites"][0]
+    assert set(hit) == {"id", "name", "name_highlight", "kind"}
+    assert hit["id"] == str(site_id)
+    assert hit["kind"] == "depot"
+    assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["name_highlight"]
+    assert body["geolocations"] == [] and body["organizations"] == []
+
+
+def test_search_matches_a_site_by_its_live_sources_title_and_note(seed_site):
+    token = _unique_token()
+    by_title = seed_site("Unrelated name", source_title=f"Capture of the {token} apron")
+    by_note = seed_site("Another name", note=f"Two hangars at {token} are gone.")
+    by_removed = seed_site("Third name", removed_title=f"Old capture of {token}")
+    found = _site_ids(q=token)
+    assert set(found) == {str(by_title), str(by_note)}
+    assert str(by_removed) not in found
+
+
+def test_a_site_name_match_ranks_above_a_source_match(seed_site):
+    token = _unique_token()
+    by_source = seed_site("Plain name", source_title=f"Capture of {token}")
+    by_name = seed_site(f"Base {token}")
+    assert _site_ids(q=token) == [str(by_name), str(by_source)]
+
+
+def test_site_search_folds_accents_and_reads_the_last_word_as_a_prefix(seed_site):
+    token = _unique_token()
+    site_id = seed_site(f"Dépôt {token}")
+    assert _site_ids(q=f"depot {token}") == [str(site_id)]
+    assert _site_ids(q=f"DÉPÔT {token}") == [str(site_id)]
+    assert _site_ids(q=token[:-3]) == [str(site_id)]
+    assert _site_ids(q=f"{token} dep") == [str(site_id)]
+
+
+def test_site_search_takes_phrases_or_and_exclusions(seed_site):
+    token = _unique_token()
+    north = seed_site(f"{token} north depot")
+    south = seed_site(f"{token} south radar")
+    assert _site_ids(q=f"{token} -north") == [str(south)]
+    assert _site_ids(q=f'"{token} south"') == [str(south)]
+    assert set(_site_ids(q=f"{token} north OR {token} south")) == {str(north), str(south)}
+
+
+def test_hidden_sites_stay_out_of_search(db, caller, seed_site):
+    token = _unique_token()
+    gone_owner = User(
+        username=f"gone{uuid.uuid4().hex[:8]}",
+        email=f"gone-{uuid.uuid4().hex}@example.com",
+        password_hash=hash_password("p"),
+        deleted_at=datetime.now(UTC),
+    )
+    db.add(gone_owner)
+    db.commit()
+    gone_owner_id = gone_owner.id
+    try:
+        seed_site(f"Withheld {token}", hidden=True)
+        seed_site(f"Orphaned {token}", owner=gone_owner)
+        visible = seed_site(f"Visible {token}")
+        assert _site_ids(q=token) == [str(visible)]
+        signed_in = client.get(
+            "/api/v1/search",
+            params={"q": token, "type": "site"},
+            headers=login_as(client, caller),
+        ).json()
+        assert [hit["id"] for hit in signed_in["sites"]] == [str(visible)]
+        assert signed_in["total"]["sites"] == 1
+    finally:
+        db.expire_all()
+        db.query(User).filter(User.id == gone_owner_id).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_type_site_narrows_to_the_sites_group(db, caller, seed_site):
+    token = _unique_token()
+    site_id = seed_site(f"Site {token}")
+    geo_id = _seed_geo(db, caller, f"Event {token}")
+    try:
+        narrowed = client.get(f"/api/v1/search?q={token}&type=site").json()
+        assert [hit["id"] for hit in narrowed["sites"]] == [str(site_id)]
+        assert narrowed["geolocations"] == [] and narrowed["total"]["geolocations"] == 0
+        assert narrowed["type"] == "site"
+        everything = client.get(f"/api/v1/search?q={token}").json()
+        assert [hit["id"] for hit in everything["sites"]] == [str(site_id)]
+        assert [hit["id"] for hit in everything["geolocations"]] == [str(geo_id)]
+        events_only = client.get(f"/api/v1/search?q={token}&type=event").json()
+        assert events_only["sites"] == []
+    finally:
+        db.query(Event).filter(Event.id == geo_id).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_event_filter_empties_the_sites_group(seed_site):
+    token = _unique_token()
+    seed_site(f"Site {token}")
+    body = client.get(f"/api/v1/search?q={token}&status=geolocated").json()
+    assert body["sites"] == []
+    assert body["total"]["sites"] == 0
+
+
+def test_site_search_caps_per_group_and_totals_before_the_cap(seed_site):
+    token = _unique_token()
+    for i in range(3):
+        seed_site(f"Site {token} number {i}")
+    body = client.get(f"/api/v1/search?q={token}&type=site&limit=2").json()
+    assert len(body["sites"]) == 2
+    assert body["total"]["sites"] == 3
+
+
+def test_site_search_strips_planted_sentinel_bytes_from_the_name(seed_site):
+    token = _unique_token()
+    seed_site(f"Planted \x02{token}\x03 name")
+    hit = client.get(f"/api/v1/search?q={token}&type=site").json()["sites"][0]
+    assert hit["name_highlight"].count(HIGHLIGHT_START) == 1
+    assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["name_highlight"]
