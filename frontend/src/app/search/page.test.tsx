@@ -10,7 +10,9 @@ vi.mock("next/navigation", () => ({
 
 // The two pickers the filter panel fills from, read on every render.
 vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: () => ({ data: [] }),
+  useApiResource: (path: string) => ({
+    data: path === "/tags" ? [{ id: "t1", name: "dam" }] : [],
+  }),
 }));
 
 const search = vi.fn();
@@ -257,7 +259,7 @@ describe("the filter panel on the Collections scope", () => {
   const toggle = (title: string) =>
     screen.queryByRole("button", { name: `Toggle ${title}` });
 
-  it("offers the Author section alone", async () => {
+  it("offers the Tags and Author sections alone", async () => {
     // The backend empties the group on any other event predicate, so no other section opens.
     searchParams = new URLSearchParams("type=collection&author=ana");
     search.mockResolvedValue(
@@ -268,9 +270,25 @@ describe("the filter panel on the Collections scope", () => {
 
     expect(await screen.findByText("Nova Kakhovka dam")).toBeInTheDocument();
     expect(toggle("Author")).toBeInTheDocument();
+    expect(toggle("Tags")).toBeInTheDocument();
     for (const title of ["Status", "Status, conflict, tags", "Dates", "Source", "People"]) {
       expect(toggle(title)).not.toBeInTheDocument();
     }
+  });
+
+  it("keeps the tags and the author when the scope steps from Events to Collections", async () => {
+    searchParams = new URLSearchParams("type=event&tag=dam&author=ana&conflict=Yemen");
+    search.mockResolvedValue(response({ type: "event", query: "" }));
+
+    render(<SearchPage />);
+    await waitFor(() => expect(search).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Collections" }));
+
+    await waitFor(() =>
+      expect(search).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: "collection", tags: ["dam"], author: "ana", conflicts: [] }),
+      ),
+    );
   });
 
   it("commits a picked author into the URL, the way the event scope does", async () => {
