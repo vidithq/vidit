@@ -135,6 +135,11 @@ def _collection_tsvector():
     return func.to_tsvector(_TS_CONFIG, document)
 
 
+# What both event groups' hits read: the owner, the card thumbnail and the tags. Hydration runs
+# on an id list without ``LIMIT``, so ``joinedload`` on the tags cannot truncate it.
+_HIT_LOADS = (joinedload(Event.owner), *thumbnail_loads(), joinedload(Event.tags))
+
+
 def _search_events(
     db: Session,
     *extra_criteria,
@@ -236,12 +241,7 @@ def search_geolocations(
             func.ST_Y(Event.coords).label("lat"),
             func.ST_X(Event.coords).label("lng"),
         )
-        .options(
-            joinedload(Event.owner),
-            *thumbnail_loads(),
-            joinedload(Event.tags),
-            CREDIT_LOAD,
-        )
+        .options(*_HIT_LOADS, CREDIT_LOAD)
         .filter(Event.id.in_(ids))
         .all()
     )
@@ -319,12 +319,7 @@ def search_requests(
 
     geos = (
         db.query(Event)
-        .options(
-            joinedload(Event.owner),
-            *thumbnail_loads(),
-            selectinload(Event.sources).selectinload(Source.links),
-            joinedload(Event.tags),
-        )
+        .options(*_HIT_LOADS, selectinload(Event.sources).selectinload(Source.links))
         .filter(Event.id.in_(ids))
         .all()
     )

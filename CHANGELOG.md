@@ -25,6 +25,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The event page, the detection queue and the two event groups of search each read one shared eager-load set instead of restating it, and `docs/engineering.md` lists those sets ([#PRNUM](https://github.com/vidithq/vidit/pull/PRNUM)).
 - The sidebar's GitHub, X and Discord icons show in the accent colour, in the rail and in the phone drawer ([#764](https://github.com/vidithq/vidit/pull/766)).
 - A collection's page and its create and edit forms share the event page's layout: the description and events on the left, 20 at a time, and the map with the current event and the details on the right, in view while you scroll ([#732](https://github.com/vidithq/vidit/pull/754)).
 - The Submit page opens on six tiles across the full width: Geolocation, Request, From an X post, Bulk import, Site and Collection, each with a drawing of the result, when to pick it and what it needs ([#728](https://github.com/vidithq/vidit/pull/752)).

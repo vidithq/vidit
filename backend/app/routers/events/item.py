@@ -23,7 +23,7 @@ from fastapi import (
     status,
 )
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.content_report import ContentReport
@@ -37,8 +37,8 @@ from app.routers._forms import (
     parse_optional_iso_time,
 )
 from app.routers.events._common import (
+    DETAIL_LOADS,
     GEOLOCATOR_INVITES_FIELD_DESCRIPTION,
-    SOURCE_LOAD,
     SOURCES_FIELD_DESCRIPTION,
     _raise_event_error,
     build_event_read,
@@ -65,7 +65,7 @@ from app.services import events as events_service
 from app.services import reports as reports_service
 from app.services import versions as versions_service
 from app.services.evidence_intake import EvidenceIntakeError
-from app.services.geolocator_credit import CREDIT_LOAD, GeolocatorCreditError, has_pending_invite
+from app.services.geolocator_credit import GeolocatorCreditError, has_pending_invite
 from app.services.pagination import (
     decode_ordinal_cursor,
     encode_ordinal_cursor,
@@ -73,24 +73,11 @@ from app.services.pagination import (
     paged,
 )
 from app.services.source_archive import SnapshotRejected
-from app.services.thumbnails import thumbnail_loads
 
 router = APIRouter()
 
+
 # Every relationship the detail serializer reads, eager-loaded to bound queries.
-_DETAIL_LOADS = (
-    joinedload(Event.owner),
-    joinedload(Event.requested_by),
-    *thumbnail_loads(),
-    selectinload(Event.tags),
-    selectinload(Event.conflicts),
-    CREDIT_LOAD,
-    # ``build_event_read`` reads these; without them, a lazy query per event.
-    SOURCE_LOAD,
-    selectinload(Event.detection),
-)
-
-
 def _serialize_event(db: Session, geo: Event) -> EventRead:
     """Build the read model for a just-mutated row, re-projecting the point
     the way ``GET /{id}`` does so the shapes match."""
@@ -158,7 +145,7 @@ def get_event(
             ST_Y(Event.coords).label("lat"),
             ST_X(Event.coords).label("lng"),
         )
-        .options(*_DETAIL_LOADS)
+        .options(*DETAIL_LOADS)
         .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
     )
     if current_user is None or not current_user.is_admin:
