@@ -1,17 +1,17 @@
 """Full-text search across events (located + requested), collections, users and organizations.
 
-Postgres FTS: ``plainto_tsquery`` parses user input (no operator surface to
-escape), the GIN indexes from migration ``o1j3k5l7m9n1`` back the lookups, and
-``ts_headline`` returns fragments with sentinel delimiters the frontend renders
-as ``<mark>`` (no HTML across the wire, so XSS-safe). Soft-deleted rows are
-filtered at query time.
+Postgres FTS: ``websearch_to_tsquery`` parses user input (quoted phrases, ``OR``
+and ``-word``, never a syntax error), and ``ts_headline`` returns fragments with
+sentinel delimiters the frontend renders as ``<mark>`` (no HTML across the wire,
+so XSS-safe). Soft-deleted rows are filtered at query time.
 
 One FTS path serves both event views (:func:`_search_events`), composed with
-the standard event filters (``services/event_filters``). The TSVECTOR
-expressions must stay expression-tree-equal to the migration's
-``CREATE INDEX`` expressions (config name as a SQL literal, never a bound
-parameter) or Postgres falls back to a sequential scan: ``_geo_tsvector``,
-``_collection_tsvector``, and the ``_USER_TSVECTOR`` and
+the standard event filters (``services/event_filters``). An event's document is
+its title and its sources' titles together, so ``-word`` excludes an event
+whichever of them holds the word. The collections, users and organizations
+TSVECTOR expressions must stay expression-tree-equal to their GIN indexes
+(config name as a SQL literal, never a bound parameter) or Postgres falls back to
+a sequential scan: ``_collection_tsvector`` and the ``_USER_TSVECTOR`` and
 ``_ORGANIZATION_TSVECTOR`` constants.
 """
 
@@ -25,16 +25,18 @@ from typing import Any
 from sqlalchemy import (
     ColumnElement,
     String,
+    Text,
     bindparam,
     cast,
     false,
     func,
     literal_column,
     or_,
+    select,
     text,
     tuple_,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION
+from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION, TSQUERY
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.elements import ColumnClause
@@ -96,24 +98,62 @@ _USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesc
 _ORGANIZATION_TSVECTOR = "to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(bio, ''))"
 
 
+def _parse(db: Session, *queries: str) -> list[str]:
+    """Each of ``queries`` as the text of its ``websearch_to_tsquery``, in one round trip. An
+    input without a word parses to the empty query, which matches nothing."""
+    row = db.execute(
+        select(*(cast(func.websearch_to_tsquery(_TS_CONFIG, q), Text) for q in queries))
+    ).one()
+    return list(row)
+
+
+def _tsquery(parsed: str) -> ColumnElement:
+    """A :func:`_parse` result back as a ``tsquery`` value."""
+    return cast(bindparam(None, parsed, type_=Text), TSQUERY)
+
+
 def _geo_tsvector():
-    """``to_tsvector('simple', coalesce(title, ''))``, equal to the migration's index expression."""
+    """``to_tsvector('simple', coalesce(title, ''))``: the event title, which the rank and the
+    highlight read."""
     return func.to_tsvector(_TS_CONFIG, func.coalesce(Event.title, literal_column("''")))
 
 
-def _source_tsvector():
-    """``to_tsvector('simple', coalesce(title, ''))`` over ``sources``, equal to
-    ``ix_sources_search_fts``."""
-    return func.to_tsvector(_TS_CONFIG, func.coalesce(Source.title, literal_column("''")))
+def _event_document():
+    """The event title and its sources' titles as one ``tsvector``. Concatenation offsets the
+    positions, so a phrase never spans the title and a source."""
+    source_titles = (
+        select(func.string_agg(Source.title, literal_column("' '")))
+        .where(Source.event_id == Event.id)
+        .scalar_subquery()
+    )
+    return _geo_tsvector().op("||")(
+        func.to_tsvector(_TS_CONFIG, func.coalesce(source_titles, literal_column("''")))
+    )
 
 
-def _event_match(q: str, tsquery: ColumnElement) -> ColumnElement[bool]:
-    """An event matches on its title, a source title (both FTS), or a source URL containing
-    the query (case-insensitive), so a pasted link finds the events that cite it."""
+# A shorter needle is a fragment of nearly every URL (``a``, ``the``, ``_``).
+_URL_NEEDLE_MIN = 4
+
+
+def _url_needle(q: str) -> str | None:
+    """``q`` when it may be part of a source URL: one word of at least ``_URL_NEEDLE_MIN``
+    characters, neither quoted nor excluded. A pasted link always is."""
+    if len(q) < _URL_NEEDLE_MIN or any(c.isspace() for c in q) or '"' in q or q.startswith("-"):
+        return None
+    return q
+
+
+def _event_match(q: str, parsed: str) -> ColumnElement[bool]:
+    """An event matches when its document (:func:`_event_document`) matches ``parsed``, the
+    parse of ``q``, or when a source URL contains ``q`` (case-insensitive,
+    :func:`_url_needle`), so a pasted link finds the events that cite it."""
+    match = _event_document().op("@@")(_tsquery(parsed))
+    needle = _url_needle(q)
+    if needle is None:
+        return match
     return or_(
-        _geo_tsvector().op("@@")(tsquery),
-        Event.sources.any(_source_tsvector().op("@@")(tsquery)),
-        Event.sources.any(Source.links.any(SourceLink.url.icontains(q, autoescape=True))),
+        match,
+        Event.sources.any(Source.links.any(SourceLink.url.icontains(needle, autoescape=True))),
     )
 
 
@@ -128,21 +168,33 @@ def _handle_candidates(query: str) -> list[str]:
 
 
 @dataclass(frozen=True)
+class _Handle:
+    """A word of the query naming a live analyst: the lowercased handle, its parse, the id."""
+
+    handle: str
+    parsed: str
+    user_id: uuid.UUID
+
+
+@dataclass(frozen=True)
 class _EventTerms:
-    """A query split for the event groups: ``handles`` pairs each word naming a live analyst with
-    that analyst's id, ``text`` holds the other words."""
+    """A query split for the event groups: ``handles`` holds each word naming a live analyst,
+    ``text`` the other words. ``parsed`` is the parse of ``text``, ``query_parsed`` the parse of
+    the whole query, which the highlight reads."""
 
     text: str
-    handles: tuple[tuple[str, uuid.UUID], ...] = ()
+    parsed: str = ""
+    query_parsed: str = ""
+    handles: tuple[_Handle, ...] = ()
 
 
 def _event_terms(db: Session, query: str) -> _EventTerms:
     """Split ``query`` (already stripped) into the words that are a live analyst's exact handle
     (case-insensitive, optional ``@``) and the rest. A handle holding a space names the analyst
     only as the whole query."""
+    if not query:
+        return _EventTerms(text="")
     candidates = _handle_candidates(query)
-    if not candidates:
-        return _EventTerms(text=query)
     ids = dict(
         db.query(func.lower(User.username), User.id)
         .filter(User.deleted_at.is_(None), func.lower(User.username).in_(candidates))
@@ -150,16 +202,30 @@ def _event_terms(db: Session, query: str) -> _EventTerms:
     )
     whole = " ".join(query.split()).lstrip("@").lower()
     if " " in whole and whole in ids:
-        return _EventTerms(text="", handles=((whole, ids[whole]),))
-    text_words: list[str] = []
-    handles: list[tuple[str, uuid.UUID]] = []
-    for word in query.split():
-        handle = word.lstrip("@").lower()
-        if handle in ids:
-            handles.append((handle, ids[handle]))
-        else:
-            text_words.append(word)
-    return _EventTerms(text=" ".join(text_words), handles=tuple(handles))
+        named = [(whole, ids[whole])]
+        text_words: list[str] = []
+    else:
+        named = []
+        text_words = []
+        for word in query.split():
+            handle = word.lstrip("@").lower()
+            if handle in ids:
+                named.append((handle, ids[handle]))
+            else:
+                text_words.append(word)
+    text = " ".join(text_words)
+    query_parsed, parsed, *handles_parsed = _parse(
+        db, query, text, *(handle for handle, _ in named)
+    )
+    return _EventTerms(
+        text=text,
+        parsed=parsed,
+        query_parsed=query_parsed,
+        handles=tuple(
+            _Handle(handle, handle_parsed, user_id)
+            for (handle, user_id), handle_parsed in zip(named, handles_parsed, strict=True)
+        ),
+    )
 
 
 def _matching(
@@ -170,13 +236,10 @@ def _matching(
     also matches the events credited to them (``services/event_filters.credited_to``)."""
     stmt = filters.apply(stmt, view=view).filter(*criteria)
     if terms.text:
-        stmt = stmt.filter(_event_match(terms.text, func.plainto_tsquery(_TS_CONFIG, terms.text)))
-    for handle, user_id in terms.handles:
+        stmt = stmt.filter(_event_match(terms.text, terms.parsed))
+    for named in terms.handles:
         stmt = stmt.filter(
-            or_(
-                credited_to([user_id]),
-                _event_match(handle, func.plainto_tsquery(_TS_CONFIG, handle)),
-            )
+            or_(credited_to([named.user_id]), _event_match(named.handle, named.parsed))
         )
     return stmt
 
@@ -244,14 +307,16 @@ def _search_events(
     rank: ColumnElement[float] = literal_column("0", DOUBLE_PRECISION)
     if q:
         title = func.ts_headline(
-            _TS_CONFIG, title, func.plainto_tsquery(_TS_CONFIG, q), _HEADLINE_OPTS_FULL
+            _TS_CONFIG, title, _tsquery(terms.query_parsed), _HEADLINE_OPTS_FULL
         )
         # Ranked on the words that are not a handle, which a credited event's title need not hold.
         # ``real`` widened to ``double precision``: a ``real`` reaches Python as its
         # shortest float4 text, a different double than the one Postgres compares
         # against the cursor, so the walk would skip the cursor row's rank ties.
         rank = cast(
-            func.ts_rank(_geo_tsvector(), func.plainto_tsquery(_TS_CONFIG, terms.text or q)),
+            func.ts_rank(
+                _geo_tsvector(), _tsquery(terms.parsed if terms.text else terms.query_parsed)
+            ),
             DOUBLE_PRECISION,
         )
     stmt = db.query(
@@ -466,7 +531,7 @@ def search_collections(
     if author:
         stmt = stmt.filter(Collection.owner.has(owner_username_matches(author)))
     if q:
-        tsquery = func.plainto_tsquery(_TS_CONFIG, q)
+        tsquery = _tsquery(_parse(db, q)[0])
         stmt = stmt.filter(_collection_tsvector().op("@@")(tsquery)).order_by(
             func.ts_rank(_collection_tsvector(), tsquery).desc(),
             Collection.created_at.desc(),
@@ -506,24 +571,24 @@ def _search_profiles(
     sql = text(
         f"""
         SELECT id,
-               ts_rank({tsvector}, plainto_tsquery('simple', :q)) AS rank,
+               ts_rank({tsvector}, CAST(:tsq AS tsquery)) AS rank,
                ts_headline(
                    'simple', {_strip_sentinels(name_col)},
-                   plainto_tsquery('simple', :q),
+                   CAST(:tsq AS tsquery),
                    :opts_full
                ) AS name_highlight,
                CASE
                    WHEN bio IS NULL OR length(bio) = 0 THEN NULL
                    ELSE ts_headline(
                        'simple', {_strip_sentinels("bio")},
-                       plainto_tsquery('simple', :q),
+                       CAST(:tsq AS tsquery),
                        :opts_fragment
                    )
                END AS bio_highlight,
                COUNT(*) OVER () AS total_count
         FROM {table}
         WHERE {live}
-          AND ({tsvector} @@ plainto_tsquery('simple', :q) {named_or})
+          AND ({tsvector} @@ CAST(:tsq AS tsquery) {named_or})
         ORDER BY {named_first} rank DESC, created_at DESC
         LIMIT :lim
         """
@@ -533,7 +598,7 @@ def _search_profiles(
     rows = db.execute(
         sql,
         {
-            "q": query,
+            "tsq": _parse(db, query)[0],
             "handles": _handle_candidates(query.strip()),
             "lim": limit,
             "opts_full": _HEADLINE_OPTS_FULL,

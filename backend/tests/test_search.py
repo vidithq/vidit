@@ -1092,12 +1092,12 @@ def other_author(db):
     db.commit()
 
 
-def _seed_geo(db, owner, title):
+def _seed_geo(db, owner, title, *, url="https://example.com/post-a", source_title=""):
     geo = Event(
         owner_id=owner.id,
         title=title,
         coords=from_shape(Point(34.5, 48.5), srid=4326),
-        sources=[_source("https://example.com/post-a")],
+        sources=[_source(url, title=source_title)],
         occurred_date=date(2026, 5, 1),
         geolocated_at=datetime.now(UTC),
     )
@@ -1379,24 +1379,44 @@ def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
         db.commit()
 
 
-def test_fts_query_uses_the_gin_index(db):
-    """The ORM tsvector must match the migration's GIN index expression, or search seq-scans."""
-    from sqlalchemy import func as safunc
-    from sqlalchemy import text as satext
+def _geo_ids(**params) -> list[str]:
+    response = client.get("/api/v1/search", params={"type": "geolocation", "limit": 50, **params})
+    assert response.status_code == 200, response.text
+    return [h["id"] for h in response.json()["geolocations"]]
 
-    from app.services import search as search_service
 
-    tsquery = safunc.plainto_tsquery(search_service._TS_CONFIG, "depot")
-    # Only the FTS predicate: other WHERE legs let the planner pick another index on a
-    # near-empty CI table. With seq scans discouraged, the GIN is used iff the expression matches.
-    stmt = db.query(Event.id).filter(search_service._geo_tsvector().op("@@")(tsquery))
-    compiled = stmt.statement.compile(db.get_bind(), compile_kwargs={"literal_binds": True})
-    db.execute(satext("SET enable_seqscan = off"))
+def test_the_query_takes_phrases_or_and_exclusions(db, caller):
+    """Quotes ask for a phrase, `OR` for either word and `-word` excludes an event whose title
+    or source title holds the word: the syntax of a web search engine."""
+    token = _unique_token()
+    other = _unique_token()
+    centre = _seed_geo(db, caller, f"Strike on {token} city centre")
+    apart = _seed_geo(db, caller, f"{token} shelled, smoke over the city")
+    drone = _seed_geo(db, caller, f"Drone over {token} city")
+    sourced = _seed_geo(db, caller, f"{token} convoy", source_title="FPV drone footage")
+    spelled = _seed_geo(db, caller, f"Artillery in {other}")
+    ids = [centre, apart, drone, sourced, spelled]
     try:
-        plan = "\n".join(row[0] for row in db.execute(satext(f"EXPLAIN {compiled}")))
+        assert set(_geo_ids(q=f'"{token} city"')) == {str(centre), str(drone)}
+        assert set(_geo_ids(q=f"{token} -drone")) == {str(centre), str(apart)}
+        assert set(_geo_ids(q=f"{token} OR {other}")) == {str(i) for i in ids}
     finally:
-        db.execute(satext("RESET enable_seqscan"))
-    assert "ix_events_search_fts" in plan, plan
+        db.query(Event).filter(Event.id.in_(ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_a_short_query_skips_source_urls(db, caller):
+    """Regression: a single letter matched every URL holding it. A URL matches a word of 4
+    characters or more, so a pasted link still finds the events that cite it."""
+    token = _unique_token()
+    geo = _seed_geo(db, caller, "Convoy at the bridge", url=f"https://t.me/{token}/42")
+    try:
+        assert str(geo) not in _geo_ids(q=token[:3])
+        assert _geo_ids(q=token[-6:]) == [str(geo)]
+        assert _geo_ids(q=f"https://t.me/{token}/42") == [str(geo)]
+    finally:
+        db.query(Event).filter(Event.id == geo).delete(synchronize_session=False)
+        db.commit()
 
 
 @pytest.fixture
