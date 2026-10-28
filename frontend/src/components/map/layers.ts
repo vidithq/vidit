@@ -1,9 +1,9 @@
 import type { ExpressionSpecification, SymbolLayerSpecification } from "maplibre-gl";
 
 import type { paletteMapColors } from "@/lib/palette";
+import type { Zone } from "@/lib/sites";
 import type { Brightness } from "./basemap";
 import { CLUSTER_MAX_ZOOM } from "./stack";
-import { TRIANGLE_HEIGHT, besideOffsetPx, heightToHold, incentreDropPx, triangleHeight } from "./triangle";
 
 /** Layer ids of the event pins, shared with the site layers that must stay under them. The
  *  cluster layer is the lowest of them. */
@@ -11,32 +11,32 @@ export const CLUSTER_LAYER = "clusters";
 export const STACK_LAYER = "stacks-circle";
 export const POINT_LAYERS = ["points-selected", "points-circle"];
 
-/** A site's triangle, alone or beside a cluster's circle, in the event points source. */
+/** A lone site's ring, and the ring around a cluster that holds a site, in the event points
+ *  source. */
 export const SITE_POINT_LAYER = "sites-point";
-export const SITE_CLUSTER_LAYER = "sites-cluster";
-export const TRIANGLE_ICON = "site-triangle";
+export const SITE_RING_LAYER = "sites-cluster-ring";
 
-/** From this zoom the map draws site zones; below it each site is a triangle in the clusters. */
-export const ZONE_MIN_ZOOM = 10;
+/** Below this zoom each site is a point in the event clusters; from it the zones alone stand for
+ *  the sites. */
+export const SITE_POINT_MAX_ZOOM = 10;
 
 /** Every layer a tap can target (a query returns matches topmost first whatever the order here). */
-export const TAP_TARGET_LAYERS = [CLUSTER_LAYER, SITE_CLUSTER_LAYER, STACK_LAYER, ...POINT_LAYERS];
+export const TAP_TARGET_LAYERS = [CLUSTER_LAYER, SITE_RING_LAYER, STACK_LAYER, ...POINT_LAYERS];
 
 const IS_SITE: ExpressionSpecification = ["==", ["get", "kind"], "site"];
 
-/** The clustering of the event points source, which also holds the sites below `ZONE_MIN_ZOOM`:
- *  a cluster counts its events and its sites apart. */
+/** The clustering of the event points source, which also holds the sites below
+ *  `SITE_POINT_MAX_ZOOM`: a cluster counts its sites apart from its total. */
 export const CLUSTER_SOURCE = {
   cluster: true,
   clusterMaxZoom: CLUSTER_MAX_ZOOM,
   clusterRadius: 50,
   clusterProperties: {
-    events: ["+", ["case", IS_SITE, 0, 1]],
     sites: ["+", ["case", IS_SITE, 1, 0]],
   } satisfies Record<string, [unknown, unknown]>,
 } as const;
 
-export const EVENT_COUNT: ExpressionSpecification = ["get", "events"];
+export const POINT_COUNT: ExpressionSpecification = ["get", "point_count"];
 export const SITE_COUNT: ExpressionSpecification = ["get", "sites"];
 export const SITE_POINT_FILTER: ExpressionSpecification = ["all", ["!", ["has", "point_count"]], IS_SITE];
 
@@ -48,7 +48,7 @@ export const CLUSTER_OPACITY = 0.85;
 /** The halo around a selected marker: white on a dark basemap, a dark ring on a light one. */
 export const SELECTED_STROKE: Record<Brightness, string> = { dark: "#ffffff", light: "#1a1a1a" };
 
-/** `[from count, radius in px]` of a cluster's circle, and the triangle of the same count. */
+/** `[from count, radius in px]` of a cluster's circle. */
 const CLUSTER_TIERS: readonly (readonly [number, number])[] = [
   [0, 12],
   [50, 16],
@@ -67,10 +67,6 @@ const COUNT_TIERS: readonly (readonly [number, number])[] = [
 function step<T>(input: ExpressionSpecification, tiers: readonly (readonly [number, T])[]): ExpressionSpecification {
   const [[, first], ...rest] = tiers;
   return ["step", input, first, ...rest.flat()] as unknown as ExpressionSpecification;
-}
-
-function tierValue(tiers: readonly (readonly [number, number])[], count: number): number {
-  return tiers.filter(([from]) => count >= from).at(-1)![1];
 }
 
 export function clusterRadius(count: ExpressionSpecification): ExpressionSpecification {
@@ -109,74 +105,70 @@ export function clusterCountLayout(count: ExpressionSpecification) {
   } satisfies SymbolLayerSpecification["layout"];
 }
 
-/** `[from site count, the longest count label up to the next entry]`: where a label grows a
- *  character, a tier starts, or the count text grows. */
-const SITE_LABELS: readonly (readonly [number, string])[] = [
-  [0, "9"],
-  [10, "49"],
-  [50, "99"],
-  [100, "199"],
-  [200, "999"],
-  [1000, "9.9k"],
-  [5000, "9.9k"],
-  [10000, "999k"],
-];
+/** The ring around a cluster that holds a site: its gap from the circle and its width, in px. */
+export const SITE_RING_GAP_PX = 3;
+export const SITE_RING_WIDTH_PX = 2;
+/** The fill opacity of a zone and of a lone site's ring. */
+export const SITE_ZONE_FILL_OPACITY = 0.12;
+/** A lone site's ring is never smaller than this radius, in px. */
+export const SITE_RING_MIN_RADIUS_PX = 7;
+/** A lone site's ring fades out once its zone is this much wider than the smallest ring. */
+const SITE_RING_FADE_FACTOR = 1.5;
+/** The width of the world at zoom 0, in px: MapLibre's 512 px tiles. */
+const WORLD_PX = 512;
 
-/** The site triangle's height for `count` sites: the one paired with the circle of the same count,
- *  grown to the next circle tier's until it holds the longest label of its range. */
-export function siteTriangleHeight(count: number): number {
-  const [from, label] = SITE_LABELS.filter(([start]) => count >= start).at(-1)!;
-  const needed = heightToHold(label, tierValue(COUNT_TIERS, from));
-  const tiers = CLUSTER_TIERS.map(([, radius]) => radius).filter((radius) => radius >= tierValue(CLUSTER_TIERS, from));
-  const fits = tiers.map(triangleHeight).find((height) => height >= needed);
-  return fits ?? needed;
+function mercatorPx([lng, lat]: readonly number[]): [number, number] {
+  const phi = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
+  return [
+    ((lng + 180) / 360) * WORLD_PX,
+    ((1 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / Math.PI) / 2) * WORLD_PX,
+  ];
 }
 
-/** Per event count tier and site label range, `value(eventRadius, triangleHeight, textSize)` as a
- *  literal; `eventRadius` is null for a cluster of sites only. */
-function bySiteRange(value: (eventRadius: number | null, height: number, textSize: number) => [number, number]) {
-  const bySites = (eventRadius: number | null) =>
-    step(
-      SITE_COUNT,
-      SITE_LABELS.map(([from]) => [
-        from,
-        ["literal", value(eventRadius, siteTriangleHeight(from), tierValue(COUNT_TIERS, from))],
-      ]),
-    );
-  return step(EVENT_COUNT, [
-    [0, bySites(null)],
-    ...CLUSTER_TIERS.map(([from, eventRadius]) => [Math.max(from, 1), bySites(eventRadius)] as const),
+/** The radius at zoom 0, in px, of the smallest circle around `centroid` that holds `zone`: at
+ *  zoom z it is `2 ** z` times larger. */
+export function zoneRadiusAtZoom0(zone: Zone, centroid: { lat: number; lng: number }): number {
+  const [cx, cy] = mercatorPx([centroid.lng, centroid.lat]);
+  let farthest = 0;
+  for (const ring of zone.coordinates) {
+    for (const vertex of ring) {
+      const [x, y] = mercatorPx(vertex);
+      farthest = Math.max(farthest, Math.hypot(x - cx, y - cy));
+    }
+  }
+  return farthest;
+}
+
+const ZONE_RADIUS = ["get", "zone_radius"] satisfies ExpressionSpecification;
+const RING_ZOOMS = Array.from({ length: SITE_POINT_MAX_ZOOM + 1 }, (_, zoom) => zoom);
+
+/** A zoom curve with one stop per integer zoom up to `SITE_POINT_MAX_ZOOM`, `output(zoneRadiusPx)`
+ *  at each: a `zoom` expression is legal only as the input of a top-level `interpolate`. */
+function perZoom(
+  curve: ["linear"] | ["exponential", number],
+  output: (zoneRadiusPx: ExpressionSpecification) => unknown,
+): ExpressionSpecification {
+  return [
+    "interpolate",
+    curve,
+    ["zoom"],
+    ...RING_ZOOMS.flatMap((zoom) => [zoom, output(["*", ZONE_RADIUS, 2 ** zoom])]),
+  ] as unknown as ExpressionSpecification;
+}
+
+/** A lone site's ring radius: its zone's, never under `SITE_RING_MIN_RADIUS_PX`. */
+export const LONE_SITE_RING_RADIUS = perZoom(["exponential", 2], (zoneRadiusPx) => [
+  "max",
+  SITE_RING_MIN_RADIUS_PX,
+  zoneRadiusPx,
+]);
+
+/** `opacity` while a lone site's zone is too small to read, 0 once the zone stands for it. */
+export function loneSiteRingOpacity(opacity: number): ExpressionSpecification {
+  return perZoom(["linear"], (zoneRadiusPx) => [
+    "case",
+    ["<", zoneRadiusPx, SITE_RING_MIN_RADIUS_PX * SITE_RING_FADE_FACTOR],
+    opacity,
+    0,
   ]);
 }
-
-/** The site triangle of a cluster: its circle's colour ramp, its height from
- *  `siteTriangleHeight`, right of the circle when the cluster holds events, its count on the
- *  incentre. */
-export function siteClusterStyle(marker: ReturnType<typeof paletteMapColors>) {
-  return {
-    layout: {
-      ...clusterCountLayout(SITE_COUNT),
-      "icon-image": TRIANGLE_ICON,
-      "icon-size": step(
-        SITE_COUNT,
-        SITE_LABELS.map(([from]) => [from, siteTriangleHeight(from) / TRIANGLE_HEIGHT]),
-      ),
-      "icon-offset": bySiteRange((e, h) => [e === null ? 0 : (besideOffsetPx(e, h) * TRIANGLE_HEIGHT) / h, 0]),
-      "text-offset": bySiteRange((e, h, size) => [
-        e === null ? 0 : besideOffsetPx(e, h) / size,
-        incentreDropPx(h) / size,
-      ]),
-      "icon-allow-overlap": true,
-      "icon-ignore-placement": true,
-    },
-    paint: {
-      "icon-color": clusterColor(marker, SITE_COUNT),
-      "icon-opacity": CLUSTER_OPACITY,
-      "text-color": CLUSTER_COUNT_COLOR,
-    },
-  } satisfies Pick<SymbolLayerSpecification, "layout" | "paint">;
-}
-
-/** A single site's triangle size: the one paired with an event point, or a selected one. */
-export const SITE_POINT_SIZE = triangleHeight(POINT_RADIUS) / TRIANGLE_HEIGHT;
-export const SELECTED_SITE_POINT_SIZE = triangleHeight(SELECTED_POINT_RADIUS) / TRIANGLE_HEIGHT;

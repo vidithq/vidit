@@ -199,7 +199,7 @@ flowchart BT
     daily imagery, then fire detections, placed by **aboveBasemap**`"]:::shared
     grid["`**CoordinateGrid**`"]:::shared
     sites["`**SiteLayers** site zones, a drawn zone`"]:::shared
-    pins["`**Map.tsx** event points, site triangles, clusters and stacks`"]:::core
+    pins["`**Map.tsx** event points, site rings, clusters and stacks`"]:::core
     basemap --> imagery --> grid --> sites --> pins
   end
 ```
@@ -257,7 +257,7 @@ flowchart BT
 - **Sites layer.** A map draws sites through `<Map>`'s `children`, the slot for extra sources and layers. [`SiteLayers`](../frontend/src/components/map/SiteLayers.tsx) keeps them under the event pins through `useUnderEventPins`, so an event always draws above a zone.
   - On `/map` the **Sites** chip follows the Requested, Detected and Geolocated chips in the filter panel's **Show** field (see [Filter panel](#filter-panel)), and the field's rule sets when the layer shows. The map reads the zones valid at the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. The panel creates no site: a site starts from Submit.
   - The **Sites** chip counts as one active filter. While it is selected, the **Filters** button counts it and a **Sites** pill follows the status pills. Removing the pill or **Clear all** deselects it.
-  - Below zoom 10 (`ZONE_MIN_ZOOM`) each site is one triangle at its centroid, the shape that tells a site from a round event pin. From zoom 10 the map draws every zone. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
+  - The map draws every zone at every zoom. Below zoom 10 (`SITE_POINT_MAX_ZOOM`) each site also joins the event clusters as a point at its centroid. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
   - Below zoom 10 the sites cluster with the event points, in one source:
 
     ```mermaid
@@ -275,28 +275,28 @@ flowchart BT
       end
 
       events["`filtered event points`"]:::spec
-      sites["`site centroids, while the **Show** field shows sites and the zoom is under 10`"]:::spec
+      sites["`site centroids with their zone radius, while the **Show** field shows sites and the zoom is under 10`"]:::spec
       source["`**points** source, **CLUSTER_SOURCE**
-      counts **events** and **sites** per cluster`"]:::core
-      circle["`**clusters** circle, event count`"]:::shared
-      triangle["`**sites-cluster** triangle, site count, right of the circle`"]:::shared
-      single["`**points-circle** for one event, **sites-point** for one site`"]:::shared
+      counts the **sites** of each cluster`"]:::core
+      circle["`**clusters** circle, one count of events and sites`"]:::shared
+      ring["`**sites-cluster-ring** hollow ring, when the cluster holds a site`"]:::shared
+      single["`**points-circle** for one event, **sites-point** ring for one site`"]:::shared
       events --> source
       sites --> source
       source --> circle
-      source --> triangle
+      source --> ring
       source --> single
     ```
 
-  - `CLUSTER_SOURCE` in [`layers.ts`](../frontend/src/components/map/layers.ts) sets the clustering radius and the maximum zoom, and its `clusterProperties` count the events and the sites of each cluster apart. A cluster draws its circle with the event count. When it holds sites, a triangle with the site count sits right of the circle, its bounding box centred on the circle's centre line, 1 px from the circle at their closest (`BESIDE_GAP_PX` and `besideOffsetPx` in [`triangle.ts`](../frontend/src/components/map/triangle.ts)). The circle's antialiasing makes the drawn gap 1.3 to 2 px. A cluster of sites only draws the triangle, and a cluster of events only draws the circle.
-  - A click on the circle or on the triangle zooms to the cluster's expansion zoom. A cluster that holds a site never opens the hover ring: past the clustering ceiling the site is a zone.
-  - The event filters narrow the points before they reach the source, so they never drop a site. While the **Show** field hides the sites, no site reaches the source or the counts, and while it hides the events, no event does. From zoom 10 the map leaves the sites out of the source (`zonesShown` in `Map.tsx`), so the clusters count events only and the zones stand for the sites.
-  - A zone, a triangle and a cluster triangle take the event point colour: the accent palette's `base` (`paletteMapColors` in [`lib/palette.ts`](../frontend/src/lib/palette.ts)), and the darker ramp stops for a large count, like an event cluster. The triangle is one signed distance field image (`triangleSdf`), so `icon-color` paints it in any palette.
-  - A triangle is as tall as the circle it pairs with is wide (`triangleHeight`): a single site pairs with an event point, 6 px in radius or 7 px when selected, and a cluster triangle with the event cluster circle for the same count.
-  - The site count sits on the triangle's incentre, a third of its height above the base. A triangle too small to hold the longest count of its range with a 1.5 px margin grows to the next circle tier's triangle (`siteTriangleHeight` in `layers.ts`, `heightToHold` in `triangle.ts`): a cluster of 2 to 9 sites keeps the triangle of its circle, and a count of two digits or more takes a larger one.
+  - `CLUSTER_SOURCE` in [`layers.ts`](../frontend/src/components/map/layers.ts) sets the clustering radius and the maximum zoom, and its `clusterProperties` count the sites of each cluster (`sites`). A cluster draws one circle with one count, `point_count`, the events and the sites together, and the circle's size and colour follow that count.
+  - When a cluster holds at least one site, a hollow ring in the accent colour surrounds its circle: 2 px wide (`SITE_RING_WIDTH_PX`), 3 px out from the circle (`SITE_RING_GAP_PX`). The ring marks that the cluster holds a site, not how many.
+  - A click on the circle or on the ring zooms to the cluster's expansion zoom. A cluster that holds a site never opens the hover ring: past the clustering ceiling the site is a zone.
+  - A site outside any cluster draws as a ring in the zone's style: a 2 px accent outline over a 12% fill (`SITE_ZONE_FILL_OPACITY`). The ring takes the zone's radius on screen, the distance from the centroid to the zone's farthest corner (`zoneRadiusAtZoom0` in `layers.ts`, doubled at each zoom level), and never less than 7 px (`SITE_RING_MIN_RADIUS_PX`). Once the zone's radius passes 1.5 times that floor, the ring fades out over one zoom level and the zone under it stands for the site. A selected site's ring takes the selected halo colour.
+  - The event filters narrow the points before they reach the source, so they never drop a site. While the **Show** field hides the sites, no site reaches the source or the counts, and while it hides the events, no event does. From zoom 10 the map leaves the sites out of the source (`sitePointsShown` in `Map.tsx`), so the clusters count events only and the zones stand for the sites.
+  - A zone and both rings take the event point colour: the accent palette's `base` (`paletteMapColors` in [`lib/palette.ts`](../frontend/src/lib/palette.ts)). A cluster circle takes the darker ramp stops for a large count, like any cluster.
   - The latest link effect does not tint the map: the warning amber and the danger red sit too close to the orange and rose palettes to read. The preview and the side panel show it as a `<Pill>` (`LinkEffectPill`), in the warning or danger tone for damage and destruction and neutral for the others.
   - A zone draws like the military and airport highlights, a fill at 12% opacity (22% when selected) under a solid outline of 2 px (3 px when selected), so the pins and labels inside it stay readable.
-  - On `/map` a site takes the pointer like an event pin: a zone, a triangle or a cluster turns the cursor to a pointer, and an event pin over a site takes the hover and the click. A mouse resting on a site shows its preview after the pins' 150 ms hover intent, on the pins' `MapPreviewCard`: the name, the kind, the latest effect and the last source (`SitePreview` in [`SitePanel.tsx`](../frontend/src/components/map/SitePanel.tsx)), read from the list the layer already holds, so the preview fetches nothing. A coarse pointer arms no preview, and a tap opens the panel. A site, like a pin, is not a keyboard stop on the canvas.
+  - On `/map` a site takes the pointer like an event pin: a zone, a site's ring or a cluster turns the cursor to a pointer, and an event pin over a site takes the hover and the click. A mouse resting on a site shows its preview after the pins' 150 ms hover intent, on the pins' `MapPreviewCard`: the name, the kind, the latest effect and the last source (`SitePreview` in [`SitePanel.tsx`](../frontend/src/components/map/SitePanel.tsx)), read from the list the layer already holds, so the preview fetches nothing. A coarse pointer arms no preview, and a tap opens the panel. A site, like a pin, is not a keyboard stop on the canvas.
   - A click on a site opens the map's side panel ([`MapSidePanel`](../frontend/src/components/map/MapSidePanel.tsx)), the one the event pins open, in the same place and with the same blocks. The event fills it with `eventPanelContent` ([`EventDetailBody.tsx`](../frontend/src/components/event/EventDetailBody.tsx)) and the site with `sitePanelContent` ([`SitePanel.tsx`](../frontend/src/components/map/SitePanel.tsx)); `MapPanelBody` lays out the blocks for both.
     - The title is the record's name, the permalink to its page, and the byline under it names who documents it: the credited geolocators of an event, the owner of a site.
     - **Sources** holds the event's sources, or the site's latest source by the site page's order (`latestSource`, newest capture first), in the compact source block with its thumbnail.

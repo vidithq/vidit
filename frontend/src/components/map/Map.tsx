@@ -54,29 +54,30 @@ import {
   CLUSTER_LAYER,
   CLUSTER_OPACITY,
   CLUSTER_SOURCE,
-  EVENT_COUNT,
+  LONE_SITE_RING_RADIUS,
+  POINT_COUNT,
   POINT_LAYERS,
   POINT_RADIUS,
   SELECTED_POINT_RADIUS,
-  SELECTED_SITE_POINT_SIZE,
   SELECTED_STROKE,
   SELECTED_STROKE_WIDTH,
-  SITE_CLUSTER_LAYER,
   SITE_COUNT,
   SITE_POINT_FILTER,
   SITE_POINT_LAYER,
-  SITE_POINT_SIZE,
+  SITE_POINT_MAX_ZOOM,
+  SITE_RING_GAP_PX,
+  SITE_RING_LAYER,
+  SITE_RING_WIDTH_PX,
+  SITE_ZONE_FILL_OPACITY,
   STACK_LAYER,
   TAP_TARGET_LAYERS,
-  TRIANGLE_ICON,
-  ZONE_MIN_ZOOM,
   clusterColor,
   clusterCountLayout,
   clusterRadius,
-  siteClusterStyle,
+  loneSiteRingOpacity,
+  zoneRadiusAtZoom0,
 } from "./layers";
 import type { MapSite } from "./SiteLayers";
-import { triangleSdf } from "./triangle";
 import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
 import { BasemapControl } from "./BasemapControl";
 import { BasemapFailureNotice } from "./BasemapFailureNotice";
@@ -89,8 +90,8 @@ import { useMapAssets } from "./mapAssets";
 import { MapPreviewCard, PREVIEW_INTENT_MS } from "./MapPreviewCard";
 
 const POINTS_SOURCE = "points";
-// A cluster circle and the site triangle beside it: a click or a hover on either is the cluster's.
-const CLUSTER_LAYERS = [CLUSTER_LAYER, SITE_CLUSTER_LAYER];
+// A cluster circle and the ring around it: a click or a hover on either is the cluster's.
+const CLUSTER_LAYERS = [CLUSTER_LAYER, SITE_RING_LAYER];
 
 // Hover ring: dot geometry and the grace margin (px) the pointer may roam before it collapses.
 const SPIDER_DOT_PX = 12;
@@ -668,9 +669,9 @@ interface MapProps {
   points: MapPoint[];
   selectedId?: string | null;
   onPointClick?: (id: string) => void;
-  /** Sites drawn as triangles below `ZONE_MIN_ZOOM`, clustered with the points. `SiteLayers`
-   * draws their zones and takes their clicks. */
-  sites?: readonly Pick<MapSite, "id" | "centroid">[];
+  /** Sites clustered with the points below `SITE_POINT_MAX_ZOOM`, a lone one drawn as a ring.
+   * `SiteLayers` draws their zones and takes their clicks. */
+  sites?: readonly MapSite[];
   selectedSiteId?: string | null;
   className?: string;
   center?: { lat: number; lng: number };
@@ -826,31 +827,6 @@ function BasemapStyle({ style }: { style: StyleSpecification | null }) {
 
 // Dev-only camera handle for the promo recordings, whose tooling is maintained separately: exposes the
 // maplibre instance for Playwright easeTo moves. Gated at the render site, so never mounted in production.
-// A style reload drops every image, so the site triangle is added again after each one.
-function TriangleImage() {
-  const { current: map } = useMap();
-  useEffect(() => {
-    if (!map) return;
-    const raw = map.getMap();
-    const ensure = () => {
-      if (raw.hasImage(TRIANGLE_ICON)) return;
-      try {
-        raw.addImage(TRIANGLE_ICON, triangleSdf(), { sdf: true });
-      } catch {
-        // The style is not ready yet; its `styledata` event retries.
-      }
-    };
-    ensure();
-    raw.on("styledata", ensure);
-    raw.on("styleimagemissing", ensure);
-    return () => {
-      raw.off("styledata", ensure);
-      raw.off("styleimagemissing", ensure);
-    };
-  }, [map]);
-  return null;
-}
-
 function DevMapHandle() {
   const { current: map } = useMap();
   useEffect(() => {
@@ -917,9 +893,9 @@ export default function Map({
   // The ceiling crossfade dip applies only while a zoom is in flight; a static ramp would dim
   // layers that come to rest inside the band (e.g. z14.8).
   const [zoomInFlight, setZoomInFlight] = useState(false);
-  // From `ZONE_MIN_ZOOM` sites leave the clusters, so the zones stand for them and the event
+  // From `SITE_POINT_MAX_ZOOM` sites leave the clusters, so the zones stand for them and the
   // clusters count only events.
-  const [zonesShown, setZonesShown] = useState(() => (zoom ?? 5) >= ZONE_MIN_ZOOM);
+  const [sitePointsShown, setSitePointsShown] = useState(() => (zoom ?? 5) < SITE_POINT_MAX_ZOOM);
 
   // Hovered pin preview: shown, and its detail fetched, only after the intent delay. The bounded
   // cache holds settled details and in-flight promises so a re-hover reuses them.
@@ -1088,6 +1064,12 @@ export default function Map({
     return base as FilterSpecification;
   }, [spiderHiddenIds]);
 
+  // A site's zone radius depends on its zone alone, so a selection or a points change keeps it.
+  const sitePoints = useMemo(
+    () => (sites ?? []).map((site) => ({ site, zoneRadius: zoneRadiusAtZoom0(site.zone, site.centroid) })),
+    [sites],
+  );
+
   // Group co-located points (~1 m epsilon grid, `groupStacks`): all stay in the source so cluster
   // counts stay true, but past the ceiling only the first renders, as the counted stack badge.
   // A stack of 3 must never look like one pin.
@@ -1128,17 +1110,22 @@ export default function Map({
         });
       });
     }
-    if (!zonesShown) {
-      for (const site of sites ?? []) {
+    if (sitePointsShown) {
+      for (const { site, zoneRadius } of sitePoints) {
         features.push({
           type: "Feature",
-          properties: { id: site.id, kind: "site", selected: site.id === selectedSiteId ? 1 : 0 },
+          properties: {
+            id: site.id,
+            kind: "site",
+            selected: site.id === selectedSiteId ? 1 : 0,
+            zone_radius: zoneRadius,
+          },
           geometry: { type: "Point", coordinates: [site.centroid.lng, site.centroid.lat] },
         });
       }
     }
     return { type: "FeatureCollection", features };
-  }, [points, selectedId, dimmedIds, sites, selectedSiteId, zonesShown]);
+  }, [points, selectedId, dimmedIds, sitePoints, selectedSiteId, sitePointsShown]);
 
   // A walked-past pin loses strength only. Applied per opacity value because a `zoom` expression is
   // legal only as input of a top-level `step`/`interpolate`: the crossfade stays outside and this
@@ -1209,7 +1196,7 @@ export default function Map({
         onViewChange({ latitude, longitude, zoom: z });
       }}
       onZoomStart={() => setZoomInFlight(true)}
-      onZoom={(evt) => setZonesShown(evt.viewState.zoom >= ZONE_MIN_ZOOM)}
+      onZoom={(evt) => setSitePointsShown(evt.viewState.zoom < SITE_POINT_MAX_ZOOM)}
       onZoomEnd={() => setZoomInFlight(false)}
       style={{ width: "100%", height: "100%" }}
       mapStyle={BLANK_STYLE}
@@ -1229,7 +1216,6 @@ export default function Map({
       <GoToCamera target={goTo} />
       <BoundsReporter onBoundsChange={onBoundsChange} />
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
-      <TriangleImage />
       <BasemapStyle style={basemapStyle} />
       <BasemapFailureNotice />
       <BasemapControl
@@ -1259,12 +1245,43 @@ export default function Map({
         data={geojson}
         {...CLUSTER_SOURCE}
       >
+        {/* A lone site: a ring that grows with its zone and fades out once the zone reads. */}
+        <Layer
+          id={SITE_POINT_LAYER}
+          type="circle"
+          maxzoom={SITE_POINT_MAX_ZOOM}
+          filter={SITE_POINT_FILTER}
+          paint={{
+            "circle-radius": LONE_SITE_RING_RADIUS,
+            "circle-color": marker.base,
+            "circle-opacity": loneSiteRingOpacity(SITE_ZONE_FILL_OPACITY),
+            "circle-stroke-color": ["case", ["==", ["get", "selected"], 1], selectedStroke, marker.base],
+            "circle-stroke-width": ["case", ["==", ["get", "selected"], 1], SELECTED_STROKE_WIDTH, SITE_RING_WIDTH_PX],
+            "circle-stroke-opacity": loneSiteRingOpacity(1),
+          }}
+        />
+
+        {/* A cluster that holds a site: a hollow ring outside its circle. The stroke draws outside
+            the radius, so the radius past the circle's is the gap. */}
+        <Layer
+          id={SITE_RING_LAYER}
+          type="circle"
+          maxzoom={SITE_POINT_MAX_ZOOM}
+          filter={clusterFilter(SITE_COUNT)}
+          paint={{
+            "circle-radius": ["+", clusterRadius(POINT_COUNT), SITE_RING_GAP_PX],
+            "circle-opacity": 0,
+            "circle-stroke-color": marker.base,
+            "circle-stroke-width": SITE_RING_WIDTH_PX,
+          }}
+        />
+
         <Layer
           id="clusters"
           type="circle"
-          filter={clusterFilter(EVENT_COUNT)}
+          filter={clusterFilter(POINT_COUNT)}
           paint={{
-            "circle-color": clusterColor(marker, EVENT_COUNT),
+            "circle-color": clusterColor(marker, POINT_COUNT),
             // Ease the ceiling handoff: clusters thin out approaching it, replacements fade in from the same
             // level. Zoom-interpolated, only while a zoom is in flight (`zoomInFlight`).
             "circle-opacity": zoomInFlight
@@ -1274,15 +1291,15 @@ export default function Map({
                   POINTS_ZOOM, 0.35,
                 ]
               : CLUSTER_OPACITY,
-            "circle-radius": clusterRadius(EVENT_COUNT),
+            "circle-radius": clusterRadius(POINT_COUNT),
           }}
         />
 
         <Layer
           id="cluster-count"
           type="symbol"
-          filter={clusterFilter(EVENT_COUNT)}
-          layout={clusterCountLayout(EVENT_COUNT)}
+          filter={clusterFilter(POINT_COUNT)}
+          layout={clusterCountLayout(POINT_COUNT)}
           paint={{
             "text-color": CLUSTER_COUNT_COLOR,
             // Mirrors the cluster circle's ceiling fade above.
@@ -1293,32 +1310,6 @@ export default function Map({
                   POINTS_ZOOM, 0.35,
                 ]
               : 1,
-          }}
-        />
-
-        <Layer
-          id={SITE_CLUSTER_LAYER}
-          type="symbol"
-          maxzoom={ZONE_MIN_ZOOM}
-          filter={clusterFilter(SITE_COUNT)}
-          {...siteClusterStyle(marker)}
-        />
-
-        <Layer
-          id={SITE_POINT_LAYER}
-          type="symbol"
-          maxzoom={ZONE_MIN_ZOOM}
-          filter={SITE_POINT_FILTER}
-          layout={{
-            "icon-image": TRIANGLE_ICON,
-            "icon-size": ["case", ["==", ["get", "selected"], 1], SELECTED_SITE_POINT_SIZE, SITE_POINT_SIZE],
-            "icon-allow-overlap": true,
-            "icon-ignore-placement": true,
-          }}
-          paint={{
-            "icon-color": marker.base,
-            "icon-halo-color": selectedStroke,
-            "icon-halo-width": ["case", ["==", ["get", "selected"], 1], SELECTED_STROKE_WIDTH, 0],
           }}
         />
 
