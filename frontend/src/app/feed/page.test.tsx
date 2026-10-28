@@ -148,24 +148,30 @@ describe("FeedPage", () => {
       "href",
       "/events/g1",
     );
-    expect(screen.getByText("Requested")).toBeInTheDocument();
-    expect(screen.getByText("Geolocated")).toBeInTheDocument();
+    const [request, geolocation] = screen.getAllByRole("article");
+    expect(within(request).getByText("Requested")).toBeInTheDocument();
+    expect(within(geolocation).getByText("Geolocated")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "bob" })).toHaveAttribute("href", "/profile/bob");
   });
 
-  it("starts on Following and walks everyone's activity on All", () => {
+  it("starts on Following and walks everyone's activity on All, picked in the filter panel", () => {
     walk.items = [item({})];
     render(<FeedPage />);
     expect(lastPath()).toBe("/feed?scope=following");
-    expect(screen.getByRole("button", { name: "Following" })).toHaveAttribute(
+    const rail = screen.getByRole("complementary", { name: "Filters" });
+    const activity = within(rail).getByRole("group", { name: "Activity" });
+    expect(within(activity).getByRole("button", { name: "Following" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(within(activity).getByRole("button", { name: "All" }));
 
     expect(lastPath()).toBe("/feed?scope=all");
-    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(activity).getByRole("button", { name: "All" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("offers All to an analyst who follows nobody", () => {
@@ -300,60 +306,42 @@ describe("FeedPage", () => {
       "href",
       "/events/d1",
     );
-    expect(screen.getByText("Detected")).toBeInTheDocument();
+    expect(within(screen.getByRole("article")).getByText("Detected")).toBeInTheDocument();
     expect(screen.getByText("Detected 5 Oct 2026")).toBeInTheDocument();
   });
 
-  it("lists every kind with no chip, and narrows to the chosen kinds, Detections included", () => {
+  it("lists every kind with no Show chip, and narrows to the chosen statuses, Detected included", () => {
     walk.items = [item({})];
     render(<FeedPage />);
     expect(lastPath()).toBe("/feed?scope=following");
     const rail = screen.getByRole("complementary", { name: "Filters" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-    expect(within(rail).queryByRole("switch")).toBeNull();
+    expect(within(rail).getByText("Show")).toBeInTheDocument();
+    expect(within(rail).queryByText("Kind")).toBeNull();
 
-    fireEvent.click(chip(rail, "Detections"));
+    fireEvent.click(chip(rail, "Detected"));
     expect(lastPath()).toBe("/feed?scope=following&kind=detected");
-    expect(within(rail).getByTitle("Remove filter: Detections")).toBeInTheDocument();
+    expect(within(rail).getByTitle("Remove filter Show: Detected")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
 
-    fireEvent.click(chip(rail, "Geolocations"));
+    fireEvent.click(chip(rail, "Geolocated"));
     expect(lastPath()).toBe("/feed?scope=following&kind=detected&kind=geolocation");
 
-    fireEvent.click(within(rail).getByTitle("Remove filter: Detections"));
+    fireEvent.click(within(rail).getByTitle("Remove filter Show: Detected"));
     expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
 
-    fireEvent.click(chip(rail, "Geolocations"));
+    fireEvent.click(chip(rail, "Geolocated"));
     expect(lastPath()).toBe("/feed?scope=following");
     expect(within(rail).queryByTitle(/^Remove filter/)).toBeNull();
   });
 
-  it("sends only the chosen kinds", () => {
-    walk.items = [item({})];
-    render(<FeedPage />);
-    const rail = screen.getByRole("complementary", { name: "Filters" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-
-    fireEvent.click(chip(rail, "Requests"));
-    expect(lastPath()).toBe("/feed?scope=following&kind=request");
-
-    fireEvent.click(chip(rail, "Geolocations"));
-    fireEvent.click(chip(rail, "Detections"));
-    expect(lastPath()).toBe(
-      "/feed?scope=following&kind=request&kind=geolocation&kind=detected",
-    );
-  });
-
-  it("narrows the walk from the rail: kind, conflict and tag", () => {
+  it("narrows the walk from the rail: show, conflict and tag", () => {
     walk.items = [item({})];
     render(<FeedPage />);
     const rail = screen.getByRole("complementary", { name: "Filters" });
 
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-    fireEvent.click(chip(rail, "Requests"));
+    fireEvent.click(chip(rail, "Requested"));
     expect(lastPath()).toBe("/feed?scope=following&kind=request");
 
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Conflict, tags" }));
     fireEvent.focus(within(rail).getByRole("combobox", { name: "Conflict" }));
     fireEvent.click(screen.getByRole("option", { name: /^Russo-Ukrainian war/ }));
     fireEvent.focus(within(rail).getByRole("combobox", { name: "Tags" }));
@@ -363,53 +351,34 @@ describe("FeedPage", () => {
     );
     expect(screen.getByRole("button", { name: "Filters (3)" })).toBeInTheDocument();
 
-    fireEvent.click(within(rail).getByTitle("Remove filter: Requests"));
+    fireEvent.click(within(rail).getByTitle("Remove filter Show: Requested"));
     expect(lastPath()).toBe(
       "/feed?scope=following&conflict=Russo-Ukrainian+war&tag=airstrike",
     );
   });
 
-  it("edits a draft in the Filters dialog and applies it once", () => {
+  it("applies each change in the Filters dialog at once, the scope included", () => {
     walk.items = [item({})];
     render(<FeedPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     const dialog = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Kind" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Geolocations" }));
-    expect(lastPath()).toBe("/feed?scope=following");
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Geolocated" }));
     expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
+    fireEvent.click(within(dialog).getByRole("button", { name: "All" }));
+    expect(lastPath()).toBe("/feed?scope=all&kind=geolocation");
 
-    fireEvent.click(screen.getByRole("button", { name: "Filters (1)" }));
-    const reopened = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(reopened).getByRole("button", { name: "Clear" }));
-    fireEvent.click(within(reopened).getByRole("button", { name: "Apply" }));
-    expect(lastPath()).toBe("/feed?scope=following");
-  });
-
-  it("drops the draft when the dialog closes without Apply", () => {
-    walk.items = [item({})];
-    render(<FeedPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Toggle Kind" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Requests" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-
+    fireEvent.click(within(dialog).getByRole("button", { name: "Clear" }));
+    expect(lastPath()).toBe("/feed?scope=all");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(lastPath()).toBe("/feed?scope=following");
   });
 
   it("says nothing matched the filters instead of the follow prompts", () => {
     profile.following_count = 0;
     render(<FeedPage />);
     const rail = screen.getByRole("complementary", { name: "Filters" });
-    fireEvent.click(within(rail).getByRole("button", { name: "Toggle Kind" }));
-    fireEvent.click(chip(rail, "Requests"));
+    fireEvent.click(chip(rail, "Requested"));
 
     expect(screen.getByText("Nothing in the feed matches the filters.")).toBeInTheDocument();
     expect(screen.queryByText("You follow no analysts yet")).toBeNull();

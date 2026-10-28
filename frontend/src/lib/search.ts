@@ -34,7 +34,8 @@ export interface ApprovalFilters {
 
 /** The date fields share the `DateWindows` names, so a surface spreads its windows in. */
 export interface EventFilterParams extends Partial<ApprovalFilters> {
-  statuses?: string[];
+  /** The Show filter, sent as `status`. */
+  show?: string[];
   conflicts?: string[];
   sourceKinds?: string[];
   levels?: string[];
@@ -57,7 +58,7 @@ export function eventFilterFields(
 ): Record<string, string[] | string | boolean> {
   const fields: Record<string, string[] | string | boolean> = {};
   const lists: Array<[string, string[] | undefined]> = [
-    ["status", f.statuses],
+    ["status", f.show],
     ["conflict", f.conflicts],
     ["source_kind", f.sourceKinds],
     ["level", f.levels],
@@ -99,7 +100,7 @@ export function readEventFilterParams(params: {
   if (AUTHOR_FILTER_RE.test(username)) approvedBy = { kind: "analyst", username };
   else if (AUTHOR_FILTER_RE.test(slug)) approvedBy = { kind: "organization", slug, name: slug };
   return {
-    statuses: params.getAll("status"),
+    show: params.getAll("status"),
     conflicts: params.getAll("conflict"),
     sourceKinds: params.getAll("source_kind"),
     levels: params.getAll("level"),

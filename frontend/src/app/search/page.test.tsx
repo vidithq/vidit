@@ -279,8 +279,10 @@ describe("the filter panel on the Collections scope", () => {
 
     expect(await screen.findByText("Nova Kakhovka dam")).toBeInTheDocument();
     expect(toggle("Author")).toBeInTheDocument();
-    expect(toggle("Tags")).toBeInTheDocument();
-    for (const title of ["Status", "Status, conflict, tags", "Dates", "Source", "People"]) {
+    expect(screen.getByRole("combobox", { name: "Tags" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Conflict" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Show")).not.toBeInTheDocument();
+    for (const title of ["Dates", "Source", "People"]) {
       expect(toggle(title)).not.toBeInTheDocument();
     }
   });
@@ -318,6 +320,46 @@ describe("the filter panel on the Collections scope", () => {
     await waitFor(() =>
       expect(search).toHaveBeenCalledWith(
         expect.objectContaining({ q: "", type: "collection", author: "ana" }),
+      ),
+    );
+  });
+});
+
+describe("a tag on the All scope", () => {
+  it("stays on All and lists the collections that carry the tag", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&tag=dam");
+    search.mockResolvedValue(response({ collections: [collection()] }));
+
+    render(<SearchPage />);
+
+    expect(await screen.findByText("Nova Kakhovka dam")).toBeInTheDocument();
+    expect(search).toHaveBeenCalledWith(expect.objectContaining({ type: "all", tags: ["dam"] }));
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTitle("Remove filter Tags: dam")).toBeInTheDocument();
+  });
+
+  it("lands a link that carries an event-only filter on Events", async () => {
+    searchParams = new URLSearchParams("q=kakhovka&tag=dam&conflict=Yemen");
+    search.mockResolvedValue(response({ type: "event" }));
+
+    render(<SearchPage />);
+
+    await waitFor(() =>
+      expect(search).toHaveBeenCalledWith(expect.objectContaining({ type: "event" })),
+    );
+  });
+
+  it("keeps the tags and the author when the scope steps from Events to All", async () => {
+    searchParams = new URLSearchParams("type=event&tag=dam&author=ana&conflict=Yemen");
+    search.mockResolvedValue(response({ type: "event", query: "" }));
+
+    render(<SearchPage />);
+    await waitFor(() => expect(search).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+
+    await waitFor(() =>
+      expect(search).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: "all", tags: ["dam"], author: "ana", conflicts: [] }),
       ),
     );
   });
@@ -384,7 +426,7 @@ describe("the search page's Organizations group", () => {
 });
 
 describe("the search page's filter rail", () => {
-  it("puts the event panel in the rail and applies the dialog's dates on Apply", async () => {
+  it("puts the event panel in the rail and applies the dialog's dates at once", async () => {
     searchParams = new URLSearchParams("q=kakhovka&type=event");
     search.mockResolvedValue(response({ type: "event", geolocations: [eventHit()] }));
 
@@ -400,13 +442,15 @@ describe("the search page's filter rail", () => {
     fireEvent.change(within(dialog).getByLabelText("Event date from"), {
       target: { value: "2026-06-01" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+    expect(within(dialog).queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
 
     await waitFor(() =>
       expect(search).toHaveBeenCalledWith(
         expect.objectContaining({ type: "event", eventFrom: "2026-06-01" }),
       ),
     );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
   });
 
@@ -435,7 +479,8 @@ describe("the approval filters on the search page", () => {
         }),
       ),
     );
-    expect(screen.getAllByText("Approved by kakhovka-watch").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle("Remove filter Approved by: kakhovka-watch").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle("Remove filter Approvals: Approved only").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Filters (2)" })).toBeInTheDocument();
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
@@ -647,10 +692,10 @@ describe("the active filters on the search page", () => {
     render(<SearchPage />);
 
     const rail = screen.getByRole("complementary", { name: "Filters" });
-    expect(await within(rail).findByTitle("Remove filter: drone")).toBeInTheDocument();
-    expect(within(rail).queryByTitle("Remove filter: By ana")).not.toBeInTheDocument();
-    expect(screen.getAllByTitle("Remove filter: By ana")).toHaveLength(1);
-    expect(screen.getAllByTitle("Remove filter: drone")).toHaveLength(2);
+    expect(await within(rail).findByTitle("Remove filter Tags: drone")).toBeInTheDocument();
+    expect(within(rail).queryByTitle("Remove filter Author: ana")).not.toBeInTheDocument();
+    expect(screen.getAllByTitle("Remove filter Author: ana")).toHaveLength(1);
+    expect(screen.getAllByTitle("Remove filter Tags: drone")).toHaveLength(2);
   });
 });
 
