@@ -160,7 +160,7 @@ Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../fron
 └────┴─────────────────────────────────────────────┘
 ```
 
-- **Sidebar rail:** left nav (logo, working surfaces, identity block), a fixed column from `sm` up, which every page clears through `PageFrame`'s `sm:pl-14`. Submit, Requests and Feed show only to a signed-in reader; a signed-out reader gets Map, Search, About and Sign in. Below `sm` it is a drawer behind a floating menu chip and takes no inset at all; see [Phone chrome](#phone-chrome).
+- **Sidebar rail:** left nav (logo, working surfaces, identity block), a fixed column from `sm` up, which every page clears through `PageFrame`'s `sm:pl-14`. Submit, Requests and Feed show only to a signed-in reader; a signed-out reader gets Map, Search, About and Sign in. Below `sm` it is a drawer behind a floating menu chip and takes no inset at all; see [Phone chrome](#phone-chrome). The GitHub, X and Discord icons beside the logo, which show once the rail is expanded and in the drawer, take the accent (`text-orange-400`, the shade of `TEXT_LINK`) at rest. Hover and keyboard focus lift them to `text-orange-300` on a `neutral-800` plate.
 - **Map:** full-screen background on `/map`.
 - **Left panel:** filters, opaque, floating over the map.
 - **Right panel:** event detail, appears on click, dismissible. When the selected event fails to load, the panel shows the error message and a Retry control, never a previously selected event.

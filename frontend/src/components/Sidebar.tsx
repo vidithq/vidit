@@ -48,9 +48,9 @@ const GITHUB_URL = "https://github.com/vidithq/vidit";
 const ROW_CLASS =
   "flex items-center gap-2.5 h-9 shrink-0 rounded-md px-2.5 text-sm transition-colors";
 
-// The three community links on the header row. `ICON_TAP_STEP` is the phone floor for small icon
+// The three community links on the header row, in the accent of `TEXT_LINK`. `ICON_TAP_STEP` is the phone floor for small icon
 // controls: 28px suits a mouse, not a thumb, and below `sm` the row is in the drawer.
-const BRAND_LINK_CLASS = `${ICON_TAP_STEP} sm:size-7 rounded-md flex items-center justify-center text-neutral-500 hover:text-neutral-100 hover:bg-neutral-800 transition-colors`;
+const BRAND_LINK_CLASS = `${ICON_TAP_STEP} sm:size-7 rounded-md flex items-center justify-center text-orange-400 hover:text-orange-300 hover:bg-neutral-800 focus-visible:text-orange-300 focus-visible:bg-neutral-800 transition-colors`;
 
 // Must match the aside's `duration-200` width transition. Labels render only after it, else they
 // overflow the narrow sidebar and flicker.
