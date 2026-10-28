@@ -12,11 +12,14 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 interface FollowButtonProps {
   username: string;
   initialFollowing: boolean;
+  /** Called with the new state as soon as the click lands, and with the old one if the request fails. */
+  onChange?: (following: boolean) => void;
 }
 
 export default function FollowButton({
   username,
   initialFollowing,
+  onChange,
 }: FollowButtonProps) {
   const [following, setFollowing] = useState(initialFollowing);
   const [loading, setLoading] = useState(false);
@@ -36,16 +39,14 @@ export default function FollowButton({
     setLoading(true);
     setError(null);
     const wasFollowing = following;
+    setFollowing(!wasFollowing);
+    onChange?.(!wasFollowing);
     try {
-      if (wasFollowing) {
-        await apiFetch(`/users/${username}/follow`, { method: "DELETE" });
-        setFollowing(false);
-      } else {
-        await apiFetch(`/users/${username}/follow`, { method: "POST" });
-        setFollowing(true);
-      }
+      await apiFetch(`/users/${username}/follow`, { method: wasFollowing ? "DELETE" : "POST" });
     } catch (e) {
       console.error("Failed to toggle follow", e);
+      setFollowing(wasFollowing);
+      onChange?.(wasFollowing);
       setError(wasFollowing ? "Couldn't unfollow, try again" : "Couldn't follow, try again");
     } finally {
       setLoading(false);

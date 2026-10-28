@@ -71,7 +71,7 @@ function ResetPasswordInner() {
 
   if (tokenMissing) {
     return (
-      <AuthCard title="Link incomplete">
+      <AuthCard title="Incomplete link">
         <p className="text-xs text-neutral-400">
           This URL doesn&apos;t carry a valid reset token. Open the link from
           the email we sent, or{" "}

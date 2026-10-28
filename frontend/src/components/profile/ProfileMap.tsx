@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
-import { filterPointsByStatus, type MapPoint } from "@/types";
+import type { MapPoint } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { AUTHOR_FILTER_RE } from "@/lib/search";
 import { hasFiniteCoords, pointsBounds } from "@/components/map/bounds";
@@ -25,9 +25,8 @@ const Map = dynamic(() => import("@/components/map/Map"), { ssr: false });
  * Both live statuses are mapped: `geolocated` submissions and the `detected` machine detections,
  * which `<Map>` paints in its own shade, as on `/map`.
  *
- * The count beside the heading splits on the same statuses, named as on the Insights card
- * (`Geolocated`, `Detected`). Its `geolocated` leg is that card's `Geolocated` tile, so an unsplit
- * total would exceed the tile with no explanation.
+ * No count prints beside the heading: the Insights card's `Geolocated` and `Detected` tiles hold
+ * the figures once.
  *
  * Renders nothing until the points arrive, for an analyst with no located event, or after a failed
  * fetch (matching `ProfileInsights`).
@@ -41,28 +40,14 @@ export function ProfileMap({ username }: { username: string }) {
       `&bbox=${toBboxParam(WORLD_BOUNDS)}`
     : null;
   const { data } = useApiResource<MapPoint[]>(path);
-  // One set drives the camera and the counts, so they can't report different maps.
   const points = useMemo(() => (data ?? []).filter(hasFiniteCoords), [data]);
-  const detectedCount = useMemo(
-    () => filterPointsByStatus(points, ["detected"]).length,
-    [points]
-  );
   const bounds = useMemo(() => pointsBounds(points), [points]);
-
-  const geolocatedCount = points.length - detectedCount;
-  const counts = [`${geolocatedCount} geolocated`];
-  if (detectedCount > 0) counts.push(`${detectedCount} detected`);
 
   if (!bounds) return null;
 
   return (
     <Card as="section">
-      <div className="flex items-center justify-between gap-3">
-        <SectionEyebrow title="Coverage" margin="none" />
-        <span className="text-xs text-neutral-500">
-          {counts.join(", ")} on the map
-        </span>
-      </div>
+      <SectionEyebrow title="Coverage" margin="none" />
 
       {/* Same embedded-map shape as the event page: fixed height, rounded corners clipped on the map
           alone. Taller from `sm` up so a phone keeps the map within thumb reach. */}

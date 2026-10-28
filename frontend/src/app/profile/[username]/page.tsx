@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -56,7 +57,7 @@ export default function ProfilePage() {
     username
       ? eventListPath({
           view: "requested",
-          statuses: ["requested"],
+          show: ["requested"],
           author: username,
           // Same five rows as the submissions block.
           limit: 5,
@@ -65,6 +66,10 @@ export default function ProfilePage() {
   );
   // Shared with the sidebar dot; owner-scoped server-side, so it is the signed-in user's count (gated to the own-profile render).
   const { count: detectionCount } = useDetectionsCount();
+
+  // The reader's own Follow or Unfollow click, applied to the count before the answer lands. Tagged with its
+  // profile so another analyst's page doesn't read it; the count adds the gap between this and the loaded state.
+  const [followed, setFollowed] = useState<{ username: string; following: boolean } | null>(null);
 
   const edit = useProfileEdit({
     username,
@@ -87,6 +92,11 @@ export default function ProfilePage() {
   }
 
   const isOwn = !!currentUser && profile.username === currentUser.username;
+  const followersShift =
+    followed?.username === profile.username
+      ? Number(followed.following) - Number(profile.is_following)
+      : 0;
+  const shownProfile = { ...profile, followers_count: profile.followers_count + followersShift };
 
   // Portfolio order: identity block (`ProfileIdentity`, organization logos included) and linked-account
   // icons in the header actions (`ProfileActions`, with New collection and Sign out on your own), then
@@ -97,7 +107,7 @@ export default function ProfilePage() {
     <PageShell
       back
       title={<ProfileTitle name={profile.username} edit={edit} />}
-      subtitle={edit.editing ? undefined : <ProfileIdentity profile={profile} organizations={organizations} />}
+      subtitle={edit.editing ? undefined : <ProfileIdentity profile={shownProfile} organizations={organizations} />}
       actions={
         !edit.editing && (
           <ProfileActions
@@ -110,6 +120,7 @@ export default function ProfilePage() {
               <FollowButton
                 username={profile.username}
                 initialFollowing={profile.is_following}
+                onChange={(following) => setFollowed({ username: profile.username, following })}
               />
             )}
           </ProfileActions>

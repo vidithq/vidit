@@ -536,16 +536,18 @@ Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell
 | Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile, New collection and Sign out on your own), and Follow on someone else's profile. On the Requests board it is **Post request**. Edit mode moves the save pair to the sticky actions. The event surfaces leave it empty: their controls are sticky actions instead (`stickyActions`). A panel a cluster control opens (the add-to-collection picker, the Geolocators list) is a [`<Popover>`](../frontend/src/components/ui/Popover.tsx) that floats over the page, so nothing under the header moves. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
 | Sticky actions (`stickyActions`) | A zero-height `sticky top-10 max-sm:top-16 z-30` track before the header, the cluster hanging from it at the right, as wide as its actions on one line, up to the column's width | The page's actions, top right of the header, pinned at the top right of the column while the page scrolls, in an `aside` named *Actions* that `PageShell` renders, so no caller spells the landmark. [`EventShell`](#event-layout) sets it, on the event, version and request pages and the event forms. [`CollectionShell`](#collections) sets it on the collection page and the collection forms. The profile and organization edit modes set it for their save pair, the search page for **Add to collection**, and the X post and archive entries of `/submit` for their submit button (**Create the detection**, **Import archive**), which sits outside the form and submits it through its `form` attribute. The header keeps the cluster's room, and the cluster takes a surface once pinned; see [Event layout](#event-layout). `stickyActionsIdle` keeps that room while hiding the cluster (invisible, inert, no surface), for actions that come and go with a page state, so the header never moves when they return. |
 | Header in the column (`headerInColumn`) | The header and `controls` head the main column of a [right rail](#right-rail) page, beside the rail rather than above both | Off by default. The About page sets it, so the rail's first block sits top right, level with the title. The header scrolls with the main column while the rail sticks. The title keeps its x and the back arrow keeps its gutter, since the main column starts where the header did. Below `lg` the header comes first and a stacked rail follows it, so the actions sit under the title. |
-| Controls (`controls`) | `flex flex-wrap items-center justify-between gap-2`, one `space-y-6` step under the header | The view controls: the `<SegmentedControl>` that picks what the page lists or how (the feed scope, the search result type, the Requests sort), left-aligned under the title. A control that acts rather than picks a view goes in `actions` instead. The row sits above a [right rail](#right-rail), so the rail starts level with the list. |
+| Controls (`controls`) | `flex flex-wrap items-center justify-between gap-2`, one `space-y-6` step under the header | The view controls: the `<SegmentedControl>` that picks what the page lists or how (the search result type, the Requests sort), left-aligned under the title. A control that acts rather than picks a view goes in `actions` instead. The row sits above a [right rail](#right-rail), so the rail starts level with the list. |
 | Header side (`headerSide`) | [`PageColumns`](../frontend/src/components/ui/PageShell.tsx): `grid items-start gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]` | Lays the page out as a main column and a side column, 65:35 from `lg` up. The header heads the main column and `headerSide` heads the side column, level with the title, under the sticky actions. The children lay out their own `PageColumns` under the header, on the same split, so the columns line up. Below `lg` each side column follows its main column. [`EventShell`](#event-layout) sets it on every event surface to what reads under the pinned row (`actions.below`), `null` when that is empty, and [`CollectionShell`](#collections) sets it on every collection surface. `PageColumns`' `stickySide` pins the side column from `lg` up, under the sticky actions (`lg:top-24`), while the main column scrolls: the collection surfaces set it, since their main column runs to hundreds of rows. |
 
 Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
 
 The public guides use the same shell, signed in or out: `/guide` ("Getting started", the page a new analyst reads first; see [Getting started page](#getting-started-page)), `/methodology` ("Building a proof"; see [Import and methodology guides](#import-and-methodology-guides)), and `/import` ("Import your work from X": the conditions once, an annotated post for what a detection carries, a screenshot of the Submit mode selector, then one section per entry). Each is a server component of `PageShell` plus `Card`, for SEO, linked from the About page's Guides section. `/bot` and `/archive` are `redirect()` stubs into `/import#bot` and `/import#archive`, and both stay in `PUBLIC_PREFIXES` so a signed-out reader is forwarded rather than sent to the login page. The bot's X bio points at `/bot` (see [The bot](ingestion.md#the-bot)).
 
+[`<LegalLinks>`](../frontend/src/components/ui/LegalLinks.tsx) puts the legal notice and the privacy policy on one muted line: the landing page ends on it and the `(auth)/*` layout puts it under every card.
+
 The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) (a `max-w-sm` centered card). The two single-email pages (`/forgot-password`, `/resend-confirmation`) also share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), whose sent-state copy stays anti-enumeration ("if X is registered…", never confirming the address exists).
 
-`/unsubscribe/notifications` is an `<AuthCard>` too: it turns off the email of one notification kind only on a click of its button, so a mail scanner that opens the link changes nothing.
+`/unsubscribe/notifications` is an `<AuthCard>` too: it turns off the email of one notification kind only on a click of its button, so a mail scanner that opens the link changes nothing. Opened without its token, it reads *Incomplete link*, the title `/reset-password` shows without its token, and links to Settings.
 
 `/confirm-registration` consumes the token, signs you in, and then stays on its success card rather than redirecting. The card offers the two next steps as full-width links with `buttonClasses`: **Import your X archive** (primary, `/submit?import=1`) and **Read Getting started** (secondary, `/guide`).
 
@@ -666,16 +668,16 @@ flowchart TB
   bar["`**FilterBar**
   Filters (N) button and the active-filter pills`"]:::shared
   dialog["`**MediaOverlay dialog + Card**
-  the same panel on a draft: Cancel, Clear, Apply`"]:::shared
+  the same panel on the applied filters: Clear, Done`"]:::shared
   list["`**the list**
-  refetches once, with the applied filters`"]:::state
+  refetches on each change, as the rail does`"]:::state
 
   pages --> shell --> layout
   layout --> wide
   layout --> narrow
   narrow --> bar
   bar -->|Filters N| dialog
-  dialog -->|Apply| list
+  dialog -->|each change| list
 ```
 
 [`<PageWithRail>`](../frontend/src/components/ui/PageWithRail.tsx) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
@@ -690,13 +692,12 @@ The event forms place their actions in [`EventShell`](#event-layout)'s sticky ac
 - From `lg` up, [`<FilterRail>`](../frontend/src/components/filters/FilterRail.tsx) wraps the panel in the rail and puts the removable pills at its head. It leaves the author pill out when the panel offers the Author section (its `sections` prop, as the panel takes it), since that section already names the analyst in its summary and its picker.
 - Below `lg`, where the rail is gone, [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) sits above the list: the pills, author included, and a **Filters** button that reads **Filters (N)** while N filters are active. From `lg` up the row hides.
 
-The **Filters** button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there edits a draft, so the list refetches once:
+The **Filters** button opens the same panel full screen in `MediaOverlay`'s dialog variant around a `<Card>`. The panel there applies each change at once, as the rail and the map's panel do, so the list behind the dialog refetches on every pick:
 
-- **Apply** applies the draft and closes the dialog.
-- **Clear** empties the draft. Apply then clears the list's filters.
-- **Cancel**, Escape or a tap on the backdrop closes the dialog and drops the draft. While a search field's list is open, Escape closes the list only.
+- **Clear** empties the filters. It is disabled while no filter is active.
+- **Done**, Escape or a tap on the backdrop closes the dialog. While a search field's list is open, Escape closes the list only.
 
-The pills act on the applied filters at every width. Every applied value has its pill, the author included (**By** *username*), and counts once in **Filters (N)**. The pill row hides from `lg` up while no filter is active, since the button is off the page there.
+The pills act on the applied filters at every width. Every applied value has its pill, and counts once in **Filters (N)**. A pill is a key/value [`<Pill>`](../frontend/src/components/ui/Pill.tsx): the key is the filter's name, as its field label reads (`FILTER_NAMES`), and the value reads as its chip does, for example **Show:** *Sites*, **Approvals:** *Approved only*, **Author:** *ana* or **Event date:** *Until 1 Jan 2025*. A date window reads *From 1 Jan 2024*, *Until 1 Jan 2025* or *1 Jan 2024 to 1 Jan 2025* (`rangeSummary`). The pill row hides from `lg` up while no filter is active, since the button is off the page there.
 
 #### Filter panel
 
@@ -709,34 +710,46 @@ flowchart TB
   subgraph legend [Legend]
     direction LR
     l1["`the panel`"]:::core
-    l2["`a FilterSection row, every surface`"]:::shared
-    l3["`a row or chip the surface brings or opts into`"]:::page
+    l2["`a field or FilterSection row, every surface`"]:::shared
+    l3["`a field, row or chip the surface brings or opts into`"]:::page
     l1 ~~~ l2 ~~~ l3
   end
 
   panel["`**EventFilterSections**`"]:::core
-  kind["`Kind (feed, **lead**)`"]:::page
-  what["`Status, conflict, tags (Show on the map)`"]:::shared
+  subgraph head [Always in view, one label per field]
+    direction TB
+    lead["`Activity (feed, **lead**)`"]:::page
+    what["`Show, Conflict, Tags`"]:::shared
+    lead --> what
+  end
   sites["`Sites chip after the status chips (map, **layer**)`"]:::page
   dates["`Dates: Event date, Added (**dateSections**)`"]:::page
   guess["`Location guess (Requests board)`"]:::page
   src["`Source: Source kind, Level, Media`"]:::shared
   people["`People: Author, Approvals`"]:::shared
 
-  panel --> kind --> what --> dates --> guess --> src --> people
+  panel --> head --> dates --> guess --> src --> people
   what -.- sites
 ```
 
-[`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx) is the one filter panel of the map overlay, search, the [Requests board](#requests-board) and the feed. It stacks its rows in one `CARD_FRAME`, in a fixed order and with no group heading:
+[`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx) is the one filter panel of the map overlay, search, the [Requests board](#requests-board) and the feed. It lays its filters out in one `CARD_FRAME`, in a fixed order and with no group heading.
 
-1. The surface's own rows, passed as `lead`: **Kind** on the feed. The other surfaces have none.
-2. The **Status, conflict, tags** row. On the map the Status field ends with the **Sites** chip, passed as `layer` (see [Map](#map)), and reads **Show**, since it picks what the map draws: the row reads **Show, conflict, tags**. The URL parameter and the API keep `status`.
-3. The **Dates** row of the surface's `dateSections`.
-4. **Location guess**, on the board alone.
-5. The **Source** row (Source kind, Level, Media).
-6. The **People** row (Author, Approvals).
+The panel opens on fields that stay in view, each under its `<FieldLabel>` with its `?`:
 
-Each row is a [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx). Filters that share a row show as fields, each under a `<FieldLabel>` with its `?`. A row left with one filter on a surface shows that filter as its own row, with its own title and `?`: the Collections scope of search shows **Tags** and **Author**, and the feed shows **Approvals**. A merged row whose filters change per surface names itself after the ones present, so the board reads **Conflict, tags**. The map shows five rows for its eleven filters and the Sites chip.
+1. The surface's own fields, passed as `lead`: **Activity** on the feed. The other surfaces have none.
+2. **Show**, the event statuses to list: Requested, Detected and Geolocated. On the map the field ends with the **Sites** chip, passed as `layer` (see [Map](#map)). The filter carries one name on every surface, `show` in the code. The URL parameter, `GET /search` and `GET /events` name it `status`, and `GET /feed` names it `kind`.
+3. **Conflict** and **Tags**, the two search fields.
+
+Collapsible rows follow:
+
+1. The **Dates** row of the surface's `dateSections`.
+2. **Location guess**, on the board alone.
+3. The **Source** row (Source kind, Level, Media).
+4. The **People** row (Author, Approvals).
+
+Each row is a [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx). Filters that share a row show as fields, each under a `<FieldLabel>` with its `?`. A row left with one filter on a surface shows that filter as its own row, with its own title and `?`: the Collections scope of search shows **Author**, and the feed shows **Approvals**. The map shows Show, Conflict and Tags, then three rows, for its eleven filters and the Sites chip.
+
+A pick in the **Conflict** field closes its list, so the list never covers the **Tags** field under it. A click on the field opens the list again. A pick in **Tags** keeps the list open for the next tag.
 
 A collapsed row sums up its active values, joined by commas, or reads **Any**. Every row opens collapsed, except a row that holds an active value, which opens expanded so the applied filters stay visible. Each header still toggles its row. The panel keeps the open state per row, so a re-render or a scope change on search never resets it.
 
@@ -756,7 +769,7 @@ The nav chrome takes three shapes, and the page offset follows it:
 
 **The beta pill has one live copy at any width** ([`BetaBanner.tsx`](../frontend/src/components/BetaBanner.tsx)). The floating corner pill paints over a phone's content, so it hides below `sm` and the drawer renders the same component inline at its foot.
 
-**The map page lays its overlays out around the chip.** The filter bar starts right of the chip's open control (`left-16`), and the overlay stretches to 16px above the viewport bottom, laying its bar, its active-filter strip and its section stack out as a column: the stack takes the height the other two leave and scrolls the rest, so the tag and author sections stay reachable. The stretched box passes pointers through, so the map keeps every tap outside the blocks themselves. The detail panel becomes a bottom sheet: full width on the bottom edge, capped at `60dvh`, scrolling its own content, under a grab bar above its close control. The bar is decorative, and marks the sheet as the scrolling surface; the close control dismisses it. The map's bottom-left control group keeps the map's own corner below `sm`, since the 60px offset in [`globals.css`](../frontend/src/app/globals.css) clears a rail that is not there; an open sheet covers that group, and closing it hands the group back.
+**The map page lays its overlays out around the chip.** The filter bar starts right of the chip's open control (`left-16`), and the overlay stretches to 72px above the viewport bottom, clear of the map's bottom-left row (zoom, locate, basemap and an attribution that wraps to three lines at 320px), laying its bar, its active-filter strip and its section stack out as a column: the stack takes the height the other two leave and scrolls the rest, so the tag and author sections stay reachable. The stretched box passes pointers through, so the map keeps every tap outside the blocks themselves. The detail panel becomes a bottom sheet: full width on the bottom edge, capped at `60dvh`, scrolling its own content, under a grab bar above its close control. The bar is decorative, and marks the sheet as the scrolling surface; the close control dismisses it. The map's bottom-left control group keeps the map's own corner below `sm`, since the 60px offset in [`globals.css`](../frontend/src/app/globals.css) clears a rail that is not there; an open sheet covers that group, and closing it hands the group back.
 
 **A finger gets slop on the canvas** ([`Map.tsx`](../frontend/src/components/map/Map.tsx), [`stack.ts`](../frontend/src/components/map/stack.ts)). On a coarse pointer, a tap that hits bare canvas is re-tested over a 12px box on each side and takes the feature whose projected centre sits nearest, then does what that feature's own layer would have done: a cluster zooms, a stack badge fans out, a pin selects. A ring dot keeps its 12px paint and grows a 32px hit box around it. A tap arms no hover preview, since the compatibility `mousemove` a tap fires would open the card over the pin the finger just selected. A mouse keeps exact hit testing and its preview. The pointer read has one home, `isCoarsePointer` ([`pointer.ts`](../frontend/src/lib/pointer.ts)), on the same media feature the `pointer-coarse:` variant carries in CSS.
 
@@ -1340,10 +1353,10 @@ flowchart TB
     l1 ~~~ l2 ~~~ l3 ~~~ l4
   end
 
-  toggle["`**SegmentedControl**
+  toggle["`**Activity**, in the filter panel
   scope: Following (default) or All`"]:::page
   filters["`**filter rail**
-  Kind, Conflict, Source kind, Level, Tags`"]:::shared
+  Show, Conflict, Tags, Source kind, Level, Approvals`"]:::shared
   walk["`**useCursorList**
   one walk per scope and filter set; a change starts a new walk`"]:::shared
   api["`**GET /feed**
@@ -1373,11 +1386,11 @@ flowchart TB
 
 `/feed` is a signed-in page, linked from the rail between Requests and Search. [`GET /feed`](api.md#get-feed) decides which rows it lists and in what order. `/timeline` redirects permanently to `/feed`.
 
-**A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) under the title picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
+**The [filter panel](#filter-panel) picks the scope.** Its first field, **Activity**, is a [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) of **Following** (default) and **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen. The scope is not a filter: it has no pill and no place in **Filters (N)**.
 
-**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind** as its first row, then Conflict, Source kind, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
+**The [filter rail](#right-rail) narrows the walk.** The panel offers Show, Conflict, Tags, Source kind, Level and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
 
-**Kind** is one [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) of three chips: **Geolocations**, **Requests** and **Detections**. With no chip selected the feed lists all three kinds, and the page sends no `kind`. Selected chips narrow the feed to those kinds, and the page sends each one as a `kind` value (`geolocation`, `request`, `detected`). Each selected chip has a removable pill, as every other filter does. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
+**Show** is the same field as on the other surfaces, the chips **Requested**, **Detected** and **Geolocated**. With no chip selected the feed lists all three, and the page sends no `kind`. Each selected chip goes out as its `kind` value (`request`, `detected`, `geolocation`), and has a removable pill, as every other filter does. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
 
 **A card names its kind.** Each row is the `feed` [`<EntityCard>`](../frontend/src/components/ui/EntityCard.tsx), which only the feed renders. Read top to bottom, it holds:
 
@@ -1420,12 +1433,12 @@ A geolocation or a detection opens `/events/{id}` and a request opens `/requests
 
 #### Identity
 
-- The handle is the H1, with the avatar beside it (`ProfileTitle`), the grammar the event page uses. PageShell's `subtitle` slot carries `ProfileIdentity`: the bio, then the metadata line. One `space-y-1` spaces the block, so an empty bio leaves no gap. Edit mode drops the block.
+- The handle is the H1, with the avatar beside it (`ProfileTitle`), the grammar the event page uses. Edit mode drops the title's avatar, so the picture picker shows it once. PageShell's `subtitle` slot carries `ProfileIdentity`: the bio, then the metadata line. One `space-y-1` spaces the block, so an empty bio leaves no gap. Edit mode drops the block.
 - The profile never prints the account's email, even to its owner: the email is private account information, so it reads on the settings page, in the Account card beside the username.
 - The bio has no card, so the evidence starts one glance below the handle. Empty renders nothing. Every http(s) URL in the bio links through `<OutboundLink>` (see [Outbound links](#outbound-links)) and breaks through `[overflow-wrap:anywhere]`; trailing sentence punctuation stays text. A long bio wraps rather than clamps, since `BIO_MAX_LEN` caps it at 500 characters. Authored line breaks collapse here and keep their shape in the edit field.
 - The metadata line reads `N followers · N following · Member since <date>` as secondary text. It carries no work figures; those live in Insights. Each segment holds together, so the row wraps between segments at 375 px. Zero values print.
 - The analyst's organizations close the metadata line as one more segment: their logos in an [`<AvatarStack>`](../frontend/src/components/ui/AvatarStack.tsx), each a rounded square (`variant="organization"`), every membership shown. Each logo is a link to `/organizations/{slug}` named "Member of <organization>" or "Org manager of <organization>", which its `<Tooltip>` shows on hover or keyboard focus; a click follows the link. On a touch screen the first tap shows the label and the second follows the link. The row wraps with the line on a phone. An analyst in no organization, or a failed read, shows no segment, so the coverage map is the first block under the header.
-- The `actions` cluster carries the linked accounts, then Edit profile, **New collection** and **Sign out** on your own profile, or Follow on someone else's. A failed follow prints its error in an `<ErrorNotice>` under the button.
+- The `actions` cluster carries the linked accounts, then Edit profile, **New collection** and **Sign out** on your own profile, or Follow on someone else's. **Follow** and **Following** switch on the click, and the followers count in the metadata line moves with them. A failed request puts both back and prints its error in an `<ErrorNotice>` under the button.
 
 #### Linked accounts
 
@@ -1439,7 +1452,7 @@ A geolocation or a detection opens `/events/{id}` and a request opens `/requests
 #### Work blocks
 
 - **Detections queue** (`DetectionsEntry`): the count of `detected` geolocations awaiting your submission, linking to `/profile/{username}/detections`. It sits above the work because it is pending work.
-- **Coverage** (`ProfileMap`): the shared `<Map>` with an explicit world `bbox` (`WORLD_BOUNDS` through `toBboxParam`; the endpoint requires one), the camera fitted to the returned points. It maps `geolocated` and `detected` in the map's two point shades. The count beside the heading splits the same way ("N geolocated, N detected on the map"), so its `geolocated` leg equals the Insights `Geolocated` tile.
+- **Coverage** (`ProfileMap`): the shared `<Map>` with an explicit world `bbox` (`WORLD_BOUNDS` through `toBboxParam`; the endpoint requires one), the camera fitted to the returned points. It maps `geolocated` and `detected` in the map's two point shades. The heading carries no count: the Insights `Geolocated` and `Detected` tiles hold the figures once.
 - **Insights** (`ProfileInsights`): see [Insights](#insights).
 - **Collections** (`CollectionsSection`): a grid of mosaic cards, the turn from readings of the whole body of work to the work itself (see [Collections](#collections)).
   - Each card carries the mosaic, the title, the description's plain-text projection clamped to two lines, and the collection page's meta line, and the whole card is one click. No type mark sits beside the title, so the title keeps its two lines of width.
@@ -1459,13 +1472,13 @@ A geolocation or a detection opens `/events/{id}` and a request opens `/requests
 - A leader with no value prints `None` and carries no link. The two counts stay linked at zero.
 - A leader tile names who leads, and the search behind it says by how much. There is no `Media` tile; `media_count` is served and the share card prints it.
 - **One population.** Every field counts visible `geolocated` and `detected` events. A `requested` or `closed` row counts in no figure: an open ask is not documented work, and a closed row is work the analyst discarded.
-- The line under the card heading names that population for the tiles only (*The tiles below read one set of N events: this analyst's geolocations and machine detections. Two count it, two name what leads it*). Each chart states its own population in its own note, since neither draws the whole set.
+- No block carries a helper line under its heading. A heading's `?` holds the definition, and the screen never restates a count it already shows.
 - **Source origin** ([`<SourceHostBar>`](../frontend/src/components/ui/SourceHostBar.tsx)) is one stacked bar over the host of each event's first source URL, ranked, with a legend naming every slice. It says what kind of work the analyst does rather than how much.
   - Hosts are bare (`t.me`, not *Telegram*), the vocabulary `<SourceLabel>` uses, so the long tail is named rather than printed as "Unknown". The server folds the host to lower case, strips a leading `www.`, and counts a platform's aliases under one host, so `twitter.com` links count as `x.com` (see [`api.md`](api.md#get-usersusernamestats)).
   - Five hosts name themselves, the ceiling the endpoint applies to the leader rankings. The rest is one *Other* slice, and events with no readable source are a *No source* slice, so the bar accounts for every event the tiles count.
-  - The heading carries the source URL `<FieldHelp>`, which separates where a source was posted (the platform) from its kind (the lens or the document). One line under the heading states what the bar counts.
+  - The heading carries the source URL `<FieldHelp>`, which separates where a source was posted (the platform) from its kind (the lens or the document).
 - **The month grid** ([`<ActivityHeatmap>`](../frontend/src/components/ui/ActivityHeatmap.tsx)) counts `occurred_date`: when the documented events happened.
-  - The heading is *Event dates*, the field's name on the submit and edit forms. The line under it reads *The month each event took place, not when it was posted, imported or published*, since a calendar on a profile otherwise reads as posting activity. The same line states the grid's population (*It covers the N events dated in the years shown*), summed off the buckets rather than `total_events`. The `event_date` `<FieldHelp>` carries the field's definition.
+  - The heading is *Event dates*, the field's name on the submit and edit forms. Its `occurred_date` `<FieldHelp>` says the grid counts when the event happened, not when it was posted or imported.
   - One row per calendar year, twelve month cells, intensity off the busiest month, and a *Less / More* legend. Months rather than days, since tens of events a year leave a daily grid blank.
   - The server derives the span from the analyst's earliest and latest event date, not from today, so an imported multi-year archive reads whole. The grid shows the 10 most recent years, the rows the card holds at 375 px, and the year labels name them. Every month in the span renders, so a quiet stretch reads as empty. Both ends are clamped to today, so one mistyped year cannot move the window centuries out.
   - Hovering or tapping a month names it and its count in one readout line under the grid; there is no per-cell tooltip. The cells are paint, not controls: no focus stop, no focus ring. A lit cell carries the accent step its count earns, and an empty one carries `CHART_NEUTRAL`.
@@ -1473,7 +1486,7 @@ A geolocation or a detection opens `/events/{id}` and a request opens `/requests
 
 #### Edit mode
 
-While the owner edits, the page renders only the header fields, `BioField`, and `LinkedAccountsFields`, contiguous and in reading order under the header. **Cancel** and **Save** leave the `actions` cluster for the page's sticky actions (`ProfileEditActions`), pinned at the top right while the fields scroll, with the save error under them. `BioField` and `LinkedAccountsFields` are each a `Card` headed by a [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx). Each linked account is an [`<Input icon>`](../frontend/src/components/ui/Input.tsx) carrying the platform's mark, under a `FORM_LABEL` that names the platform. Both fields are edit-mode only, since reading the bio and the links happens in the header. The organization page's edit mode is the same. The metadata line, the linked-accounts marks, and the read-only sections drop out.
+While the owner edits, the page renders only the header fields, `BioField`, and `LinkedAccountsFields`, contiguous and in reading order under the header. **Cancel** and **Save** leave the `actions` cluster for the page's sticky actions (`ProfileEditActions`), pinned at the top right while the fields scroll, with the save error under them. `BioField` and `LinkedAccountsFields` are each a `Card` headed by a [`<SectionHeading>`](../frontend/src/components/ui/SectionHeading.tsx). Each linked account is an [`<Input icon>`](../frontend/src/components/ui/Input.tsx) carrying the platform's mark, under a `FORM_LABEL` that names the platform. A value the server refuses reads in a `<FieldError>` under its own field (`useProfileEdit` passes the four platforms as `useMutation`'s `fields`) and turns the field red. Both fields are edit-mode only, since reading the bio and the links happens in the header. The organization page's edit mode is the same. The metadata line, the linked-accounts marks, and the read-only sections drop out.
 
 ### Organization page
 
@@ -1986,7 +1999,7 @@ Every destructive action in the app:
 
 | Action (`action`) | Labels | Icon (lucide) |
 |---|---|---|
-| Accept (`accept`) | Accept (an invitation), Apply (filters), Close (a contour's outline) | `Check` |
+| Accept (`accept`) | Accept (an invitation), Done (filters), Close (a contour's outline) | `Check` |
 | Show all activity (`activity`) | Show all activity | `Activity` |
 | Add (`add`) | Add a source, Add a link, Create organization | `Plus` |
 | Approve (`approve`) | Approve, Approve as *organization* | `Stamp` |

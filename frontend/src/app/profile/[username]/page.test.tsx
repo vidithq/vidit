@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -27,12 +27,20 @@ vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => useApiResource(path),
 }));
 
+const apiFetch = vi.fn();
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetch: (path: string, init?: RequestInit) => apiFetch(path, init),
+}));
+
 const getUserStats = vi.fn();
 vi.mock("@/lib/users", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/users")>()),
   getUserStats: vi.fn((username: string) => getUserStats(username)),
 }));
 
+import { ApiError } from "@/lib/api";
+import { readResponse } from "@/lib/errors";
 import { buttonClasses } from "@/components/ui/Button";
 import type { CollectionPage } from "@/lib/collections";
 import type { OrganizationMembership } from "@/lib/organizations";
@@ -152,12 +160,22 @@ function blockOrder(container: HTMLElement): string[] {
   return seen;
 }
 
+function signInAs(username: string) {
+  useAuth.mockReturnValue({
+    user: { id: `id-${username}`, username, email: `${username}@example.test` },
+    loading: false,
+    logout: vi.fn(),
+    refresh: vi.fn(),
+  });
+}
+
 function mountProfile() {
   return render(<ProfilePage />);
 }
 
 describe("public profile order", () => {
   beforeEach(() => {
+    apiFetch.mockReset();
     useDetectionsCount.mockReturnValue({ count: 0, refresh: vi.fn() });
     getUserStats.mockResolvedValue(STATS);
     useApiResource.mockImplementation((path: string | null) => {
@@ -265,30 +283,54 @@ describe("public profile order", () => {
     expect(screen.queryByText("ana@example.test")).toBeNull();
   });
 
-  it("names each chart by what it counts, in words that need no tooltip", async () => {
+  it("prints each count once and no helper line under a block heading", async () => {
     mountProfile();
     await screen.findByText("Insights");
 
-    // Headings must not need a `?`: the calendar counts when events happened (the field's own name, as in the forms), the bar counts source-link hosts, undated or hostless events accounted for.
-    expect(await screen.findByText("Event dates")).toBeInTheDocument();
-    // The grid's population summed off the buckets, not `total_events` (undated events have no cell).
-    expect(
-      screen.getByText(
-        "The month each event took place, not when it was posted, imported or published. It covers the 21 events dated in the years shown."
-      )
-    ).toBeInTheDocument();
-    // The population line is scoped to the tiles: the grid counts dated events only and the bar splits by a field an event may lack.
-    expect(
-      screen.getByText(
-        "The tiles below read one set of 3 events: this analyst's geolocations and machine detections. Two count it, two name what leads it."
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByText("Event dates")).toBeInTheDocument();
     expect(screen.getByText("Source origin")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "The host of each event's source link. Events naming no source have their own share."
-      )
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/The tiles below read/)).toBeNull();
+    expect(screen.queryByText(/The host of each event/)).toBeNull();
+    expect(screen.queryByText(/The month each event took place/)).toBeNull();
+    // The Insights tiles hold the geolocated and detected counts; the map header does not repeat them.
+    expect(screen.queryByText(/on the map/)).toBeNull();
+  });
+
+  it("moves the follower count with Follow and Unfollow before the answer lands", async () => {
+    signInAs("bob");
+    let answer: () => void = () => {};
+    apiFetch.mockImplementation(
+      () => new Promise<void>((resolve) => (answer = resolve)),
+    );
+    mountProfile();
+    await screen.findByText("Insights");
+    expect(screen.getByText("4 followers")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Follow" }));
+    expect(screen.getByText("5 followers")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith("/users/ana/follow", { method: "POST" });
+    await act(async () => answer());
+    expect(screen.getByText("5 followers")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Following" }));
+    expect(screen.getByText("4 followers")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenLastCalledWith("/users/ana/follow", { method: "DELETE" });
+    await act(async () => answer());
+    expect(screen.getByText("4 followers")).toBeInTheDocument();
+  });
+
+  it("puts the follower count back when Follow fails", async () => {
+    signInAs("bob");
+    apiFetch.mockRejectedValue(new ApiError("Server error", 500));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mountProfile();
+    await screen.findByText("Insights");
+
+    fireEvent.click(screen.getByRole("button", { name: "Follow" }));
+
+    expect(await screen.findByText("Couldn't follow, try again")).toBeInTheDocument();
+    expect(screen.getByText("4 followers")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
   });
 
   it("keeps the owner's queue above the work", async () => {
@@ -569,5 +611,64 @@ describe("public profile edit mode", () => {
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
     // The saved bio is not printed under the handle: the identity block drops out.
     expect(container.querySelector("h1 + div")).toBeNull();
+  });
+
+  it("shows the avatar once in edit mode, in the picker", async () => {
+    useApiResource.mockImplementation((path: string | null) =>
+      path === "/users/ana"
+        ? {
+            data: { ...PROFILE, avatar_url: "https://cdn.example/a.png" },
+            error: null,
+            loading: false,
+            refetch: vi.fn(),
+          }
+        : { data: null, error: null, loading: false, refetch: vi.fn() },
+    );
+    const { container } = mountProfile();
+    await screen.findByText("Insights");
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+
+    screen.getByRole("button", { name: "Edit profile" }).click();
+    await screen.findByText("Profile picture");
+
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+    expect(container.querySelector("h1 img")).toBeNull();
+  });
+
+  it("explains a refused website under the Website field", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiError(
+        "Unprocessable",
+        422,
+        null,
+        false,
+        readResponse(
+          422,
+          {
+            detail: [
+              {
+                loc: ["body", "external_links", "website"],
+                msg: "Value error, Not an http or https link",
+                type: "value_error",
+              },
+            ],
+          },
+          null,
+        ).error,
+      ),
+    );
+    mountProfile();
+    await screen.findByText("Insights");
+    screen.getByRole("button", { name: "Edit profile" }).click();
+    const website = await screen.findByLabelText("Website");
+
+    fireEvent.change(website, { target: { value: "not a url" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const message = await screen.findByText("Not an http or https link.");
+    expect(message.closest("p")).toHaveAttribute("id", "link-website-error");
+    expect(website).toHaveAttribute("aria-describedby", "link-website-error");
+    // Shown in place, not repeated as a banner under Save.
+    expect(screen.queryByText(/External links/)).toBeNull();
   });
 });

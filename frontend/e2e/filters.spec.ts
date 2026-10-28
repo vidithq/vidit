@@ -30,23 +30,21 @@ const pickConflict: Pick = async (page, panel) => {
 /**
  * The filter rail on the three lists that carry it. From `lg` up the panel is a
  * sticky right rail beside the list; below `lg` it leaves the page and a
- * "Filters (N)" button at the top of the list opens it full screen, with Apply
- * and Clear in reach.
+ * "Filters (N)" button at the top of the list opens it full screen, where each
+ * pick applies at once, with Clear and Done in reach.
  */
 const PAGES = [
   {
     name: "feed",
     path: "/feed",
     signedIn: true,
-    section: "Kind",
-    pick: pickChip("Requests"),
+    pick: pickChip("Requested"),
     listed: REQUESTED_EVENT.title,
   },
   {
     name: "requests",
     path: "/requests",
     signedIn: false,
-    section: "Conflict, tags",
     pick: pickConflict,
     listed: REQUESTED_EVENT.title,
   },
@@ -54,7 +52,6 @@ const PAGES = [
     name: "search",
     path: "/search?type=event",
     signedIn: false,
-    section: "Status, conflict, tags",
     pick: pickConflict,
     listed: null,
   },
@@ -78,14 +75,14 @@ for (const target of PAGES) {
       await button.click();
       const dialog = page.getByRole("dialog", { name: "Filters" });
       await expect(dialog).toBeVisible();
-      await dialog.getByRole("button", { name: `Toggle ${target.section}` }).click();
       await target.pick(page, dialog);
       await expectNoHorizontalOverflow(page);
       await expectControlInsideViewport(page, dialog.getByRole("button", { name: "Clear" }));
-      const apply = dialog.getByRole("button", { name: "Apply" });
-      await expectControlInsideViewport(page, apply);
+      const done = dialog.getByRole("button", { name: "Done" });
+      await expectControlInsideViewport(page, done);
+      await expect(page.getByRole("button", { name: "Filters (1)" })).toBeAttached();
 
-      await apply.click();
+      await done.click();
       await expect(dialog).toBeHidden();
       await expect(page.getByRole("button", { name: "Filters (1)" })).toBeVisible();
       await expectNoHorizontalOverflow(page);
@@ -98,7 +95,7 @@ for (const target of PAGES) {
       await open(page, target.path, target.signedIn);
 
       const rail = page.getByRole("complementary", { name: "Filters" });
-      await expect(rail.getByRole("button", { name: `Toggle ${target.section}` })).toBeVisible();
+      await expect(rail.getByRole("combobox", { name: "Tags" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeHidden();
       await expect(rail).toHaveCSS("position", "sticky");
 
@@ -120,7 +117,6 @@ test("picks and removes a tag through the search field, in the URL", async ({ pa
   await open(page, "/search?type=event", false);
 
   const rail = page.getByRole("complementary", { name: "Filters" });
-  await rail.getByRole("button", { name: "Toggle Status, conflict, tags" }).click();
   await rail.getByRole("combobox", { name: "Tags" }).fill("dro");
   const list = page.getByRole("listbox", { name: "Tags" });
   await expect(list.getByRole("option")).toHaveText([TAGS[0].name]);
