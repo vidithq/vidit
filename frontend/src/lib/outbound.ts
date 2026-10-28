@@ -1,3 +1,5 @@
+import { MAP_SOURCES } from "@/components/map/mapSources";
+
 import { parseHttp } from "./format";
 import { SNAPSHOT_HOSTS } from "./snapshots";
 
@@ -21,6 +23,12 @@ const KNOWN_HOSTS: readonly string[] = [
   "vercel.com",
   "railway.com",
   "aws.amazon.com",
+  // Each map source page by host and path. Its link sits in a `?` inside the basemap panel, which
+  // the leave dialog would close.
+  ...Object.values(MAP_SOURCES).map(({ href }) => {
+    const { hostname, pathname } = new URL(href);
+    return `${hostname}${pathname}`;
+  }),
 ];
 
 /** The lowercase hostname of an http(s) URL, or null for anything else. */
