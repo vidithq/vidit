@@ -14,6 +14,7 @@ import { formatDate } from "@/lib/format";
 import { sitesAsOf, todayUtc } from "@/lib/sites";
 import {
   EMPTY_DATE_WINDOWS,
+  FILTER_NAMES,
   EMPTY_EVENT_FILTERS,
   EventFilterSections,
   addedWindowActive,
@@ -105,19 +106,26 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
   // Histogram the same set the status chips leave on the map (same helper as the canvas), so no
   // bar counts points a scrub can't reveal.
   const statusFilteredPoints = useMemo(
-    () => filterPointsByStatus(points, filters.statuses),
-    [points, filters.statuses]
+    () => filterPointsByStatus(points, filters.show),
+    [points, filters.show]
   );
 
-  // buildActiveFilterPills emits the status pills first; the Sites pill follows them, as its chip
+  // buildActiveFilterPills emits the Show pills first; the Sites pill follows them, as its chip
   // follows the status chips.
   const eventPills = buildActiveFilterPills(filters, onPatch);
   const activeFilters: ActiveFilter[] = [
-    ...eventPills.slice(0, filters.statuses.length),
+    ...eventPills.slice(0, filters.show.length),
     ...(sitesShown
-      ? [{ key: "sites", label: SITES_LABEL, onRemove: () => setSitesShown(false) }]
+      ? [
+          {
+            key: "sites",
+            filter: FILTER_NAMES.show,
+            label: SITES_LABEL,
+            onRemove: () => setSitesShown(false),
+          },
+        ]
       : []),
-    ...eventPills.slice(filters.statuses.length),
+    ...eventPills.slice(filters.show.length),
     ...buildDateWindowPills(dateWindows, clearEventWindow, clearAddedWindow),
   ];
   const activeFilterCount = activeFilters.length;
@@ -125,10 +133,12 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
 
   return (
     // Below `sm` the overlay starts right of the chip's open control (`max-sm:left-16` = 64px, clearing
-    // its ~55px) and runs to a 16px bottom margin as a column, so the section stack takes the leftover
-    // height and scrolls (a fixed max-height would ignore the pill strip). The stretched box is
-    // transparent to pointers so taps outside the blocks reach the map.
-    <div className="absolute top-4 left-[72px] safe-mt safe-mr safe-mb safe-ml z-1000 w-72 max-sm:bottom-4 max-sm:left-16 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
+    // its ~55px) and runs as a column down to 72px above the bottom edge, clear of the map's
+    // bottom-left row (zoom, locate, basemap, and an attribution that wraps to three lines at
+    // 320px), so the section stack takes the leftover height and scrolls (a fixed max-height would
+    // ignore the pill strip). The stretched box is transparent to pointers so taps outside the
+    // blocks reach the map.
+    <div className="absolute top-4 left-[72px] safe-mt safe-mr safe-mb safe-ml z-1000 w-72 max-sm:bottom-18 max-sm:left-16 max-sm:right-4 max-sm:w-auto max-sm:flex max-sm:flex-col max-sm:pointer-events-none">
       <button
         onClick={() => setFiltersOpen((o) => !o)}
         className="w-full flex items-center justify-between bg-neutral-900 rounded-lg border border-neutral-700 px-3 py-2 text-sm hover:bg-neutral-800/80 transition-colors max-sm:shrink-0 max-sm:pointer-events-auto"
@@ -183,7 +193,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             }}
             dateSections={[
               {
-                title: "Event date",
+                title: FILTER_NAMES.eventDate,
                 concept: "occurred_date",
                 summary: rangeSummary(dateWindows.eventFrom, dateWindows.eventTo),
                 active: eventWindowActive(dateWindows),
@@ -191,7 +201,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                   <TimelineScrubber
                     points={statusFilteredPoints}
                     dateIndex={3}
-                    label="Event date"
+                    label={FILTER_NAMES.eventDate}
                     start={dateWindows.eventFrom}
                     setStart={setEventFrom}
                     end={dateWindows.eventTo}
@@ -202,7 +212,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                 ),
               },
               {
-                title: "Added",
+                title: FILTER_NAMES.added,
                 concept: "added",
                 summary: rangeSummary(dateWindows.addedFrom, dateWindows.addedTo),
                 active: addedWindowActive(dateWindows),
@@ -210,7 +220,7 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
                   <TimelineScrubber
                     points={statusFilteredPoints}
                     dateIndex={4}
-                    label="Added"
+                    label={FILTER_NAMES.added}
                     start={dateWindows.addedFrom}
                     setStart={setAddedFrom}
                     end={dateWindows.addedTo}

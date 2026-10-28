@@ -81,15 +81,19 @@ export function chipSummary(values: string[]): string {
   return `${values[0]} +${values.length - 1}`;
 }
 
-const fmtMonth = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
+const fmtDay = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
+    day: "numeric",
     month: "short",
     year: "numeric",
     timeZone: "UTC",
   });
 
-/** Range summary from two optional ISO dates ("" = open). */
+/** Range summary from two optional ISO dates ("" = open): "Any", "From 1 Jan 2024",
+ *  "Until 1 Jan 2025" or "1 Jan 2024 to 1 Jan 2025". */
 export function rangeSummary(from: string, to: string): string {
-  if (!from && !to) return "Any";
-  return `${from ? fmtMonth(from) : "…"} – ${to ? fmtMonth(to) : "…"}`;
+  if (from && to) return `${fmtDay(from)} to ${fmtDay(to)}`;
+  if (from) return `From ${fmtDay(from)}`;
+  if (to) return `Until ${fmtDay(to)}`;
+  return "Any";
 }

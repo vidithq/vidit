@@ -57,7 +57,7 @@ export default function ProfilePage() {
     username
       ? eventListPath({
           view: "requested",
-          statuses: ["requested"],
+          show: ["requested"],
           author: username,
           // Same five rows as the submissions block.
           limit: 5,

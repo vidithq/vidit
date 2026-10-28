@@ -8,6 +8,7 @@ import {
   EMPTY_EVENT_FILTERS,
   EventFilterSections,
   buildActiveFilterPills,
+  buildDateWindowPills,
   countActiveFilters,
   type EventFilterValues,
 } from "./EventFilterSections";
@@ -43,45 +44,48 @@ const DATE_SECTIONS = (eventActive: boolean) => [
 ];
 
 describe("<EventFilterSections>", () => {
-  it("stacks its rows under no group heading and merges the sections that belong together", () => {
+  it("opens on the lead fields, Show, Conflict and Tags in view under no group heading", () => {
     render(
       <EventFilterSections
         tags={TAGS}
         conflicts={CONFLICTS}
         values={EMPTY_EVENT_FILTERS}
         onPatch={vi.fn()}
-        lead={[{ title: "Kind", summary: "Any", active: false, children: <p>kind</p> }]}
+        lead={[{ title: "Activity", children: <p>scope</p> }]}
         dateSections={DATE_SECTIONS(false)}
       />,
     );
 
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { expanded: false }).map((b) => b.textContent)).toEqual([
-      "Kind",
-      "Status, conflict, tags",
+    expect(screen.getByText("scope")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Geolocated" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Conflict" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Tags" })).toBeInTheDocument();
+    expect(["Activity", "Show", "Conflict", "Tags"].map((t) => screen.getAllByText(t).length)).toEqual([
+      1, 1, 1, 1,
+    ]);
+    const rows = screen.getAllByRole("button", { expanded: false }).filter((b) => b.textContent);
+    expect(rows.map((b) => b.textContent)).toEqual([
       "Dates",
       "Source",
       "People",
     ]);
-    expect(screen.queryByRole("button", { name: "Drone" })).not.toBeInTheDocument();
   });
 
-  it("offers a layer as one more chip after the status chips, under a Show label", () => {
+  it("names the status filter Show and ends it with a layer chip", () => {
     const onPatch = vi.fn();
     const onToggle = vi.fn();
     const panel = (on: boolean) => (
       <EventFilterSections
         tags={TAGS}
         conflicts={CONFLICTS}
-        values={{ ...EMPTY_EVENT_FILTERS, statuses: on ? ["detected"] : [] }}
+        values={{ ...EMPTY_EVENT_FILTERS, show: on ? ["detected"] : [] }}
         onPatch={onPatch}
         layer={{ label: "Sites", on, onToggle, note: <p>zones note</p> }}
       />
     );
     const { rerender } = render(panel(false));
 
-    expect(header("Show, conflict, tags")).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(header("Show, conflict, tags"));
     const chips = ["Requested", "Detected", "Geolocated", "Sites"];
     const row = screen.getByRole("button", { name: "Requested" }).parentElement!;
     expect([...row.children].map((c) => c.textContent)).toEqual(chips);
@@ -92,16 +96,20 @@ describe("<EventFilterSections>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sites" }));
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onPatch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Geolocated" }));
+    expect(onPatch).toHaveBeenCalledWith({ show: ["geolocated"] });
 
     rerender(panel(true));
     expect(screen.getByText("zones note")).toBeInTheDocument();
-    fireEvent.click(header("Show, conflict, tags"));
-    expect(screen.getByRole("button", { name: "Toggle Show, conflict, tags" })).toHaveTextContent(
-      "Detected +1",
-    );
   });
 
-  it("names a merged row after the sections the surface offers, and keeps a lone one as its own row", () => {
+  it("names the Show field the same without a layer", () => {
+    renderPanel();
+    expect(screen.getByText("Show")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sites" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a lone section of a row as its own row", () => {
     render(
       <EventFilterSections
         tags={TAGS}
@@ -112,7 +120,7 @@ describe("<EventFilterSections>", () => {
       />,
     );
 
-    expect(header("Conflict, tags")).toBeInTheDocument();
+    expect(screen.queryByText("Show")).not.toBeInTheDocument();
     expect(header("Location guess")).toBeInTheDocument();
     expect(header("Author")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "People" })).not.toBeInTheDocument();
@@ -125,7 +133,7 @@ describe("<EventFilterSections>", () => {
     expect(header("Source")).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Drone" })).toBeInTheDocument();
     expect(screen.getByText("Level")).toBeInTheDocument();
-    expect(header("Status, conflict, tags")).toHaveAttribute("aria-expanded", "false");
+    expect(header("People")).toHaveAttribute("aria-expanded", "false");
   });
 
   it("opens the Dates row on an active window and shows both windows", () => {
@@ -145,12 +153,10 @@ describe("<EventFilterSections>", () => {
   });
 
   it("sums up a collapsed merged row with its active values", () => {
-    renderPanel({ ...EMPTY_EVENT_FILTERS, statuses: ["geolocated"], tags: ["Drone"] });
+    renderPanel({ ...EMPTY_EVENT_FILTERS, sourceKinds: ["drone"], levels: ["direct"] });
 
-    fireEvent.click(header("Status, conflict, tags"));
-    expect(screen.getByRole("button", { name: "Toggle Status, conflict, tags" })).toHaveTextContent(
-      "Geolocated, Drone",
-    );
+    fireEvent.click(header("Source"));
+    expect(screen.getByRole("button", { name: "Toggle Source" })).toHaveTextContent("Drone, Direct");
     expect(screen.getByRole("button", { name: "Toggle People" })).toHaveTextContent("Any");
   });
 
@@ -160,8 +166,42 @@ describe("<EventFilterSections>", () => {
     fireEvent.click(header("Source"));
     expect(header("Source")).toHaveAttribute("aria-expanded", "false");
 
-    fireEvent.click(header("Status, conflict, tags"));
-    expect(header("Status, conflict, tags")).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(header("People"));
+    expect(header("People")).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
+describe("buildActiveFilterPills", () => {
+  it("names each pill after its filter and reads each value as its chip does", () => {
+    const values: EventFilterValues = {
+      ...EMPTY_EVENT_FILTERS,
+      show: ["geolocated"],
+      conflicts: ["Russian invasion of Ukraine"],
+      tags: ["Drone"],
+      mediaTypes: ["video"],
+      author: "ana",
+      approved: true,
+    };
+    expect(buildActiveFilterPills(values, vi.fn()).map((p) => [p.filter, p.label])).toEqual([
+      ["Show", "Geolocated"],
+      ["Conflict", "Russian invasion of Ukraine"],
+      ["Tags", "Drone"],
+      ["Media", "Video"],
+      ["Author", "ana"],
+      ["Approvals", "Approved only"],
+    ]);
+  });
+
+  it("names a date window after its filter, with a readable range", () => {
+    const pills = buildDateWindowPills(
+      { ...EMPTY_DATE_WINDOWS, eventTo: "2025-01-01", addedFrom: "2024-03-05" },
+      vi.fn(),
+      vi.fn(),
+    );
+    expect(pills.map((p) => [p.filter, p.label])).toEqual([
+      ["Event date", "Until 1 Jan 2025"],
+      ["Added", "From 5 Mar 2024"],
+    ]);
   });
 });
 
@@ -212,7 +252,10 @@ describe("the Approvals section", () => {
     const onPatch = vi.fn();
     expect(countActiveFilters(approvedByOrg, EMPTY_DATE_WINDOWS)).toBe(2);
     const pills = buildActiveFilterPills(approvedByOrg, onPatch);
-    expect(pills.map((p) => p.label)).toEqual(["Approved", "Approved by Open Source Watch"]);
+    expect(pills.map((p) => [p.filter, p.label])).toEqual([
+      ["Approvals", "Approved only"],
+      ["Approved by", "Open Source Watch"],
+    ]);
     pills[1].onRemove();
     expect(onPatch).toHaveBeenCalledWith({ approvedBy: null });
   });
@@ -237,7 +280,10 @@ describe("the author filter", () => {
     const values = { ...EMPTY_EVENT_FILTERS, tags: ["drone"], author: "ana" };
     expect(countActiveFilters(values, EMPTY_DATE_WINDOWS)).toBe(2);
     const pills = buildActiveFilterPills(values, onPatch);
-    expect(pills.map((p) => p.label)).toEqual(["drone", "By ana"]);
+    expect(pills.map((p) => [p.filter, p.label])).toEqual([
+      ["Tags", "drone"],
+      ["Author", "ana"],
+    ]);
     pills[1].onRemove();
     expect(onPatch).toHaveBeenCalledWith({ author: "" });
   });
@@ -281,6 +327,26 @@ describe("the Conflict and Tags search fields", () => {
     expect(onPatch).toHaveBeenCalledWith({
       conflicts: ["Russian invasion of Ukraine", "Gulf War"],
     });
+  });
+
+  it("closes the conflict list on a pick, so it leaves the Tags field in view, and reopens on a click", () => {
+    render(
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={CONFLICTS}
+        values={EMPTY_EVENT_FILTERS}
+        onPatch={vi.fn()}
+      />,
+    );
+
+    const field = screen.getByRole("combobox", { name: "Conflict" });
+    fireEvent.focus(field);
+    fireEvent.click(screen.getByRole("option", { name: /^Russian invasion of Ukraine/ }));
+    expect(screen.queryByRole("listbox", { name: "Conflict" })).not.toBeInTheDocument();
+    expect(field).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(field);
+    expect(screen.getByRole("listbox", { name: "Conflict" })).toBeInTheDocument();
   });
 
   it("searches the tags in use by name, with no Create row", () => {

@@ -164,6 +164,8 @@ describe("TagPicker conflicts", () => {
 
     const chip = screen.getByRole("button", { name: "Remove Sudanese civil war (2023-present)" });
     expect(conflictField()).toHaveValue("");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    fireEvent.click(conflictField());
     expect(optionNames()).not.toContain("Sudanese civil war (2023-present)");
 
     fireEvent.click(chip);

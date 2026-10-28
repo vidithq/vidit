@@ -58,15 +58,12 @@ export default function RequestsPage() {
   const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
   const clearFilters = () => setValues(EMPTY_EVENT_FILTERS);
   const activeCount = countActiveFilters(values, EMPTY_DATE_WINDOWS);
-  const renderPanel = (
-    panelValues: EventFilterValues,
-    setPanelValues: (next: EventFilterValues) => void
-  ) => (
+  const panel = (
     <EventFilterSections
       tags={tags}
       conflicts={conflicts}
-      values={panelValues}
-      onPatch={(patch) => setPanelValues({ ...panelValues, ...patch })}
+      values={values}
+      onPatch={onPatch}
       sections={BOARD_SECTIONS}
     />
   );
@@ -76,7 +73,7 @@ export default function RequestsPage() {
       eventListPath({
         ...values,
         view: "requested",
-        statuses: ["requested"],
+        show: ["requested"],
         hasCoords: hasCoordsFilter(values.locationGuess),
         sort,
         cursor,
@@ -92,7 +89,7 @@ export default function RequestsPage() {
       title="Requests"
       rail={
         <FilterRail pills={pills} onClearAll={clearFilters} sections={BOARD_SECTIONS}>
-          {renderPanel(values, setValues)}
+          {panel}
         </FilterRail>
       }
       railLabel="Filters"
@@ -115,15 +112,9 @@ export default function RequestsPage() {
         />
       }
     >
-      <FilterBar
-        value={values}
-        empty={EMPTY_EVENT_FILTERS}
-        count={activeCount}
-        pills={pills}
-        onClearAll={clearFilters}
-        onApply={setValues}
-        renderPanel={renderPanel}
-      />
+      <FilterBar count={activeCount} pills={pills} onClearAll={clearFilters}>
+        {panel}
+      </FilterBar>
 
       {error && requests.length === 0 && (
         <ErrorNotice error={error} />
