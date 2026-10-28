@@ -295,3 +295,18 @@ describe("Sidebar signed-out rail", () => {
     );
   });
 });
+
+describe("Sidebar community links", () => {
+  beforeEach(() => {
+    viewer.pathname = "/map";
+  });
+
+  it("shows the GitHub, X and Discord icons in the accent", () => {
+    render(<Sidebar />);
+    fireEvent.click(screen.getByLabelText("Open navigation"));
+
+    for (const name of ["Vidit on GitHub", "Vidit on X", "Vidit Discord"]) {
+      expect(screen.getByRole("link", { name })).toHaveClass("text-orange-400");
+    }
+  });
+});

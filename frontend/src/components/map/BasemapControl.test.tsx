@@ -83,6 +83,17 @@ describe("<BasemapControl>", () => {
     expect(onChange).toHaveBeenLastCalledWith({ fires: true });
   });
 
+  it("shows the loading dot above the closed control while the overlays load", () => {
+    const { rerender } = render(
+      <BasemapControl settings={SETTINGS} adjustable overlaysLoading onChange={vi.fn()} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading satellite overlays");
+    expect(screen.getByRole("button", { name: "Basemap" }).parentElement?.querySelector(".animate-pulse")).not.toBeNull();
+    rerender(<BasemapControl settings={SETTINGS} adjustable onChange={vi.fn()} />);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(document.querySelector(".animate-pulse")).toBeNull();
+  });
+
   it("explains the preset on show beside the heading", () => {
     open({ preset: "satellite" }, false);
     fireEvent.click(screen.getByRole("button", { name: FIELD_HELP.basemap_satellite.label }));

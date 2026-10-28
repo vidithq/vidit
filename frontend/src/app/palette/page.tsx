@@ -689,11 +689,11 @@ export default function PalettePage() {
             <PaletteActiveFilterPills />
           </Item>
 
-          <Item name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections stacks the rows in groups under a META_LINE label, with a border-neutral-700 rule between groups; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
+          <Item name="<FilterSection>" usage="One collapsible filter row (chipSummary / rangeSummary build its collapsed one-line summary, orange when active). Open state is parent-owned (open + onToggle) so re-renders never reset the accordion; the optional `concept` wires the shared FieldHelp `?`. EventFilterSections stacks the rows in one fixed order, with no group heading; filters that belong together share one row, each under a <FieldLabel>, and the row sums up their active values. Shared by the map overlay, search, the Requests board and the feed.">
             <PaletteFilterSection />
           </Item>
 
-          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (status, source kind, level, media, location guess, Approved only, the feed's Kind): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
+          <Item name="<ChipBucket>" usage="A multi-select chip bucket for one small fixed filter family (status, which the map labels Show and ends with its Sites layer chip, as in the demo, source kind, level, media, location guess, Approved only, the feed's Kind): every option a <Pill>, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. An open catalogue (conflicts, tags) takes the filter search fields instead.">
             <PaletteChipBucket />
           </Item>
 
@@ -2421,7 +2421,6 @@ function PaletteFilterSection() {
     prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n];
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
-      <h3 className={`${META_LINE} pt-2.5 -mb-1`}>Source and people</h3>
       <FilterSection
         title="Source"
         summary={chipSummary([...kinds, ...levels])}
@@ -2453,15 +2452,18 @@ function PaletteFilterSection() {
 }
 
 function PaletteChipBucket() {
-  const [selected, setSelected] = useState<string[]>(["Image"]);
+  const [selected, setSelected] = useState<string[]>(["Geolocated", "Sites"]);
   return (
-    <ChipBucket
-      options={["Image", "Video"].map((n) => ({ id: n, name: n }))}
-      selected={selected}
-      onToggle={(n) =>
-        setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
-      }
-    />
+    <div className="w-72 space-y-1.5">
+      <FieldLabel label="Show" concept="status" />
+      <ChipBucket
+        options={["Requested", "Detected", "Geolocated", "Sites"].map((n) => ({ id: n, name: n }))}
+        selected={selected}
+        onToggle={(n) =>
+          setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
+        }
+      />
+    </div>
   );
 }
 
