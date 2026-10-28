@@ -4,6 +4,7 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useControl } from "react-map-gl/maplibre";
 
+import { Dot } from "@/components/ui/Dot";
 import { MapControlButton } from "@/components/ui/MapControlButton";
 import { PopoverPanel } from "@/components/ui/Popover";
 
@@ -13,11 +14,15 @@ export function MapPopoverControl({
   label,
   icon,
   wide = false,
+  busy,
   children,
 }: {
   label: string;
   icon: ReactNode;
   wide?: boolean;
+  /** While set, the filter panel's loading dot pulses above the button, panel closed or open,
+   *  and a screen reader hears this text. */
+  busy?: string;
   /** The panel's content, handed the close. */
   children: (close: (restoreFocus: boolean) => void) => ReactNode;
 }) {
@@ -44,7 +49,11 @@ export function MapPopoverControl({
   };
 
   return createPortal(
-    <>
+    <div className="relative">
+      {busy && <Dot className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 animate-pulse" />}
+      <span role="status" className="sr-only">
+        {busy}
+      </span>
       <MapControlButton
         ref={triggerRef}
         id={triggerId}
@@ -61,7 +70,7 @@ export function MapPopoverControl({
           {children(close)}
         </PopoverPanel>
       )}
-    </>,
+    </div>,
     container,
   );
 }

@@ -6,10 +6,44 @@ import { ArrowRight } from "lucide-react";
 
 import type { ApiResource } from "@/hooks/useApiResource";
 import { cn } from "@/lib/cn";
+import { formatCoordinates } from "@/lib/coordinates";
+import { EVENT_FIELDS } from "@/lib/events";
+import type { Concept } from "@/lib/fieldHelp";
+import type { Source } from "@/lib/sources";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { CARD_FRAME } from "@/components/ui/Card";
+import { DetailRow } from "@/components/ui/DetailRow";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { EVENT_SECTIONS } from "@/components/event/EventLayout";
+import { SourceBlocks } from "@/components/sources/SourceBlock";
+
+/** What one record shows in the map's side panel, an event's or a site's. */
+export interface MapPanelContent {
+  /** The record's name, linked to its page. */
+  title: string;
+  href: string;
+  /** The line under the title: who documents the record. */
+  byline: ReactNode;
+  /** The Sources block, as the event page's source blocks. */
+  sources: Source[];
+  /** The Location block's Coordinates row; null reads Unknown. */
+  coords: { lat: number; lng: number } | null;
+  /** The `?` of the Location and Details eyebrows and of the Coordinates row, the event's when
+   *  absent. */
+  concepts?: { location: Concept; details: Concept; coordinates: Concept };
+  /** The Details block's rows. */
+  details: ReactNode;
+  /** A block after the Details, the event's proof. */
+  footer?: ReactNode;
+}
+
+const EVENT_CONCEPTS = {
+  location: EVENT_SECTIONS.location.concept,
+  details: EVENT_SECTIONS.details.concept,
+  coordinates: EVENT_FIELDS.coordinates.concept,
+};
 
 export interface MapSidePanelProps<T> {
   /** The read from `useApiResource`: one prop so no caller drops the error. `data` is null while
@@ -18,17 +52,60 @@ export interface MapSidePanelProps<T> {
   onClose: () => void;
   /** The error line when the read fails with no message. */
   errorFallback: string;
-  /** The record's name, linked to its page, and the line under it (a byline, a kind). */
-  heading: (data: T) => { title: string; href: string; meta: ReactNode };
-  /** The rest of the panel, under the heading. */
-  children: (data: T) => ReactNode;
+  content: (data: T) => MapPanelContent;
+}
+
+/** The panel's blocks under its heading: the sources, the event page's Location and Details
+ *  sections, only denser, then the footer. */
+export function MapPanelBody({
+  content: { title, sources, coords, concepts = EVENT_CONCEPTS, details, footer },
+}: {
+  content: MapPanelContent;
+}) {
+  return (
+    <>
+      <SourceBlocks sources={sources} alt={title} compact />
+      <div className="space-y-2">
+        <SectionEyebrow
+          as="h3"
+          margin="none"
+          title={EVENT_SECTIONS.location.title}
+          concept={concepts.location}
+        />
+        <DetailRow
+          {...EVENT_FIELDS.coordinates}
+          concept={concepts.coordinates}
+          compact
+          className="text-sm"
+        >
+          {coords ? (
+            <span className="text-neutral-200 font-mono text-xs">
+              {formatCoordinates(coords.lat, coords.lng)}
+            </span>
+          ) : (
+            <span className="text-neutral-200">Unknown</span>
+          )}
+        </DetailRow>
+      </div>
+      <div className="space-y-2">
+        <SectionEyebrow
+          as="h3"
+          margin="none"
+          title={EVENT_SECTIONS.details.title}
+          concept={concepts.details}
+        />
+        <div className="space-y-2 text-sm">{details}</div>
+      </div>
+      {footer}
+    </>
+  );
 }
 
 /**
- * The map's side panel, for an event and a site alike: the record's name linked to its page and a
- * line under it, then what the caller renders. `max-h-[calc(100dvh-4.5rem)]`, not a pinned `bottom-14`, so the
- * panel shrinks to its content yet caps and scrolls when long (4.5rem = top-4 plus 3.5rem clearance
- * for the bottom pill). `dvh` so the cap follows the iOS URL bar.
+ * The map's side panel, for an event and a site alike: the record's name linked to its page, the
+ * byline under it, then `MapPanelBody`. `max-h-[calc(100dvh-4.5rem)]`, not a pinned `bottom-14`, so
+ * the panel shrinks to its content yet caps and scrolls when long (4.5rem = top-4 plus 3.5rem
+ * clearance for the bottom pill). `dvh` so the cap follows the iOS URL bar.
  *
  * Below `sm` it is a bottom sheet: a 384px card pinned right runs off a 375px viewport. It spans
  * the width, caps at 60dvh, scrolls its own content, and covers the map's zoom control while open.
@@ -40,12 +117,11 @@ export function MapSidePanel<T>({
   resource,
   onClose,
   errorFallback,
-  heading,
-  children,
+  content,
 }: MapSidePanelProps<T>) {
   const { data, error, loading, refetch } = resource;
 
-  const head = data ? heading(data) : null;
+  const panel = data ? content(data) : null;
 
   return (
     <div
@@ -85,22 +161,22 @@ export function MapSidePanel<T>({
         <div className="flex items-center justify-center h-full min-h-32">
           <span className="text-neutral-500 text-sm">Loading...</span>
         </div>
-      ) : data && head ? (
+      ) : panel ? (
         <div className="p-4 space-y-4">
           <div className="space-y-2">
-            {/* `pr-6` on the heading alone: the absolute close button overlaps it, and the line under it
+            {/* `pr-6` on the heading alone: the absolute close button overlaps it, and the byline
                 stays flush. The title is an explicit TEXT_LINK permalink; no external glyph
                 (ArchivedCopies marks external only). */}
             <h2 className="text-lg font-medium pr-6">
-              <Link href={head.href} className={`text-neutral-100 ${TEXT_LINK}`}>
-                {head.title}
+              <Link href={panel.href} className={`text-neutral-100 ${TEXT_LINK}`}>
+                {panel.title}
                 {/* ArrowRight, the in-app navigation glyph; inline so it rides the last line of a wrapped title. */}
                 <ArrowRight size={14} className="ml-1 inline align-[-2px]" />
               </Link>
             </h2>
-            {head.meta}
+            <p className="text-xs text-neutral-400">{panel.byline}</p>
           </div>
-          {children(data)}
+          <MapPanelBody content={panel} />
         </div>
       ) : null}
     </div>
