@@ -15,7 +15,9 @@ const RAIL_PX = 280;
 
 async function titleX(page: Page, path: string): Promise<number> {
   await page.goto(path);
-  const title = page.getByRole("heading", { level: 1 });
+  // The search page's field takes its title's place, and the title stays as a hidden heading.
+  const title =
+    path === "/search" ? page.getByRole("searchbox") : page.getByRole("heading", { level: 1 });
   await expect(title).toBeVisible();
   return (await title.boundingBox())!.x;
 }

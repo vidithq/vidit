@@ -151,7 +151,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/events/{id}/site-links/{site_id}` | 🔒 | Unlink your event from a site (idempotent) |
 | GET | `/events/{id}/site-suggestions` | 🔒 | Sites your event may link to, nearest first or by name |
 | **Search** | | | |
-| GET | `/search` | 🌐 | Free-text search across geolocations / requests / collections / users / organizations |
+| GET | `/search` | 🌐 | One ranked list of events, sites, collections, analysts and organizations |
 | GET | `/search/authors` | 🌐 | Username typeahead for the author filter and the co-geolocator invite |
 | **Tags** | | | |
 | GET | `/tags` | 🌐 | List the tags on live events or their sources |
@@ -1963,7 +1963,7 @@ Decline an approval request addressed to you, or to an organization you are a me
 
 ## Search
 
-Full-text discovery across six result groups: `geolocations` (located view: `geolocated` and `detected` rows with coordinates), `requests` (`requested` rows), `collections`, `users`, `organizations`, and `sites`. The response is grouped by entity. Proof content is not searched.
+Full-text discovery across five hit types in one ranked list: `event` (`geolocated` and `detected` rows with coordinates, and open requests), `site`, `collection`, `user` (an analyst) and `organization`. Proof content is not searched.
 
 ### `GET /search` 🌐
 
@@ -1971,10 +1971,10 @@ Full-text discovery across six result groups: `geolocations` (located view: `geo
 | Param | Type | Description |
 |-------|------|-------------|
 | `q` | string | Free-text query. |
-| `type` | enum | `all` (default), `event` (both event groups), `geolocation`, `request`, `collection`, `user`, `organization`, or `site`. Anything else → 422. |
-| `limit` | int | Per-group cap. 1 ≤ `limit` ≤ 50, default 20. |
-| `cursor` | string | The `geolocations_cursor` of a previous response. Returns the next page of the geolocations group. Requires `type=geolocation`; send the same `q` and filters as the request that returned it. |
-| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `source_kind`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. They scope the two event groups; a `status` value a group's view can't contain empties that group. |
+| `type` | enum, repeatable | `event`, `site`, `collection`, `user` or `organization`. Omitted, every type. Anything else → 422. |
+| `limit` | int | Hits per page. 1 ≤ `limit` ≤ 50, default 20. |
+| `cursor` | string | The `cursor` of a previous response. Returns the next page; send the same `q`, `type` and filters as the request that returned it. |
+| *filter set* | | The event filters of [`GET /events`](#get-events): `status`, `conflict`, `source_kind`, `level`, `tag`, `media` (repeatable), `occurred_date_from` / `occurred_date_to`, `submitted_from` / `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`. See *Filters* below. |
 
 **Query syntax.** `q` reads like a web search engine query (Postgres `websearch_to_tsquery`). Text that is not valid syntax is read as words and never returns an error.
 
@@ -1989,110 +1989,104 @@ Matching is case-insensitive and folds accents, so `cafe` finds `Café` and `Hé
 
 The last word of `q` also matches as a prefix, so a word you are still typing finds results: `zapor` finds `Zaporizhzhia`, and `osint_an` finds the analyst `osint_analyst`. This applies when the last word holds 3 letters or digits or more and is neither quoted, excluded with `-`, nor `OR`. A word that matches whole ranks above a word it only begins.
 
-**Rules.**
+**What each type matches.**
 
-- An empty `q` with no active filter returns empty groups.
-- An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight.
-- Any active filter empties the users, organizations and sites groups.
-- The collections group reads two filters. `author` narrows it to that analyst's collections, and `tag` to the collections whose [`tags`](#get-collectionsid) hold one of the values. Any other active filter empties it. With an empty `q`, `author` or `tag` lists the matching collections newest first.
-- An event hit matches on one document: its title and the titles of its sources together. `-drone` excludes an event when its title or any of its source titles holds `drone`. The title highlight and the rank read the event title only.
-- An event hit also matches when a source URL contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. This applies only when `q` is one word of 4 characters or more, neither quoted nor starting with `-`, so `a` or `the` does not match every URL.
+| Type | Document | Rank and highlight read | Never listed |
+|------|----------|-------------------------|--------------|
+| `event` | The title and the titles of its sources together, so `-drone` excludes an event when its title or any of its source titles holds `drone`. Also matches when a source URL contains `q`, see below. | The title. | A closed, withheld or soft-deleted row. |
+| `site` | The name and the titles and notes of its live sources together. A removed source does not count. | The name. | A withheld site and one whose owner is soft-deleted, as on [`GET /sites`](#get-sites). |
+| `collection` | The title and `description_text` together. | The title and `description_text`; no highlight. | A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable. |
+| `user` | The username and bio together, or a word of `q` that is its exact username. | The username and bio. | A soft-deleted account. |
+| `organization` | The name, slug and bio together. | The name, slug and bio. | A deleted organization. |
+
+- An event also matches when a source URL contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. This applies only when `q` is one word of 4 characters or more, neither quoted nor starting with `-`, so `a` or `the` does not match every URL.
 - A word of `q` that is a live analyst's exact username (case-insensitive, with or without a leading `@`) also matches the events credited to that analyst, as the `author` filter does; a username that holds a space counts only as the whole `q`. The other words narrow those events by text, and only they feed the rank. `osint_analyst` lists that analyst's events, and `strike osint_analyst` lists those whose text matches `strike`.
-- A user hit matches on its username and bio together, or on a word of `q` that is its exact username. An exact username match ranks first.
-- A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable are absent.
-- An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no approval request audience and no creator. `member_count` counts live members.
-- A site hit matches on one document: its name and the titles and notes of its live sources together, the way an event hit matches. The name highlight and the rank read the name only. A site hit carries the name, `name_highlight` and the `kind`. A withheld site and one whose owner is soft-deleted are absent, as on [`GET /sites`](#get-sites).
-- Ranking is `ts_rank` descending, then `created_at` descending, then `id` descending. In browse mode every row ranks equal, so the order is newest first.
-- The geolocations group pages by cursor. `geolocations_cursor` is set when another page holds at least one row, and `null` on the last page. To read the next page, repeat the request with `type=geolocation` and `cursor` set to that value. The cursor encodes the last row's position in the ranking, so a walk never repeats or skips a row. The other groups return their first `limit` rows only.
-- Every group excludes soft-deleted rows.
-- When every group is empty, no filter is active and no `cursor` is sent, `suggestion` may hold a respelling of `q` that finds results. Each word that no visible event title and no live username holds is replaced by the closest one that does, by trigram similarity (`pg_trgm`, at least 0.35): `Khan Younis` suggests `Khan Yunis`. A word that names an analyst is spelled as their username. `OR`, excluded words, quotes and punctuation stay as typed. `suggestion` is `null` when no word has a close match, or when the respelling finds nothing either.
 
-**Highlight markers:** each event, user, organization and site hit carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
+**Ranking.** Every type ranks on its own text with the same `ts_rank`, so the types interleave by how well each hit matches. An analyst whose username a word of `q` names exactly ranks first. Ties fall to `created_at` descending, then `id` descending, so the order is total. The cursor encodes the last hit's position in that order, so a walk never repeats or skips a hit.
+
+**Filters.**
+
+- `status` narrows the events to those statuses. It leaves the other types as they are.
+- `author` keeps the events credited to that analyst, the sites they own and the collections they own. It leaves out analysts and organizations.
+- `tag` keeps the events tagged with one of the values and the collections whose [`tags`](#get-collectionsid) hold one. It leaves out sites, analysts and organizations.
+- Every other filter narrows the events and leaves out every other type.
+- An empty `q` with no active filter returns an empty list.
+- An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight. Analysts and organizations need a `q`, so browse mode leaves them out. With `author` or `tag`, browse mode lists the matching sites and collections too.
+- When nothing matches, no filter is active and no `cursor` is sent, `suggestion` may hold a respelling of `q` that finds results. Each word that no visible event title and no live username holds is replaced by the closest one that does, by trigram similarity (`pg_trgm`, at least 0.35): `Khan Younis` suggests `Khan Yunis`. A word that names an analyst is spelled as their username. `OR`, excluded words, quotes and punctuation stay as typed. `suggestion` is `null` when no word has a close match, or when the respelling finds nothing either.
+
+**Highlight markers:** every hit but a collection carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
 
 **Response 200:**
 ```json
 {
-  "geolocations": [
+  "hits": [
     {
+      "type": "event",
       "id": "uuid",
-      "title": "Strike on warehouse complex, Donetsk Oblast",
-      "title_highlight": "Strike on warehouse complex, Donetsk Oblast",
-      "lat": 48.01, "lng": 37.80,
-      "occurred_date": "2026-04-15",
-      "is_graphic": false,
+      "title": "Strike on warehouse complex, Kharkiv Oblast",
+      "title_highlight": "Strike on warehouse complex, \u0002Kharkiv\u0003 Oblast",
       "status": "geolocated",
+      "occurred_date": "2026-04-15",
+      "created_at": "2026-04-16T08:00:00Z",
+      "lat": 49.99, "lng": 36.23,
+      "is_graphic": false,
       "owner": { "id": "uuid", "username": "osint_analyst" },
       "geolocators": [{ "id": "uuid", "username": "osint_analyst" }],
       "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
       "tags": [{ "id": "uuid", "name": "airstrike" }]
-    }
-  ],
-  "requests": [
+    },
     {
+      "type": "site",
       "id": "uuid",
-      "title": "Footage from Kharkiv area, can someone place it?",
-      "title_highlight": "Footage from Kharkiv area, can someone place it?",
-      "source_urls": ["https://twitter.com/…"],
-      "status": "requested",
-      "created_at": "2026-04-12T08:00:00Z",
-      "is_graphic": false,
-      "owner": { "id": "uuid", "username": "kharkiv_osint" },
-      "media": [{ "id": "uuid", "role": "source", "storage_url": "…", "kind": "image", "sha256": "…", "original_filename": null }],
-      "tags": []
-    }
-  ],
-  "collections": [ { "…": "CollectionRead" } ],
-  "users": [
+      "name": "Kharkiv north depot",
+      "name_highlight": "\u0002Kharkiv\u0003 north depot",
+      "kind": "depot",
+      "owner": { "id": "uuid", "username": "osint_analyst" },
+      "last_source": { "id": "uuid", "captured_at": "2026-04-10T09:30:00Z", "provider": null },
+      "media": []
+    },
+    { "type": "collection", "…": "CollectionRead" },
     {
+      "type": "user",
       "id": "uuid",
       "username": "kharkiv_osint",
-      "username_highlight": "kharkiv_osint",
+      "username_highlight": "\u0002kharkiv\u0003_osint",
       "bio": "Tracking armoured movement in Eastern Ukraine.",
       "bio_highlight": null,
       "avatar_url": null
-    }
-  ],
-  "organizations": [
+    },
     {
+      "type": "organization",
       "id": "uuid",
       "slug": "kharkiv-watch",
       "name": "Kharkiv Watch",
-      "name_highlight": "Kharkiv Watch",
+      "name_highlight": "\u0002Kharkiv\u0003 Watch",
       "bio": "Open-source monitoring of the Kharkiv front.",
       "bio_highlight": null,
       "avatar_url": null,
       "member_count": 4
     }
   ],
-  "sites": [
-    {
-      "id": "uuid",
-      "name": "Kharkiv north depot",
-      "name_highlight": "Kharkiv north depot",
-      "kind": "depot"
-    }
-  ],
-  "total": {
-    "geolocations": 1, "requests": 1, "collections": 1, "users": 1, "organizations": 1, "sites": 1
-  },
-  "geolocations_cursor": null,
+  "total": 5,
+  "cursor": null,
   "suggestion": null,
-  "query": "kharkiv",
-  "type": "all"
+  "query": "kharkiv"
 }
 ```
 
-- `media` on both event groups holds at most one row, the card thumbnail of [`GET /events`](#get-events).
-- `source_urls` on a request hit lists every URL of every source of the request, in source order.
+- `type` tells the hits apart; each type carries its own fields.
+- An event hit's `lat` and `lng` are its subject coordinate, `null` on a request. `media` holds at most one row, the card thumbnail of [`GET /events`](#get-events).
+- A site hit's `last_source` is its live source with the latest capture, and `media` holds the file of the latest live source that has one, never a graphic file.
+- A collection hit is the full [`CollectionRead`](#get-collectionsid) with `type`.
 - `bio_highlight` is `null` when only the username, or an organization's name or slug, matched.
-- Groups you did not request through `type` come back as empty arrays.
-- `total` holds each group's match count before the `limit` cap, in browse mode too. On a page read with `cursor`, `total.geolocations` is still the whole match count.
-- `type` echoes the request.
+- `total` is the whole match count, before the `limit` cut. On a page read with `cursor` it is still the whole count.
+- `cursor` is set when another page holds at least one hit, and `null` on the last page.
+- `query` echoes `q`.
 
 **Errors:**
 | Code | Case |
 |------|------|
-| 422 | `type` outside the allowed set, `limit` outside [1, 50], a `source_kind` or `level` value outside its domain, a malformed `cursor`, or a `cursor` without `type=geolocation` |
+| 422 | A `type` outside the allowed set, `limit` outside [1, 50], a `source_kind` or `level` value outside its domain, or a malformed `cursor` |
 
 ---
 
@@ -2376,7 +2370,7 @@ Three refusals, in this order: the collection is not yours (403); the event does
 Put many events that credit you on one of your collections in one transaction. Name the events in one of two ways:
 
 - `event_ids`: the ids. Repeated ids collapse to one.
-- `match`: a search. The server lists your events that the [`GET /search`](#get-search) `geolocations` group returns for that search, whichever page a client has loaded. Only events that credit you and whose state a collection shows count. A `match` with an empty `q` and no filter names no event.
+- `match`: a search. The server lists your located events (`geolocated` and `detected` rows with coordinates) that [`GET /search`](#get-search) returns for that search, whichever page a client has loaded. Only events that credit you and whose state a collection shows count. A `match` with an empty `q` and no filter names no event.
 
 `exclude_event_ids` leaves events out of a `match`, such as the ones a reader took off a list of its results. It applies to a `match` only, so sending it with `event_ids` is a 422. Repeated ids collapse to one, an id the match does not name changes nothing, and the server removes the excluded events before it counts the match against the 500 cap. More than 500 excluded ids is a 422 `too_many_events`.
 
@@ -2411,7 +2405,7 @@ The write is idempotent. An event already on the collection is skipped and count
 
 ### `POST /collections/collectable-count` 🔒
 
-Count the events [`POST /collections/{id}/events`](#post-collectionsidevents) resolves for a `match`: your events, in a state a collection shows, that the search lists in its `geolocations` group. The count ignores what any collection already holds.
+Count the events [`POST /collections/{id}/events`](#post-collectionsidevents) resolves for a `match`: your events, in a state a collection shows, that the search lists among its located events. The count ignores what any collection already holds.
 
 **Body:** the `match` object of `POST /collections/{id}/events`.
 ```json
@@ -4384,7 +4378,7 @@ One Account Activity delivery.
 | [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |
-| [`GET /search`](#get-search) | per-group `limit`; the geolocations group pages by cursor in the body | `ts_rank DESC, created_at DESC, id DESC` | 20 | 50 |
+| [`GET /search`](#get-search) | cursor in the body | `ts_rank DESC, created_at DESC, id DESC` | 20 | 50 |
 | [`GET /events/{id}/collections`](#get-eventsidcollections) | none | newest first | | 100 |
 | [`GET /events/{id}/approvals`](#get-eventsidapprovals) | none | version, then oldest first; the newest are kept | | 500 |
 | [`GET /tags`](#get-tags), [`GET /conflicts`](#get-conflicts) | none, returned whole | see endpoint | | 2000 (referential ceiling) |

@@ -16,7 +16,7 @@ import {
   type SearchMatchParams,
 } from "@/lib/collections";
 import { creditedAuthors } from "@/lib/geolocatorCredit";
-import type { SearchEventHit } from "@/types";
+import type { SearchEventHit, SearchHit } from "@/types";
 
 /** Explicit rows, or every collectable event the search matches, resolved by the server. */
 type Picked = { kind: "ids"; ids: ReadonlySet<string> } | { kind: "all" };
@@ -26,7 +26,7 @@ const NONE: Picked = { kind: "ids", ids: new Set() };
 export type SearchSelection = ReturnType<typeof useSearchSelection>;
 
 /**
- * The search page's Geolocations selection, for a bulk add to one collection.
+ * The search page's selection of events, for a bulk add to one collection.
  *
  * A row is selectable when the signed-in reader is credited on it and its status is one a
  * collection holds: the add verb's own rule (`services/collections.ensure_collectable`), as on the
@@ -43,8 +43,9 @@ export function useSearchSelection(match: SearchMatchParams, hits: SearchEventHi
   const picked = state.key === key ? state.picked : NONE;
   const set = (next: Picked) => setState({ key, picked: next });
 
-  const canSelect = (hit: SearchEventHit) =>
+  const canSelect = (hit: SearchHit): hit is SearchEventHit =>
     !!user &&
+    hit.type === "event" &&
     COLLECTABLE_STATUSES.includes(hit.status) &&
     creditedAuthors(hit).some((a) => a.id === user.id);
   const isSelected = (id: string) => picked.kind === "all" || picked.ids.has(id);
@@ -169,8 +170,8 @@ export function SelectAllRow({ selection }: { selection: SearchSelection }) {
   );
 }
 
-/** One Geolocations hit with its checkbox column: a native checkbox on a row the reader can
- *  shelve, an empty column on any other, so the cards stay aligned. No column at all when no
+/** One hit with its checkbox column: a native checkbox on an event the reader can shelve, an
+ *  empty column on any other row, so the rows stay aligned. No column at all when no
  *  loaded row is selectable. The tick takes the accent through `accent-color`, at `TEXT_LINK`'s
  *  step, so it follows the reader's accent like every other `orange-*` utility. */
 export function SelectableHit({
@@ -178,7 +179,7 @@ export function SelectableHit({
   selection,
   children,
 }: {
-  hit: SearchEventHit;
+  hit: SearchHit;
   selection: SearchSelection;
   children: ReactNode;
 }) {

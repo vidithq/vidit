@@ -1761,7 +1761,7 @@ export default function PalettePage() {
             <LegalLinks />
           </Item>
 
-          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows and every list on the organization page and the admin Organizations panel): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link; when the value and the action do not fit on one line, the action and the arrow wrap to a second line. `label` is optional. `meta` (arrow only) is a muted line under the value (date, version, who, a role or state pill), inside the link, so it never holds a link. `onClick` runs before an in-app href navigates (the search page's coordinates row sets the map view).">
+          <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows, the search page's hits and every list on the organization page and the admin Organizations panel): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link; when the value and the action do not fit on one line, the action and the arrow wrap to a second line. `label` is optional. `value` is a node, so the search page's rows mark the words a query matched. `meta` (arrow only) is a muted line under the value (date, version, who, a role or state pill), inside the link, so it never holds a link. `onClick` runs before an in-app href navigates (the search page's coordinates row sets the map view).">
             <div className="w-full max-w-md space-y-2">
               <LinkRow icon={AtSign} label="X / Twitter" value="@vidithq" href="https://x.com/vidithq" />
               <LinkRow icon={BookOpen} label="Getting started" value="/guide" href="/guide" external={false} />
@@ -1786,6 +1786,19 @@ export default function PalettePage() {
                 action={
                   <RemoveButton label="Dismiss notification" />
                 }
+              />
+              <LinkRow
+                variant="arrow"
+                icon={MapPin}
+                value={
+                  <>
+                    Strike on the{" "}
+                    <mark className="bg-orange-500/30 text-inherit rounded-sm px-0.5">depot</mark>
+                  </>
+                }
+                meta="Geolocated · 9 May 2026 · maya"
+                href="/palette"
+                external={false}
               />
               <LinkRow
                 variant="arrow"

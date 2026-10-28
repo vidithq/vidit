@@ -410,7 +410,7 @@ A query that builds a read model loads every relationship the assembler reads, o
 | `SOURCE_LOAD` | [`routers/events/_common.py`](../backend/app/routers/events/_common.py) | Sources with their links, tags and files | `DETAIL_LOADS` |
 | `CREDIT_LOAD` | [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py) | Geolocator rows and their users | Every surface that prints the byline |
 | `thumbnail_loads()` | [`services/thumbnails.py`](../backend/app/services/thumbnails.py) | The candidates of the card thumbnail pick | Every card surface |
-| `_HIT_LOADS` | [`services/search.py`](../backend/app/services/search.py) | Owner, thumbnail and tags of a search hit | Both event groups of `GET /search` |
+| `_HIT_LOADS` | [`services/search.py`](../backend/app/services/search.py) | Owner, credit, thumbnail and tags of a search hit | The event hits of `GET /search` |
 
 A paged query loads a one-to-many or many-to-many set with `selectinload`: a `joinedload` multiplies rows against `LIMIT` and truncates the page. `joinedload` is safe for a many-to-one relationship, such as the owner, and on a query without `LIMIT`.
 
@@ -499,7 +499,8 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/search.ts::AUTHOR_FILTER_RE` | `event_filters.AUTHOR_FILTER_PATTERN` | author filter parses differently |
 | `components/filters/EventFilterSections.tsx` media options, `FILTER_STATUSES` | `event_filters.MEDIA_TYPES`; `STATUSES` minus `closed`, in declared order | filter offers a value the API refuses |
 | `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *Show more* expands a different set than the preview |
-| `components/collections/CollectionsSection.tsx` link `type=collection` | the filter `search.search_collections` reads, including the `author` exception | *Show more* lands on an empty group |
+| `components/collections/CollectionsSection.tsx` link `type=collection` | `search._TYPE_FILTERS`, where `author` narrows collections | *Show more* lands on an empty list |
+| `lib/search.ts::SEARCH_KIND_SECTIONS` | `search._TYPE_FILTERS` | the search panel offers a filter that leaves the picked kind out, or hides one that narrows it |
 | `lib/archive.ts` keep-allowlist, root discovery, `MAX_UPLOAD_BYTES` | `tweet_ingest/archive_zip.py` | client trims files the server needs, or uploads an export it refuses |
 | `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`) | a source image requests a derivative that does not exist (403) |
 | `lib/viewport.ts` | `event_filters.parse_bbox` field order and bounds | map bbox is refused or filters the wrong area |

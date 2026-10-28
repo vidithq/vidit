@@ -226,18 +226,7 @@ export const FEED_ITEMS: components["schemas"]["FeedItemRead"][] = [
 ];
 
 /** A search that matched nothing, what the filtered search page reads. */
-export const EMPTY_SEARCH: SearchResponse = {
-  geolocations: [],
-  requests: [],
-  collections: [],
-  users: [],
-  organizations: [],
-  sites: [],
-  total: { geolocations: 0, requests: 0, collections: 0, users: 0, organizations: 0, sites: 0 },
-  geolocations_cursor: null,
-  query: "",
-  type: "event",
-};
+export const EMPTY_SEARCH: SearchResponse = { hits: [], total: 0, cursor: null, query: "" };
 
 /** Id of the collection the collection-page spec opens. */
 export const COLLECTION_ID = "77777777-7777-4777-8777-777777777771";

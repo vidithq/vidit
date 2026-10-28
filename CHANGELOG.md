@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
-- `GET /search` finds sites by name or by the title or note of one of their live sources, in a `sites` group that `type=site` narrows to ([#807](https://github.com/vidithq/vidit/pull/807)).
+- Search finds sites by their name or by the title or note of one of their sources, and the search page's Show field picks every kind: Requested, Detected, Geolocated, Sites, Collections, Analysts and Organizations ([#807](https://github.com/vidithq/vidit/pull/807)).
 - On the event forms, each source carries Move earlier and Move later, and readers see the sources in the order the author set ([#804](https://github.com/vidithq/vidit/pull/804)).
 - An admin can restore a soft-deleted account from the onboarding table: the account and the events its soft delete hid come back ([#793](https://github.com/vidithq/vidit/pull/793)).
 - On the search page, a typed coordinate pair offers to open that point on the map, and on All a query that names an analyst or an organization exactly puts a link to their page right under the search field ([#791](https://github.com/vidithq/vidit/pull/791)).
@@ -32,6 +32,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Breaking: `GET /search` returns one ranked list, `hits`, with one `cursor` that pages it, in place of five groups with their totals; `type` repeats to pick the kinds, and `status` narrows only the events ([#807](https://github.com/vidithq/vidit/pull/807)).
+- The search page shows one list of rows, each naming its kind, with the filters in the right rail and no group headings ([#807](https://github.com/vidithq/vidit/pull/807)).
 - The Links help on the source forms holds two sentences, and the methodology guide says how to link, archive and permalink a source ([#804](https://github.com/vidithq/vidit/pull/804)).
 - The suggested tags under a tag field wrap instead of running off the card, the first 6 then one Show more ([#804](https://github.com/vidithq/vidit/pull/804)).
 - A minor destructive action, such as dismissing a notification, acts at once from a red cross; an important one, such as removing a co-geolocator or deleting an approval, asks for a second click in place instead of a dialog ([#803](https://github.com/vidithq/vidit/pull/803)).

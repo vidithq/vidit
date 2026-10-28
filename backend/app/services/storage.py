@@ -68,7 +68,6 @@ class StorageDeleteError(RuntimeError):
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
-ALLOWED_TYPES = ALLOWED_IMAGE_TYPES | ALLOWED_VIDEO_TYPES
 
 # A source file or a proof image may be a GIF, never stored as is: each frame is
 # stored as its own PNG (``evidence_processing.split_gif``). More frames than

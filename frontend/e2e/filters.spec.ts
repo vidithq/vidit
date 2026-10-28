@@ -39,21 +39,21 @@ const PAGES = [
     path: "/feed",
     signedIn: true,
     pick: pickChip("Requested"),
-    listed: REQUESTED_EVENT.title,
+    column: (page: Page) => page.getByRole("link", { name: REQUESTED_EVENT.title }),
   },
   {
     name: "requests",
     path: "/requests",
     signedIn: false,
     pick: pickConflict,
-    listed: REQUESTED_EVENT.title,
+    column: (page: Page) => page.getByRole("link", { name: REQUESTED_EVENT.title }),
   },
   {
     name: "search",
-    path: "/search?type=event",
+    path: "/search",
     signedIn: false,
     pick: pickConflict,
-    listed: null,
+    column: (page: Page) => page.getByText(/^Start typing to search/),
   },
 ];
 
@@ -99,9 +99,7 @@ for (const target of PAGES) {
       await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeHidden();
       await expect(rail).toHaveCSS("position", "sticky");
 
-      const column = target.listed
-        ? page.getByRole("link", { name: target.listed })
-        : page.getByRole("searchbox");
+      const column = target.column(page);
       await expect(column).toBeVisible();
       const [railBox, columnBox] = [(await rail.boundingBox())!, (await column.boundingBox())!];
       expect(railBox.x, "the rail sits right of the list").toBeGreaterThanOrEqual(
@@ -114,7 +112,7 @@ for (const target of PAGES) {
 
 test("picks and removes a tag through the search field, in the URL", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await open(page, "/search?type=event", false);
+  await open(page, "/search", false);
 
   const rail = page.getByRole("complementary", { name: "Filters" });
   await rail.getByRole("combobox", { name: "Tags" }).fill("dro");

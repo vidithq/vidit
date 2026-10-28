@@ -97,15 +97,16 @@ export type ArchivedLink = components["schemas"]["ArchivedLinkRead"];
 /** Compact event card (`GET /events`). */
 export type EventListItem = components["schemas"]["EventList"];
 
-export type SearchType = components["schemas"]["SearchResponse"]["type"];
-
 /** Each hit's `*_highlight` field wraps matches in STX / ETX bytes (U+0002 / U+0003); see
  * `lib/search.ts::splitHighlights`. Rendered as `<mark>` client side, so no raw HTML crosses
  * the API (XSS-safe). */
 export type SearchEventHit = components["schemas"]["SearchEventHit"];
 
-/** A requested-view hit: an event card plus `title_highlight` and its source URLs. */
-export type SearchRequestHit = components["schemas"]["SearchRequestHit"];
+/** A site hit: the name with `name_highlight`, the kind, the latest source and its image. */
+export type SearchSiteHit = components["schemas"]["SearchSiteHit"];
+
+/** A collection hit: the `CollectionRead` every surface renders. */
+export type SearchCollectionHit = components["schemas"]["SearchCollectionHit"];
 
 /** An analyst hit; `bio_highlight` is set only when the bio matched. */
 export type SearchUserHit = components["schemas"]["SearchUserHit"];
@@ -113,6 +114,11 @@ export type SearchUserHit = components["schemas"]["SearchUserHit"];
 /** An organization hit: the public header fields, `bio_highlight` under the analyst rule. */
 export type SearchOrganizationHit = components["schemas"]["SearchOrganizationHit"];
 
-/** Grouped `GET /search` result. `total` holds per-group pre-LIMIT counts; `query` / `type`
- *  echo the inputs so the UI can discard out-of-order responses. */
+/** One page of `GET /search`: the hits in rank order, the whole match count and the next
+ *  page's cursor. */
 export type SearchResponse = components["schemas"]["SearchResponse"];
+
+/** One hit, told apart by `type`. */
+export type SearchHit = SearchResponse["hits"][number];
+
+export type SearchHitType = SearchHit["type"];

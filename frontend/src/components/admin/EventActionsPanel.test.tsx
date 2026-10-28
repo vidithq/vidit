@@ -36,13 +36,19 @@ describe("<EventActionsPanel>", () => {
   });
 
   it("tells apart two events with the same title by date and author", async () => {
+    const event = { type: "event", title: "Strike on the depot", status: "geolocated" };
     api.apiFetch.mockResolvedValue({
-      geolocations: [
-        { id: ID, title: "Strike on the depot", occurred_date: "2026-03-01", owner: { username: "ana" } },
-        { id: OTHER, title: "Strike on the depot", occurred_date: null, owner: { username: "bo" } },
-      ],
-      requests: [
-        { id: REQUEST, title: "Strike on the depot", created_at: "2026-04-02T10:00:00Z", owner: { username: "cy" } },
+      hits: [
+        { ...event, id: ID, occurred_date: "2026-03-01", owner: { username: "ana" } },
+        { ...event, id: OTHER, occurred_date: null, owner: { username: "bo" } },
+        {
+          ...event,
+          id: REQUEST,
+          status: "requested",
+          occurred_date: null,
+          created_at: "2026-04-02T10:00:00Z",
+          owner: { username: "cy" },
+        },
       ],
     });
     render(<EventActionsPanel />);
@@ -54,7 +60,7 @@ describe("<EventActionsPanel>", () => {
     expect(screen.getByText("Undated · bo")).toBeInTheDocument();
     expect(screen.getByText("Requested 2 Apr 2026 · cy")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: /Undated · bo/ }));
-    expect(api.apiFetch.mock.calls[0][0]).toMatch(/^\/search\?q=depot&type=event/);
+    expect(api.apiFetch.mock.calls[0][0]).toMatch(/^\/search\?q=depot&limit=10&type=event$/);
     expect(screen.getByTitle("Remove Strike on the depot")).toHaveTextContent("Undated · bo");
     expect(screen.getByRole("button", { name: "Mark graphic" })).toBeEnabled();
   });

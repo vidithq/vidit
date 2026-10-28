@@ -237,8 +237,8 @@ def owner_username_matches(author: str) -> ColumnElement[bool]:
     Callers gate ``author`` through :data:`AUTHOR_FILTER_PATTERN`.
 
     A predicate rather than a query leg because the event groups match it on every credited
-    analyst (:func:`apply_author_filter`) and the collections group on ``Collection.owner``
-    (``services/search.search_collections``); one home keeps them matching alike.
+    analyst (:func:`apply_author_filter`), and search matches it on the owner of a collection or
+    a site (``services/search``); one home keeps them matching alike.
     """
     return func.lower(User.username) == author.lower()
 
@@ -474,7 +474,7 @@ def approval_predicates(
 def apply_filters(
     query: SAQuery,
     *,
-    view: str = "located",
+    view: str | None = "located",
     status: list[str] | None = None,
     conflict: list[str] | None = None,
     source_kind: list[str] | None = None,
@@ -497,8 +497,8 @@ def apply_filters(
     The visibility filters live here, so every public read excludes soft-deleted and withheld
     rows; the admin path bypasses this helper.
 
-    ``view`` scopes to one of the two views (see ``VIEWS``); ``status`` narrows within it
-    (any-match). Status-scoping rather than a coordinate predicate, since a ``requested`` event
+    ``view`` scopes to one of the two views (see ``VIEWS``), or to none when the caller scopes
+    the statuses itself (``services/search``); ``status`` narrows within it (any-match). Status-scoping rather than a coordinate predicate, since a ``requested`` event
     may carry an approximate guess and must not leak into the located catalog. Callers gate
     values through :func:`validate_status_filter`.
 
@@ -511,7 +511,9 @@ def apply_filters(
     ``has_coords`` splits on ``coords``: ``True`` keeps rows with a point (a request's
     location guess), ``False`` the blind ones, ``None`` both.
     """
-    query = query.filter(*visible_events(), view_predicate(view))
+    query = query.filter(*visible_events())
+    if view is not None:
+        query = query.filter(view_predicate(view))
 
     if status:
         query = query.filter(Event.status.in_(status))
@@ -587,7 +589,7 @@ class EventFilters:
     approved_by: str | None = None
     approved_by_org: str | None = None
 
-    def apply(self, query: SAQuery, *, view: str) -> SAQuery:
+    def apply(self, query: SAQuery, *, view: str | None) -> SAQuery:
         return apply_filters(
             query,
             view=view,
@@ -618,6 +620,6 @@ class EventFilters:
     def active_beyond(self, *kept: str) -> bool:
         """True when a filter other than the ``kept`` field names narrows the view.
 
-        The collections group of search reads this: it honours ``author`` and ``tag`` but
-        empties on any filter it cannot answer (``services/search.search_all``)."""
+        Search reads this for the hits that are not events: each type keeps the filters it
+        answers and drops out on any other (``services/search.search``)."""
         return any(getattr(self, f.name) for f in fields(self) if f.name not in kept)

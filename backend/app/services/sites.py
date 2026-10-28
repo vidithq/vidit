@@ -334,7 +334,7 @@ def _link_urls(db: Session, source_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, 
     return urls
 
 
-def _last_sources(
+def last_sources(
     db: Session, site_ids: Sequence[uuid.UUID], as_of: date | None
 ) -> dict[uuid.UUID, SiteLastSourceRead]:
     """Per site, the live source with the latest capture on or before ``as_of``, with its
@@ -359,6 +359,22 @@ def _last_sources(
             provider=ImageryProviderRef.model_validate(provider) if provider else None,
         )
     return last
+
+
+def latest_images(db: Session, site_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Media]:
+    """Per site, the file of its latest captured live source that carries one, graphic ones
+    left out."""
+    if not site_ids:
+        return {}
+    rows = (
+        db.query(Source.site_id, Media)
+        .join(Media, Media.source_id == Source.id)
+        .filter(Source.site_id.in_(site_ids), *live_sources(), Source.is_graphic.is_(False))
+        .distinct(Source.site_id)
+        .order_by(Source.site_id, Source.captured_at.desc(), Source.created_at.desc())
+        .all()
+    )
+    return {site_id: media for site_id, media in rows}
 
 
 def _site_states(
@@ -401,7 +417,7 @@ def _site_states(
         .all()
     )
     site_ids = [row[0].id for row in rows]
-    last_sources = _last_sources(db, site_ids, as_of)
+    last_sources_by_site = last_sources(db, site_ids, as_of)
     states: list[tuple[Site, dict[str, Any]]] = []
     for site, zone_json, lat, lng, contour_id, link_effect, link_date, link_event_id in rows:
         states.append(
@@ -414,7 +430,7 @@ def _site_states(
                     "zone": _geojson(zone_json),
                     "centroid": CoordsRead(lat=lat, lng=lng),
                     "contour_id": contour_id,
-                    "last_source": last_sources.get(site.id),
+                    "last_source": last_sources_by_site.get(site.id),
                     "latest_link_effect": None
                     if link_event_id is None
                     else LatestLinkEffect(

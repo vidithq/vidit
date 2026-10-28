@@ -2,28 +2,85 @@ import type { Account } from "@/components/ui/AccountPicker";
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import type {
+  SearchHit,
+  SearchHitType,
   SearchOrganizationHit,
   SearchResponse,
-  SearchType,
   SearchUserHit,
 } from "@/types";
 
-/** `GET /search`. Debouncing is the caller's job; the endpoint short-circuits empty queries. The
- *  event filters scope the two event groups and empty the users group. With an empty `q` and any
- *  filter the backend browses the filtered view (the profile's "Show more"). `cursor` is a
- *  response's `geolocations_cursor`, sent with `type: "geolocation"` and the options that
- *  minted it. */
+/** `GET /search`: one ranked list. Debouncing is the caller's job; the endpoint short-circuits
+ *  empty queries. `types` picks the hit types (every type when empty), `show` narrows the events
+ *  to those statuses, and the other filters follow the rule `docs/api.md` states. With an empty
+ *  `q` and any filter the backend browses the filtered view (the profile's "Show more").
+ *  `cursor` is a response's `cursor`, sent with the options that minted it. */
 export function search(
-  opts: { q: string; type?: SearchType; limit?: number; cursor?: string } & EventFilterParams,
+  opts: { q: string; types?: SearchHitType[]; limit?: number; cursor?: string } & EventFilterParams,
 ): Promise<SearchResponse> {
-  const params = new URLSearchParams({
-    q: opts.q,
-    type: opts.type ?? "all",
-    limit: String(opts.limit ?? 20),
-  });
+  const params = new URLSearchParams({ q: opts.q, limit: String(opts.limit ?? 20) });
+  appendSearchTypes(params, opts.types ?? []);
   if (opts.cursor) params.set("cursor", opts.cursor);
   appendEventFilterParams(params, opts);
   return apiFetch<SearchResponse>(`/search?${params.toString()}`);
+}
+
+/** The Show chips that name a type other than events, after the status chips, with their labels. */
+export const SEARCH_KIND_OPTIONS: ReadonlyArray<[SearchHitType, string]> = [
+  ["site", "Sites"],
+  ["collection", "Collections"],
+  ["user", "Analysts"],
+  ["organization", "Organizations"],
+];
+
+/** The filter sections each kind answers, the rest leaving it out of the list. Mirrors backend
+ *  `services/search._TYPE_FILTERS`; change both. */
+export const SEARCH_KIND_SECTIONS: Record<
+  Exclude<SearchHitType, "event">,
+  ReadonlyArray<"tags" | "author">
+> = {
+  site: ["author"],
+  collection: ["tags", "author"],
+  user: [],
+  organization: [],
+};
+
+/** The hit types a Show pick lists, the map's Show rule: with no chip selected every type (none
+ *  sent), otherwise only what the selected chips name, events while a status chip is selected. */
+export function searchTypes(statuses: string[], kinds: SearchHitType[]): SearchHitType[] {
+  if (statuses.length === 0 && kinds.length === 0) return [];
+  return [...(statuses.length > 0 ? (["event"] as const) : []), ...kinds];
+}
+
+function appendSearchTypes(params: URLSearchParams, types: SearchHitType[]): void {
+  for (const type of types) params.append("type", type);
+}
+
+/** The search page's URL for a query, its Show pick and its filters: the `GET /search`
+ *  vocabulary, so a profile link and the page read one format. */
+export function searchPageParams(
+  q: string,
+  kinds: SearchHitType[],
+  filters: EventFilterParams,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  appendSearchTypes(params, searchTypes(filters.show ?? [], kinds));
+  appendEventFilterParams(params, filters);
+  return params;
+}
+
+/** The Show pick a URL names: the kinds of its `type` values and the statuses of its `status`
+ *  values, both gated to the chips' vocabulary. A `type=event` with no status names every
+ *  status. */
+export function readShowPick(
+  params: { getAll(name: string): string[] },
+  statusOptions: ReadonlyArray<string>,
+): { statuses: string[]; kinds: SearchHitType[] } {
+  const types = params.getAll("type");
+  const named = params.getAll("status").filter((s) => statusOptions.includes(s));
+  const kinds = SEARCH_KIND_OPTIONS.map(([kind]) => kind).filter((kind) => types.includes(kind));
+  const statuses = named.length === 0 && types.includes("event") ? [...statusOptions] : named;
+  return { statuses, kinds };
 }
 
 /** The approval filter values: `approved`, and the account `approvedBy` names. */
@@ -120,21 +177,21 @@ export function readEventFilterParams(params: {
 const APPROVER_SUGGESTIONS = 5;
 
 /** Analysts and organizations for the Approved by filter, through the `user` and `organization`
- *  groups of `GET /search`. */
+ *  types of `GET /search`, a short list of each. */
 export async function suggestApprovers(q: string): Promise<Account[]> {
   const trimmed = q.trim();
   if (!trimmed) return [];
   const [users, organizations] = await Promise.all([
-    search({ q: trimmed, type: "user", limit: APPROVER_SUGGESTIONS }),
-    search({ q: trimmed, type: "organization", limit: APPROVER_SUGGESTIONS }),
+    search({ q: trimmed, types: ["user"], limit: APPROVER_SUGGESTIONS }),
+    search({ q: trimmed, types: ["organization"], limit: APPROVER_SUGGESTIONS }),
   ]);
   return [
-    ...users.users.map((u): Account => ({
+    ...hitsOf(users.hits, "user").map((u): Account => ({
       kind: "analyst",
       username: u.username,
       avatar_url: u.avatar_url,
     })),
-    ...organizations.organizations.map((o): Account => ({
+    ...hitsOf(organizations.hits, "organization").map((o): Account => ({
       kind: "organization",
       slug: o.slug,
       name: o.name,
@@ -143,15 +200,23 @@ export async function suggestApprovers(q: string): Promise<Account[]> {
   ];
 }
 
+/** The hits of one type, typed as such. */
+export function hitsOf<T extends SearchHitType>(
+  hits: SearchHit[],
+  type: T,
+): Extract<SearchHit, { type: T }>[] {
+  return hits.filter((hit): hit is Extract<SearchHit, { type: T }> => hit.type === type);
+}
+
 /** A `/search` URL scoped to one analyst: the profile's one entry into the filtered catalogue
  *  (Insights tiles, *Show more* links). `author` is an exact username match
- *  (`services/event_filters.apply_author_filter`). `type` defaults to the event groups since
- *  every filter is an event predicate; `collection` scopes to the analyst's shelf, the other
- *  group `author` narrows. `filters` takes the search page's URL vocabulary, one value per key. */
+ *  (`services/event_filters.apply_author_filter`). `type` defaults to the analyst's events;
+ *  `collection` lists the analyst's shelf, which `author` narrows to the collections they own.
+ *  `filters` takes the search page's URL vocabulary, one value per key. */
 export function profileSearchHref(
   username: string,
   filters: Record<string, string> = {},
-  type: SearchType = "event",
+  type: SearchHitType = "event",
 ): string {
   const params = new URLSearchParams({ type, author: username });
   for (const [key, value] of Object.entries(filters)) params.set(key, value);
@@ -178,16 +243,16 @@ export async function suggestAuthors(q: string): Promise<Account[]> {
  *  wins over an organization of the same name. */
 export function exactProfile(
   q: string,
-  results: Pick<SearchResponse, "users" | "organizations">,
+  hits: SearchHit[],
 ):
   | { kind: "analyst"; hit: SearchUserHit }
   | { kind: "organization"; hit: SearchOrganizationHit }
   | null {
   const named = q.trim().replace(/^@/, "").toLowerCase();
   if (!named) return null;
-  const analyst = results.users.find((u) => u.username.toLowerCase() === named);
+  const analyst = hitsOf(hits, "user").find((u) => u.username.toLowerCase() === named);
   if (analyst) return { kind: "analyst", hit: analyst };
-  const organization = results.organizations.find(
+  const organization = hitsOf(hits, "organization").find(
     (o) => o.slug === named || o.name.toLowerCase() === named,
   );
   return organization ? { kind: "organization", hit: organization } : null;

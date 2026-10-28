@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { CollectionCover } from "@/components/collections/CollectionCover";
-import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Pill } from "@/components/ui/Pill";
 import { TAPPABLE_HOVER } from "@/components/ui/styles";
 import {
@@ -20,15 +19,7 @@ import {
  * title: the mosaic identifies a collection, and a glyph would take width from
  * the two title lines.
  */
-export function CollectionCard({
-  collection,
-  showOwner = false,
-}: {
-  collection: Collection;
-  /** Lead the meta line with the owner's handle. On for a search result, off on
-   *  the profile where the page names the analyst. */
-  showOwner?: boolean;
-}) {
+export function CollectionCard({ collection }: { collection: Collection }) {
   return (
     <div
       className={`group relative flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-900 p-3 ${TAPPABLE_HOVER}`}
@@ -47,7 +38,7 @@ export function CollectionCard({
         <p className="line-clamp-2 text-xs text-neutral-400">
           {collection.description_text}
         </p>
-        <CollectionMetaLine collection={collection} owner={showOwner} />
+        <CollectionMetaLine collection={collection} />
         <CollectionTags collection={collection} />
       </div>
     </div>
@@ -77,30 +68,20 @@ export function CollectionTags({ collection }: { collection: Collection }) {
  * The meta line under a collection's name: how much it holds, then the span its
  * items cover. Shared by the card and the page header. Each segment stays on one
  * line, so the row wraps between segments at 375px.
- *
- * `owner` leads with the byline (`by user`), for search results.
  */
 export function CollectionMetaLine({
   collection,
   className = "text-[11px]",
-  owner = false,
 }: {
   collection: Collection;
   /** The host's type size (`text-xs` on the page header). */
   className?: string;
-  owner?: boolean;
 }) {
   return (
     <p className={`flex flex-wrap items-center text-neutral-500 ${className}`}>
-      {owner && (
-        // The card is one stretched link, so the handle is text, not a second anchor.
-        <span className="whitespace-nowrap">
-          <AuthorByline author={collection.owner} link={false} />
-        </span>
-      )}
       {collectionMetaSegments(collection).map((segment, i) => (
         <span key={segment} className="whitespace-nowrap">
-          {(owner || i > 0) && SEPARATOR}
+          {i > 0 && SEPARATOR}
           {segment}
         </span>
       ))}

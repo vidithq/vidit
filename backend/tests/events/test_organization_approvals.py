@@ -746,7 +746,7 @@ def test_approval_filters_keep_approvals_on_the_live_version(db, make_user, make
     search = client.get(
         "/api/v1/search", params={"q": "", "type": "event", "approved_by_org": org.slug}
     ).json()
-    assert [hit["id"] for hit in search["geolocations"]] == [str(by_org.id)]
+    assert [hit["id"] for hit in search["hits"]] == [str(by_org.id)]
     points = client.get(
         f"{_EVENTS}/points", params={"bbox": "-90,-180,90,180", "approved_by": analyst.username}
     ).json()

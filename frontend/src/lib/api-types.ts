@@ -2148,23 +2148,16 @@ export interface paths {
         };
         /**
          * Search
-         * @description Grouped FTS across the six result groups.
+         * @description One ranked list of events, sites, collections, analysts and organizations.
          *
-         *     Empty or whitespace-only ``q`` returns an empty response (keeps the
-         *     still-typing hits cheap).
+         *     An empty ``q`` with no active filter returns an empty list (keeps the still-typing hits
+         *     cheap); with an active filter it browses the filtered view, newest first.
          *
-         *     Any active filter scopes the event groups and empties the users,
-         *     organizations and sites groups;
-         *     ``author`` narrows the collections group to that owner and every other
-         *     filter empties it. With an empty ``q`` the response browses the filtered
-         *     view, collections included when ``author`` is the only filter (the
-         *     profile's two "Show more" entry points). Filter semantics are
-         *     ``services/event_filters.apply_filters``.
+         *     ``type`` picks the hit types. ``status`` narrows the events. Every other filter narrows the
+         *     events, narrows the sites and collections it applies to, and leaves out the types it does
+         *     not apply to; see ``docs/api.md``.
          *
-         *     The geolocations group pages: ``geolocations_cursor`` is set exactly when a
-         *     further page holds a row, and ``cursor`` with ``type=geolocation`` fetches it.
-         *
-         *     When every group is empty, ``suggestion`` may hold a respelling of ``q`` that finds results.
+         *     When nothing matches, ``suggestion`` may hold a respelling of ``q`` that finds results.
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -4955,8 +4948,56 @@ export interface components {
             /** Token */
             token: string;
         };
-        /** SearchEventHit */
+        /**
+         * SearchCollectionHit
+         * @description The ``CollectionRead`` every surface renders. No ``*_highlight``.
+         */
+        SearchCollectionHit: {
+            /** Cover */
+            cover: components["schemas"]["CollectionCoverTile"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Description Text */
+            description_text: string;
+            /** Event Count */
+            event_count: number;
+            /** First Date */
+            first_date: string | null;
+            /** Hidden At */
+            hidden_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Date */
+            last_date: string | null;
+            owner: components["schemas"]["AuthorRef"];
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "collection";
+        };
+        /**
+         * SearchEventHit
+         * @description A geolocated or detected event, or an open request.
+         */
         SearchEventHit: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**
@@ -4967,9 +5008,9 @@ export interface components {
             /** Is Graphic */
             is_graphic: boolean;
             /** Lat */
-            lat: number;
+            lat: number | null;
             /** Lng */
-            lng: number;
+            lng: number | null;
             /** Media */
             media: components["schemas"]["MediaRead"][];
             /** Occurred Date */
@@ -4986,6 +5027,11 @@ export interface components {
             title: string;
             /** Title Highlight */
             title_highlight: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "event";
         };
         /**
          * SearchMatch
@@ -5029,72 +5075,31 @@ export interface components {
             name_highlight: string;
             /** Slug */
             slug: string;
-        };
-        /** SearchRequestHit */
-        SearchRequestHit: {
             /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Is Graphic */
-            is_graphic: boolean;
-            /** Media */
-            media: components["schemas"]["MediaRead"][];
-            owner: components["schemas"]["AuthorRef"];
-            /** Source Urls */
-            source_urls: string[];
-            /**
-             * Status
+             * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            status: "requested" | "detected" | "geolocated" | "closed";
-            /** Tags */
-            tags: components["schemas"]["TagRead"][];
-            /** Title */
-            title: string;
-            /** Title Highlight */
-            title_highlight: string;
+            type: "organization";
         };
         /**
          * SearchResponse
-         * @description Grouped result set. Groups not requested via ``type=`` are empty arrays,
-         *     keeping the JSON shape stable.
+         * @description One page of hits in rank order.
          */
         SearchResponse: {
-            /** Collections */
-            collections: components["schemas"]["CollectionRead"][];
-            /** Geolocations */
-            geolocations: components["schemas"]["SearchEventHit"][];
-            /** Geolocations Cursor */
-            geolocations_cursor: string | null;
-            /** Organizations */
-            organizations: components["schemas"]["SearchOrganizationHit"][];
+            /** Cursor */
+            cursor: string | null;
+            /** Hits */
+            hits: (components["schemas"]["SearchEventHit"] | components["schemas"]["SearchSiteHit"] | components["schemas"]["SearchCollectionHit"] | components["schemas"]["SearchUserHit"] | components["schemas"]["SearchOrganizationHit"])[];
             /** Query */
             query: string;
-            /** Requests */
-            requests: components["schemas"]["SearchRequestHit"][];
-            /** Sites */
-            sites: components["schemas"]["SearchSiteHit"][];
             /** Suggestion */
             suggestion?: string | null;
-            total: components["schemas"]["SearchTotals"];
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "all" | "event" | "geolocation" | "request" | "collection" | "user" | "organization" | "site";
-            /** Users */
-            users: components["schemas"]["SearchUserHit"][];
+            /** Total */
+            total: number;
         };
         /**
          * SearchSiteHit
-         * @description A site's name, highlighted, and its kind.
+         * @description A visible site with its latest source, and the file of its latest source that has one.
          */
         SearchSiteHit: {
             /**
@@ -5107,28 +5112,19 @@ export interface components {
              * @enum {string}
              */
             kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            last_source: components["schemas"]["SiteLastSourceRead"] | null;
+            /** Media */
+            media: components["schemas"]["MediaRead"][];
             /** Name */
             name: string;
             /** Name Highlight */
             name_highlight: string;
-        };
-        /**
-         * SearchTotals
-         * @description Per-group pre-LIMIT match counts, so the UI needn't re-sum the capped hit lists.
-         */
-        SearchTotals: {
-            /** Collections */
-            collections: number;
-            /** Geolocations */
-            geolocations: number;
-            /** Organizations */
-            organizations: number;
-            /** Requests */
-            requests: number;
-            /** Sites */
-            sites: number;
-            /** Users */
-            users: number;
+            owner: components["schemas"]["AuthorRef"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "site";
         };
         /** SearchUserHit */
         SearchUserHit: {
@@ -5143,6 +5139,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "user";
             /** Username */
             username: string;
             /** Username Highlight */
@@ -9887,13 +9888,13 @@ export interface operations {
     search_api_v1_search_get: {
         parameters: {
             query?: {
-                /** @description Free-text query (empty returns an empty result set) */
+                /** @description Free-text query */
                 q?: string;
-                /** @description One of 'all', 'event', 'geolocation', 'request', 'collection', 'user', 'organization', 'site' */
-                type?: string;
-                /** @description Per-group cap */
+                /** @description Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type */
+                type?: string[] | null;
+                /** @description Hits per page */
                 limit?: number;
-                /** @description Opaque cursor from `geolocations_cursor`: the next page of the geolocations group. Requires type=geolocation and the query and filters of the page that minted it */
+                /** @description Opaque `cursor` of a previous response: its next page. Send the query, types and filters of the request that returned it */
                 cursor?: string | null;
                 status?: string[] | null;
                 conflict?: string[] | null;
@@ -9904,7 +9905,7 @@ export interface operations {
                 occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
-                /** @description Scope the event groups to this owner username (exact, case-insensitive) */
+                /** @description Keep the events credited to this username, and the sites and collections it owns (exact, case-insensitive) */
                 author?: string | null;
                 media?: string[] | null;
                 /** @description Keep events approved on their live version */

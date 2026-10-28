@@ -10,7 +10,7 @@ import {
   type AdminEventModeration,
 } from "@/lib/admin";
 import { countLabel, formatDate, formatInstant, formatInstantDate } from "@/lib/format";
-import { search } from "@/lib/search";
+import { hitsOf, search } from "@/lib/search";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -74,20 +74,16 @@ const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_LIMIT = 10;
 
 async function searchEvents(q: string): Promise<Hit[]> {
-  const found = await search({ q, type: "event", limit: SEARCH_LIMIT });
-  const hit = (id: string, title: string, date: string, owner: string): Hit => ({
-    id,
-    title,
-    meta: `${date} · ${owner}`,
+  const found = await search({ q, types: ["event"], limit: SEARCH_LIMIT });
+  return hitsOf(found.hits, "event").map((e) => {
+    const date =
+      e.status === "requested"
+        ? `Requested ${formatInstantDate(e.created_at)}`
+        : e.occurred_date
+          ? formatDate(e.occurred_date)
+          : "Undated";
+    return { id: e.id, title: e.title, meta: `${date} · ${e.owner.username}` };
   });
-  return [
-    ...found.geolocations.map((e) =>
-      hit(e.id, e.title, e.occurred_date ? formatDate(e.occurred_date) : "Undated", e.owner.username),
-    ),
-    ...found.requests.map((r) =>
-      hit(r.id, r.title, `Requested ${formatInstantDate(r.created_at)}`, r.owner.username),
-    ),
-  ];
 }
 
 /** The event field: a title search over the public events, or a pasted ID or event link, which

@@ -1,52 +1,37 @@
 "use client";
 
-import {
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { Building2, MapPin, Search as SearchIcon, Users } from "lucide-react";
-import { CollectionCard } from "@/components/collections/CollectionCard";
 import {
   SearchSelectionActions,
   SelectAllRow,
   SelectableHit,
   useSearchSelection,
-  type SearchSelection,
 } from "@/components/collections/SearchSelection";
-import { CollectionIcon } from "@/lib/collections";
-import { StatusBadge } from "@/components/event/StatusBadge";
+import { SearchHitRow } from "@/components/search/SearchHitRow";
 import {
-  appendEventFilterParams,
+  SEARCH_KIND_OPTIONS,
+  SEARCH_KIND_SECTIONS,
   exactProfile,
+  hitsOf,
   readEventFilterParams,
+  readShowPick,
   search,
-  splitHighlights,
+  searchPageParams,
+  searchTypes,
 } from "@/lib/search";
 import { GO_TO_ZOOM, formatCoordinates, parsePastedCoordinates } from "@/lib/coordinates";
 import { useMapState } from "@/contexts/MapStateContext";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { Avatar } from "@/components/ui/Avatar";
-import { EntityCard } from "@/components/ui/EntityCard";
-import type {
-  SearchRequestHit,
-  SearchEventHit,
-  SearchOrganizationHit,
-  SearchResponse,
-  SearchType,
-  SearchUserHit,
-} from "@/types";
+import type { SearchHitType, SearchResponse } from "@/types";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
-import { LABEL_TEXT } from "@/components/ui/form-styles";
-import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
+import { ChipBucket } from "@/components/ui/ChipBucket";
+import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
 import {
   ALL_FILTER_SECTIONS,
@@ -69,55 +54,52 @@ import {
 import { FilterBar } from "@/components/filters/FilterBar";
 import { FilterRail } from "@/components/filters/FilterRail";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
-
-import { META_LINE, TAPPABLE_HOVER, TEXT_LINK } from "@/components/ui/styles";
-import {
-  SegmentedControl,
-  type SegmentedControlOption,
-} from "@/components/ui/SegmentedControl";
-import { creditProps } from "@/lib/geolocatorCredit";
+import { TEXT_LINK } from "@/components/ui/styles";
 import { memberCountLabel, organizationPath } from "@/lib/organizations";
-import { countLabel } from "@/lib/format";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
-import { eventHref, profileHref, requestHref } from "@/lib/routes";
+import { profileHref } from "@/lib/routes";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { readError, type ReadableError } from "@/lib/errors";
 
-const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
+const STATUS_VALUES = SHOW_OPTIONS.map(([value]) => value);
+const KIND_LABELS: Record<string, string> = Object.fromEntries(SEARCH_KIND_OPTIONS);
+const SHOW_CHIPS = [...SHOW_OPTIONS, ...SEARCH_KIND_OPTIONS].map(([id, label]) => ({
+  id,
+  name: id,
+  label,
+}));
 
-function typeLabel(icon: ReactNode, label: string) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      {icon}
-      {label}
-    </span>
+// The Show field heads the panel through `lead`, so the panel's own status-only one stays off.
+const EVENT_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "show");
+
+/** The filter sections a pick offers: every event section while it lists events, otherwise the
+ *  ones its kinds answer. */
+function sectionsFor(eventsListed: boolean, kinds: SearchHitType[]) {
+  if (eventsListed) return EVENT_SECTIONS;
+  const answered = new Set<EventFilterSectionName>(
+    kinds.flatMap((kind) => (kind === "event" ? [] : SEARCH_KIND_SECTIONS[kind])),
   );
+  return EVENT_SECTIONS.filter((s) => answered.has(s));
 }
 
-// The type picker: the two event groups are one "Events" entry (the filters only apply to
-// events); results still render as two groups.
-const TYPE_OPTIONS: SegmentedControlOption<SearchType>[] = [
-  { value: "all", label: "All" },
-  { value: "event", label: typeLabel(<MapPin {...ICON} />, "Events") },
-  { value: "collection", label: typeLabel(<CollectionIcon {...ICON} />, "Collections") },
-  { value: "user", label: typeLabel(<Users {...ICON} />, "Analysts") },
-  { value: "organization", label: typeLabel(<Building2 {...ICON} />, "Organizations") },
-];
+type SearchPick = { values: EventFilterValues; dates: DateWindows; kinds: SearchHitType[] };
 
-// Types that scope to events (the legacy singletons stay valid in shared URLs).
-const EVENT_TYPES: ReadonlyArray<SearchType> = ["event", "geolocation", "request"];
-
-// The requests group serves status `requested` only, so on the legacy request scope both
-// status chips could only empty the result. A URL-carried status still shows as a removable pill.
-// Approvals stay off too: a request carries none.
-const REQUEST_SECTIONS = ALL_FILTER_SECTIONS.filter((s) => s !== "show" && s !== "approval");
-
-// The backend narrows collections on `author` and `tag` (a collection's tags are its items') and
-// empties the group on every other event predicate, so that scope offers those two sections.
-const COLLECTION_SECTIONS: ReadonlyArray<EventFilterSectionName> = ["tags", "author"];
-
-// The filters the collections group reads, emptied: what is left narrows the event groups alone.
-const SHARED_EMPTY: Pick<EventFilterValues, "author" | "tags"> = { author: "", tags: [] };
+/** A pick with the filters it no longer offers dropped: once the list holds no event, only the
+ *  author and the tags its kinds answer stay, and the date windows go. */
+function scoped(pick: SearchPick): SearchPick {
+  const types = searchTypes(pick.values.show, pick.kinds);
+  if (types.length === 0 || types.includes("event")) return pick;
+  const offered = sectionsFor(false, pick.kinds);
+  return {
+    kinds: pick.kinds,
+    dates: EMPTY_DATE_WINDOWS,
+    values: {
+      ...EMPTY_EVENT_FILTERS,
+      author: offered.includes("author") ? pick.values.author : "",
+      tags: offered.includes("tags") ? pick.values.tags : [],
+    },
+  };
+}
 
 type SearchRequest = Parameters<typeof search>[0];
 
@@ -141,149 +123,161 @@ function SearchPageBody() {
   // state so typing isn't gated on URL round-trips.
   const initialQ = searchParams.get("q") ?? "";
   const { eventFrom, eventTo, addedFrom, addedTo, ...read } = readEventFilterParams(searchParams);
-  const initialValues: EventFilterValues = {
-    ...read,
-    // Only the vocabulary the panel offers: a crafted `?status=` the chips can't represent is dropped.
-    show: read.show.filter((s) => SHOW_OPTIONS.some(([value]) => value === s)),
-    // The search groups serve no location-guess predicate, so the panel never offers it here.
-    locationGuess: [],
-  };
-  const initialDates: DateWindows = { eventFrom, eventTo, addedFrom, addedTo };
-  // A link without a type lands on All, unless it carries a filter only the event groups read: an
-  // author and tags narrow the collections group as well, so All keeps them.
-  const eventFiltered = hasAnyFilter({ ...initialValues, ...SHARED_EMPTY }, initialDates);
-  const initialType =
-    (searchParams.get("type") as SearchType) || (eventFiltered ? "event" : "all");
+  const shown = readShowPick(searchParams, STATUS_VALUES);
+  const initialPick = scoped({
+    // The search list serves no location-guess predicate, so the panel never offers it here.
+    values: { ...read, show: shown.statuses, locationGuess: [] },
+    dates: { eventFrom, eventTo, addedFrom, addedTo },
+    kinds: shown.kinds,
+  });
 
   const [queryInput, setQueryInput] = useState(initialQ);
-  const [typeFilter, setTypeFilter] = useState<SearchType>(initialType);
-  const [values, setValues] = useState<EventFilterValues>(initialValues);
-  const [dates, setDates] = useState<DateWindows>(initialDates);
+  const [pick, setPick] = useState<SearchPick>(initialPick);
+  const { values, dates, kinds } = pick;
+  const update = (next: Partial<SearchPick>) => setPick((p) => scoped({ ...p, ...next }));
 
   // The debounced snapshot the fetch and URL run on, so typing doesn't fire a request per keystroke.
-  const [committed, setCommitted] = useState({ q: initialQ, values: initialValues, dates: initialDates });
+  const [committed, setCommitted] = useState({ q: initialQ, ...initialPick });
 
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ReadableError | null>(null);
   // Bumped by Retry, to run the same search again.
   const [attempt, setAttempt] = useState(0);
-  // The request behind `results`: a further geolocations page must repeat its query and filters,
-  // not the live inputs, which may have moved on since.
+  // The request behind `results`: a further page must repeat its query and filters, not the
+  // live inputs, which may have moved on since.
   const resultsRequest = useRef<SearchRequest | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<ReadableError | null>(null);
 
   const { tags, conflicts } = useFilterVocabulary();
 
-  const onPatch: EventFilterPatch = (patch) => setValues((v) => ({ ...v, ...patch }));
-  const clearFilters = () => {
-    setValues(EMPTY_EVENT_FILTERS);
-    setDates(EMPTY_DATE_WINDOWS);
+  const onPatch: EventFilterPatch = (patch) =>
+    setPick((p) => scoped({ ...p, values: { ...p.values, ...patch } }));
+  const clearFilters = () =>
+    setPick({ values: EMPTY_EVENT_FILTERS, dates: EMPTY_DATE_WINDOWS, kinds: [] });
+  const toggleShow = (chip: string) => {
+    if (STATUS_VALUES.includes(chip)) {
+      const show = values.show.includes(chip)
+        ? values.show.filter((s) => s !== chip)
+        : [...values.show, chip];
+      onPatch({ show });
+      return;
+    }
+    const kind = chip as SearchHitType;
+    update({ kinds: kinds.includes(kind) ? kinds.filter((k) => k !== kind) : [...kinds, kind] });
   };
 
+  const types = searchTypes(values.show, kinds);
+  const eventsListed = types.length === 0 || types.includes("event");
+  const sections = sectionsFor(eventsListed, kinds);
+
+  const filterPills = buildActiveFilterPills(values, onPatch);
+  const statusPillCount = values.show.length;
   const activeFilters: ActiveFilter[] = [
-    ...buildActiveFilterPills(values, onPatch),
+    ...filterPills.slice(0, statusPillCount),
+    ...kinds.map((kind) => ({
+      key: `kind:${kind}`,
+      filter: FILTER_NAMES.show,
+      label: KIND_LABELS[kind],
+      onRemove: () => update({ kinds: kinds.filter((k) => k !== kind) }),
+    })),
+    ...filterPills.slice(statusPillCount),
     ...buildDateWindowPills(
       dates,
-      () => setDates((d) => ({ ...d, eventFrom: "", eventTo: "" })),
-      () => setDates((d) => ({ ...d, addedFrom: "", addedTo: "" }))
+      () => update({ dates: { ...dates, eventFrom: "", eventTo: "" } }),
+      () => update({ dates: { ...dates, addedFrom: "", addedTo: "" } }),
     ),
   ];
-  const hasActiveFilters = hasAnyFilter(values, dates);
-  const onEventScope = EVENT_TYPES.includes(typeFilter);
-  // Panel sections the scope offers, or null where no filter narrows it (Analysts,
-  // Organizations, and All, which spans every group).
-  const filterSections: ReadonlyArray<EventFilterSectionName> | null = onEventScope
-    ? typeFilter === "request"
-      ? REQUEST_SECTIONS
-      : ALL_FILTER_SECTIONS
-    : typeFilter === "collection"
-      ? COLLECTION_SECTIONS
-      : null;
+  const filterCount = countActiveFilters(values, dates) + kinds.length;
+  const hasActiveFilters = filterCount > 0;
 
-  // Monotonic request token: late responses apply only if still latest. Comparing
-  // `response.query` alone missed the type-filter race (same `q`, different `type`).
+  // Monotonic request token: late responses apply only if still latest.
   const latestRequestId = useRef<number>(0);
 
-  // The date windows are event predicates, so they stay off the Collections scope.
-  const panel =
-    filterSections && (
-      <EventFilterSections
-        tags={tags}
-        conflicts={conflicts}
-        values={values}
-        onPatch={onPatch}
-        sections={filterSections}
-        dateSections={
-          onEventScope
-            ? [
-                {
-                  title: FILTER_NAMES.eventDate,
-                  concept: "occurred_date",
-                  summary: rangeSummary(dates.eventFrom, dates.eventTo),
-                  active: eventWindowActive(dates),
-                  children: (
-                    <DateRange
-                      label={FILTER_NAMES.eventDate}
-                      from={dates.eventFrom}
-                      to={dates.eventTo}
-                      onChange={(from, to) =>
-                        setDates((d) => ({ ...d, eventFrom: from, eventTo: to }))
-                      }
-                    />
-                  ),
-                },
-                {
-                  title: FILTER_NAMES.added,
-                  concept: "added",
-                  summary: rangeSummary(dates.addedFrom, dates.addedTo),
-                  active: addedWindowActive(dates),
-                  children: (
-                    <DateRange
-                      label={FILTER_NAMES.added}
-                      from={dates.addedFrom}
-                      to={dates.addedTo}
-                      onChange={(from, to) =>
-                        setDates((d) => ({ ...d, addedFrom: from, addedTo: to }))
-                      }
-                    />
-                  ),
-                },
-              ]
-            : []
-        }
-      />
-    );
+  const panel = (
+    <EventFilterSections
+      tags={tags}
+      conflicts={conflicts}
+      values={values}
+      onPatch={onPatch}
+      sections={sections}
+      lead={[
+        {
+          title: FILTER_NAMES.show,
+          concept: "status",
+          children: (
+            <ChipBucket
+              options={SHOW_CHIPS}
+              selected={[...values.show, ...kinds]}
+              onToggle={toggleShow}
+            />
+          ),
+        },
+      ]}
+      dateSections={
+        eventsListed
+          ? [
+              {
+                title: FILTER_NAMES.eventDate,
+                concept: "occurred_date",
+                summary: rangeSummary(dates.eventFrom, dates.eventTo),
+                active: eventWindowActive(dates),
+                children: (
+                  <DateRange
+                    label={FILTER_NAMES.eventDate}
+                    from={dates.eventFrom}
+                    to={dates.eventTo}
+                    onChange={(from, to) =>
+                      update({ dates: { ...dates, eventFrom: from, eventTo: to } })
+                    }
+                  />
+                ),
+              },
+              {
+                title: FILTER_NAMES.added,
+                concept: "added",
+                summary: rangeSummary(dates.addedFrom, dates.addedTo),
+                active: addedWindowActive(dates),
+                children: (
+                  <DateRange
+                    label={FILTER_NAMES.added}
+                    from={dates.addedFrom}
+                    to={dates.addedTo}
+                    onChange={(from, to) =>
+                      update({ dates: { ...dates, addedFrom: from, addedTo: to } })
+                    }
+                  />
+                ),
+              },
+            ]
+          : []
+      }
+    />
+  );
 
   // Debounced commit of inputs to the snapshot and URL via `replace`, so Back doesn't fill
   // with intermediate states.
   useDebouncedEffect(
     () => {
-      // Identity-preserving: if nothing changed (e.g. a chip click already committed), keep the
-      // previous object so the fetch doesn't refire.
+      // Identity-preserving: if nothing changed, keep the previous object so the fetch doesn't
+      // refire.
       setCommitted((prev) => {
-        const next = { q: queryInput, values, dates };
+        const next = { q: queryInput, ...pick };
         return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       });
-      const params = new URLSearchParams();
-      if (queryInput) params.set("q", queryInput);
-      if (typeFilter !== "all") params.set("type", typeFilter);
-      appendEventFilterParams(params, { ...values, ...dates });
-      const qs = params.toString();
+      const qs = searchPageParams(queryInput, kinds, { ...values, ...dates }).toString();
       router.replace(qs ? `/search?${qs}` : "/search");
     },
-    [queryInput, typeFilter, values, dates, router],
-    DEBOUNCE_MS
+    [queryInput, pick, router],
+    DEBOUNCE_MS,
   );
 
-  // Fetch whenever the committed snapshot or type changes. Any active filter with an empty
-  // query is a valid search (browse mode, the profile's "Show more" landing).
+  // Fetch whenever the committed snapshot changes. Any active filter with an empty query is a
+  // valid search (browse mode, the profile's "Show more" landing).
   useEffect(() => {
     const q = committed.q.trim();
-    const v = committed.values;
-    const d = committed.dates;
-    if (!q && !hasAnyFilter(v, d)) {
+    if (!q && !hasAnyFilter(committed.values, committed.dates) && committed.kinds.length === 0) {
       setResults(null);
       setLoading(false);
       setError(null);
@@ -292,7 +286,12 @@ function SearchPageBody() {
     const requestId = ++latestRequestId.current;
     setLoading(true);
     setError(null);
-    const request: SearchRequest = { q, type: typeFilter, ...v, ...d };
+    const request: SearchRequest = {
+      q,
+      types: searchTypes(committed.values.show, committed.kinds),
+      ...committed.values,
+      ...committed.dates,
+    };
     search(request)
       .then((response) => {
         // Stale response (a newer request started): drop it.
@@ -307,40 +306,33 @@ function SearchPageBody() {
         setError(readError(err));
         setLoading(false);
       });
-  }, [committed, typeFilter, attempt]);
+  }, [committed, attempt]);
 
   const activeQuery = committed.q;
   const { setViewState, setSelectedId } = useMapState();
   const point = parsePastedCoordinates(queryInput);
-  // On All only: a scope already lists its own group, and the other scopes hold no profiles.
   const named =
-    typeFilter === "all" && results && queryInput.trim() === activeQuery.trim()
-      ? exactProfile(activeQuery, results)
+    results && queryInput.trim() === activeQuery.trim()
+      ? exactProfile(activeQuery, results.hits)
       : null;
   const selection = useSearchSelection(
     { q: committed.q, ...committed.values, ...committed.dates },
-    results?.geolocations ?? [],
+    results ? hitsOf(results.hits, "event") : [],
   );
 
-  // Appends the next geolocations page. A page that lands after a new search started is dropped,
-  // like a stale first page.
-  const loadMoreGeolocations = () => {
-    const cursor = results?.geolocations_cursor;
+  // Appends the next page. A page that lands after a new search started is dropped, like a
+  // stale first page.
+  const loadMore = () => {
+    const cursor = results?.cursor;
     const request = resultsRequest.current;
     if (!cursor || !request || loadingMore) return;
     const requestId = latestRequestId.current;
     setLoadingMore(true);
-    search({ ...request, type: "geolocation", cursor })
+    search({ ...request, cursor })
       .then((page) => {
         if (requestId !== latestRequestId.current) return;
         setMoreError(null);
-        setResults((prev) =>
-          prev && {
-            ...prev,
-            geolocations: [...prev.geolocations, ...page.geolocations],
-            geolocations_cursor: page.geolocations_cursor,
-          }
-        );
+        setResults((prev) => prev && { ...prev, hits: [...prev.hits, ...page.hits], cursor: page.cursor });
       })
       .catch((err: unknown) => {
         if (requestId !== latestRequestId.current) return;
@@ -349,73 +341,32 @@ function SearchPageBody() {
       .finally(() => setLoadingMore(false));
   };
 
-  const totalHits = useMemo(() => {
-    if (!results) return 0;
-    return (
-      results.total.geolocations +
-      results.total.requests +
-      results.total.collections +
-      results.total.users +
-      results.total.organizations
-    );
-  }, [results]);
-
-  const onChipClick = (t: SearchType) => {
-    // Filters are event predicates: leaving Events with some active would silently keep
-    // constraining the event groups, so they clear with the scope. Collections and All keep the
-    // author and the tags (the predicates that narrow the collections group too), so stepping
-    // from an analyst's events to their shelf stays on them. The snapshot updates in the same
-    // render: waiting for the 300 ms debounce would fire one request with stale filters first
-    // (`type=user&conflict=…` flashing "No matches").
-    if (!EVENT_TYPES.includes(t) && hasActiveFilters) {
-      const kept: EventFilterValues =
-        t === "collection" || t === "all"
-          ? { ...EMPTY_EVENT_FILTERS, author: values.author.trim(), tags: values.tags }
-          : EMPTY_EVENT_FILTERS;
-      setValues(kept);
-      setDates(EMPTY_DATE_WINDOWS);
-      setCommitted({ q: queryInput, values: kept, dates: EMPTY_DATE_WINDOWS });
-    } else {
-      setCommitted({ q: queryInput, values, dates });
-    }
-    setTypeFilter(t);
-  };
-
   // A suggestion replaces the query at once, without waiting out the typing debounce.
   const respell = (q: string) => {
     setQueryInput(q);
-    setCommitted({ q, values, dates });
+    setCommitted({ q, ...pick });
   };
 
-  const showGroup = (
-    group: "geolocation" | "request" | "collection" | "user" | "organization"
-  ): boolean => {
-    if (typeFilter === "all") return true;
-    // The Events scope is the two event groups; a collection is not an event.
-    if (typeFilter === "event") return group === "geolocation" || group === "request";
-    return typeFilter === group;
-  };
-
-  // Group headers only tell groups apart; a lone group's size is the head row's total.
-  const titled =
-    !!results &&
-    [
-      showGroup("geolocation") && results.geolocations.length > 0,
-      showGroup("request") && results.requests.length > 0,
-      showGroup("collection") && results.collections.length > 0,
-      showGroup("user") && results.users.length > 0,
-      showGroup("organization") && results.organizations.length > 0,
-    ].filter(Boolean).length > 1;
+  const searching = !!(queryInput.trim() || hasActiveFilters);
 
   return (
     <PageShell
       title="Search"
+      titleField={
+        <Input
+          type="search"
+          icon={<SearchIcon size={14} />}
+          value={queryInput}
+          onChange={(e) => setQueryInput(e.target.value)}
+          placeholder="Place, analyst or keyword"
+          aria-label="Search"
+          autoFocus
+        />
+      }
       rail={
-        filterSections ? (
-          <FilterRail pills={activeFilters} onClearAll={clearFilters} sections={filterSections}>
-            {panel}
-          </FilterRail>
-        ) : null
+        <FilterRail pills={activeFilters} onClearAll={clearFilters} sections={sections}>
+          {panel}
+        </FilterRail>
       }
       railLabel="Filters"
       narrowRail="hidden"
@@ -423,213 +374,109 @@ function SearchPageBody() {
         selection.gutter ? <SearchSelectionActions selection={selection} /> : undefined
       }
       stickyActionsIdle={selection.count === 0}
-      controls={
-        <SegmentedControl
-          options={TYPE_OPTIONS}
-          value={onEventScope ? "event" : typeFilter}
-          onChange={onChipClick}
-          aria-label="Result type"
-        />
-      }
     >
-        <Input
-          type="search"
-          icon={<SearchIcon size={14} />}
-          value={queryInput}
-          onChange={(e) => setQueryInput(e.target.value)}
-          placeholder="Place, analyst or keyword"
-          autoFocus
+      {/* One shortcut under the field: a typed coordinate pair opens the map there, a query
+          that names an analyst or an organization exactly opens their page. */}
+      {point ? (
+        <LinkRow
+          icon={MapPin}
+          value={formatCoordinates(point.lat, point.lng)}
+          meta="Open on the map"
+          href="/map"
+          external={false}
+          variant="arrow"
+          onClick={() => {
+            setSelectedId(null);
+            setViewState({ latitude: point.lat, longitude: point.lng, zoom: GO_TO_ZOOM });
+          }}
         />
+      ) : named?.kind === "analyst" ? (
+        <LinkRow
+          icon={Users}
+          leading={
+            <Avatar src={named.hit.avatar_url} username={named.hit.username} size="size-7" />
+          }
+          value={named.hit.username}
+          meta="Analyst"
+          href={profileHref(named.hit.username)}
+          external={false}
+          variant="arrow"
+        />
+      ) : named?.kind === "organization" ? (
+        <LinkRow
+          icon={Building2}
+          leading={
+            <Avatar
+              src={named.hit.avatar_url}
+              username={named.hit.name}
+              size="size-7"
+              shape="square"
+            />
+          }
+          value={named.hit.name}
+          meta={`Organization · ${memberCountLabel(named.hit.member_count)}`}
+          href={organizationPath(named.hit.slug)}
+          external={false}
+          variant="arrow"
+        />
+      ) : null}
 
-        {/* One shortcut under the field: a typed coordinate pair opens the map there, a query
-            that names an analyst or an organization exactly opens their page. */}
-        {point ? (
-          <LinkRow
-            icon={MapPin}
-            value={formatCoordinates(point.lat, point.lng)}
-            meta="Open on the map"
-            href="/map"
-            external={false}
-            variant="arrow"
-            onClick={() => {
-              setSelectedId(null);
-              setViewState({ latitude: point.lat, longitude: point.lng, zoom: GO_TO_ZOOM });
+      <FilterBar count={filterCount} pills={activeFilters} onClearAll={clearFilters}>
+        {panel}
+      </FilterBar>
+
+      {searching && results && <SelectAllRow selection={selection} />}
+
+      <ErrorNotice error={error} onRetry={() => setAttempt((n) => n + 1)} />
+
+      {/* Emptiness gates read the LIVE inputs, so clearing filters doesn't flash stale results
+          under the start-typing prompt for a debounce window. */}
+      {!searching && (
+        <EmptyState>
+          Start typing to search across events, sites, collections, analysts and organizations.
+        </EmptyState>
+      )}
+
+      {searching && results && results.hits.length === 0 && !loading && (
+        <EmptyState>
+          No matches
+          {activeQuery.trim() && (
+            <> for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span></>
+          )}
+          {hasActiveFilters && <> with the active filters</>}.
+          {results.suggestion && (
+            <>
+              {" "}Did you mean{" "}
+              <button
+                type="button"
+                onClick={() => respell(results.suggestion ?? "")}
+                className={TEXT_LINK}
+              >
+                {results.suggestion}
+              </button>
+              ?
+            </>
+          )}
+        </EmptyState>
+      )}
+
+      {searching && results && results.hits.length > 0 && (
+        <div className="space-y-1.5">
+          {results.hits.map((hit) => (
+            <SelectableHit key={`${hit.type}:${hit.id}`} hit={hit} selection={selection}>
+              <SearchHitRow hit={hit} />
+            </SelectableHit>
+          ))}
+          <LoadMoreRow
+            walk={{
+              hasMore: results.cursor !== null,
+              loadingMore,
+              loadMore,
+              error: moreError,
             }}
           />
-        ) : named?.kind === "analyst" ? (
-          <LinkRow
-            icon={Users}
-            leading={
-              <Avatar src={named.hit.avatar_url} username={named.hit.username} size="size-7" />
-            }
-            value={named.hit.username}
-            meta="Analyst"
-            href={profileHref(named.hit.username)}
-            external={false}
-            variant="arrow"
-          />
-        ) : named?.kind === "organization" ? (
-          <LinkRow
-            icon={Building2}
-            leading={
-              <Avatar
-                src={named.hit.avatar_url}
-                username={named.hit.name}
-                size="size-7"
-                shape="square"
-              />
-            }
-            value={named.hit.name}
-            meta={`Organization · ${memberCountLabel(named.hit.member_count)}`}
-            href={organizationPath(named.hit.slug)}
-            external={false}
-            variant="arrow"
-          />
-        ) : null}
-
-        {filterSections ? (
-          <FilterBar
-            count={countActiveFilters(values, dates)}
-            pills={activeFilters}
-            onClearAll={clearFilters}
-          >
-            {panel}
-          </FilterBar>
-        ) : (
-          <ActiveFilterPills filters={activeFilters} onClearAll={clearFilters} />
-        )}
-
-        {/* Select all heads a lone Geolocations group here; once several groups show it moves
-            under that group's header, beside the rows it selects. */}
-        {(activeQuery.trim() || hasActiveFilters) && (
-          <div className="flex items-center justify-between gap-3">
-            {!titled && showGroup("geolocation") && results && results.geolocations.length > 0 ? (
-              <SelectAllRow selection={selection} />
-            ) : (
-              <span />
-            )}
-            <span className="shrink-0 text-[11px] text-neutral-500">
-              {loading ? "Searching…" : results ? countLabel(totalHits, "result") : null}
-            </span>
-          </div>
-        )}
-
-        <ErrorNotice error={error} onRetry={() => setAttempt((n) => n + 1)} />
-
-        {/* Emptiness gates read the LIVE inputs, so clearing filters doesn't flash stale results
-            under the start-typing prompt for a debounce window. */}
-        {!queryInput.trim() && !hasActiveFilters && (
-          <EmptyState>
-            Start typing to search across geolocations, requests, collections,
-            analysts and organizations.
-          </EmptyState>
-        )}
-
-        {(activeQuery.trim() || hasActiveFilters) && results && totalHits === 0 && !loading && (
-          <EmptyState>
-            No matches
-            {activeQuery.trim() && (
-              <> for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span></>
-            )}
-            {hasActiveFilters && <> with the active filters</>}.
-            {results.suggestion && (
-              <>
-                {" "}Did you mean{" "}
-                <button
-                  type="button"
-                  onClick={() => respell(results.suggestion ?? "")}
-                  className={TEXT_LINK}
-                >
-                  {results.suggestion}
-                </button>
-                ?
-              </>
-            )}
-            {typeFilter !== "all" && !hasActiveFilters && !results.suggestion && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  onClick={() => onChipClick("all")}
-                  className={TEXT_LINK}
-                >
-                  Try searching all types
-                </button>
-                .
-              </>
-            )}
-          </EmptyState>
-        )}
-
-        {(queryInput.trim() || hasActiveFilters) && results && (
-          <>
-            {showGroup("geolocation") && results.geolocations.length > 0 && (
-              <ResultGroup
-                titled={titled}
-                title="Geolocations"
-                count={results.total.geolocations}
-              >
-                {titled && <SelectAllRow selection={selection} />}
-                {results.geolocations.map((g) => (
-                  <EventResult key={g.id} hit={g} selection={selection} />
-                ))}
-                <LoadMoreRow
-                  walk={{
-                    hasMore: results.geolocations_cursor !== null,
-                    loadingMore,
-                    loadMore: loadMoreGeolocations,
-                    error: moreError,
-                  }}
-                />
-              </ResultGroup>
-            )}
-
-            {showGroup("request") && results.requests.length > 0 && (
-              <ResultGroup titled={titled} title="Requests" count={results.total.requests}>
-                {results.requests.map((r) => (
-                  <RequestResult key={r.id} hit={r} />
-                ))}
-              </ResultGroup>
-            )}
-
-            {showGroup("collection") && results.collections.length > 0 && (
-              <ResultGroup
-                titled={titled}
-                title="Collections"
-                count={results.total.collections}
-              >
-                {/* The profile's grid: a mosaic at a card's width, one column on a phone. */}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {results.collections.map((collection) => (
-                    // The profile's card with the byline it hides there: a result stands beside other
-                    // analysts' shelves.
-                    <CollectionCard
-                      key={collection.id}
-                      collection={collection}
-                      showOwner
-                    />
-                  ))}
-                </div>
-              </ResultGroup>
-            )}
-
-            {showGroup("user") && results.users.length > 0 && (
-              <ResultGroup titled={titled} title="Analysts" count={results.total.users}>
-                {results.users.map((u) => (
-                  <UserResult key={u.id} hit={u} />
-                ))}
-              </ResultGroup>
-            )}
-
-            {showGroup("organization") && results.organizations.length > 0 && (
-              <ResultGroup titled={titled} title="Organizations" count={results.total.organizations}>
-                {results.organizations.map((o) => (
-                  <OrganizationResult key={o.id} hit={o} />
-                ))}
-              </ResultGroup>
-            )}
-          </>
-        )}
+        </div>
+      )}
     </PageShell>
   );
 }
@@ -664,159 +511,5 @@ function DateRange({
         aria-label={`${label} to`}
       />
     </div>
-  );
-}
-
-/**
- * Render a sentinel-wrapped highlight string as text and `<mark>`; `splitHighlights`' even/odd
- * parity is safe since the backend emits well-formed pairs.
- */
-function Highlighted({ value }: { value: string }) {
-  const segments = splitHighlights(value);
-  return (
-    <>
-      {segments.map((seg, i) =>
-        seg.highlighted ? (
-          <mark
-            key={i}
-            className="bg-orange-500/30 text-inherit rounded-sm px-0.5"
-          >
-            {seg.text}
-          </mark>
-        ) : (
-          <span key={i}>{seg.text}</span>
-        )
-      )}
-    </>
-  );
-}
-
-function ResultGroup({
-  titled,
-  title,
-  count,
-  children,
-}: {
-  titled: boolean;
-  title: string;
-  count: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-2" aria-label={titled ? undefined : title}>
-      {titled && (
-        <div className={LABEL_TEXT}>
-          {title} · <span className="text-neutral-300 font-medium">{count}</span>
-        </div>
-      )}
-      <div className="space-y-3">{children}</div>
-    </section>
-  );
-}
-
-function EventResult({ hit, selection }: { hit: SearchEventHit; selection: SearchSelection }) {
-  return (
-    <SelectableHit hit={hit} selection={selection}>
-      <EntityCard
-        variant="compact"
-        uniformHeight={false}
-        detailHref={eventHref(hit.id)}
-        title={<Highlighted value={hit.title_highlight} />}
-        titleText={hit.title}
-        badge={<StatusBadge status={hit.status} />}
-        media={hit.media[0]}
-        isGraphic={hit.is_graphic}
-        {...creditProps(hit)}
-        date={hit.occurred_date ?? undefined}
-        coords={{ lat: hit.lat, lng: hit.lng }}
-        tags={hit.tags}
-      />
-    </SelectableHit>
-  );
-}
-
-function RequestResult({ hit }: { hit: SearchRequestHit }) {
-  return (
-    <EntityCard
-      variant="compact"
-      uniformHeight={false}
-      detailHref={requestHref(hit.id)}
-      title={<Highlighted value={hit.title_highlight} />}
-      titleText={hit.title}
-      badge={<StatusBadge status={hit.status} />}
-      media={hit.media[0]}
-      isGraphic={hit.is_graphic}
-      author={hit.owner}
-      source={{ url: hit.source_urls[0] ?? null }}
-    />
-  );
-}
-
-/** One profile hit, an analyst or an organization. */
-function ProfileResult({
-  href,
-  avatarUrl,
-  avatarName,
-  name,
-  meta,
-  bioHighlight,
-}: {
-  href: string;
-  avatarUrl: string | null;
-  avatarName: string;
-  name: ReactNode;
-  meta?: ReactNode;
-  bioHighlight: string | null;
-}) {
-  // Sanctioned duplicate of EntityCard's shell (see design.md): a profile hit has no media slot
-  // or meta rows, and folding it in would leak avatar and no-thumb conditionals into the card.
-  return (
-    <Link
-      href={href}
-      className={`flex items-start gap-3 p-3 bg-neutral-900 border border-neutral-800 rounded-md ${TAPPABLE_HOVER}`}
-    >
-      <Avatar src={avatarUrl} username={avatarName} size="size-10" />
-      <div className="flex-1 min-w-0 space-y-1">
-        <h3 className="text-sm font-medium text-neutral-100">
-          {name}
-        </h3>
-        {meta}
-        {bioHighlight && (
-          <p className="text-xs text-neutral-400 line-clamp-2">
-            <Highlighted value={bioHighlight} />
-          </p>
-        )}
-      </div>
-    </Link>
-  );
-}
-
-function UserResult({ hit }: { hit: SearchUserHit }) {
-  return (
-    <ProfileResult
-      href={profileHref(hit.username)}
-      avatarUrl={hit.avatar_url}
-      avatarName={hit.username}
-      name={<Highlighted value={hit.username_highlight} />}
-      bioHighlight={hit.bio_highlight}
-    />
-  );
-}
-
-function OrganizationResult({ hit }: { hit: SearchOrganizationHit }) {
-  return (
-    <ProfileResult
-      href={organizationPath(hit.slug)}
-      avatarUrl={hit.avatar_url}
-      avatarName={hit.name}
-      name={<Highlighted value={hit.name_highlight} />}
-      meta={
-        <p className={META_LINE}>
-          <Building2 size={11} aria-hidden />
-          {`Organization · ${memberCountLabel(hit.member_count)}`}
-        </p>
-      }
-      bioHighlight={hit.bio_highlight}
-    />
   );
 }

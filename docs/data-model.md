@@ -588,7 +588,7 @@ Indexes:
 
 - `users_x_handle_key`: UNIQUE on `(x_handle)`. Enforces one account per X handle. Postgres allows unlimited NULLs, so handle-less rows are unaffected.
 - `ix_users_live`: partial index on `(created_at) WHERE deleted_at IS NULL`. Admin search and the auth path both filter on `deleted_at IS NULL`.
-- `ix_users_search_fts`: GIN index on `to_tsvector('simple_unaccent', coalesce(username, '') || ' ' || coalesce(bio, ''))`. Backs `GET /search` (the analyst branch). `bio` is part of the indexed expression so `ts_headline` can return a fragment highlight.
+- `ix_users_search_fts`: GIN index on `to_tsvector('simple_unaccent', coalesce(username, '') || ' ' || coalesce(bio, ''))`. Backs the analyst hits of `GET /search`. `bio` is part of the indexed expression so `ts_headline` can return a fragment highlight.
 
 ---
 
@@ -1125,7 +1125,7 @@ A collective with its own public profile at `/organizations/{slug}`. Only a site
 | `created_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The site admin who created it. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL |
 
-- `ix_organizations_search_fts`, a GIN over `to_tsvector('simple_unaccent', coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(bio, ''))`. Backs the organizations group of [`GET /search`](api.md#get-search). The expression has to stay identical to `services/search._ORGANIZATION_TSVECTOR`, or the planner drops the index and scans the table.
+- `ix_organizations_search_fts`, a GIN over `to_tsvector('simple_unaccent', coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(bio, ''))`. Backs the organization hits of [`GET /search`](api.md#get-search). The expression has to stay identical to `services/search._ORGANIZATION_TSVECTOR`, or the planner drops the index and scans the table.
 
 ---
 
@@ -1183,7 +1183,7 @@ A named, curated set of events one analyst is credited on, as owner or as a co-g
 
 **Indexes:**
 - `ix_collections_owner_created_at` on `(owner_id, created_at)`. Backs the profile section's only read, this analyst's collections newest first.
-- `ix_collections_search_fts`, a GIN over `to_tsvector('simple_unaccent', coalesce(title, '') || ' ' || coalesce(description_text, ''))`. Backs the collections group of [`GET /search`](api.md#get-search). The expression has to stay identical to the one `services/search._collection_tsvector` builds, config name included, or the planner drops the index and scans the table.
+- `ix_collections_search_fts`, a GIN over `to_tsvector('simple_unaccent', coalesce(title, '') || ' ' || coalesce(description_text, ''))`. Backs the collection hits of [`GET /search`](api.md#get-search). The expression has to stay identical to the one `services/search._collection_tsvector` builds, config name included, or the planner drops the index and scans the table.
 
 **The description is HTML, and its projection is a column.** The pair is written together in `services/collections`, on the create and on every edit, which is also where the HTML is sanitized and judged, so nothing can store a description whose stored projection describes different words. See [`api.md`](api.md#rich-text) for the tag and attribute allowlist, and [`api.md`](api.md#collections) for what a refused description answers.
 
