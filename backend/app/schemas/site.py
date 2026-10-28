@@ -15,7 +15,7 @@ from pydantic import (
 from app.models.event import TITLE_MAX_LENGTH
 from app.models.site import LinkEffect, SiteKind
 from app.models.source import SOURCE_TITLE_MAX_LENGTH
-from app.schemas.event import CoordsRead
+from app.schemas.event import VERSION_NOTE_MAX_LENGTH, CoordsRead
 from app.schemas.media import MediaRead
 from app.schemas.source import (
     LIST_PARSE_CEILING,
@@ -32,8 +32,10 @@ SITE_SOURCE_NOTE_MAX_LENGTH = 500
 MAX_SOURCES_PER_WRITE = 10
 # Vertices across every ring of one zone; a hand-drawn site needs far fewer.
 MAX_ZONE_VERTICES = 1000
-# A zone covers a site, not a region: its geography area stays under this cap.
-MAX_ZONE_AREA_KM2 = 10_000
+# A zone covers a site, not a region: the largest sites, training grounds, cover a few hundred
+# km², so this cap holds them with margin and refuses a region drawn by mistake (docs/api.md).
+# Mirrored by ``frontend/src/lib/siteZone.ts::MAX_ZONE_AREA_KM2``; change both.
+MAX_ZONE_AREA_KM2 = 1_000
 # A longitude span of 180 degrees or more would let a zone wrap the antimeridian.
 MAX_ZONE_LNG_SPAN_DEG = 180
 
@@ -157,7 +159,8 @@ class SiteContourChange(BaseModel):
 
 class SiteVersionCreate(BaseModel):
     """Body of ``POST /sites/{id}/versions``: the record, the sources to add and to remove, the
-    contour changes, and your events linked to the site (``null`` leaves the links as they are)."""
+    contour changes, your events linked to the site (``null`` leaves the links as they are), and
+    the optional note filed with the version the edit supersedes."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -170,6 +173,12 @@ class SiteVersionCreate(BaseModel):
     removed_source_ids: list[uuid.UUID] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
     contours: list[SiteContourChange] = Field(default_factory=list, max_length=LIST_PARSE_CEILING)
     event_links: SiteEventLinks | None = None
+    note: str | None = Field(None, max_length=VERSION_NOTE_MAX_LENGTH)
+
+    @field_validator("note")
+    @classmethod
+    def _blank_note_is_none(cls, v: str | None) -> str | None:
+        return (v or "").strip() or None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -361,6 +370,8 @@ class SiteVersionRead(BaseModel):
     version_no: int
     edited_by: AuthorRef | None
     created_at: datetime
+    # NULL when the write that superseded this version left none.
+    note: str | None
     name: str
     kind: SiteKind
     zone: ZonePolygon

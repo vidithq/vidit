@@ -18,7 +18,7 @@ import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { cn } from "@/lib/cn";
-import { EMPTY_DRAW, drawReady, zoneFromVertices } from "@/lib/siteZone";
+import { CONTOUR_REQUIREMENT, EMPTY_DRAW, drawReady, zoneFromVertices } from "@/lib/siteZone";
 import {
   SITE_KIND_LABELS,
   checkOverlaps,
@@ -112,7 +112,7 @@ export default function NewSitePage() {
 
   const missing = [
     ...source.missing,
-    ...(zone ? [] : ["A closed contour"]),
+    ...(zone ? [] : [CONTOUR_REQUIREMENT]),
     ...(name.trim() ? [] : ["Name"]),
     ...(kind ? [] : ["Kind"]),
   ];

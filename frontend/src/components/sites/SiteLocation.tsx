@@ -8,7 +8,7 @@ import { EventLocation } from "@/components/event/EventLocation";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { formatInstantDate } from "@/lib/format";
 import { eventHref } from "@/lib/routes";
-import { positionsBounds, zoneAreaKm2, zoneVertices } from "@/lib/siteZone";
+import { formatAreaKm2, positionsBounds, zoneAreaKm2, zoneVertices } from "@/lib/siteZone";
 import {
   contourBefore,
   contourOn,
@@ -86,7 +86,7 @@ export function SiteLocation({
             concept="site_zone"
             value={
               contour
-                ? `${zoneAreaKm2(zoneVertices(contour.zone)).toFixed(2)} km², from the source of ${formatInstantDate(
+                ? `${formatAreaKm2(zoneAreaKm2(zoneVertices(contour.zone)))}, from the source of ${formatInstantDate(
                     drawnOn?.captured_at ?? contour.captured_at,
                   )}`
                 : "None drawn yet on this date"

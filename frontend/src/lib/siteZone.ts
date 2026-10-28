@@ -22,6 +22,18 @@ export function zoneFromVertices(vertices: Position[]): Zone {
 /** A polygon needs three corners before it can close. */
 export const MIN_ZONE_VERTICES = 3;
 
+/** Mirrors backend `schemas/site.MAX_ZONE_AREA_KM2`; change both. */
+export const MAX_ZONE_AREA_KM2 = 1000;
+
+/** An area in square kilometres, thousands grouped: `230,643.89 km²`. */
+export function formatAreaKm2(km2: number, decimals = 2): string {
+  const digits = { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+  return `${km2.toLocaleString("en-US", digits)} km²`;
+}
+
+/** What a site form lacks while no drawn ring makes a zone. */
+export const CONTOUR_REQUIREMENT = `A closed contour of at most ${formatAreaKm2(MAX_ZONE_AREA_KM2, 0)} whose edges do not cross`;
+
 // Local equirectangular metres around `origin`: exact enough for a site-sized shape.
 function toMetres([lng, lat]: Position, origin: Position): [number, number] {
   const k = (Math.PI / 180) * EARTH_RADIUS_M;
@@ -138,9 +150,19 @@ export function drawFromZone(zone: Zone): DrawState {
   return { vertices: zoneVertices(zone), closed: true, selected: null };
 }
 
-/** True when the drawn ring is closed and its edges do not cross: the zone the API takes. */
+/** Why the API would refuse the ring drawn so far: two edges of the closed ring cross, or the
+ *  corners enclose more than `MAX_ZONE_AREA_KM2`, checked before the ring closes. Null otherwise. */
+export function drawRefusal({ vertices, closed }: DrawState): string | null {
+  if (closed && zoneSelfCrosses(vertices)) return "Two edges cross. Move a corner.";
+  if (zoneAreaKm2(vertices) > MAX_ZONE_AREA_KM2) {
+    return `A site covers at most ${formatAreaKm2(MAX_ZONE_AREA_KM2, 0)}. Move the corners closer.`;
+  }
+  return null;
+}
+
+/** True when the drawn ring is closed and `drawRefusal` finds nothing: the zone the API takes. */
 export function drawReady(state: DrawState): boolean {
-  return state.closed && state.vertices.length >= MIN_ZONE_VERTICES && !zoneSelfCrosses(state.vertices);
+  return state.closed && state.vertices.length >= MIN_ZONE_VERTICES && drawRefusal(state) === null;
 }
 
 /** The middle of each edge of the closed ring, where a drag inserts a corner. */

@@ -391,13 +391,13 @@ export function SourceEditor({
             }
             columns={[
               {
-                header: "Posted (UTC)",
+                header: `${SOURCE_FIELDS.posted.label} (UTC)`,
                 width: "13rem",
                 cell: ({ index: i, row, update: updateLink }) => (
                   <DateTimeInput
                     type="datetime-local"
                     variant="compact"
-                    aria-label={`Posted (UTC), ${describe(i, row.url)}`}
+                    aria-label={`${SOURCE_FIELDS.posted.label} (UTC), ${describe(i, row.url)}`}
                     title="When the file was posted at this link (UTC)"
                     value={row.postedAt}
                     onChange={(e) => updateLink({ ...row, postedAt: e.target.value })}

@@ -32,6 +32,12 @@ const rowLabels = (block: HTMLElement) =>
     n.textContent?.trim()
   );
 
+// The value beside a row's label.
+const rowValue = (block: HTMLElement, label: string) =>
+  Array.from(block.querySelectorAll(":scope > div"))
+    .find((row) => row.querySelector("span:first-child")?.textContent?.trim() === label)
+    ?.lastElementChild?.textContent;
+
 describe("SourceBlock", () => {
   it("shows the file above the rows", () => {
     const block = renderBlock({ media: IMAGE, kind: "drone" });
@@ -128,7 +134,7 @@ describe("SourceBlock", () => {
     const link = within(block).getByRole("link", { name: "t.me" });
     expect(link).toHaveAttribute("href", "https://t.me/channel/12345");
     expect(link).toHaveAttribute("title", "https://t.me/channel/12345");
-    expect(within(block).getByText("Posted 1 Jun 2026, 10:05 UTC")).toBeInTheDocument();
+    expect(rowValue(block, "Posted")).toBe("1 Jun 2026, 10:05 UTC");
     expect(
       within(block).getByRole("link", { name: "Wayback Machine copy of source 1, t.me" })
     ).toHaveAttribute("href", ARCHIVED.url);
@@ -138,7 +144,14 @@ describe("SourceBlock", () => {
     const block = renderBlock({
       links: [{ url: "https://t.me/channel/12345", posted_at: "2026-01-13T00:00:00Z", archived: null }],
     });
-    expect(within(block).getByText("Posted 13 Jan 2026")).toBeInTheDocument();
+    expect(rowValue(block, "Posted")).toBe("13 Jan 2026");
+  });
+
+  it("gives an unknown post time its own Posted row, apart from Captured", () => {
+    const block = renderBlock({ captured_at: "2026-05-22T09:00:00Z" });
+    expect(rowLabels(block)).toEqual(["Level", "Links (1)", "Posted", "Captured"]);
+    expect(rowValue(block, "Posted")).toBe("Unknown");
+    expect(rowValue(block, "Captured")).toBe("22 May 2026, 09:00 UTC");
   });
 
   it("counts several links, one item each", () => {
@@ -154,12 +167,22 @@ describe("SourceBlock", () => {
     );
     expect(items).toHaveLength(2);
     expect(within(items[1]).getByRole("link", { name: "youtube.com" })).toBeInTheDocument();
-    expect(within(items[1]).getByText("Date unknown")).toBeInTheDocument();
     expect(
       within(items[1]).getByRole("button", {
         name: "No archived copy of source 1, link 2, youtube.com",
       })
     ).toBeDisabled();
+    expect(rowValue(block, "Posted")).toBe("t.me · 1 Jun 2026, 10:05 UTCyoutube.com · Unknown");
+  });
+
+  it("reads links posted at the same time as one value", () => {
+    const block = renderBlock({
+      links: [
+        { url: "https://t.me/channel/12345", posted_at: null, archived: null },
+        { url: "https://www.youtube.com/watch?v=abc", posted_at: null, archived: null },
+      ],
+    });
+    expect(rowValue(block, "Posted")).toBe("Unknown");
   });
 });
 
