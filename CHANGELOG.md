@@ -78,6 +78,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Pasting an X post you already imported says *Already imported* and links the existing detection, request or event ([#802](https://github.com/vidithq/vidit/pull/802)).
 - Bulk import refuses a file that is not a zip as soon as you pick or drop it, with one message, instead of failing after the import starts ([#802](https://github.com/vidithq/vidit/pull/802)).
 - The Detections queue names a detection short of evidence *Incomplete* everywhere, drops the line under its title, and each row is a link you can open in a new tab ([#802](https://github.com/vidithq/vidit/pull/802)).
+- The home page ends on links to the legal notice and the privacy policy, and the About page sets its Commitments text at the size of its other sections ([#797](https://github.com/vidithq/vidit/pull/797)).
+- Vercel Web Analytics and Speed Insights load only when the build sets `NEXT_PUBLIC_VERCEL_ANALYTICS=true`, so an instance hosted elsewhere no longer makes failing `/_vercel/*` requests ([#797](https://github.com/vidithq/vidit/pull/797)).
 - On a profile, Insights and Coverage show each count once; Follow and Unfollow move the followers count at once and put it back on an error; Edit profile shows the avatar once and a refused website under its field ([#798](https://github.com/vidithq/vidit/pull/798)).
 - Opening a page that needs an account while signed out, such as a new collection, a site edit or your profile, sends you to sign in and then back to that page ([#796](https://github.com/vidithq/vidit/pull/796)).
 - When your session ends because its cookies expired or were cleared, the next page you open says so, the sign-in page included ([#796](https://github.com/vidithq/vidit/pull/796)).
