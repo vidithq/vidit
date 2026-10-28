@@ -8,6 +8,7 @@ import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
 import { buttonClasses } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { FieldError } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -64,6 +65,7 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
       <div className="space-y-3">
         {LINK_PLATFORMS.map((p) => {
           const Icon = p.Icon;
+          const error = edit.linkErrors[p.key];
           return (
             <div key={p.key} className="space-y-1.5">
               <label htmlFor={`link-${p.key}`} className={FORM_LABEL}>
@@ -75,6 +77,8 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
                 icon={<Icon size={14} />}
                 placeholder={p.hint}
                 value={edit.draftLinks[p.key] ?? ""}
+                invalid={!!error}
+                aria-describedby={error ? `link-${p.key}-error` : undefined}
                 onChange={(e) =>
                   edit.setDraftLinks((prev) => ({
                     ...prev,
@@ -82,6 +86,9 @@ export function LinkedAccountsFields({ edit }: { edit: ProfileEditState }) {
                   }))
                 }
               />
+              <FieldError id={`link-${p.key}-error`} alert>
+                {error}
+              </FieldError>
             </div>
           );
         })}

@@ -160,11 +160,12 @@ beforeEach(() => {
 describe("NewCollectionPage", () => {
   it("bounces a signed-out visitor to the login form", () => {
     useAuth.mockReturnValue({ user: null, loading: false });
+    window.history.replaceState(null, "", "/collections/new");
 
     render(<NewCollectionPage />);
 
     // `replace`, so the protected page is not left in history behind the login form.
-    expect(replace).toHaveBeenCalledWith("/login");
+    expect(replace).toHaveBeenCalledWith("/login?next=%2Fcollections%2Fnew");
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 

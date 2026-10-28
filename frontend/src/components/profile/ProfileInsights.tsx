@@ -1,7 +1,7 @@
 "use client";
 
 import { SOURCE_KIND_LABELS, type SourceKind } from "@/lib/sources";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Bot, Camera, MapPin, Swords } from "lucide-react";
 
 import { profileSearchHref } from "@/lib/search";
@@ -11,13 +11,6 @@ import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { StatGrid, StatTile } from "@/components/ui/StatTile";
-
-/** The line under a heading saying what the block counts. Local to this card, not a
- * `components/ui/` export: it is prose in the card's voice, and a section's help stays the `?`
- * (`<FieldHelp>`). It states the population a short heading leaves unsaid. */
-function ChartNote({ children }: { children: ReactNode }) {
-  return <p className="mt-1 mb-2 text-xs text-neutral-500">{children}</p>;
-}
 
 /**
  * The shape-of-work section on the public profile: two live-status counts and the leading conflict
@@ -33,8 +26,8 @@ function ChartNote({ children }: { children: ReactNode }) {
  *
  * One population feeds every block: the live `geolocated` and `detected` events, detections
  * included. Charts on published work beside tiles counting detections would print two answers
- * with nothing to explain the gap. Each note says what its block makes of the set (the month grid
- * draws only dated events).
+ * with nothing to explain the gap. No block carries a helper line: a heading's `?` holds its
+ * definition.
  */
 export function ProfileInsights({ username }: { username: string }) {
   // The result remembers which username it answers, so navigating never paints stale stats.
@@ -60,27 +53,13 @@ export function ProfileInsights({ username }: { username: string }) {
     return null;
   }
 
-  // Summed off the buckets, not `total_events`: an undated event gets no bucket and the span stops
-  // at ten years, so the grid's sum is the only figure matching the cells on screen.
-  const datedCount = stats.activity.reduce((sum, bucket) => sum + bucket.count, 0);
-
   // The head of each ranked list (ordered count desc then name server-side), all the card prints.
   const topConflict = stats.top_conflicts[0];
   const topKind = stats.source_kinds[0];
 
   return (
     <Card as="section">
-      <div>
-        <SectionEyebrow title="Insights" margin="none" />
-        {/* The tiles' population, stated once. Not every figure here: the month grid draws only dated
-            events, as its note says. */}
-        <ChartNote>
-          The tiles below read one set of {stats.total_events}{" "}
-          {stats.total_events === 1 ? "event" : "events"}: this analyst&apos;s
-          geolocations and machine detections. Two count it, two name what
-          leads it.
-        </ChartNote>
-      </div>
+      <SectionEyebrow title="Insights" margin="none" />
 
       <StatGrid>
         <StatTile
@@ -120,11 +99,7 @@ export function ProfileInsights({ username }: { username: string }) {
       {/* Where the footage came from: the beat an analyst works reads off the hosts. The `?` is the
           source links definition, not to be confused with the source kind above. */}
       <div>
-        <SectionEyebrow title="Source origin" concept="source_links" as="h3" margin="none" />
-        <ChartNote>
-          The host of each event&apos;s source link. Events naming no source
-          have their own share.
-        </ChartNote>
+        <SectionEyebrow title="Source origin" concept="source_links" as="h3" margin="sm" />
         <SourceHostBar
           hosts={stats.source_hosts}
           otherCount={stats.other_hosts_count}
@@ -133,15 +108,9 @@ export function ProfileInsights({ username }: { username: string }) {
       </div>
 
       {/* The axis is the date the event happened, not when it was posted or imported. The heading is
-          the name the field carries on the submit and edit forms; the note settles the ambiguity so the
-          reading doesn't depend on the `?`. */}
+          the name the field carries on the submit and edit forms; its `?` settles the ambiguity. */}
       <div>
-        <SectionEyebrow title="Event dates" concept="occurred_date" as="h3" margin="none" />
-        <ChartNote>
-          The month each event took place, not when it was posted, imported or
-          published. It covers the {datedCount}{" "}
-          {datedCount === 1 ? "event" : "events"} dated in the years shown.
-        </ChartNote>
+        <SectionEyebrow title="Event dates" concept="occurred_date" as="h3" margin="sm" />
         <ActivityHeatmap buckets={stats.activity} />
       </div>
     </Card>
