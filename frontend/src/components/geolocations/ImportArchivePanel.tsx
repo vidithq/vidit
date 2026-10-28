@@ -19,7 +19,7 @@ import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import { useMutation } from "@/hooks/useMutation";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { ApiError } from "@/lib/api";
-import { MAX_UPLOAD_LABEL, stripArchive } from "@/lib/archive";
+import { MAX_UPLOAD_LABEL, NOT_A_ZIP_MESSAGE, isZipFile, stripArchive } from "@/lib/archive";
 import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 import {
   ImportPollLost,
@@ -32,7 +32,7 @@ import type { ArchiveImportJob } from "@/types";
 import type { ImportShell } from "./ImportPostPanel";
 import { pluralNoun } from "@/lib/format";
 import { detectionsQueueHref } from "@/lib/routes";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { ErrorNotice, FieldError } from "@/components/ui/ErrorNotice";
 
 /** Bytes below 1 KB, then KB, then MB with one decimal below 100 MB. */
 function formatBytes(n: number): string {
@@ -58,7 +58,7 @@ function importSummary(job: ArchiveImportJob): string {
     );
   }
   if (job.skipped > 0) {
-    parts.push(`${job.skipped.toLocaleString()} left unchanged`);
+    parts.push(`${job.skipped.toLocaleString()} already imported`);
   }
   return parts.join(" · ");
 }
@@ -82,7 +82,7 @@ function importErrorMessage(err: unknown): string | undefined {
       case "archive_no_tweets":
         return "That zip isn't an X data export (no tweets.js inside).";
       case "archive_malformed":
-        return "That file isn't a valid .zip archive.";
+        return NOT_A_ZIP_MESSAGE;
       case "archive_upload_missing":
       case "archive_upload_invalid":
         return "The uploaded archive couldn't be found on our side. Try the import again.";
@@ -122,6 +122,8 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
   const formId = useId();
   const { refresh: refreshDetectionCount } = useDetectionsCount();
   const [file, setFile] = useState<File | null>(null);
+  // A picked or dropped file that is not a zip: refused on the spot, never staged.
+  const [refused, setRefused] = useState(false);
   const [result, setResult] = useState<ArchiveImportJob | null>(null);
   // The poll lost the job but the import still runs server-side: render a calm
   // "check your email" state, not the failure banner.
@@ -289,7 +291,10 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
               : []
           }
           onAddFiles={(files) => {
-            setFile(files[0] ?? null);
+            const picked = files[0] ?? null;
+            const zip = picked !== null && isZipFile(picked);
+            setRefused(picked !== null && !zip);
+            setFile(zip ? picked : null);
             setPhase("strip");
             setResult(null);
             setLiveJob(null);
@@ -300,6 +305,7 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
           addHint="or drag it onto this box"
           layout="stack"
         />
+        {refused && <FieldError alert>{NOT_A_ZIP_MESSAGE}</FieldError>}
 
         {error && <ErrorNotice error={error} />}
 
@@ -393,7 +399,7 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
                     {failedSome
                       ? `Some posts couldn't be imported (${result.failed} failed). Try the import again.`
                       : alreadyImported
-                        ? `Everything in that archive is already up to date (${result.skipped} ${
+                        ? `Everything in that archive is already imported (${result.skipped} ${
                             result.skipped === 1 ? "geolocation" : "geolocations"
                           }).`
                         : "No geolocations found in that archive. Posts with a coordinate in their text become detections."}

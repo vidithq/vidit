@@ -11,6 +11,22 @@ vi.mock("@/lib/events", async (importOriginal) => ({
   importFromPost: vi.fn(),
 }));
 
+const useApiResource = vi.fn();
+vi.mock("@/hooks/useApiResource", () => ({
+  useApiResource: (path: string | null) => useApiResource(path),
+}));
+
+/** The existing row `GET /events/{id}` answers, or the error it answers instead. */
+function existingRow(row: { id: string; status: string } | "gone") {
+  useApiResource.mockImplementation((path: string | null) =>
+    path === null
+      ? { data: null, error: null }
+      : row === "gone"
+        ? { data: null, error: { title: null, message: "Not found.", fields: {} } }
+        : { data: row, error: null }
+  );
+}
+
 import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { ApiError } from "@/lib/api";
 import { importFromPost } from "@/lib/events";
@@ -57,6 +73,8 @@ describe("ImportPostPanel", () => {
   beforeEach(() => {
     push.mockClear();
     vi.mocked(importFromPost).mockReset();
+    useApiResource.mockReset();
+    existingRow("gone");
   });
 
   it("puts Create the detection in the page's actions, held until a URL is pasted", () => {
@@ -143,17 +161,47 @@ describe("ImportPostPanel", () => {
     expect(banner).toHaveClass(...FORM_ERROR_BANNER.split(" "));
   });
 
-  it("says a matched row was left as it is, and offers no review link for it", async () => {
-    // A skipped row is not the import's to edit, so no review link.
+  it("says a post already imported is, and links its detection", async () => {
+    vi.mocked(importFromPost).mockResolvedValue(outcome({ skipped: ["d9"] }));
+    existingRow({ id: "d9", status: "detected" });
+    renderPanel();
+
+    paste();
+
+    const banner = await screen.findByText("Already imported");
+    expect(banner).toHaveClass(...FORM_SUCCESS_BANNER.split(" "));
+    expect(useApiResource).toHaveBeenLastCalledWith("/events/d9");
+    expect(screen.getByRole("link", { name: "Review the detection" })).toHaveAttribute(
+      "href",
+      "/events/d9/edit?queue=1"
+    );
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["geolocated", "Open the event", "/events/d9"],
+    ["closed", "Open the event", "/events/d9"],
+    ["requested", "Open the request", "/requests/d9"],
+  ])("links a post already imported as a %s row to its page", async (status, name, href) => {
+    vi.mocked(importFromPost).mockResolvedValue(outcome({ skipped: ["d9"] }));
+    existingRow({ id: "d9", status });
+    renderPanel();
+
+    paste();
+
+    await screen.findByText("Already imported");
+    expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
+    expect(screen.queryByRole("link", { name: "Review the detection" })).toBeNull();
+  });
+
+  it("says a post is already imported without a link when its row no longer opens", async () => {
     vi.mocked(importFromPost).mockResolvedValue(outcome({ skipped: ["d9"] }));
     renderPanel();
 
     paste();
 
-    const banner = await screen.findByText("1 left as it is");
-    expect(banner).toHaveClass(...FORM_SUCCESS_BANNER.split(" "));
-    expect(screen.queryByRole("link", { name: "Review the detection" })).toBeNull();
-    expect(push).not.toHaveBeenCalled();
+    await screen.findByText("Already imported");
+    expect(screen.queryByRole("link", { name: /Review|Open/ })).toBeNull();
   });
 
   it("opens the detection a re-import overwrote", async () => {
@@ -168,7 +216,9 @@ describe("ImportPostPanel", () => {
 
     paste();
 
-    expect(await screen.findByText("1 updated · 1 left as it is")).toBeInTheDocument();
+    expect(await screen.findByText("1 updated · 1 already imported")).toBeInTheDocument();
+    // The run wrote a row, so the link opens it and nothing reads the skipped one.
+    expect(useApiResource).not.toHaveBeenCalledWith("/events/d9");
     expect(screen.getByRole("link", { name: "Review the detection" })).toHaveAttribute(
       "href",
       "/events/d4/edit?queue=1"

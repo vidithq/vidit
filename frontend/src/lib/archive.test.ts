@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, unzipSync, zipSync } from "fflate";
 
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, stripArchive } from "./archive";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, isZipFile, stripArchive } from "./archive";
 
 function zipFile(entries: Record<string, Uint8Array>): File {
   return new File([zipSync(entries)], "archive.zip", { type: "application/zip" });
@@ -114,5 +114,14 @@ describe("stripArchive", () => {
     expect(MAX_UPLOAD_BYTES).toBe(4 * 1024 ** 3);
     // And the copy the analyst reads quotes that same constant.
     expect(MAX_UPLOAD_LABEL).toBe("4 GB");
+  });
+});
+
+describe("isZipFile", () => {
+  it("takes a zip by its extension or its type, and nothing else", () => {
+    expect(isZipFile({ name: "twitter-2026.ZIP", type: "" })).toBe(true);
+    expect(isZipFile({ name: "export", type: "application/x-zip-compressed" })).toBe(true);
+    expect(isZipFile({ name: "notes.txt", type: "text/plain" })).toBe(false);
+    expect(isZipFile({ name: "photo.jpg", type: "image/jpeg" })).toBe(false);
   });
 });

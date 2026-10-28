@@ -1363,7 +1363,7 @@ export default function PalettePage() {
             </Variant>
           </Item>
 
-          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host without a leading www., the full URL in the link's title (the Detected from row, a source block's links), with italic fallbacks for a null URL (To confirm) and a value the parser gives no host for (no source)">
+          <Item name="<SourceLabel>" usage="Source display: the stored URL shortened to its host without a leading www., the full URL in the link's title (the Detected from row, a source block's links), with one italic fallback, no source, for a null URL or a value the parser gives no host for">
             <SourceLabel url="https://t.me/some_channel/4242" variant="inline" />
             <SourceLabel url="https://www.t.me/some_channel/4242/" variant="link" />
             <SourceLabel url={null} variant="inline" />

@@ -10,13 +10,13 @@ import { formatDate } from "@/lib/format";
 import { firstSourceUrl } from "@/lib/sources";
 import type { DetectedVia, EventDetail } from "@/types";
 
-/** The badge text for a detection short of the evidence floor. One missing piece is named (the
- * common case, and it tells the analyst whether it is worth opening); several collapse to a count,
- * since joined names outgrew the row and the review flow and edit form name them in place. */
-function missingLabel(blockers: string[]): string {
+/** The badge text for an incomplete detection, in the queue filter's word. One missing piece is
+ * named (the common case, and it tells the analyst whether it is worth opening); several collapse
+ * to a count, since joined names outgrew the row and the edit form names them in place. */
+function incompleteLabel(blockers: string[]): string {
   return blockers.length === 1
-    ? `Missing: ${blockers[0]}`
-    : `Missing: ${blockers.length} pieces`;
+    ? `Incomplete: ${blockers[0]}`
+    : `Incomplete: ${blockers.length} pieces`;
 }
 
 /** Where a detection came in from, one word in the secondary metadata line. A detection imported
@@ -32,7 +32,7 @@ const ENTRY_LABELS: Record<DetectedVia, string> = {
 /**
  * One row of the Detections queue: thumbnail, title, event date, source host, one state badge.
  * Denser and quieter than `<EntityCard>` (no byline, coordinates or tags): the queue is a triage
- * list and judgment happens in the review flow. No inline controls, so the whole row is one click
+ * list and judgment happens in the review flow. No inline controls, so the row itself is the link
  * to the full edit form, where a detection the review flow can't finish gets its manual pass.
  *
  * The badge describes the *evidence*, not completeness: **Ready to review** means the machine
@@ -43,17 +43,14 @@ const ENTRY_LABELS: Record<DetectedVia, string> = {
 export function DetectionQueueRow({ detection }: { detection: EventDetail }) {
   const blockers = batchCompletionBlockers(detection);
   const ready = blockers.length === 0;
+  const sourceUrl = firstSourceUrl(detection);
   return (
-    <div
-      className={`group relative flex gap-3 rounded-md border border-neutral-800 bg-neutral-900 p-2.5 ${TAPPABLE_HOVER}`}
+    // Opens the detection inside a review pass starting where it was clicked: reaching a detection
+    // through the queue is reviewing the queue.
+    <Link
+      href={eventEditHref(detection.id, true)}
+      className={`group flex gap-3 rounded-md border border-neutral-800 bg-neutral-900 p-2.5 ${TAPPABLE_HOVER}`}
     >
-      {/* Stretched link, the catalogue row click model. It opens the detection inside a review pass
-          starting where it was clicked: reaching a detection through the queue is reviewing the queue. */}
-      <Link
-        href={eventEditHref(detection.id, true)}
-        aria-label={detection.title}
-        className="absolute inset-0 z-10 rounded-[inherit]"
-      />
       <MediaThumb
         media={detection.thumbnail ?? undefined}
         isGraphic={detection.is_graphic}
@@ -71,18 +68,17 @@ export function DetectionQueueRow({ detection }: { detection: EventDetail }) {
             <span>
               {detection.occurred_date ? formatDate(detection.occurred_date) : "No event date"}
             </span>
-            <SourceLabel variant="inline" url={firstSourceUrl(detection)} />
+            {/* No source link makes the detection incomplete, which its badge already says. */}
+            {sourceUrl !== null && <SourceLabel variant="inline" url={sourceUrl} />}
             {detection.detected_via !== null && detection.detected_via !== undefined && (
               <span>{ENTRY_LABELS[detection.detected_via]}</span>
             )}
           </div>
         </div>
-        {/* Nothing on the row takes a pointer of its own, so the badge sits under the stretched link and
-            the row stays one click. */}
         <Pill tone={ready ? "secondary" : "neutral"} className="self-start">
-          {ready ? "Ready to review" : missingLabel(blockers)}
+          {ready ? "Ready to review" : incompleteLabel(blockers)}
         </Pill>
       </div>
-    </div>
+    </Link>
   );
 }

@@ -431,7 +431,7 @@ Deployment, the webhook runbook and the CRC operator notes: see [`engineering.md
 
 ## The pasted-tweet import
 
-An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the detections the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer; the browser opens the first created detection when the run raised no warning, and otherwise stays on the page and states what it raised ([`api.md`](api.md#post-eventsimport-from-tweet)).
+An analyst pastes a post URL into the submit form and `POST /events/import-from-tweet` creates the detections the post carries, one per coordinate, owned by the analyst. The response returns the created, updated and skipped ids plus the [warnings](#warnings) review has to answer; the browser opens the first created detection when the run raised no warning, and otherwise stays on the page and states what it raised ([`api.md`](api.md#post-eventsimport-from-tweet)). A run that only skipped reads *Already imported*: the browser reads the first skipped row and links it where its state reads ([Submit](design.md#forms)).
 
 **Own posts only.** The post's author must resolve to the caller's own [linked account](#the-contract); anything else answers `not_your_post`, and a third party's footage goes through the plain submit form as a source. The check runs on the pasted post alone, before the rest of the hop, so neither the parent hop nor the chase spends the shared syndication budget on a post that is not the caller's. A post X serves to nobody answers `post_unreadable`.
 

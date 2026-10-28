@@ -82,6 +82,9 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- Pasting an X post you already imported says *Already imported* and links the existing detection, request or event ([#802](https://github.com/vidithq/vidit/pull/802)).
+- Bulk import refuses a file that is not a zip as soon as you pick or drop it, with one message, instead of failing after the import starts ([#802](https://github.com/vidithq/vidit/pull/802)).
+- The Detections queue names a detection short of evidence *Incomplete* everywhere, drops the line under its title, and each row is a link you can open in a new tab ([#802](https://github.com/vidithq/vidit/pull/802)).
 - A source shows when it was posted on its own Posted row, so an unknown post date no longer reads as an unknown capture date ([#800](https://github.com/vidithq/vidit/pull/800)).
 - The site edit form no longer shows a missing count on Save before you change anything ([#800](https://github.com/vidithq/vidit/pull/800)).
 - A latitude or longitude out of bounds or not a number says why under the coordinate fields, and the greyed map link names the real reason ([#801](https://github.com/vidithq/vidit/pull/801)).

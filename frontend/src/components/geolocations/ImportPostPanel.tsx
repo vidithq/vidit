@@ -4,16 +4,17 @@ import { useId, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, Button, buttonClasses, type ButtonAction } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
+import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { importFromPost } from "@/lib/events";
-import { eventEditHref } from "@/lib/routes";
-import type { TweetImportOutcome } from "@/types";
+import { eventEditHref, eventHref, requestHref } from "@/lib/routes";
+import type { EventDetail, TweetImportOutcome } from "@/types";
 import { countLabel } from "@/lib/format";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
@@ -21,6 +22,9 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 export type ImportShell = (slots: { actions: ReactNode; body: ReactNode }) => ReactNode;
 
 function outcomeSummary(outcome: TweetImportOutcome): string {
+  if (outcome.created.length === 0 && outcome.updated.length === 0 && outcome.skipped.length > 0) {
+    return "Already imported";
+  }
   const parts: string[] = [];
   if (outcome.created.length > 0) {
     parts.push(`${countLabel(outcome.created.length, "detection")} created`);
@@ -29,18 +33,30 @@ function outcomeSummary(outcome: TweetImportOutcome): string {
     parts.push(`${outcome.updated.length} updated`);
   }
   if (outcome.skipped.length > 0) {
-    parts.push(
-      `${outcome.skipped.length} left as ${outcome.skipped.length === 1 ? "it is" : "they are"}`
-    );
+    parts.push(`${outcome.skipped.length} already imported`);
   }
   return parts.join(" · ");
 }
 
-/** The first detection created, else the first the re-import overwrote. Never a
- *  skipped row: those are not the import's to edit (published, closed or
- *  withheld), so a review link would offer an edit that cannot land. */
+/** The first detection created, else the first the re-import overwrote. */
 function firstDetectionId(outcome: TweetImportOutcome): string | undefined {
   return [...outcome.created, ...outcome.updated][0];
+}
+
+/** The row an already-imported post points at, opened where its state reads: a detection's
+ *  review, a request's page, or the event page once published or closed. */
+function existingRowLink(row: Pick<EventDetail, "id" | "status">): {
+  href: string;
+  label: string;
+  action: ButtonAction;
+} {
+  if (row.status === "detected") {
+    return { href: eventEditHref(row.id, true), label: "Review the detection", action: "review" };
+  }
+  if (row.status === "requested") {
+    return { href: requestHref(row.id), label: "Open the request", action: "show" };
+  }
+  return { href: eventHref(row.id), label: "Open the event", action: "show" };
 }
 
 /** False is the failure shape: a refusal, or a post nothing could be stored from. */
@@ -66,8 +82,8 @@ function outcomeLine(outcome: TweetImportOutcome): string {
  * linked X account; that message renders as-is.
  *
  * A clean run goes straight to the detection's review. A run with warnings, a
- * refusal, or a post left as it is stays here and says so, with the review one
- * click away when there is a detection to open.
+ * refusal, or a post already imported stays here and says so, with the
+ * detection, request or event one click away when there is one to open.
  *
  * Warning and refusal sentences come with their code from the backend table the
  * bot's reply and the archive email also read, so this page holds no copy.
@@ -95,6 +111,18 @@ export function ImportPostPanel({ shell }: { shell: ImportShell }) {
   });
 
   const detectionId = outcome === null ? undefined : firstDetectionId(outcome);
+  // A post already imported wrote no row, so its link waits on the existing row's state; a row
+  // that no longer opens answers an error and the line stands alone.
+  const existingId = detectionId === undefined ? outcome?.skipped[0] : undefined;
+  const { data: existing } = useApiResource<EventDetail>(
+    existingId === undefined ? null : `/events/${encodeURIComponent(existingId)}`
+  );
+  const next =
+    detectionId !== undefined
+      ? existingRowLink({ id: detectionId, status: "detected" })
+      : existing !== null && existing.id === existingId
+        ? existingRowLink(existing)
+        : null;
   const warnings = outcome?.warnings ?? [];
 
   const body = (
@@ -142,10 +170,10 @@ export function ImportPostPanel({ shell }: { shell: ImportShell }) {
               ))}
             </ul>
           )}
-          {detectionId !== undefined && (
-            <Link href={eventEditHref(detectionId, true)} className={buttonClasses("primary")}>
-              <ActionIcon action="review" />
-              Review the detection
+          {next !== null && (
+            <Link href={next.href} className={buttonClasses("primary")}>
+              <ActionIcon action={next.action} />
+              {next.label}
             </Link>
           )}
         </div>

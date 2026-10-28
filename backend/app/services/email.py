@@ -214,7 +214,7 @@ def archive_import_complete_email(
     if updated:
         counts.append(f"{_plural(updated, 'existing detection')} updated")
     if skipped:
-        counts.append(f"{skipped} left as {'they are' if skipped != 1 else 'it is'} (skipped)")
+        counts.append(f"{skipped} already imported")
     if failed:
         counts.append(f"{failed} could not be imported")
     # Warnings cut across two of the four buckets, so they get their own
@@ -261,16 +261,16 @@ def archive_import_failed_email(*, to: str) -> Email:
 
 
 def completion_digest_email(*, to: str, count: int, link: str) -> Email:
-    """Count of detections awaiting completion plus the queue link.
+    """Count of detections to review plus the queue link.
 
     Thin on purpose: no titles, since the queue is the source of truth.
     """
     plural = "s" if count != 1 else ""
     return _compose(
         to=to,
-        subject=f"{count} Vidit detection{plural} awaiting completion",
+        subject=f"{count} Vidit detection{plural} to review",
         content=Content(
-            heading=f"{_plural(count, 'detection')} awaiting completion",
+            heading=f"{_plural(count, 'detection')} to review",
             blocks=[
                 f"You have {_plural(count, 'imported detection')} not published yet. Each one "
                 "waits on the two calls only you can make: which conflict it belongs to, and "
