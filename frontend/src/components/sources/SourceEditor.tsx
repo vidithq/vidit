@@ -51,6 +51,7 @@ import type { Media, Tag } from "@/types";
 
 import { SourceHeader } from "./SourceBlock";
 import { SourceImageryCheck } from "./SourceImageryCheck";
+import { FieldError } from "@/components/ui/ErrorNotice";
 
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
 
@@ -221,9 +222,9 @@ export function SourceEditor({
         </Select>
       )}
       {file?.state === "failed" && (
-        <p className="text-xs text-red-400" role="alert">
+        <FieldError alert>
           {file.name}: {file.error}
-        </p>
+        </FieldError>
       )}
     </div>
   );
@@ -327,10 +328,10 @@ export function SourceEditor({
             invalid={positionInvalid}
           />
           {positionInvalid && (
-            <p className="text-xs text-red-400">
+            <FieldError>
               Enter a latitude from {LAT_MIN} to {LAT_MAX} and a longitude from {LNG_MIN} to{" "}
               {LNG_MAX}, or clear both. Until then the capture position is not saved.
-            </p>
+            </FieldError>
           )}
         </div>
       )}

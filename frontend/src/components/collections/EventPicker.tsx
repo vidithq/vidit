@@ -11,6 +11,7 @@ import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { RemoveButton } from "@/components/ui/RemoveButton";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { errorMessage } from "@/lib/api";
+import { errorText } from "@/lib/errors";
 import { formatDate } from "@/lib/format";
 import {
   eventCountLabel,
@@ -166,7 +167,7 @@ export function EventPicker({
   const results: PickableEvent[] = (
     searching ? (found?.items ?? []) : browse.items
   ).slice(0, PICKER_ROW_LIMIT);
-  const error = searching ? (found?.error ?? null) : browse.error;
+  const error = searching ? (found?.error ?? null) : browse.error && errorText(browse.error);
   const loading = searching ? found === null : browse.loading;
   // What the card is not showing. A search states the pre-cap count; a browse
   // only knows another page exists. A search also cannot reach events without

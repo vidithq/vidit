@@ -18,8 +18,8 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { profileHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 interface MemberRowProps {
   slug: string;
@@ -103,7 +103,7 @@ function MemberRow({ slug, member, viewer, canManage, lastManager, onChanged }: 
         external={false}
         action={hasControls ? controls : undefined}
       />
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
     </li>
   );
 }

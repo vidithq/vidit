@@ -45,7 +45,7 @@ import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
-import { FORM_ERROR_BANNER, LABEL_TEXT } from "@/components/ui/form-styles";
+import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
 import {
@@ -79,6 +79,8 @@ import { memberCountLabel, organizationPath } from "@/lib/organizations";
 import { countLabel } from "@/lib/format";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { eventHref, profileHref, requestHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { readError, type ReadableError } from "@/lib/errors";
 
 const ICON = { size: 13, strokeWidth: 1.8, className: "max-sm:hidden" } as const;
 
@@ -169,12 +171,14 @@ function SearchPageBody() {
 
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ReadableError | null>(null);
+  // Bumped by Retry, to run the same search again.
+  const [attempt, setAttempt] = useState(0);
   // The request behind `results`: a further geolocations page must repeat its query and filters,
   // not the live inputs, which may have moved on since.
   const resultsRequest = useRef<SearchRequest | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [moreError, setMoreError] = useState<string | null>(null);
+  const [moreError, setMoreError] = useState<ReadableError | null>(null);
 
   const { tags, conflicts } = useFilterVocabulary();
 
@@ -319,12 +323,12 @@ function SearchPageBody() {
         setMoreError(null);
         setLoading(false);
       })
-      .catch((err: Error) => {
+      .catch((err: unknown) => {
         if (requestId !== latestRequestId.current) return;
-        setError(err.message);
+        setError(readError(err));
         setLoading(false);
       });
-  }, [committed, typeFilter]);
+  }, [committed, typeFilter, attempt]);
 
   const activeQuery = committed.q;
   const { setViewState, setSelectedId } = useMapState();
@@ -359,9 +363,9 @@ function SearchPageBody() {
           }
         );
       })
-      .catch((err: Error) => {
+      .catch((err: unknown) => {
         if (requestId !== latestRequestId.current) return;
-        setMoreError(err.message);
+        setMoreError(readError(err));
       })
       .finally(() => setLoadingMore(false));
   };
@@ -533,11 +537,7 @@ function SearchPageBody() {
           </div>
         )}
 
-        {error && (
-          <div className={FORM_ERROR_BANNER}>
-            {error}
-          </div>
-        )}
+        <ErrorNotice error={error} onRetry={() => setAttempt((n) => n + 1)} />
 
         {/* Emptiness gates read the LIVE inputs, so clearing filters doesn't flash stale results
             under the start-typing prompt for a debounce window. */}

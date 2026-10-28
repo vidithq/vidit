@@ -6,6 +6,7 @@ import { filterPointsByStatus } from "@/types";
 import type { MapPoint, EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
+import { readError, type ReadableError } from "@/lib/errors";
 import { appendEventFilterParams } from "@/lib/search";
 import {
   VIEWPORT_DEBOUNCE_MS,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/viewport";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { FilterPanel } from "@/components/map/FilterPanel";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SitePanel, SitePreview } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
@@ -51,6 +53,8 @@ export default function HomePage() {
 
   const [points, setPoints] = useState<MapPoint[]>([]);
   const [loading, setLoading] = useState(false);
+  // The last points read failed: an empty map must not read as a map with nothing on it.
+  const [pointsError, setPointsError] = useState<ReadableError | null>(null);
   // The `?bbox=` loaded; `/events/points` serves one viewport, so nothing fetches until the first bounds.
   const [bbox, setBbox] = useState<string | null>(null);
   // The padded region those points cover; a viewport inside it needs no request.
@@ -93,10 +97,15 @@ export default function HomePage() {
     apiFetch<MapPoint[]>(`/events/points?${params.toString()}`, {
       signal: controller.signal,
     })
-      .then(setPoints)
-      .catch(() => {
+      .then((next) => {
+        setPoints(next);
+        setPointsError(null);
+      })
+      .catch((err: unknown) => {
         // Coverage is claimed at request time: drop the claim on a real failure so the next move-end retries. Skip when superseded.
-        if (abortRef.current === controller) coveredRef.current = null;
+        if (abortRef.current !== controller) return;
+        coveredRef.current = null;
+        setPointsError(readError(err));
       })
       .finally(() => {
         // A superseded request must not clear the spinner its replacement raised.
@@ -240,6 +249,12 @@ export default function HomePage() {
         pointCount={visiblePoints.length}
         loading={loading}
       />
+
+      {pointsError && (
+        <div className="absolute inset-x-4 bottom-24 z-1000 mx-auto max-w-sm shadow-lg sm:bottom-8">
+          <ErrorNotice error={pointsError} onRetry={fetchPoints} />
+        </div>
+      )}
 
       {/* One side panel slot: the event or the site selected, both on `MapSidePanel`. */}
       {selectedId ? (

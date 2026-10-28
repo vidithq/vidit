@@ -9,13 +9,13 @@ import { TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
 import { PASSWORD_MAX_BYTES, validateNewPassword } from "@/lib/auth";
 import {
-  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 interface Props {
   /** Called once the backend accepts the payload (202), with the email the confirmation link goes to. */
@@ -104,9 +104,7 @@ export default function RegisterForm({
           missing={incomplete.missingFields.map((m) => m.label)}
         />
         {error && (
-          <div className={FORM_ERROR_BANNER}>
-            {error}
-          </div>
+          <ErrorNotice error={error} />
         )}
 
         <div className="space-y-1">

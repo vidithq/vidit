@@ -55,7 +55,7 @@ export default function EditEventPage() {
   }
 
   if (error) {
-    return <PageError message={error} backHref="/map" />;
+    return <PageError error={error} onRetry={refetch} backHref="/map" />;
   }
 
   if (!geo) {

@@ -15,6 +15,7 @@ import { importFromPost } from "@/lib/events";
 import { eventEditHref } from "@/lib/routes";
 import type { TweetImportOutcome } from "@/types";
 import { countLabel } from "@/lib/format";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** How an import entry fills its page: the submit button for the actions, the entry for the body. */
 export type ImportShell = (slots: { actions: ReactNode; body: ReactNode }) => ReactNode;
@@ -125,7 +126,7 @@ export function ImportPostPanel({ shell }: { shell: ImportShell }) {
         />
       </div>
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
 
       {outcome && (
         <div className="space-y-3">

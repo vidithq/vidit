@@ -9,13 +9,13 @@ import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER,
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** Opened from the email link. The backend returns one opaque 400 for every failure mode; the UI mirrors it with one "invalid link" path. */
 function ResetPasswordInner() {
@@ -103,9 +103,7 @@ function ResetPasswordInner() {
           missing={incomplete.missingFields.map((m) => m.label)}
         />
         {error && (
-          <div className={FORM_ERROR_BANNER}>
-            {error}
-          </div>
+          <ErrorNotice error={error} />
         )}
 
         <div className="space-y-1">

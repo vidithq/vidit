@@ -3,14 +3,13 @@
 import { useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
-import {
-  FORM_ERROR_BANNER,
-  FORM_LABEL_COMPACT,
-} from "@/components/ui/form-styles";
+import { FORM_INVALID_LABEL, FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
+import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
+import { ErrorNotice, FieldError } from "@/components/ui/ErrorNotice";
 
 interface SingleEmailFlowProps {
   /** POST target; receives `{ email }` (trimmed). */
@@ -46,11 +45,13 @@ export function SingleEmailFlow({
       }),
     {
       fallback: "Request failed",
+      fields: ["email"],
       onSuccess: () => setSent(true),
     }
   );
   const sending = submit.loading;
   const errorMessage = submit.error;
+  const emailRefused = submit.fieldErrors.email !== undefined;
 
   if (sent) {
     return (
@@ -83,26 +84,31 @@ export function SingleEmailFlow({
         attempt={incomplete.validationAttempt}
         missing={incomplete.missingFields.map((m) => m.label)}
       />
-      {errorMessage && (
-        <div className={FORM_ERROR_BANNER}>{errorMessage}</div>
-      )}
+      <ErrorNotice error={errorMessage} />
 
       <div className="space-y-1">
         <label
           htmlFor="email"
-          className={incomplete.labelClass("email", FORM_LABEL_COMPACT)}
+          className={cn(
+            incomplete.labelClass("email", FORM_LABEL_COMPACT),
+            emailRefused && FORM_INVALID_LABEL,
+          )}
         >
           Email
         </label>
         <Input
           id="email"
-          invalid={incomplete.invalidKeys.has("email")}
+          invalid={incomplete.invalidKeys.has("email") || emailRefused}
+          aria-describedby={emailRefused ? "email-error" : undefined}
           type="email"
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder={placeholder}
         />
+        <FieldError id="email-error" alert>
+          {submit.fieldErrors.email}
+        </FieldError>
       </div>
 
       <Button

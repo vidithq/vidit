@@ -24,12 +24,12 @@ import { EntityCard } from "@/components/ui/EntityCard";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { requestHref, submitHref } from "@/lib/routes";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 // Status is fixed to `requested`, so the board offers no Status section: "closed" would read as
 // "done" on a work queue. `GET /events` takes no `media` filter, so Media stays off too.
@@ -126,7 +126,7 @@ export default function RequestsPage() {
       />
 
       {error && requests.length === 0 && (
-        <div className={FORM_ERROR_BANNER}>{error}</div>
+        <ErrorNotice error={error} />
       )}
 
       {loading && (

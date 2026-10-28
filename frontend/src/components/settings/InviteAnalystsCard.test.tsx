@@ -192,6 +192,29 @@ describe("InviteAnalystsCard", () => {
     );
   });
 
+  it("puts a refused handle under its field in plain words, not in the banner", async () => {
+    const refusal = Object.assign(new Error("X handle: 15 characters at most: letters, digits and _."), {
+      readable: {
+        title: null,
+        message: "X handle: 15 characters at most: letters, digits and _.",
+        fields: { x_handle: "15 characters at most: letters, digits and _." },
+      },
+    });
+    api.apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
+      init?.method === "POST" ? Promise.reject(refusal) : Promise.resolve(list()),
+    );
+    render(<InviteAnalystsCard />);
+
+    await mintThroughTheForm("this_handle_is_too_long");
+
+    const field = screen.getByLabelText("Invitee's X handle");
+    await waitFor(() => expect(field).toHaveClass(...FORM_INVALID_FIELD.split(" ")));
+    const message = screen.getByText("15 characters at most: letters, digits and _.");
+    expect(field).toHaveAttribute("aria-describedby", message.closest("p")!.id);
+    expect(screen.queryByText(/Value error|\^\[a-z/)).toBeNull();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
   it("hides the mint control when an admin turned minting off", async () => {
     api.apiFetch.mockResolvedValue(list({ minting_enabled: false }));
     render(<InviteAnalystsCard />);

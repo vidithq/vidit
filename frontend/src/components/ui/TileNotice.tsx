@@ -1,3 +1,6 @@
+/** What a media box says when its file does not load: the player and the form's file slot. */
+export const FILE_UNAVAILABLE = "File unavailable";
+
 /**
  * The one muted line a media box says when it has nothing to show: an empty media
  * set (`MediaGallery`) or a clip the browser refused (`VideoPlayer`). Fills its

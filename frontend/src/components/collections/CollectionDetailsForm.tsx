@@ -12,7 +12,6 @@ import { CharCounter } from "@/components/ui/CharCounter";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import {
   COLLECTION_DESCRIPTION_MAX_LEN,
   COLLECTION_TITLE_MAX_LEN,
@@ -21,6 +20,7 @@ import {
 } from "@/lib/collections";
 import { missingSummary } from "@/lib/events";
 import { htmlText } from "@/lib/proof";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 // BlockNote needs the DOM.
 const ProofEditor = dynamic(() => import("@/components/editor/ProofEditor"), {
@@ -193,9 +193,7 @@ export function CollectionDetailsForm({
         </CountBadge>
       </div>
       {error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {error}
-        </div>
+        <ErrorNotice error={error} />
       )}
     </div>
   );

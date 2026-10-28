@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { loginNext } from "@/lib/navigation";
 import { Button } from "@/components/ui/Button";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 interface FollowButtonProps {
   username: string;
@@ -64,9 +64,7 @@ export default function FollowButton({
         {following ? "Following" : "Follow"}
       </Button>
       {error && (
-        <div role="alert" className={FORM_ERROR_BANNER}>
-          {error}
-        </div>
+        <ErrorNotice error={error} />
       )}
     </div>
   );

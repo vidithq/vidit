@@ -108,7 +108,6 @@ import { MediaGallery } from "@/components/ui/MediaGallery";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
-import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SourceBlock, SourceBlocks } from "@/components/sources/SourceBlock";
 import { SourceImageryCheck } from "@/components/sources/SourceImageryCheck";
@@ -162,6 +161,7 @@ import {
   LIST_TILE,
 } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
+import { ErrorNotice, FieldError } from "@/components/ui/ErrorNotice";
 import { LinkListInput } from "@/components/ui/LinkListInput";
 import { safeHostname } from "@/lib/format";
 
@@ -197,6 +197,14 @@ function Variant({ label, children }: { label: string; children: React.ReactNode
     </div>
   );
 }
+
+const MOCK_NO_ANSWER = {
+  title: "Vidit does not respond",
+  message: "Check your connection, then retry.",
+  fields: {},
+};
+
+const MOCK_SERVER_FAULT = { title: "Vidit hit a problem", message: "Retry in a moment.", fields: {} };
 
 // One label per action icon, so a new action shows here before it ships.
 const ACTION_LABELS: Record<ButtonAction, string> = {
@@ -240,7 +248,7 @@ const ACTION_LABELS: Record<ButtonAction, string> = {
   removePoint: "Remove corner",
   report: "Send report",
   request: "Post request",
-  retry: "Try again",
+  retry: "Retry",
   revert: "Back to the current contour",
   review: "Start reviewing",
   revoke: "Revoke",
@@ -1096,8 +1104,35 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="FORM_ERROR_BANNER" usage="The one error banner above the actions: forms, auth cards, admin panels">
-            <div className={`${FORM_ERROR_BANNER} max-w-sm`}>Something went wrong.</div>
+          <Item name="<ErrorNotice>" usage="The one error display: a form's refusal above its actions, a failed read in place of its section. A fault the reader did not cause leads with its title and offers Retry; a refusal is one line with no Retry.">
+            <div className="w-full max-w-md space-y-3">
+              <Variant label="no answer, with onRetry">
+                <ErrorNotice error={MOCK_NO_ANSWER} onRetry={() => {}} />
+              </Variant>
+              <Variant label="server fault, with onRetry">
+                <ErrorNotice error={MOCK_SERVER_FAULT} onRetry={() => {}} />
+              </Variant>
+              <Variant label="refusal (one line, never a Retry)">
+                <ErrorNotice error="This invite code was already used." />
+              </Variant>
+            </div>
+          </Item>
+
+          <Item name="<FieldError>" usage="The refusal of one field, under it, with the field's aria-describedby on its id (ErrorNotice.tsx)">
+            <div className="w-full max-w-sm space-y-1.5">
+              <FieldLabel label="Invitee's X handle" htmlFor="palette-field-error" invalid />
+              <Input
+                id="palette-field-error"
+                invalid
+                defaultValue="@this_handle_is_too_long"
+                aria-describedby="palette-field-error-text"
+              />
+              <FieldError id="palette-field-error-text">15 characters at most: letters, digits and _.</FieldError>
+            </div>
+          </Item>
+
+          <Item name="FORM_ERROR_BANNER" usage="The red notice paint that is not an error display: the session-ended notice, an X post import that wrote nothing">
+            <div className={`${FORM_ERROR_BANNER} max-w-sm`}>Nothing was imported from this post.</div>
           </Item>
 
           <Item name="FORM_SUCCESS_BANNER" usage="Confirmation / info notice (password updated, reset). Orange, not green.">
@@ -1913,7 +1948,7 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<LoadMoreRow> / <ShowMoreLink>" usage="The one Show more control, a secondary button with one label wherever a list has more. <LoadMoreRow> is the foot of a paged list that grows in place (requests, feed, version history, notifications, an organization's approvals, the admin reports queue and onboarding, the search page's Geolocations group, the create page's matched geolocations, and the detections queue, whose pages are numbered): Show more while a next page exists, a spinner with Loading… while it loads, a failed page's message above Try again, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click. <ShowMoreLink href> is the same control as a link, for a preview whose whole list lives on another page: the profile's geolocations, open requests and collections, each opening its list in search.">
+          <Item name="<LoadMoreRow> / <ShowMoreLink>" usage="The one Show more control, a secondary button with one label wherever a list has more. <LoadMoreRow> is the foot of a paged list that grows in place (requests, feed, version history, notifications, an organization's approvals, the admin reports queue and onboarding, the search page's Geolocations group, the create page's matched geolocations, and the detections queue, whose pages are numbered): Show more while a next page exists, a spinner with Loading… while it loads, a failed page's ErrorNotice with its Retry, nothing once the walk ends. `infinite` loads the next page as the row nears the viewport and pauses after a failure until the click. <ShowMoreLink href> is the same control as a link, for a preview whose whole list lives on another page: the profile's geolocations, open requests and collections, each opening its list in search.">
             <div className="w-full space-y-4">
               <Variant label="idle">
                 <LoadMoreRow walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: null }} />
@@ -1923,7 +1958,7 @@ export default function PalettePage() {
               </Variant>
               <Variant label="failed page">
                 <LoadMoreRow
-                  walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: "API error 500" }}
+                  walk={{ hasMore: true, loadingMore: false, loadMore: () => {}, error: MOCK_SERVER_FAULT }}
                 />
               </Variant>
               <Variant label="link (ShowMoreLink)">
@@ -1934,17 +1969,12 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<TaxonomyLoadError>" usage="Event forms (the conflicts failed to load)">
-            <div className="w-full max-w-xl">
-              <TaxonomyLoadError onRetry={() => {}} />
-            </div>
-          </Item>
-
           <Item name="<PageLoading> / <PageError>" usage="Full-screen states before data (detail pages, lists)">
             <p className="text-xs text-neutral-500">
               Full-screen centered states: a quiet{" "}
-              <span className="text-neutral-400">Loading…</span>, or an error message
-              with an optional Back to map link. Not rendered here (takes the full height).
+              <span className="text-neutral-400">Loading…</span>, or an{" "}
+              <span className="font-mono">ErrorNotice</span> with its Retry and an optional Back
+              to map link. Not rendered here (takes the full height).
             </p>
           </Item>
         </section>

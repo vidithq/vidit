@@ -20,8 +20,8 @@ import { Card } from "@/components/ui/Card";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { eventHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** One open request as a row to its event: the requester's picture, the event title, who asked
  *  and when, and Decline. Approving happens on the event page, after reading it. */
@@ -66,9 +66,7 @@ function RequestRow({
         }
       />
       {decline.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {decline.error}
-        </div>
+        <ErrorNotice error={decline.error} />
       )}
     </li>
   );
@@ -109,7 +107,7 @@ export function OrganizationApprovalRequests({
           onChange={(value) => void audience.run(value)}
         />
       )}
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
       {requests.data && rows.length === 0 && (
         <p className="text-sm text-neutral-500">No open requests.</p>
       )}

@@ -13,7 +13,6 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { chipSummary } from "@/components/ui/FilterSection";
 import {
@@ -34,6 +33,7 @@ import type { PublicProfile } from "@/lib/users";
 import type { components, operations } from "@/lib/api-types";
 import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { eventHref, requestHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 type FeedItem = components["schemas"]["FeedItemRead"];
 type FeedQuery = NonNullable<
@@ -191,7 +191,7 @@ export default function FeedPage() {
 
   let body;
   if (error && items.length === 0) {
-    body = <div className={FORM_ERROR_BANNER}>{error}</div>;
+    body = <ErrorNotice error={error} />;
   } else if (loading || (emptyFollowing && !profile && !profileError)) {
     body = <p className="text-sm text-neutral-500">Loading feed…</p>;
   } else if (items.length > 0) {

@@ -31,7 +31,7 @@ export default function EditCollectionPage() {
   const { user, loading: authLoading } = useRequireAuth();
   const id = typeof params.id === "string" ? params.id : "";
 
-  const { data: collection, error } = useApiResource<Collection>(
+  const { data: collection, error, refetch } = useApiResource<Collection>(
     user && id ? `/collections/${id}` : null,
   );
 
@@ -62,8 +62,8 @@ export default function EditCollectionPage() {
   );
 
   if (authLoading || !user) return <PageLoading />;
-  if (error) return <PageError message={error} backHref="/map" />;
-  if (itemsError) return <PageError message={itemsError} backHref="/map" />;
+  if (error) return <PageError error={error} onRetry={refetch} backHref="/map" />;
+  if (itemsError) return <PageError error={itemsError} backHref="/map" />;
   if (!collection) return <PageLoading />;
 
   // Writes are owner-only (backend 403); refuse before the form.

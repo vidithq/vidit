@@ -30,7 +30,7 @@ export function EventReadPage({ surface }: { surface: ActionSurface }) {
   // Called before the early returns.
   const { panels, actions, sites } = useEventActions({ event: geo, surface, onChanged: refetch });
 
-  if (error) return <PageError message={error} />;
+  if (error) return <PageError error={error} onRetry={refetch} />;
   if (!geo) return <PageLoading />;
 
   return (

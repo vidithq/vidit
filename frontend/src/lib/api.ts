@@ -1,4 +1,13 @@
 import { CSRF_HEADER, readCsrfToken } from "./auth";
+import {
+  NO_ANSWER,
+  SOMETHING_WENT_WRONG,
+  errorText,
+  plainError,
+  readError,
+  readResponse,
+  type ReadableError,
+} from "./errors";
 import { nextCursor } from "./pagination";
 import { reportSessionRejected } from "./session";
 
@@ -21,64 +30,42 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // `AuthProvider` reads itself. Any other 401 means the session cookie no longer holds.
 const SESSION_PROBES = new Set(["/auth/login", "/auth/me"]);
 
-/** Thrown by `apiFetch` for any non-2xx. `status` separates a real auth failure (401/403)
- * from a transient one (5xx, network), so a backend hiccup doesn't bounce to `/login`.
- * `code` is the backend's stable identifier for errors worth branching on (e.g.
- * `email_pending_confirmation`); `null` for plain string `detail`s. `sessionRejected` marks a
- * 401 the session notice already speaks for, so a form shows no message of its own. */
+/** Thrown by `apiFetch` for any non-2xx, and for a request that gets no answer (`status` 0).
+ * `status` separates a real auth failure (401/403) from a transient one (5xx, network), so a
+ * backend hiccup doesn't bounce to `/login`. `code` is the backend's stable identifier for
+ * errors worth branching on (e.g. `email_pending_confirmation`); `null` for plain string
+ * `detail`s. `sessionRejected` marks a 401 the session notice already speaks for, so a form
+ * shows no message of its own. `readable` is what the reader is told, and `message` is it as
+ * one sentence. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
   readonly sessionRejected: boolean;
+  readonly readable: ReadableError;
   constructor(
     message: string,
     status: number,
     code: string | null = null,
     sessionRejected = false,
+    readable: ReadableError = plainError(message),
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.sessionRejected = sessionRejected;
+    this.readable = readable;
   }
 }
 
-/** User-facing message from an unknown thrown value; non-Error throws use `fallback`. Pair
- * with `useMutation`. */
-export function errorMessage(err: unknown, fallback = "Something went wrong."): string {
-  return err instanceof Error ? err.message : fallback;
+/** `readError` as one sentence. Pair with `useMutation`. */
+export function errorMessage(err: unknown, fallback = SOMETHING_WENT_WRONG): string {
+  return errorText(readError(err, fallback));
 }
 
-interface ParsedDetail {
-  message: string;
-  code: string | null;
-}
-
-// FastAPI `detail` shapes: a string (HTTPException), `[{loc, msg, type}]` (Pydantic; take the
-// first `msg`, since stringifying yields "[object Object]"), and `{code, message}` (typed
-// errors the frontend branches on).
-function parseApiError(body: unknown, status: number): ParsedDetail {
-  if (body && typeof body === "object" && "detail" in body) {
-    const detail = (body as { detail: unknown }).detail;
-    if (typeof detail === "string") {
-      return { message: detail, code: null };
-    }
-    if (Array.isArray(detail) && detail.length > 0) {
-      const first = detail[0];
-      if (first && typeof first === "object" && "msg" in first) {
-        return { message: String((first as { msg: unknown }).msg), code: null };
-      }
-    }
-    if (detail && typeof detail === "object" && "code" in detail && "message" in detail) {
-      const obj = detail as { code: unknown; message: unknown };
-      return {
-        message: typeof obj.message === "string" ? obj.message : `API error ${status}`,
-        code: typeof obj.code === "string" ? obj.code : null,
-      };
-    }
-  }
-  return { message: `API error ${status}`, code: null };
+function retryAfterSeconds(res: Response): number | null {
+  const value = Number(res.headers.get("Retry-After"));
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 /** The one request path: CSRF on unsafe methods, credentials, and the error envelope as an
@@ -100,19 +87,26 @@ async function send(path: string, options?: RequestInit): Promise<Response> {
     }
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    credentials: "include",
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      credentials: "include",
+      headers,
+    });
+  } catch (err) {
+    // A fetch rejects only on an abort or on no answer at all (offline, DNS, refused, CORS).
+    if (options?.signal?.aborted) throw err;
+    throw new ApiError(errorText(NO_ANSWER), 0, null, false, NO_ANSWER);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    const parsed = parseApiError(body, res.status);
+    const { error, code } = readResponse(res.status, body, retryAfterSeconds(res));
     // A 403 is a refusal to a live session: only a 401 ends it.
     const sessionRejected =
       res.status === 401 && !SESSION_PROBES.has(path.split("?")[0]) && reportSessionRejected();
-    throw new ApiError(parsed.message, res.status, parsed.code, sessionRejected);
+    throw new ApiError(errorText(error), res.status, code, sessionRejected, error);
   }
   return res;
 }

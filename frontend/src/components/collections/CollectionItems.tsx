@@ -8,9 +8,9 @@ import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { profileSearchHref } from "@/lib/search";
 import type { EventListItem } from "@/types";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** Rows the list shows per **Show more**. */
 const PAGE_SIZE = 20;
@@ -77,7 +77,7 @@ export function CollectionItems({
         )}
       </div>
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
 
       {items.length > 0 ? (
         <div className="space-y-2">

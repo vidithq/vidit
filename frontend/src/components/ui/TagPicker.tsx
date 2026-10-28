@@ -11,6 +11,7 @@ import { Pill } from "@/components/ui/Pill";
 import { Switch } from "@/components/ui/Switch";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { EVENT_FIELDS } from "@/lib/events";
+import { FieldError } from "./ErrorNotice";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
 const TAG_NAME_MAX_LEN = 100;
@@ -201,12 +202,8 @@ export function TagChips({
       }),
     {
       fallback: "Could not create tag.",
-      onError: (e) => {
-        // A non-API throw (network TypeError) shows the fixed message, not a raw "Failed to fetch".
-        if (e instanceof ApiError && e.status === 409) return "That tag already exists.";
-        if (e instanceof ApiError) return e.message;
-        return "Could not create tag.";
-      },
+      onError: (e) =>
+        e instanceof ApiError && e.status === 409 ? "That tag already exists." : undefined,
       onSuccess: adopt,
     }
   );
@@ -275,7 +272,7 @@ export function TagChips({
                 : "Already selected."
         }
       />
-      {create.error && <p className="text-xs text-red-400">{create.error}</p>}
+      <FieldError alert>{create.error}</FieldError>
       {offered.length > 0 && (
         // The clipped chips must not widen the page: `relative` makes the row clip their absolute
         // `sr-only` text, and `contain-inline-size` keeps the unwrapped row out of the min-content

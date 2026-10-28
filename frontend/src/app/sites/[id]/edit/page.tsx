@@ -18,15 +18,15 @@ export default function EditSitePage() {
   const search = useSearchParams();
   const { user, loading } = useRequireAuth();
   const siteId = typeof params.id === "string" ? params.id : "";
-  const { data: site, error } = useApiResource<Site>(user && siteId ? sitePath(siteId) : null);
+  const { data: site, error, refetch } = useApiResource<Site>(user && siteId ? sitePath(siteId) : null);
 
   if (loading || !user) return <PageLoading />;
-  if (error) return <PageError message={error} backHref="/map" />;
+  if (error) return <PageError error={error} onRetry={refetch} backHref="/map" />;
   if (!site) return <PageLoading />;
   if (!ownsSite(site, user.id)) {
     return (
       <PageError
-        message="Only the site's owner edits it. File a source instead."
+        error="Only the site's owner edits it. File a source instead."
         backHref={siteHref(site.id)}
         backLabel="Back to the site"
       />

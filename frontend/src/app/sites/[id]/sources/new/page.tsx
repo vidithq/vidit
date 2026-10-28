@@ -40,7 +40,7 @@ export default function FileSiteSourcePage() {
   const params = useParams();
   const { user, loading } = useRequireAuth();
   const siteId = typeof params.id === "string" ? params.id : "";
-  const { data: site, error } = useApiResource<Site>(siteId ? sitePath(siteId) : null);
+  const { data: site, error, refetch } = useApiResource<Site>(siteId ? sitePath(siteId) : null);
   const draft = useSiteSourceDraft();
   const [attempt, setAttempt] = useState(0);
   const [filed, setFiled] = useState<SiteSourceFiled | null>(null);
@@ -50,7 +50,7 @@ export default function FileSiteSourcePage() {
     onSuccess: setFiled,
   });
 
-  if (error) return <PageError message={error} backHref="/map" />;
+  if (error) return <PageError error={error} onRetry={refetch} backHref="/map" />;
   if (loading || !user || !site) return <PageLoading />;
 
   const submit = () => {

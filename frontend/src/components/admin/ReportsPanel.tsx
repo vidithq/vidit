@@ -22,9 +22,10 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, LIST_TILE } from "@/components/ui/form-styles";
+import { LIST_TILE } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { eventHref } from "@/lib/routes";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /**
  * The moderation queue: every content report, open first and newest first within each group (the
@@ -143,9 +144,7 @@ function ReportRow({
       )}
 
       {resolveMutation.error && !confirmingHide && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {resolveMutation.error}
-        </div>
+        <ErrorNotice error={resolveMutation.error} />
       )}
 
       {open && (
@@ -240,7 +239,7 @@ export function ReportsPanel() {
         </p>
       </header>
 
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
       {loading && <div className="text-xs text-neutral-500 py-2">Loading…</div>}
 
       {!loading && !error && reports.length === 0 && (

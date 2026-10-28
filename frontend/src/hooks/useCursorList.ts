@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetchPage } from "@/lib/api";
+import { readError, type ReadableError } from "@/lib/errors";
 
 interface PagedResult<T> {
   items: T[];
   /** Cursor of the next page, `null` once the walk is exhausted. */
   cursor: string | null;
-  error: string | null;
+  error: ReadableError | null;
   // Which walk this result answers. A path can come back (toggle away and back, or `reload`),
   // so the path alone cannot tell a stale walk from the current one.
   generation: number;
@@ -54,7 +55,7 @@ export function useCursorList<T, P = T[]>(
   body?: string,
 ): {
   items: T[];
-  error: string | null;
+  error: ReadableError | null;
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
@@ -102,7 +103,7 @@ export function useCursorList<T, P = T[]>(
         setResult({
           items: [],
           cursor: null,
-          error: e instanceof Error ? e.message : "Request failed",
+          error: readError(e),
           generation,
         });
       });
@@ -147,7 +148,7 @@ export function useCursorList<T, P = T[]>(
             ? prev
             : {
                 ...prev,
-                error: e instanceof Error ? e.message : "Request failed",
+                error: readError(e),
               }
         );
       })

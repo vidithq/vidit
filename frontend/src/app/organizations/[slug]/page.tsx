@@ -65,7 +65,7 @@ export default function OrganizationPage() {
   };
 
   if (authLoading) return <PageLoading />;
-  if (error) return <PageError message={error} backHref="/map" />;
+  if (error) return <PageError error={error} onRetry={refetch} backHref="/map" />;
   if (!org) return <PageLoading />;
 
   const segments = [

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { useApiResource } from "@/hooks/useApiResource";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { skipBackRecord } from "@/lib/navigation";
 import {
@@ -31,7 +32,7 @@ export default function DetectionReviewPage() {
     if (user && !isOwn) router.replace(profileHref(username));
   }, [user, isOwn, username, router]);
 
-  const { data, error } = useApiResource<PaginatedEventDetails>(
+  const { data, error, refetch } = useApiResource<PaginatedEventDetails>(
     isOwn ? detectionsReviewPath() : null
   );
 
@@ -51,7 +52,7 @@ export default function DetectionReviewPage() {
   return (
     <PageShell back backFallback={queueHref} title="Review detections">
       {error ? (
-        <p className="text-sm text-neutral-300">{error}</p>
+        <ErrorNotice error={error} onRetry={refetch} />
       ) : (
         <p className="text-sm text-neutral-500">Loading…</p>
       )}

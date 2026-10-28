@@ -2,8 +2,8 @@
 
 import { useApiResource } from "@/hooks/useApiResource";
 import { MY_X_HANDLE_PATH, type XHandleState } from "@/lib/xHandle";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 
 /** The Account card's X handle row: the bound handle, read-only. Only an admin writes it. */
 export function AccountXHandle() {
@@ -18,7 +18,7 @@ export function AccountXHandle() {
           {bound ? `@${bound}` : "No X handle linked"}
         </p>
       </div>
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && <ErrorNotice error={error} />}
     </div>
   );
 }

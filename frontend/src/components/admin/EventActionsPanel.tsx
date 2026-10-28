@@ -14,7 +14,7 @@ import { search } from "@/lib/search";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Combobox } from "@/components/ui/Combobox";
@@ -22,6 +22,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pill } from "@/components/ui/Pill";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ActionReceipt } from "@/components/admin/ActionReceipt";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /**
  * Every admin action on one event, with no report behind it: the two moderation axes
@@ -262,7 +263,7 @@ export function EventActionsPanel() {
         />
       </div>
 
-      {error && !confirming && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      {error && !confirming && <ErrorNotice error={error} />}
 
       <div className="space-y-2">
         <span className={FORM_LABEL}>Moderation</span>

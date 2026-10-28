@@ -77,7 +77,7 @@ describe("useCursorList", () => {
     await waitFor(() => expect(result.current.items).toEqual(["a"]));
 
     act(() => result.current.loadMore());
-    await waitFor(() => expect(result.current.error).toBe("API error 500"));
+    await waitFor(() => expect(result.current.error?.message).toBe("API error 500"));
     expect(result.current.items).toEqual(["a"]);
     expect(result.current.hasMore).toBe(true);
 

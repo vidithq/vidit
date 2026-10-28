@@ -30,7 +30,8 @@ import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { FORM_ERROR_BANNER, FORM_LABEL } from "@/components/ui/form-styles";
+import { FORM_LABEL } from "@/components/ui/form-styles";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** Who a request asks, as a byline: the analyst, or the organization with its picture and page. */
 function TargetByline({ request }: { request: ApprovalRequest }) {
@@ -177,9 +178,7 @@ export function DeclineRequests({
         </Button>
       </Tooltip>
       {decline.error && (
-        <div className={cn(FORM_ERROR_BANNER, "basis-full")} role="alert">
-          {decline.error}
-        </div>
+        <ErrorNotice error={decline.error} className="basis-full" />
       )}
     </>
   );

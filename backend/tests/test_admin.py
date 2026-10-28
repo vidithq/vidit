@@ -205,6 +205,9 @@ def test_create_invite_code_422_on_invalid_x_handle(admin_user):
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 422
+    [error] = response.json()["detail"]
+    assert error["loc"][-1] == "x_handle"
+    assert error["msg"] == "Value error, 15 characters at most: letters, digits and _"
 
 
 def test_create_invite_code_403_for_regular_user(regular_user):

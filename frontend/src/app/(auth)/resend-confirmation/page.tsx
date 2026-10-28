@@ -34,9 +34,8 @@ export default function ResendConfirmationPage() {
               expires in 24 hours.
             </p>
             <p className="text-[11px] text-neutral-500">
-              We deliberately don&apos;t tell you whether the address matched a
-              pending registration. An address without a live pending row
-              silently receives nothing.
+              We don&apos;t say whether this address has an account waiting for
+              confirmation. If it has none, no email arrives.
             </p>
             <button
               type="button"

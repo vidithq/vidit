@@ -187,7 +187,7 @@ def test_create_rejects_video_proof_file(author, conflict):
     assert response.status_code == 400
     detail = response.json()["detail"]
     assert detail["code"] == "invalid_file"
-    assert "image required" in detail["message"]
+    assert detail["message"] == "A proof takes images only."
 
 
 def test_create_rejects_a_proof_over_a_sanitiser_cap(author):

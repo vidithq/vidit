@@ -77,7 +77,7 @@ function PendingInner() {
         )}
         {resend === "failed" && (
           <Button action="retry" variant="secondary" fullWidth onClick={handleResend}>
-            Try again
+            Retry
           </Button>
         )}
       </div>

@@ -176,7 +176,7 @@ describe("DetectionsPage queue filter", () => {
     const refetch = vi.fn();
     useApiResource.mockImplementation((path: string | null) =>
       path?.includes("page=2")
-        ? { data: null, error: "Server error", refetch }
+        ? { data: null, error: { title: "Vidit hit a problem", message: "Retry in a moment.", fields: {} }, refetch }
         : { data: payload({ total: 20 }), error: null, refetch },
     );
     render(<DetectionsPage />);
@@ -184,13 +184,17 @@ describe("DetectionsPage queue filter", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
-    expect(screen.getByText("Server error")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByText("Vidit hit a problem")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalled();
   });
 
   it("states a failed queue read in the error banner", () => {
-    useApiResource.mockReturnValue({ data: null, error: "Server error", refetch: vi.fn() });
+    useApiResource.mockReturnValue({
+      data: null,
+      error: { title: null, message: "Server error", fields: {} },
+      refetch: vi.fn(),
+    });
     render(<DetectionsPage />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("Server error");

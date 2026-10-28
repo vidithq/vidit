@@ -19,7 +19,7 @@ def normalize_x_handle(v: str | None) -> str | None:
         return None
     cleaned = v.strip().removeprefix("@").lower()
     if not X_HANDLE_PATTERN.fullmatch(cleaned):
-        raise ValueError("x_handle must match ^[a-z0-9_]{1,15}$ after stripping a leading @")
+        raise ValueError("15 characters at most: letters, digits and _")
     return cleaned
 
 

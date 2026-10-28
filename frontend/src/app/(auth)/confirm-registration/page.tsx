@@ -4,32 +4,37 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { readError, type ReadableError } from "@/lib/errors";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-type State = "confirming" | "success" | "failed";
+type State = "confirming" | "success" | "invalid" | "unanswered";
 
-/** Consumes the single-use token on mount; the backend sets session and CSRF cookies in the same response. */
+// Below this the token cannot be one the backend minted, so no request is spent on it.
+const MIN_TOKEN_LENGTH = 10;
+
+/** Consumes the single-use token on mount; the backend sets session and CSRF cookies in the same
+ * response. A refused token reads as expired or invalid, whatever the refusal; no answer offers
+ * Retry, since the token is still unspent. */
 function ConfirmInner() {
   const params = useSearchParams();
   const token = params.get("token") ?? "";
-  const [state, setState] = useState<State>("confirming");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const ranRef = useRef(false);
+  const tooShort = token.length < MIN_TOKEN_LENGTH;
+  const [state, setState] = useState<State>(tooShort ? "invalid" : "confirming");
+  const [fault, setFault] = useState<ReadableError | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const { refresh } = useAuth();
 
+  // The token is single use: a second request for one attempt (a Strict Mode re-run) would find
+  // it spent and report the link invalid.
+  const ranFor = useRef(-1);
+
   useEffect(() => {
-    if (ranRef.current) return;
-    ranRef.current = true;
-
-    if (token.length < 10) {
-      setState("failed");
-      setErrorMsg("This confirmation link is missing a token.");
-      return;
-    }
-
+    if (tooShort || ranFor.current === attempt) return;
+    ranFor.current = attempt;
     apiFetch("/auth/confirm-registration", {
       method: "POST",
       body: JSON.stringify({ token }),
@@ -42,20 +47,18 @@ function ConfirmInner() {
         }
         setState("success");
       })
-      .catch((err) => {
-        setState("failed");
-        setErrorMsg(
-          err instanceof Error
-            ? err.message
-            : "This confirmation link is invalid or expired."
-        );
+      .catch((err: unknown) => {
+        const readable = readError(err);
+        setFault(readable);
+        setState(readable.title ? "unanswered" : "invalid");
       });
-  }, [token, refresh]);
+  }, [token, tooShort, refresh, attempt]);
 
   const title = {
     confirming: "Confirming your account…",
     success: "Account confirmed",
-    failed: "Link no longer valid",
+    invalid: "Link expired or invalid",
+    unanswered: "Account not confirmed yet",
   }[state];
 
   return (
@@ -83,18 +86,27 @@ function ConfirmInner() {
         </>
       )}
 
-      {state === "failed" && (
+      {state === "invalid" && (
         <>
           <p className="text-xs text-neutral-400">
-            {errorMsg ??
-              "This confirmation link is invalid or expired. Start the registration over to get a fresh one."}
+            A confirmation link works once and expires after 24 hours.
           </p>
           <p className="text-xs">
-            <Link href="/register" className={TEXT_LINK}>
-              Start over →
+            <Link href="/resend-confirmation" className={TEXT_LINK}>
+              Get a new confirmation link
             </Link>
           </p>
         </>
+      )}
+
+      {state === "unanswered" && (
+        <ErrorNotice
+          error={fault}
+          onRetry={() => {
+            setState("confirming");
+            setAttempt((n) => n + 1);
+          }}
+        />
       )}
     </AuthCard>
   );

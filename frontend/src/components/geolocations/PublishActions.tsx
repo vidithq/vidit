@@ -4,13 +4,13 @@ import { useState, type ReactNode } from "react";
 import { Button, type ButtonAction } from "@/components/ui/Button";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { PopoverPanel } from "@/components/ui/Popover";
 import { ACCENT_SURFACE, ARMED_RING } from "@/components/ui/styles";
 import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { cn } from "@/lib/cn";
 import { missingSummary, type MissingField } from "@/lib/events";
 import type { Concept } from "@/lib/fieldHelp";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** What an armed button reads. One word no longer than a publish label, so arming never widens
  *  the line. */
@@ -240,9 +240,7 @@ export function PublishActions({
         </span>
       </div>
       {error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {error}
-        </div>
+        <ErrorNotice error={error} />
       )}
     </div>
   );

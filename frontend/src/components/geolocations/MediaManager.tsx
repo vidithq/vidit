@@ -6,9 +6,27 @@ import Image from "next/image";
 import { FileManager, type FileManagerItem } from "@/components/ui/FileManager";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightboxBody } from "@/components/ui/MediaLightbox";
+import { FILE_UNAVAILABLE, TileNotice } from "@/components/ui/TileNotice";
 import { ACCEPTED_MEDIA_MIME } from "@/lib/mediaTypes";
 import { displayUrlsFor, posterFrameUrl } from "@/lib/mediaUrls";
 import type { Media } from "@/types";
+
+/** A clip's muted, cropped tile. A file that does not load says so, rather than a black box. */
+function VideoTile({ src }: { src: string }) {
+  // The failed URL, not a flag: comparing to `src` resets the verdict on a swap.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (failedSrc === src) return <TileNotice>{FILE_UNAVAILABLE}</TileNotice>;
+  return (
+    <video
+      src={posterFrameUrl(src)}
+      preload="metadata"
+      playsInline
+      className="h-full w-full object-cover"
+      muted
+      onError={() => setFailedSrc(src)}
+    />
+  );
+}
 
 interface MediaManagerProps {
   /** The stored or staged file; empty while the source has none. */
@@ -63,13 +81,7 @@ export function MediaManager({
             className="object-cover"
           />
         ) : (
-          <video
-            src={posterFrameUrl(m.storage_url)}
-            preload="metadata"
-            playsInline
-            className="h-full w-full object-cover"
-            muted
-          />
+          <VideoTile src={m.storage_url} />
         ),
       onRemove: onRemoveExisting ? () => onRemoveExisting(m.id) : undefined,
       removeLabel: "Remove media",
@@ -87,13 +99,7 @@ export function MediaManager({
       ? staged.map((f, i) => ({
           key: `${f.name}-${i}`,
           content: f.type.startsWith("video/") ? (
-            <video
-              src={posterFrameUrl(stagedUrls[i])}
-              preload="metadata"
-              playsInline
-              className="h-full w-full object-cover"
-              muted
-            />
+            <VideoTile src={stagedUrls[i]} />
           ) : (
             // Object-URL bytes can't round-trip Next's image optimiser.
             // eslint-disable-next-line @next/next/no-img-element

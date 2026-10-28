@@ -30,11 +30,23 @@ describe("LoadMoreRow", () => {
     rerender(<LoadMoreRow walk={walk({ loadingMore: true })} />);
     expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
 
-    const failed = walk({ error: "API error 500" });
+    const failed = walk({
+      error: { title: "Vidit does not respond", message: "Check your connection, then retry.", fields: {} },
+    });
     rerender(<LoadMoreRow walk={failed} />);
-    expect(screen.getByText("API error 500")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Vidit does not respond");
+    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(failed.loadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Show more under a refused page, which a Retry would only repeat", () => {
+    const refused = walk({ error: { title: null, message: "Not found.", fields: {} } });
+    render(<LoadMoreRow walk={refused} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Not found.");
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(refused.loadMore).toHaveBeenCalledTimes(1);
   });
 
   it("observes the row only when infinite", () => {

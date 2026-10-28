@@ -46,6 +46,8 @@ import type {
   SearchUserHit,
 } from "@/types";
 
+import { ApiError } from "@/lib/api";
+import { NO_ANSWER } from "@/lib/errors";
 import SearchPage from "./page";
 
 const OWNER = { id: "u1", username: "ana", avatar_url: null };
@@ -250,15 +252,15 @@ describe("the search page's Geolocations group", () => {
       .mockResolvedValueOnce(
         response({ geolocations: [eventHit()], geolocations_cursor: "c1" }),
       )
-      .mockRejectedValueOnce(new Error("API error 500"));
+      .mockRejectedValueOnce(new ApiError("Vidit does not respond.", 0, null, false, NO_ANSWER));
 
     render(<SearchPage />);
 
     fireEvent.click((await screen.findByRole("button", { name: "Show more" })));
 
-    expect(await screen.findByText("API error 500")).toBeInTheDocument();
+    expect(await screen.findByText("Vidit does not respond")).toBeInTheDocument();
     expect(screen.getByText("Kakhovka spillway")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });
 

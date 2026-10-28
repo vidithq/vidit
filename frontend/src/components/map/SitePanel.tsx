@@ -52,7 +52,6 @@ export function SitePanel({
     <MapSidePanel
       resource={resource}
       onClose={onClose}
-      errorFallback="Couldn't load this site."
       content={sitePanelContent}
     />
   );

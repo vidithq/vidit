@@ -7,7 +7,7 @@ import type { useCursorList } from "@/hooks/useCursorList";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { cn } from "@/lib/cn";
 import { ActionIcon, Button, buttonClasses } from "./Button";
-import { FORM_ERROR_BANNER } from "./form-styles";
+import { ErrorNotice } from "./ErrorNotice";
 
 /** The one label of the control that shows more of a list, in place or on another page. */
 const SHOW_MORE = "Show more";
@@ -19,7 +19,7 @@ type CursorWalk = Pick<
 
 /**
  * The foot of a `useCursorList` list: **Show more** while a next page exists, a spinner while it
- * loads, and a failed page's message above a **Try again**. Renders nothing once the walk ends.
+ * loads, and a failed page's `<ErrorNotice>` with a **Retry**. Renders nothing once the walk ends.
  *
  * `infinite` also loads the next page when the row comes within a screen of the viewport, and
  * pauses after a failure until the click, since the row is still in view. A first page that
@@ -38,9 +38,11 @@ export function LoadMoreRow({
     infinite && hasMore && !loadingMore && !error
   );
   if (!hasMore) return null;
+  // A fault the reader did not cause brings its own Retry; a refused page keeps Show more.
+  if (error?.title && !loadingMore) return <ErrorNotice error={error} onRetry={loadMore} />;
   return (
     <div className="space-y-3">
-      {error && <div className={FORM_ERROR_BANNER}>{error}</div>}
+      <ErrorNotice error={error} />
       <div ref={sentinel} className="flex justify-center">
         <Button
           action={loadingMore ? undefined : error ? "retry" : "more"}
@@ -49,7 +51,7 @@ export function LoadMoreRow({
           disabled={loadingMore}
         >
           {loadingMore && <Loader2 size={14} className="animate-spin" />}
-          {loadingMore ? "Loading…" : error ? "Try again" : SHOW_MORE}
+          {loadingMore ? "Loading…" : SHOW_MORE}
         </Button>
       </div>
     </div>

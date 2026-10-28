@@ -32,6 +32,7 @@ import {
 } from "@/lib/sources";
 import { safeHostname } from "@/lib/format";
 import type { Tag } from "@/types";
+import { FieldError } from "@/components/ui/ErrorNotice";
 
 let uploadToken = 0;
 
@@ -111,7 +112,7 @@ export function SourcesField({
       invalid={fileMissing}
       note={
         fileMissing && (
-          <p className="text-xs text-red-400">Add a file to a direct or indirect source.</p>
+          <FieldError>Add a file to a direct or indirect source.</FieldError>
         )
       }
       actions={

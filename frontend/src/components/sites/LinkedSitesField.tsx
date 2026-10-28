@@ -6,7 +6,6 @@ import { X } from "lucide-react";
 import { EventSection } from "@/components/event/EventLayout";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { META_LINE } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
@@ -24,6 +23,8 @@ import {
 import type { EventDetail } from "@/types";
 import { EffectControl, LinkSearch, LinkSuggestionPills, siteCandidate } from "./LinkDialog";
 import { NEAR_SITES_COPY, SITE_SEARCH_COPY } from "./useEventSites";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import type { ReadableError } from "@/lib/errors";
 
 const POINT_DEBOUNCE_MS = 400;
 
@@ -33,7 +34,7 @@ export interface SiteLinksDraft {
   setLinks: (links: DraftSiteLink[]) => void;
   /** The live links' read, on a published row. */
   loading: boolean;
-  error: string | null;
+  error: ReadableError | null;
   changed: boolean;
   /** A linked site still waits for its effect. */
   missingEffect: boolean;
@@ -105,7 +106,7 @@ export function LinkedSitesField({
         invalid,
         content: (
           <Card dense>
-            {draft.error && <div className={FORM_ERROR_BANNER}>{draft.error}</div>}
+            {draft.error && <ErrorNotice error={draft.error} />}
             {draft.loading ? (
               <p className={META_LINE}>Loading…</p>
             ) : (

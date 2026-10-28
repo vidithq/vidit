@@ -60,7 +60,7 @@ export default function Error({ error, reset }: ErrorProps) {
               type="button"
               onClick={reset}
             >
-              Try again
+              Retry
             </Button>
             <a href="/map" className={buttonClasses("secondary")}>
               <ActionIcon action="map" />

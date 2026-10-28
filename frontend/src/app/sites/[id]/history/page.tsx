@@ -38,12 +38,12 @@ function changeSummary(version: SiteVersionEntry): string | null {
 export default function SiteHistoryPage() {
   const params = useParams();
   const siteId = typeof params.id === "string" ? params.id : "";
-  const { data: site, error } = useApiResource<Site>(siteId ? sitePath(siteId) : null);
+  const { data: site, error, refetch } = useApiResource<Site>(siteId ? sitePath(siteId) : null);
 
   const buildPath = useCallback((cursor: string | null) => siteVersionsPath(siteId, cursor), [siteId]);
   const walk = useCursorList<SiteVersion, SiteVersionList>(buildPath, versionRows);
 
-  if (error) return <PageError message={error} />;
+  if (error) return <PageError error={error} onRetry={refetch} />;
   if (!site) return <PageLoading />;
 
   const record = siteVersioned(site);

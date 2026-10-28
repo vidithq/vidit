@@ -32,10 +32,10 @@ import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { TEXT_LINK } from "@/components/ui/styles";
 import {
-  FORM_ERROR_BANNER,
   FORM_LABEL,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 const EMPTY = { name: "", slug: "", x_handle: "", manager_username: "", bio: "" };
 type Draft = typeof EMPTY;
@@ -114,7 +114,7 @@ function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) 
       >
         Name org manager
       </Button>
-      {appoint.error && <div className={`${FORM_ERROR_BANNER} w-full`}>{appoint.error}</div>}
+      {appoint.error && <ErrorNotice error={appoint.error} className="w-full" />}
     </form>
   );
 }
@@ -303,7 +303,7 @@ export function OrganizationsPanel() {
         </Button>
       </form>
 
-      {create.error && <div className={FORM_ERROR_BANNER}>{create.error}</div>}
+      {create.error && <ErrorNotice error={create.error} />}
       {created && (
         <div className={FORM_SUCCESS_BANNER}>
           Created{" "}
@@ -314,7 +314,7 @@ export function OrganizationsPanel() {
         </div>
       )}
 
-      {list.error && <div className={FORM_ERROR_BANNER}>{list.error}</div>}
+      {list.error && <ErrorNotice error={list.error} />}
       {list.data && list.data.length > 0 && (
         <ul className="space-y-2">
           {list.data.map((org) => (

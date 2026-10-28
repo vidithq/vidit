@@ -122,6 +122,16 @@ class PresignedUpload(NamedTuple):
     fields: dict[str, str]
 
 
+def _megabytes(size: int) -> int:
+    return round(size / 2**20)
+
+
+def _too_large_message(media_type: str, max_size: int) -> str:
+    """The refusal of a file over its cap, in the unit a reader thinks in."""
+    noun = "a video" if media_type == "video" else "an image"
+    return f"{_megabytes(max_size)} MB at most for {noun}."
+
+
 def _media_type_and_max_size(content_type: str | None) -> tuple[str, int]:
     """Resolve an allowed MIME to ``(media_type, max byte size)``.
 
@@ -132,7 +142,7 @@ def _media_type_and_max_size(content_type: str | None) -> tuple[str, int]:
         return "image", settings.max_image_size
     if content_type in ALLOWED_VIDEO_TYPES:
         return "video", settings.max_video_size
-    raise ValueError(f"File type {content_type} not allowed")
+    raise ValueError("Images and videos only.")
 
 
 def validate_file(file: UploadFile) -> str:
@@ -145,7 +155,7 @@ def validate_file(file: UploadFile) -> str:
     size = file.file.tell()
     file.file.seek(0)
     if size > max_size:
-        raise ValueError(f"File too large: {size} bytes (max {max_size})")
+        raise ValueError(_too_large_message(media_type, max_size))
     return media_type
 
 
@@ -448,7 +458,7 @@ def validate_bytes(data: bytes, content_type: str) -> str:
     """
     media_type, max_size = _media_type_and_max_size(content_type)
     if len(data) > max_size:
-        raise ValueError(f"File too large: {len(data)} bytes (max {max_size})")
+        raise ValueError(_too_large_message(media_type, max_size))
     return media_type
 
 
@@ -784,7 +794,7 @@ async def upload_avatar_image(file: UploadFile, owner_id: UUID) -> UploadResult:
     """
     content_type = file.content_type or ""
     if content_type not in ALLOWED_IMAGE_TYPES:
-        raise ValueError(f"File type {content_type or 'unknown'} not allowed for an avatar")
+        raise ValueError("Images only.")
     validate_file(file)
 
     def _render() -> bytes:

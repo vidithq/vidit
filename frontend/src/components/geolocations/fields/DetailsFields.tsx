@@ -3,8 +3,8 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import type { TaxonomyState } from "@/components/geolocations/TaxonomyFields";
-import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
 import { Card } from "@/components/ui/Card";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { TagPicker } from "@/components/ui/TagPicker";
@@ -86,7 +86,12 @@ export function DetailsFields({
           <LockedUrl href={detectedFromUrl} />
         </div>
       )}
-      {taxonomy.conflictsError && <TaxonomyLoadError onRetry={taxonomy.reloadConflicts} />}
+      {taxonomy.conflictsError && (
+        <ErrorNotice
+          error={{ ...taxonomy.conflictsError, title: "Couldn't load the Conflict options" }}
+          onRetry={taxonomy.reloadConflicts}
+        />
+      )}
       <TagPicker
         tags={taxonomy.tags}
         setTags={taxonomy.setTags}

@@ -17,6 +17,7 @@ import {
   WAYBACK_HOST,
 } from "@/lib/snapshots";
 import { SOURCE_URL_MAX_LEN, sourceName } from "@/lib/sources";
+import { FieldError } from "./ErrorNotice";
 
 interface ArchivedCopiesProps {
   copy: ArchivedLink | null;
@@ -270,7 +271,7 @@ export function ArchiveSnapshotField({
         invalid={invalid}
         trailing={<SavePageDoor target={target} describes={describes} />}
       />
-      {invalid && <p className="text-xs text-red-400">{SNAPSHOT_HINT}</p>}
+      {invalid && <FieldError>{SNAPSHOT_HINT}</FieldError>}
       {archivesAnother && (
         <p className={`rounded-md px-2 py-1 text-xs ${WARNING_CALLOUT}`}>
           That snapshot looks like a copy of{" "}

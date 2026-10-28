@@ -112,7 +112,7 @@ function NewCollectionPageBody() {
   );
 
   if (loading || !user) return <PageLoading />;
-  if (eventError) return <PageError message={eventError} backHref={origin} />;
+  if (eventError) return <PageError error={eventError} backHref={origin} />;
   // The form seeds once: mounting before the read lands would drop the event.
   if (eventId && !event) return <PageLoading />;
 

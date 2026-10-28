@@ -19,7 +19,6 @@ import { ActionIcon, Button, buttonClasses, DANGER_CONFIRM } from "@/components/
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
 import { EventShare } from "@/components/event/EventShare";
@@ -30,6 +29,7 @@ import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
 import { useEventSites } from "@/components/sites/useEventSites";
 import type { EventDetail } from "@/types";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /**
  * The controls of one event, assembled once so no surface hand-assembles a row and controls can't
@@ -286,9 +286,7 @@ function GeolocatorsPanel({ event, onChanged }: { event: EventDetail; onChanged:
         ))}
       </div>
       {leave.error && (
-        <div className={FORM_ERROR_BANNER} role="alert">
-          {leave.error}
-        </div>
+        <ErrorNotice error={leave.error} />
       )}
     </div>
   );

@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { readError, type ReadableError } from "@/lib/errors";
 
 interface FetchResult<T> {
   data: T | null;
-  error: string | null;
+  error: ReadableError | null;
   // Which path this result answers; a result kept across a path change is stale.
   path: string | null;
 }
 
 export interface ApiResource<T> {
   data: T | null;
-  error: string | null;
+  error: ReadableError | null;
   loading: boolean;
   refetch: () => void;
 }
@@ -18,7 +19,7 @@ export interface ApiResource<T> {
 const EMPTY = { data: null, error: null, path: null };
 
 /** Declarative GET for page data: fetches `path` on mount and change, aborts in-flight on
- * unmount or change, skips while `path` is `null`. Errors propagate as messages; 401 handling
+ * unmount or change, skips while `path` is `null`. Errors propagate as `ReadableError`s; 401 handling
  * stays in the proxy.
  *
  * `refetch` re-runs the path: after an error it resets to loading, after a success stale data
@@ -52,7 +53,7 @@ export function useApiResource<T>(path: string | null): ApiResource<T> {
         if (controller.signal.aborted) return;
         setResult({
           data: null,
-          error: e instanceof Error ? e.message : "Request failed",
+          error: readError(e),
           path,
         });
       });

@@ -10,6 +10,7 @@ from io import BytesIO
 
 from PIL import Image
 
+from app.config import settings
 from app.models.event import Event
 from app.models.media import Media
 from app.models.source import Source
@@ -314,7 +315,24 @@ def test_an_upload_refuses_a_disallowed_type(author):
         files={"file": ("notes.txt", b"hello", "text/plain")},
     )
     assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "invalid_file"
+    assert response.json()["detail"] == {
+        "code": "invalid_file",
+        "message": "Images and videos only.",
+    }
+
+
+def test_an_upload_refuses_an_oversized_file_in_megabytes(author, monkeypatch):
+    monkeypatch.setattr(settings, "max_video_size", 2**20)
+    response = client.post(
+        "/api/v1/uploads",
+        headers=login_as(client, author),
+        files={"file": ("big.mp4", b"\x00" * (2**20 + 1), "video/mp4")},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "code": "invalid_file",
+        "message": "1 MB at most for a video.",
+    }
 
 
 def test_staged_uploads_are_capped_per_account(db, author, monkeypatch):

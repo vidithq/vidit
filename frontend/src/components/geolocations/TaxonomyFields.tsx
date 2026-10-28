@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from
 import { apiFetch } from "@/lib/api";
 import { useApiResource } from "@/hooks/useApiResource";
 import type { Conflict, Tag } from "@/types";
+import type { ReadableError } from "@/lib/errors";
 
 /**
  * The taxonomy fetches the event forms read: `useTaxonomy` owns them and says whether the
@@ -26,7 +27,7 @@ export interface TaxonomyState {
   /** `GET /tags/suggested`, empty until loaded or when the load fails. */
   suggestedTags: Tag[];
   reloadConflicts: () => void;
-  conflictsError: string | null;
+  conflictsError: ReadableError | null;
 }
 
 export function useTaxonomy(): TaxonomyState {
