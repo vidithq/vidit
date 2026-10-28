@@ -118,7 +118,7 @@ describe("SourcesField", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Remove source 3" }));
     expect(seen.current).toHaveLength(3);
-    fireEvent.click(screen.getByRole("button", { name: "Confirm removing source 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm remove source 3" }));
     expect(seen.current.map((d) => d.links[0].url)).toEqual([
       "https://a.example/1",
       "https://b.example/2",
@@ -126,7 +126,7 @@ describe("SourcesField", () => {
     expect(scrolledTo).toHaveBeenLastCalledWith(ITEM_LEFT);
 
     fireEvent.click(screen.getByRole("button", { name: "Remove source 1" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm removing source 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm remove source 1" }));
     expect(seen.current.map((d) => d.links[0].url)).toEqual(["https://b.example/2"]);
   });
 

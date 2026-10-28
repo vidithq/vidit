@@ -2,7 +2,7 @@
 
 import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Eye, EyeOff, ImagePlus, Link2, SquarePen } from "lucide-react";
+import { Eye, ImagePlus, Link2, SquarePen } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/contexts/AdminContext";
@@ -28,13 +28,13 @@ import { VersionSelector } from "@/components/event/VersionSelector";
 import { ShareControl } from "@/components/share/ShareControl";
 import { useReportContent } from "@/components/report/useReportContent";
 import { Button, buttonClasses } from "@/components/ui/Button";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { RemoveButton } from "@/components/ui/RemoveButton";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
 import { LinkDialog } from "./LinkDialog";
 import { SatelliteSourcesOffer, fileOffered, useSatelliteOffer } from "./SatelliteSourcesOffer";
-import { removeSourceLabel, siteSourceMention } from "./SiteSourceBlock";
+import { removeSourceLabel } from "./SiteSourceBlock";
 import { useApiResource } from "@/hooks/useApiResource";
 
 /** The analyst's published events whose title matches, less those already linked. */
@@ -68,88 +68,13 @@ function PickedEventOffer({
   );
 }
 
-function RemoveSourceDialog({
-  site,
-  source,
-  onDone,
-  onClose,
-}: {
-  site: Site;
-  source: SiteSource;
-  onDone: () => void;
-  onClose: () => void;
-}) {
-  const remove = useMutation(() => removeSiteSource(site.id, source.id), {
-    fallback: "The source was not removed. Try again.",
-    onSuccess: () => {
-      onDone();
-      onClose();
-    },
-  });
-  return (
-    <ConfirmDialog
-      title={`Remove ${siteSourceMention(source)}?`}
-      confirmLabel="Remove"
-      confirmAction="delete"
-      busyLabel="Removing…"
-      busy={remove.loading}
-      error={remove.error}
-      onConfirm={() => void remove.run()}
-      onCancel={onClose}
-    >
-      <p>
-        The source leaves the site and the site saves a new version. Its earlier versions keep the
-        source.
-      </p>
-    </ConfirmDialog>
-  );
-}
-
-function ModerationDialog({
-  site,
-  onDone,
-  onClose,
-}: {
-  site: Site;
-  onDone: () => void;
-  onClose: () => void;
-}) {
-  const withheld = site.hidden_at !== null;
-  const write = useMutation(() => setSiteModeration(site.id, !withheld), {
-    fallback: "The moderation failed. Try again.",
-    onSuccess: () => {
-      onDone();
-      onClose();
-    },
-  });
-  return (
-    <ConfirmDialog
-      title={withheld ? "Restore this site?" : "Withhold this site?"}
-      confirmLabel={withheld ? "Restore" : "Withhold"}
-      confirmAction={withheld ? "show" : "hide"}
-      busyLabel={withheld ? "Restoring…" : "Withholding…"}
-      busy={write.loading}
-      error={write.error}
-      onConfirm={() => void write.run()}
-      onCancel={onClose}
-    >
-      <p>
-        {withheld
-          ? "The site returns to the map, to the event pages and to its owner."
-          : "The site leaves every public read, the map and the event pages included, until an admin restores it. Admins still read it here. The events linked to it are untouched."}
-      </p>
-    </ConfirmDialog>
-  );
-}
-
-type Dialog = { kind: "remove"; source: SiteSource } | { kind: "moderate" } | { kind: "link" };
-
 /**
  * The controls of one site, assembled once like `useEventActions` and in its order: one icon
  * row (the version selector for every reader, Edit for the owner, Share for every reader, File a
  * source and Link one of my events for any signed-in analyst, Withhold or Restore for an admin,
  * Report last for every reader but the owner); and the panels they open. `sourceControls` gives
- * a source's filer its Remove, off while the source carries a contour.
+ * a source's filer its Remove, off while the source carries a contour. Withhold and Remove
+ * confirm in place; Restore acts at once. A refusal of either shows in the panels.
  */
 export function useSiteActions({
   site,
@@ -165,22 +90,31 @@ export function useSiteActions({
   const { user } = useAuth();
   const { isAdmin } = useAdmin();
   const report = useReportContent("site", site?.id ?? "");
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [linking, setLinking] = useState(false);
   const offer = useSatelliteOffer();
+  const removeSource = useMutation(
+    (siteId: string, sourceId: string) => removeSiteSource(siteId, sourceId),
+    { fallback: "The source was not removed. Try again.", onSuccess: onChanged },
+  );
+  const moderate = useMutation((siteId: string, hide: boolean) => setSiteModeration(siteId, hide), {
+    fallback: "The moderation failed. Try again.",
+    onSuccess: onChanged,
+  });
 
   if (!site) return { pinned: null, panels: null, sourceControls: () => null };
 
   const owner = ownsSite(site, user?.id);
   const withheld = site.hidden_at !== null;
   const linked = new Set(site.linked_events.map((e) => e.id));
+  const error = removeSource.error ?? moderate.error;
 
   const sourceControls = (source: SiteSource) =>
     user?.id === source.author?.id && (
-      <RemoveButton
+      <ConfirmButton
+        icon
         label={removeSourceLabel(source, contourOfSource(site.contours, source.id) !== null)}
-        confirms
-        disabled={contourOfSource(site.contours, source.id) !== null}
-        onClick={() => setDialog({ kind: "remove", source })}
+        disabled={contourOfSource(site.contours, source.id) !== null || removeSource.loading}
+        onConfirm={() => removeSource.run(site.id, source.id)}
       />
     );
 
@@ -216,22 +150,33 @@ export function useSiteActions({
         variant="ghost"
         aria-label="Link one of my events"
         aria-haspopup="dialog"
-        onClick={() => setDialog({ kind: "link" })}
+        onClick={() => setLinking(true)}
       >
         <Link2 size={14} />
       </Button>
     ),
-    isAdmin && (
-      <Button
-        key="moderate"
-        icon
-        variant={withheld ? "ghost" : "dangerGhost"}
-        aria-label={withheld ? "Restore the site" : "Withhold the site"}
-        onClick={() => setDialog({ kind: "moderate" })}
-      >
-        {withheld ? <Eye size={14} /> : <EyeOff size={14} />}
-      </Button>
-    ),
+    isAdmin &&
+      (withheld ? (
+        <Button
+          key="moderate"
+          icon
+          variant="ghost"
+          aria-label="Restore the site"
+          disabled={moderate.loading}
+          onClick={() => void moderate.run(site.id, false)}
+        >
+          <Eye size={14} />
+        </Button>
+      ) : (
+        <ConfirmButton
+          key="moderate"
+          icon
+          action="hide"
+          label="Withhold the site"
+          disabled={moderate.loading}
+          onConfirm={() => moderate.run(site.id, true)}
+        />
+      )),
     !owner && <Fragment key="report">{report.trigger}</Fragment>,
   ].filter(Boolean);
 
@@ -245,18 +190,8 @@ export function useSiteActions({
     <>
       {site.hidden_at && <WithheldBanner since={site.hidden_at} noun="site" />}
       {!owner && report.panel}
-      {dialog?.kind === "remove" && (
-        <RemoveSourceDialog
-          site={site}
-          source={dialog.source}
-          onDone={onChanged}
-          onClose={() => setDialog(null)}
-        />
-      )}
-      {dialog?.kind === "moderate" && (
-        <ModerationDialog site={site} onDone={onChanged} onClose={() => setDialog(null)} />
-      )}
-      {dialog?.kind === "link" && user && (
+      {error && <ErrorNotice error={error} />}
+      {linking && user && (
         <LinkDialog
           title="Link one of my events"
           intro="Pick one of your published events, then say what it shows at this site. The link holds even when the event lies outside the zone."
@@ -275,7 +210,7 @@ export function useSiteActions({
               onChanged();
             }
           }}
-          onClose={() => setDialog(null)}
+          onClose={() => setLinking(false)}
         />
       )}
     </>

@@ -29,6 +29,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- A minor destructive action, such as dismissing a notification, acts at once from a red cross; an important one, such as removing a co-geolocator or deleting an approval, asks for a second click in place instead of a dialog ([#PRNUM](https://github.com/vidithq/vidit/pull/PRNUM)).
+- The version history starts every title on one line, Current included, and drops the count above the list; the invitation cards no longer point at Accept and Decline, and the geolocator invite picker states the limit of 10 geolocators ([#PRNUM](https://github.com/vidithq/vidit/pull/PRNUM)).
 - Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a request page, the asker sees Edit, which opens the request's form, and every other reader sees Geolocate; the asker no longer gets both for the same page ([#794](https://github.com/vidithq/vidit/pull/794)).

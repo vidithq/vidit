@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 
 import {
@@ -18,7 +17,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -36,7 +35,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
  * it came back with, so two items with the same title stay apart.
  *
  * Each open row carries the verdicts its target can take. `hidden` withholds the target from every
- * public read, so it opens a `ConfirmDialog`, as on the event actions panel. `Mark graphic` is
+ * public read, so it confirms in place, as on the event actions panel. `Mark graphic` is
  * event-only (the flag is an event column): a collection or site row doesn't offer it and the API
  * answers 409 `report_verdict_not_applicable`. Each is recoverable: the event through the event
  * actions panel beside this one, the collection through the admin takedown, and the site through
@@ -69,16 +68,9 @@ function ReportRow({
   report: ContentReport;
   onResolved: () => void;
 }) {
-  const [confirmingHide, setConfirmingHide] = useState(false);
   const resolveMutation = useMutation(
     (resolution: ContentReportResolution) => resolveReport(report.id, resolution),
-    {
-      fallback: "Resolve failed",
-      onSuccess: () => {
-        setConfirmingHide(false);
-        onResolved();
-      },
-    }
+    { fallback: "Resolve failed", onSuccess: onResolved },
   );
 
   const open = report.resolved_at === null;
@@ -143,9 +135,7 @@ function ReportRow({
         </p>
       )}
 
-      {resolveMutation.error && !confirmingHide && (
-        <ErrorNotice error={resolveMutation.error} />
-      )}
+      {resolveMutation.error && <ErrorNotice error={resolveMutation.error} />}
 
       {open && (
         <div className="flex flex-wrap items-center gap-2">
@@ -160,17 +150,12 @@ function ReportRow({
             </Button>
           )}
           {!targetGone && (
-            <Button
+            <ConfirmButton
               action="hide"
-              variant="danger"
+              label={`Hide the ${noun}`}
               disabled={busy}
-              onClick={() => {
-                resolveMutation.reset();
-                setConfirmingHide(true);
-              }}
-            >
-              Hide the {noun}
-            </Button>
+              onConfirm={() => resolveMutation.run("hidden")}
+            />
           )}
           <Button
             action="dismiss"
@@ -181,29 +166,6 @@ function ReportRow({
             Dismiss
           </Button>
         </div>
-      )}
-
-      {confirmingHide && (
-        <ConfirmDialog
-          title={`Hide the ${noun}?`}
-          confirmLabel={`Hide the ${noun}`}
-          confirmAction="hide"
-          busyLabel="Hiding…"
-          busy={busy}
-          error={resolveMutation.error}
-          tone={ownerDeleted ? "danger" : "accent"}
-          onConfirm={() => void resolveMutation.run("hidden")}
-          onCancel={() => {
-            setConfirmingHide(false);
-            resolveMutation.reset();
-          }}
-        >
-          <p>
-            {ownerDeleted
-              ? "Its owner deleted it, so resolving the last open report on it erases it."
-              : `Hiding drops the ${noun} from every public read until it is restored, and resolves the report as Hidden.`}
-          </p>
-        </ConfirmDialog>
       )}
     </li>
   );

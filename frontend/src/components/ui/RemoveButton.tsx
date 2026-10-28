@@ -4,9 +4,10 @@ import { Trash2, X } from "lucide-react";
 import { Button } from "./Button";
 
 /**
- * The one remove control: a red icon button named by what it removes, the name showing as its
- * tooltip. Its icon says what a click does: a trash when the removal asks for a confirmation
- * first (a second click, a dialog), a cross when it is instant.
+ * The remove control of a minor removal: a red cross named by what it removes, the name showing
+ * as its tooltip, that removes at once. An important removal confirms in place through
+ * `<ConfirmButton>` instead. `confirms` shows the trash on a control that opens a dialog to collect
+ * what the removal needs (the edit form's Close and its reason).
  */
 export function RemoveButton({
   label,
@@ -16,7 +17,7 @@ export function RemoveButton({
 }: Omit<ComponentPropsWithRef<"button">, "children" | "aria-label"> & {
   /** The accessible name and the tooltip: *Remove source 2*, *Close this request*. */
   label: string;
-  /** The click asks before it removes. */
+  /** The click opens a dialog that asks before it removes. */
   confirms?: boolean;
   iconSize?: number;
 }) {

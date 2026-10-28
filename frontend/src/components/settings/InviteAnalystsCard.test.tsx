@@ -130,7 +130,7 @@ describe("InviteAnalystsCard", () => {
     );
     expect(api.apiFetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
     fireEvent.click(
-      screen.getByRole("button", { name: "Confirm revoking the invite code for @new_hawk" }),
+      screen.getByRole("button", { name: "Confirm revoke the invite code for @new_hawk" }),
     );
 
     await waitFor(() =>
@@ -152,7 +152,7 @@ describe("InviteAnalystsCard", () => {
       await screen.findByRole("button", { name: "Revoke the invite code for @new_hawk" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Confirm revoking the invite code for @new_hawk" }),
+      screen.getByRole("button", { name: "Confirm revoke the invite code for @new_hawk" }),
     );
 
     expect(await screen.findByText(/cannot be revoked/)).toBeInTheDocument();

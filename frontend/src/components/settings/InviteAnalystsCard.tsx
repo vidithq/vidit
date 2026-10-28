@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Trash2 } from "lucide-react";
+import { Copy } from "lucide-react";
 
 import { useApiResource } from "@/hooks/useApiResource";
-import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate, formatInstant } from "@/lib/format";
@@ -16,7 +15,8 @@ import {
   type SponsoredInviteCodeList,
 } from "@/lib/inviteCodes";
 import { InviteStatusPill } from "@/components/invites/InviteStatusPill";
-import { Button, DANGER_CONFIRM } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Card } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
@@ -51,26 +51,14 @@ function RevokeCode({
   disabled: boolean;
   onRevoke: (id: string) => void;
 }) {
-  const { armed, trigger, controlRef } = useConfirmAction(() => onRevoke(code.id), {
-    timeoutMs: 4000,
-    dismissOnOutside: true,
-  });
-  const label = armed
-    ? `Confirm revoking the invite code for @${code.x_handle}`
-    : `Revoke the invite code for @${code.x_handle}`;
   return (
-    <Button
-      ref={controlRef}
+    <ConfirmButton
       icon
-      variant="ghost"
+      action="revoke"
+      label={`Revoke the invite code for @${code.x_handle}`}
       disabled={disabled}
-      onClick={trigger}
-      className={armed ? DANGER_CONFIRM : ""}
-      aria-label={label}
-      title={label}
-    >
-      <Trash2 size={14} />
-    </Button>
+      onConfirm={() => onRevoke(code.id)}
+    />
   );
 }
 

@@ -62,6 +62,7 @@ import {
 import { ConflictChips, TagChips, TagPicker } from "@/components/ui/TagPicker";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { RemoveButton } from "@/components/ui/RemoveButton";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { EntityCard } from "@/components/ui/EntityCard";
 import { CollectionCover } from "@/components/collections/CollectionCover";
 import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
@@ -659,10 +660,19 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<RemoveButton>" usage="The one remove control (components/ui/RemoveButton.tsx): a red dangerGhost icon <Button> named by what it removes (label), the name showing as its tooltip. The icon is the rule: a trash (Trash2) when the removal asks for a confirmation first, a second click or a dialog (confirms), a cross (X) when it is instant. A source editor's remove (trash, it arms), a link row's remove (cross), a notification's delete (cross, it is instant), a FileManager tile's remove (cross, every file removal there is a draft change, as a corner disc), an AvatarStack picture's remove disc (trash when it opens a ConfirmDialog: a published co-geolocator, a pending invitation, an approval stamp; cross for a draft pick) and the edit form's Close (trash, it opens CloseEventDialog).">
+          <Item name="<RemoveButton>" usage="The minor destructive variant (components/ui/RemoveButton.tsx): a red dangerGhost cross (X) named by what it removes (label), the name showing as its tooltip, that acts at once with no confirmation. For a removal that is minor or easily undone: dismissing a notification, a link row, a FileManager tile (as a corner disc), a draft co-geolocator pick, a pending co-geolocator invitation, an event held on a collection form, a site source marked for removal on the edit form (Keep restores it). `confirms` shows a trash instead, only on the edit form's Close, whose CloseEventDialog collects the required reason.">
             <div className="flex items-center gap-2">
-              <RemoveButton label="Remove link 2" />
-              <RemoveButton confirms label="Remove source 2" />
+              <RemoveButton label="Dismiss notification" />
+              <RemoveButton confirms label="Close this geolocation" />
+            </div>
+          </Item>
+
+          <Item name="<ConfirmButton>" usage="The important destructive variant (components/ui/ConfirmButton.tsx): red, it confirms in place, never in a dialog. The first click arms it (DANGER_CONFIRM, named Confirm …), a second click within ARM_MS acts; Escape, a click or focus elsewhere, or the timeout disarms it. `icon` is the square icon button named by label, with its action's icon from ACTION_ICONS (a trash for delete, EyeOff for hide, Ban for revoke); without it, a labelled danger button that keeps its label and icon, with `name` as the accessible name when the text alone is ambiguous. For an action that is important or hard to undo: removing a co-geolocator, deleting an approval, withholding a site, hiding a reported item or an event, removing a source, dropping a collection, revoking an invite code, leaving an event's credit or an organization, removing a member, soft or hard deleting an event. Click to arm.">
+            <div className="flex flex-wrap items-center gap-2">
+              <ConfirmButton icon label="Remove bo" onConfirm={() => {}} />
+              <ConfirmButton icon action="hide" label="Withhold the site" onConfirm={() => {}} />
+              <ConfirmButton action="leave" label="Leave" onConfirm={() => {}} />
+              <ConfirmButton label="Remove" name="Remove bo" onConfirm={() => {}} />
             </div>
           </Item>
 
@@ -1251,18 +1261,18 @@ export default function PalettePage() {
                 />
               </div>
             </Variant>
-            <Variant label="remove on each item: hover or focus a picture for its corner control (a site admin's stamps)">
+            <Variant label="remove that confirms in place: hover or focus a picture for its trash (a site admin's stamps)">
               <AvatarStack
                 label="Approved by"
                 spacing="gap"
                 checked
                 items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 3)).map((stamp) => ({
                   ...stamp,
-                  remove: { label: `Delete approval by ${stamp.name}`, onClick: () => {} },
+                  remove: { label: `Delete approval by ${stamp.name}`, onClick: () => {}, confirms: true },
                 }))}
               />
             </Variant>
-            <Variant label="muted with remove: pending co-geolocators on an event form's byline">
+            <Variant label="muted with a cross that acts at once: pending co-geolocators on an event form's byline">
               <AvatarStack
                 label="Co-geolocators"
                 spacing="gap"
@@ -1766,7 +1776,7 @@ export default function PalettePage() {
                 href="/palette"
                 external={false}
                 action={
-                  <RemoveButton label="Delete notification" />
+                  <RemoveButton label="Dismiss notification" />
                 }
               />
               <LinkRow
@@ -2190,13 +2200,13 @@ export default function PalettePage() {
             <PalettePublishActions />
           </Item>
 
-          <Item name="<ConfirmDialog>" usage="The confirmation step before a final action: a centred MediaOverlay dialog with a Card, its title, a body saying what the action does and what cannot be undone, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. `tone` is accent by default; `danger` paints the border and the confirm red (the danger Button) for an action that deletes, removes or closes something: closing an event, every admin delete, purge and invite revoke, deleting an organization or an approval, removing a co-geolocator or withdrawing an invitation, and hiding a report whose owner deleted it. Approve opens it in accent, since an approval is final but destroys nothing, Request approval opens it over the open requests and the picker of whom to ask, and the report flag opens it over the reason and the details.">
+          <Item name="<ConfirmDialog>" usage="A step that carries input or a final non-destructive choice, never the confirm of a destructive action (that is ConfirmButton, in place): a centred MediaOverlay dialog with a Card, its title, a body saying what the action does, then Cancel (the initial focus, so Enter on open sends nothing) and the primary confirm. Cancel, Escape and a backdrop click close it; the caller owns the request, and `busy` and `error` show it in flight and refused, while `confirmDisabled` holds the confirm until an input the dialog carries is complete. `tone` is accent by default; `danger` paints the border and the confirm red (the danger Button) for a destructive step that needs the dialog: closing an event (the required reason), deleting an organization (the typed slug), and an admin action picked from an ActionMenu, which closes on the pick (purge, soft and hard delete of an analyst, revoke and delete of an invite code). Approve opens it in accent, since an approval is final but destroys nothing, Request approval opens it over the open requests and the picker of whom to ask, and the report flag opens it over the reason and the details.">
             <div className="flex flex-wrap gap-2">
               <Button action="approve" variant="secondary" onClick={() => setConfirmOpen("accent")}>
                 Approve
               </Button>
               <Button action="delete" variant="danger" onClick={() => setConfirmOpen("danger")}>
-                Delete approval
+                Delete organization
               </Button>
             </div>
             {confirmOpen === "accent" && (
@@ -2213,14 +2223,14 @@ export default function PalettePage() {
             )}
             {confirmOpen === "danger" && (
               <ConfirmDialog
-                title="Delete this approval?"
-                confirmLabel="Delete approval"
+                title="Delete osw?"
+                confirmLabel="Delete organization"
                 confirmAction="delete"
                 tone="danger"
                 onConfirm={() => setConfirmOpen(null)}
                 onCancel={() => setConfirmOpen(null)}
               >
-                <p>You delete the approval of version 2 by maya. This cannot be undone.</p>
+                <p>Deleting osw is irreversible. Type the slug to confirm.</p>
               </ConfirmDialog>
             )}
           </Item>

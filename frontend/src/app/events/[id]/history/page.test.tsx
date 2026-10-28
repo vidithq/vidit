@@ -109,10 +109,21 @@ beforeEach(() => {
 describe("EventHistoryPage", () => {
   it("lists every version newest first, the current one first and labelled", () => {
     render(<EventHistoryPage />);
-    expect(screen.getByText("3 versions")).toBeTruthy();
+    expect(screen.queryByText(/newest first/)).toBeNull();
     const numbers = screen.getAllByText(/^v[0-9]+$/).map((el) => el.textContent);
     expect(numbers).toEqual(["v3", "v2", "v1"]);
     expect(within(row(3)).getByText("Current")).toBeTruthy();
+  });
+
+  it("starts every title on one line: one name column for every row, and Current after the title", () => {
+    render(<EventHistoryPage />);
+    const numbers = screen.getAllByText(/^v[0-9]+$/).map((el) => el.parentElement!);
+    // Each row is a subgrid of the list's two columns, so the names share the widest one.
+    for (const column of numbers) expect(column.parentElement).toHaveClass("sm:grid-cols-subgrid");
+    expect(numbers[0].parentElement!.parentElement).toHaveClass("sm:grid-cols-[auto_1fr]");
+    const current = within(row(3)).getByText("Current");
+    expect(numbers[0]).not.toContainElement(current);
+    expect(current.parentElement).toHaveTextContent("Title");
   });
 
   it("names the fields each edit changed, and says version 1 was published", () => {
@@ -126,7 +137,7 @@ describe("EventHistoryPage", () => {
     event = { ...baseEvent(2), version_zero: "request", requested_by: BOB };
     walk.items = [version(1, snapshot("v1 title")), version(0, snapshot("Asked"))];
     render(<EventHistoryPage />);
-    expect(screen.getByText("3 versions")).toBeTruthy();
+    expect(screen.queryByText(/newest first/)).toBeNull();
     const request = screen.getByLabelText("Request").parentElement!;
     expect(within(request).getByText("Request")).toBeTruthy();
     expect(within(request).getByText("Requested")).toBeTruthy();
@@ -194,7 +205,7 @@ describe("EventHistoryPage", () => {
     event = baseEvent(1);
     walk.items = [];
     render(<EventHistoryPage />);
-    expect(screen.getByText("1 version")).toBeTruthy();
+    expect(screen.getAllByText(/^v[0-9]+$/)).toHaveLength(1);
     expect(within(row(1)).getByText("Published")).toBeTruthy();
   });
 });
