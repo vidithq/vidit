@@ -91,9 +91,11 @@ export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
  * `toBeInViewport({ ratio: 1 })` asserts the whole of the control's box
  * intersects the viewport, vertically as well as horizontally, which is the
  * check a hand-rolled comparison of the box against `window.innerWidth` only
- * made on one axis. It is preceded by a scroll, so a control below the fold is
- * measured where a reader would meet it rather than failing for being further
- * down a long form.
+ * made on one axis. It is preceded by a scroll that centres the control, so a
+ * control below the fold is measured where a reader would meet it rather than
+ * failing for being further down a long form. `scrollIntoViewIfNeeded` is not
+ * that scroll: it leaves a control that is all but a fraction of a pixel in
+ * view where it is, at the fold, and the ratio check then fails on every retry.
  *
  * The scroll and the measure retry together: a block that mounts late (the
  * description editor is a client-only dynamic import, slow to load on a CI
@@ -105,7 +107,7 @@ export async function expectControlInsideViewport(
 ): Promise<void> {
   await expect(control).toBeVisible();
   await expect(async () => {
-    await control.scrollIntoViewIfNeeded();
+    await control.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" }));
     await expect(control).toBeInViewport({ ratio: 1, timeout: 1_000 });
   }).toPass();
 }
