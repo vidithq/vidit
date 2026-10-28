@@ -19,7 +19,6 @@ export type Zone = components["schemas"]["ZonePolygon"];
 export type SiteVersion = components["schemas"]["SiteVersionRead"];
 export type SiteVersionList = components["schemas"]["SiteVersionList"];
 export type SiteVersionCreate = components["schemas"]["SiteVersionCreate"];
-export type SiteEventLinkCreate = components["schemas"]["SiteEventLinkCreate"];
 export type SiteVersionEntry = VersionEntry<Site>;
 
 export type SiteKind = Site["kind"];
@@ -112,6 +111,18 @@ export function siteSuggestionsPath(eventId: string, q: string): string {
   return query ? `${base}?${new URLSearchParams({ q: query }).toString()}` : base;
 }
 
+/** `GET /sites/suggestions`: the sites near a point not yet written, or matching `q`. */
+export function siteSuggestionsNearPath(point: { lat: number; lng: number } | null, q: string): string {
+  const params = new URLSearchParams();
+  if (point) {
+    params.set("lat", String(point.lat));
+    params.set("lng", String(point.lng));
+  }
+  if (q.trim()) params.set("q", q.trim());
+  const query = params.toString();
+  return query ? `/sites/suggestions?${query}` : "/sites/suggestions";
+}
+
 export function createSite(body: components["schemas"]["SiteCreate"]): Promise<SiteCreated> {
   return apiFetch<SiteCreated>("/sites", { method: "POST", body: JSON.stringify(body) });
 }
@@ -166,6 +177,31 @@ export function unlinkEventFromSite(eventId: string, siteId: string): Promise<vo
   return apiFetch<void>(`${eventSiteLinksPath(eventId)}/${encodeURIComponent(siteId)}`, {
     method: "DELETE",
   });
+}
+
+/** A site an event form links, with the effect it shows there, unpicked at first. */
+export interface DraftSiteLink {
+  site: EventSiteLink["site"];
+  effect: LinkEffect | "";
+}
+
+/** Makes `after` the event's links where `before` holds them now: a link `after` leaves out is
+ *  deleted, and a new site or a new effect is written. Rejects on the first refusal. */
+export async function saveSiteLinks(
+  eventId: string,
+  before: readonly DraftSiteLink[],
+  after: readonly DraftSiteLink[],
+): Promise<void> {
+  const was = new Map(before.map((link) => [link.site.id, link.effect]));
+  const kept = new Set(after.map((link) => link.site.id));
+  await Promise.all([
+    ...before
+      .filter((link) => !kept.has(link.site.id))
+      .map((link) => unlinkEventFromSite(eventId, link.site.id)),
+    ...after.flatMap(({ site, effect }) =>
+      effect && was.get(site.id) !== effect ? [linkEventToSite(eventId, site.id, effect)] : [],
+    ),
+  ]);
 }
 
 /** The date the map asks the zones for: the end of the event date window, so moving it

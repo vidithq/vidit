@@ -6,7 +6,6 @@ import { TitleField } from "@/components/geolocations/TitleField";
 import { Card } from "@/components/ui/Card";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Select } from "@/components/ui/Input";
-import { META_LINE } from "@/components/ui/styles";
 import { drawFromZone, drawReady, EMPTY_DRAW, zoneFromVertices, zoneVertices } from "@/lib/siteZone";
 import { SITE_KIND_LABELS, SITE_KINDS, SITE_NAME_MAX_LEN, type SiteKind, type Zone } from "@/lib/sites";
 import type { MapBounds } from "@/lib/viewport";
@@ -35,7 +34,7 @@ export function SiteNameField({
   );
 }
 
-/** The Details block of a site form: the kind, and who may edit the site. */
+/** The Details block of a site form: the kind. */
 export function SiteKindCard({
   value,
   onChange,
@@ -64,10 +63,6 @@ export function SiteKindCard({
           ))}
         </Select>
       </div>
-      <p className={META_LINE}>
-        You own the site: only you rename it, retype it and draw its contours. Every edit saves a new
-        version.
-      </p>
     </Card>
   );
 }

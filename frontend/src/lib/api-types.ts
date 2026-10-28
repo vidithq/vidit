@@ -2223,6 +2223,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sites/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Site Suggestions
+         * @description Sites a point may link to, nearest first: those within ``margin_m`` metres of ``lat``,
+         *     ``lng``, or with ``q``, those whose name contains it. Capped at 20.
+         */
+        get: operations["list_site_suggestions_api_v1_sites_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sites/{site_id}": {
         parameters: {
             query?: never;
@@ -9919,6 +9940,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SiteOverlapRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_site_suggestions_api_v1_sites_suggestions_get: {
+        parameters: {
+            query?: {
+                lat?: number | null;
+                lng?: number | null;
+                margin_m?: number;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteSuggestionRead"][];
                 };
             };
             /** @description Validation Error */

@@ -47,6 +47,23 @@ test.describe("event edit", () => {
     await expect(save).toBeInViewport({ ratio: 1 });
   });
 
+  test("links a site near the event from the Linked sites block, inside a narrow column", async ({ page }) => {
+    await answerWith(page, "/sites/suggestions", [
+      { id: "s1", name: "Northern fuel depot with a long name", kind: "depot", distance_m: 640 },
+      { id: "s2", name: "Saky airbase", kind: "airbase", distance_m: 1200 },
+    ]);
+    await page.goto(`/events/${EVENT_ID}/edit`);
+
+    await page.getByRole("button", { name: /Northern fuel depot/ }).click();
+    const effect = page.getByRole("group", { name: "Effect at Northern fuel depot with a long name" });
+    await expect(effect).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await effect.getByRole("button", { name: "Destruction" }).click();
+    await expect(
+      page.getByRole("complementary", { name: "Actions" }).getByRole("button", { name: "Save", exact: true }),
+    ).toBeVisible();
+  });
+
   test("asks for the version note in a panel on the save, inside a narrow column", async ({ page }) => {
     // A proof image completes the floor, so the save goes on to ask for the note.
     await answerWith(page, `/events/${EVENT_ID}`, {

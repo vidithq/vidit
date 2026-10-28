@@ -57,6 +57,8 @@ vi.mock("@/lib/events", async (importOriginal) => ({
   closeEvent: vi.fn(),
 }));
 
+import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
+import { apiFetch } from "@/lib/api";
 import { closeEvent, saveVersion, updateEventRequest } from "@/lib/events";
 import { ARM_MS } from "@/hooks/useConfirmAction";
 import { PUBLISH_CONFIRM } from "@/components/geolocations/PublishActions";
@@ -82,6 +84,16 @@ const CONFLICTS: Conflict[] = [
 ];
 
 const TAGS: Tag[] = [{ id: "t-drone", name: "Drone" }];
+
+const DEPOT = { id: "s1", name: "Depot", kind: "depot" };
+const BRAVO = { id: "s2", name: "Bravo", kind: "airbase", distance_m: 640 };
+
+/** The link writes the form sent, in order. */
+const linkWrites = () =>
+  vi
+    .mocked(apiFetch)
+    .mock.calls.filter(([path]) => String(path).includes("/site-links"))
+    .map(([path, options]) => [path, options?.method, options?.body]);
 
 /** The row's one source: its footage, posted once, with a seconds-precise post time. */
 const source = (over: Partial<Source> = {}): Source => ({
@@ -164,6 +176,9 @@ function requestFixture(overrides: Partial<EventDetail> = {}): EventDetail {
 /** The row `/events/d1` serves, set per test. */
 let row: EventDetail;
 
+/** The live links `/events/d1/site-links` serves, set per test. */
+let siteLinks: unknown[] = [];
+
 /** Whether `/conflicts` has answered. */
 let conflictsLoaded = true;
 
@@ -172,6 +187,8 @@ let queueItems: EventDetail[] = [];
 
 function resource(path: string) {
   if (path.endsWith("/geolocator-invites")) return [];
+  if (path.endsWith("/site-links")) return siteLinks;
+  if (path.startsWith("/sites/suggestions")) return [BRAVO];
   if (path.startsWith("/events/d1")) return row;
   if (path.startsWith("/events/detections"))
     return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
@@ -239,6 +256,8 @@ function closeDetection(reason: string) {
 }
 
 beforeEach(() => {
+  siteLinks = [];
+  vi.mocked(apiFetch).mockClear();
   push.mockReset();
   saveVersionMock.mockReset();
   updateRequestMock.mockReset();
@@ -677,6 +696,38 @@ describe("editing a published geolocation", () => {
     });
     saveNewVersion();
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("saves a change to the Linked sites alone with Save, filing no version", async () => {
+    siteLinks = [{ site: DEPOT, effect: "damage", linked_at: "2026-06-03T00:00:00Z" }];
+    render(<EditEventPage />);
+
+    expect(screen.getByRole("heading", { name: /^Linked sites/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Depot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(linkWrites()).toEqual([["/events/d1/site-links/s1", "DELETE", undefined]]);
+    expect(saveVersionMock).not.toHaveBeenCalled();
+  });
+
+  it("links a site near the event once its effect is picked", async () => {
+    render(<EditEventPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Bravo/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(linkWrites()).toEqual([]);
+    expect(screen.getByRole("heading", { name: /^Linked sites/ })).toHaveClass(FORM_INVALID_LABEL);
+
+    const effect = screen.getByRole("group", { name: "Effect at Bravo" });
+    fireEvent.click(within(effect).getByRole("button", { name: "Destruction" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(linkWrites()).toEqual([
+      ["/events/d1/site-links", "POST", JSON.stringify({ site_id: "s2", effect: "destruction" })],
+    ]);
+    expect(saveVersionMock).not.toHaveBeenCalled();
   });
 
   it("saves from the note panel on Enter, and writes nothing on Escape", async () => {

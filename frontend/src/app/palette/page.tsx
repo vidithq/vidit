@@ -111,6 +111,7 @@ import { VideoPlayer } from "@/components/ui/VideoPlayer";
 import { TaxonomyLoadError } from "@/components/geolocations/TaxonomyLoadError";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SourceBlock, SourceBlocks } from "@/components/sources/SourceBlock";
+import { SourceImageryCheck } from "@/components/sources/SourceImageryCheck";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { SOURCE_FIELDS, sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
 import { EVENT_FIELDS } from "@/lib/events";
@@ -243,26 +244,13 @@ const MOCK_CONTEXT_SOURCE: Source = {
   media: null,
 };
 
-// Reference imagery whose link no reader can reopen at its date: the provider check's warnings.
+// Reference imagery on a listed provider, for the provider check.
 const MOCK_SATELLITE_SOURCE: Source = {
   ...MOCK_CONTEXT_SOURCE,
   id: "s3",
   kind: "satellite",
   links: [
     { url: "https://earth.google.com/web/@48.0201,37.7951,50a", posted_at: null, archived: null },
-  ],
-  warnings: [
-    {
-      code: "permalink_shape",
-      message:
-        "Google Earth web: The link carries no imagery date. Turn on historical imagery, step to the capture day, and copy the link again.",
-      url: "https://earth.google.com/web/@48.0201,37.7951,50a",
-    },
-    {
-      code: "capture_date_missing",
-      message: "Give the capture date: a reader needs it to reopen the same image.",
-      url: null,
-    },
   ],
 };
 
@@ -2052,9 +2040,9 @@ export default function PalettePage() {
             </div>
           </Item>
 
-          <Item name="<SourceWarnings> / <SourceImageryCheck>" usage="The imagery provider check of a satellite or aircraft source (components/sources/). <SourceWarnings> lists a source's warnings, one amber WARNING_CALLOUT line each, led by the host of the link it is about; it blocks nothing and renders nothing without a warning. <SourceBlock> renders it after the links from SourceRead.warnings. <SourceImageryCheck> sits under the links of a <SourceEditor> of kind Satellite or Aircraft: it runs POST /sources/check once typing pauses, names each reopenable provider a link opens with its reopening help and its credit, then lists the same warnings the saved source would carry.">
+          <Item name="<SourceImageryCheck>" usage="The imagery provider check of a satellite or aircraft source (components/sources/). It sits under the links of a <SourceEditor> of kind Satellite or Aircraft, runs POST /sources/check once typing pauses, and names each provider a link opens with its reopening help and its credit. It shows no warning: the source_links and captured_at help say what lets a reader reopen the image.">
             <div className="w-full max-w-md">
-              <SourceBlock source={MOCK_SATELLITE_SOURCE} index={2} alt="Strike on a depot" />
+              <SourceImageryCheck draft={sourceDraftFrom(MOCK_SATELLITE_SOURCE)} />
             </div>
           </Item>
 
