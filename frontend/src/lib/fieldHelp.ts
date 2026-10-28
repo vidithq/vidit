@@ -215,11 +215,11 @@ export const FIELD_HELP = {
     label: "What is the effect?",
   },
   event_sites: {
-    text: "The sites this event is linked to, each with what the event shows there. Only the event's owner links it, and a link holds even when the event lies outside the site's zone.",
+    text: "The sites this event is linked to, each with what the event shows there. The event's owner links and unlinks sites by editing the event, and a link holds even when the event lies outside the site's zone.",
     label: "What are linked sites?",
   },
   site_linked_events: {
-    text: "The published events their authors linked to this site, newest first by the date they occurred, each with what it shows at the site and where it lies against the zone valid on its date. A link holds even when the event lies outside the zone. Only an event's author links it, changes its effect or unlinks it.",
+    text: "The published events their authors linked to this site, newest first by the date they occurred, each with what it shows at the site and where it lies against the zone valid on its date. A link holds even when the event lies outside the zone. An event's author links it, changes its effect or unlinks it by editing the event, and can also link it from here.",
     label: "What are linked events?",
   },
   basemap_auto: {

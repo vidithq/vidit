@@ -13,7 +13,7 @@ import {
  *
  * The narrow cases: the header holds a long name; the pinned row holds the version selector and
  * the owner's icons; a site source's block holds a long title and a provider credit beside its
- * file; a linked event's card holds its effect and its author's controls; the Location and Details
+ * file; a linked event's card holds its effect; the Location and Details
  * blocks follow the main column, as on the event page; the edit page stacks the contour editor's
  * toolbar over a map; and the source editor holds the link list with its archive box.
  */
@@ -54,16 +54,13 @@ test.describe("site page", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("keeps a linked event's controls inside the viewport and opens the effect change", async ({ page }) => {
+  test("leaves a linked event's card without controls", async ({ page }) => {
     await page.goto(`/sites/${SITE_ID}`);
 
     const { title } = SITE.linked_events[0];
-    await expectControlInsideViewport(page, page.getByRole("button", { name: `Unlink ${title}` }));
-    await page.getByRole("button", { name: `Change the effect of ${title}` }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("heading", { name: "Change the effect" })).toBeVisible();
-    await expectNarrowViewportLayout(page, dialog.getByRole("button", { name: "Save the effect" }));
-    await expectControlInsideViewport(page, dialog.getByRole("button", { name: "Damage" }));
+    await expect(page.getByText(title)).toBeVisible();
+    await expect(page.getByRole("button", { name: `Unlink ${title}` })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: `Change the effect of ${title}` })).toHaveCount(0);
   });
 
   test("opens the link dialog inside the viewport", async ({ page }) => {
@@ -91,14 +88,14 @@ test.describe("site page", () => {
     await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(SITE.name);
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Save" }));
     await expectControlInsideViewport(page, page.getByRole("button", { name: "Back to the current contour" }));
-    await expectControlInsideViewport(page, page.getByRole("button", { name: "Link one of my events" }));
+    await expect(page.getByRole("button", { name: "Link one of my events" })).toHaveCount(0);
   });
 
   test("lays the creation form out inside the column", async ({ page }) => {
     await page.goto("/sites/new");
 
     await expect(page.getByRole("heading", { level: 1, name: "New site" })).toBeVisible();
-    await expectControlInsideViewport(page, page.getByRole("button", { name: "Link one of my events" }));
+    await expect(page.getByRole("button", { name: "Link one of my events" })).toHaveCount(0);
     await expectNarrowViewportLayout(page, page.getByRole("button", { name: "Create the site" }));
     await expectControlInsideViewport(page, page.getByRole("button", { name: "Start over" }));
   });

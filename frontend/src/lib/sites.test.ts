@@ -1,7 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const calls: { path: string; method: string; body?: string }[] = [];
+vi.mock("./api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./api")>()),
+  apiFetch: (path: string, options?: RequestInit) => {
+    calls.push({ path, method: options?.method ?? "GET", body: options?.body as string | undefined });
+    return Promise.resolve(undefined);
+  },
+}));
 
 import { newSourceDraft } from "./sources";
 import {
+  saveSiteLinks,
+  siteSuggestionsNearPath,
   contourBefore,
   contourOfSource,
   contourOn,
@@ -300,5 +311,50 @@ describe("site versions", () => {
 
   it("names the kind change", () => {
     expect(siteChangedFields({ ...site, kind: "port" }, site)).toEqual(["Kind"]);
+  });
+});
+
+describe("saveSiteLinks", () => {
+  const alpha = { id: "s1", name: "Alpha", kind: "airbase" as const };
+  const bravo = { id: "s2", name: "Bravo", kind: "depot" as const };
+  const charlie = { id: "s3", name: "Charlie", kind: "port" as const };
+
+  it("unlinks a dropped site, links a new one, rewrites a new effect and leaves the rest", async () => {
+    calls.length = 0;
+    await saveSiteLinks(
+      "e1",
+      [
+        { site: alpha, effect: "damage" },
+        { site: bravo, effect: "activity" },
+        { site: charlie, effect: "other" },
+      ],
+      [
+        { site: bravo, effect: "destruction" },
+        { site: charlie, effect: "other" },
+        { site: { id: "s4", name: "Delta", kind: "port" }, effect: "damage" },
+      ],
+    );
+    expect(calls).toEqual([
+      { path: "/events/e1/site-links/s1", method: "DELETE", body: undefined },
+      {
+        path: "/events/e1/site-links",
+        method: "POST",
+        body: JSON.stringify({ site_id: "s2", effect: "destruction" }),
+      },
+      {
+        path: "/events/e1/site-links",
+        method: "POST",
+        body: JSON.stringify({ site_id: "s4", effect: "damage" }),
+      },
+    ]);
+  });
+});
+
+describe("siteSuggestionsNearPath", () => {
+  it("carries the point and the query when there are some", () => {
+    expect(siteSuggestionsNearPath({ lat: 48.5, lng: 2.25 }, " depot ")).toBe(
+      "/sites/suggestions?lat=48.5&lng=2.25&q=depot",
+    );
+    expect(siteSuggestionsNearPath(null, "")).toBe("/sites/suggestions");
   });
 });

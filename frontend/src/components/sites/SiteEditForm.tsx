@@ -36,23 +36,16 @@ import { padBounds } from "@/lib/viewport";
 import { ContourDraft, SiteKindCard, SiteNameField, type ContourDraftValue } from "./SiteFormFields";
 import { ShowOnMap, removeSourceLabel, siteSourceExtras, siteSourceMention } from "./SiteSourceBlock";
 import { SiteSourceEditor, SiteWriteActions, useSiteSourceDraft } from "./SiteSourceEditor";
-import { SiteLinksField, linkPayload, type DraftLink } from "./SiteLinksField";
 
 type Author = components["schemas"]["AuthorRef"];
 
 /** The contour key of the source the form adds, beside the live sources' ids. */
 const ADDED = "added";
 
-function sameLinks(a: DraftLink[], b: DraftLink[]): boolean {
-  const key = (links: DraftLink[]) =>
-    JSON.stringify(links.map((l) => `${l.id} ${l.effect}`).sort());
-  return key(a) === key(b);
-}
-
 /**
  * The owner's edit of a site, laid out like the site page: the name typed in the page title, the
- * Sources section (each source with its filer's Remove, and **Add a source**), then the owner's
- * Linked events, in the main column; the Location block, where the owner draws the contour of one
+ * Sources section (each source with its filer's Remove, and **Add a source**) in the main column;
+ * the Location block, where the owner draws the contour of one
  * source, then the Details block with the kind, in the side column. One **Save** writes
  * everything through `POST /sites/{id}/versions`, which files one version.
  *
@@ -81,19 +74,6 @@ export function SiteEditForm({
   const newSource = useSiteSourceDraft();
   const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, ContourDraftValue>>({});
-  const [ownLinks] = useState<DraftLink[]>(() =>
-    site.linked_events
-      .filter((e) => e.owner.id === owner.id)
-      .map(({ id, title, occurred_date, media, is_graphic, effect }) => ({
-        id,
-        title,
-        occurred_date,
-        media,
-        is_graphic,
-        effect,
-      })),
-  );
-  const [links, setLinks] = useState(ownLinks);
   const [attempt, setAttempt] = useState(0);
 
   const sources = sortSources(site.sources);
@@ -133,14 +113,12 @@ export function SiteEditForm({
     const zone = zoneOf(key);
     return zone !== null && zone !== "open";
   });
-  const linksChanged = !sameLinks(ownLinks, links);
   const changed =
     name.trim() !== site.name ||
     kind !== site.kind ||
     adding ||
     removed.size > 0 ||
-    contours.length > 0 ||
-    linksChanged;
+    contours.length > 0;
   const missing = [
     ...(name.trim() ? [] : ["Name"]),
     ...(adding ? newSource.missing : []),
@@ -159,7 +137,6 @@ export function SiteEditForm({
         added_sources: adding ? [newSource.payload()] : [],
         removed_source_ids: [...removed],
         contours,
-        event_links: linksChanged ? linkPayload(links) : null,
       }),
     {
       fallback: "The site was not saved. Try again.",
@@ -300,7 +277,6 @@ export function SiteEditForm({
                   );
                 })}
               </SourcesRow>
-              <SiteLinksField links={links} onChange={setLinks} author={owner} />
             </>
           }
           side={

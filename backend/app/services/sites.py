@@ -198,6 +198,7 @@ SITE_ERROR_STATUS: dict[str, int] = {
     "zone_too_large": 400,
     "zone_too_wide": 400,
     "event_not_linkable": 409,
+    "invalid_coordinates": 400,
     "source_carries_contour": 409,
     "site_contour_required": 409,
     "version_mismatch": 409,
@@ -994,21 +995,51 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
 def suggest_sites(
     db: Session, *, event: Event, margin_m: float, q: str | None
 ) -> list[SiteSuggestionRead]:
-    """Sites an event may link to, nearest first.
+    """Sites an event may link to, measured from the event's point (:func:`_suggest`)."""
+    point = (
+        None
+        if event.coords is None
+        else select(cast(Event.coords, Geography)).where(Event.id == event.id).scalar_subquery()
+    )
+    return _suggest(db, point=point, margin_m=margin_m, q=q)
 
-    Without ``q``: the visible sites whose current zone lies within ``margin_m`` of the event.
-    With ``q``: the visible sites whose name contains it, at any distance. ``distance_m`` is
-    null for an event without a point.
+
+def suggest_sites_near(
+    db: Session, *, lat: float | None, lng: float | None, margin_m: float, q: str | None
+) -> list[SiteSuggestionRead]:
+    """Sites a point may link to, for an event form whose event is not written yet.
+
+    ``lat`` and ``lng`` come both or neither: :class:`InvalidCoordinatesError` otherwise, or
+    when they fall out of range.
     """
-    if event.coords is None and not q:
+    if (lat is None) != (lng is None):
+        raise InvalidCoordinatesError("Send both lat and lng, or neither")
+    point: ColumnElement[Any] | None = None
+    if lat is not None and lng is not None:
+        validate_coordinates(lat, lng)
+        point = cast(func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326), Geography)
+    return _suggest(db, point=point, margin_m=margin_m, q=q)
+
+
+def _suggest(
+    db: Session, *, point: Any, margin_m: float, q: str | None
+) -> list[SiteSuggestionRead]:
+    """Sites a point may link to, nearest first.
+
+    Without ``q``: the visible sites whose current zone lies within ``margin_m`` of ``point``.
+    With ``q``: the visible sites whose name contains it, at any distance. ``distance_m`` is
+    null without a point.
+    """
+    if point is None and not q:
         return []
     current = zones_at(None)
     criteria: list[ColumnElement[bool]] = [*visible_sites()]
     distance: ColumnElement[Any] = null()
-    if event.coords is not None:
-        point = select(cast(Event.coords, Geography)).where(Event.id == event.id).scalar_subquery()
+    order: list[Any] = [Site.name, Site.id]
+    if point is not None:
         zone = cast(current.c.zone, Geography)
         distance = func.ST_Distance(zone, point)
+        order.insert(0, distance.asc())
         if not q:
             criteria.append(func.ST_DWithin(zone, point, margin_m))
     if q:
@@ -1017,7 +1048,7 @@ def suggest_sites(
         db.query(Site, distance)
         .join(current, current.c.site_id == Site.id)
         .filter(*criteria)
-        .order_by(distance.asc().nulls_last(), Site.name, Site.id)
+        .order_by(*order)
         .limit(SUGGESTIONS_LIMIT)
         .all()
     )
