@@ -30,4 +30,13 @@ describe("/about", () => {
       prose.compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
+
+  it("shows the rail's link rows in the accent", () => {
+    render(<AboutPage />);
+
+    const rail = screen.getByRole("complementary", { name: "Links" });
+    const discord = within(rail).getByRole("link", { name: /Discord/ });
+    expect(within(discord).getByText("discord.gg/9wPtsrrKyJ")).toHaveClass("text-orange-400");
+    expect(discord.querySelector("svg")).toHaveClass("text-orange-400/70");
+  });
 });
