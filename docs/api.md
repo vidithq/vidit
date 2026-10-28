@@ -1979,7 +1979,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 - An empty `q` with no active filter returns empty groups.
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight.
 - Any active filter empties the users and organizations groups.
-- The collections group reads one filter, `author`, which narrows it to that analyst's collections. Any other active filter empties it. With an empty `q`, `author` lists the analyst's collections newest first.
+- The collections group reads two filters. `author` narrows it to that analyst's collections, and `tag` to the collections whose [`tags`](#get-collectionsid) hold one of the values. Any other active filter empties it. With an empty `q`, `author` or `tag` lists the matching collections newest first.
 - An event hit matches on its title, on a source's title, or on a source URL that contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. The title highlight and the rank read the event title only.
 - A word of `q` that is a live analyst's exact username (case-insensitive, with or without a leading `@`) also matches the events credited to that analyst, as the `author` filter does; a username that holds a space counts only as the whole `q`. The other words narrow those events by text, and only they feed the rank. `osint_analyst` lists that analyst's events, and `strike osint_analyst` lists those whose text matches `strike`.
 - A user hit matches on its username and bio together, or on a word of `q` that is its exact username. An exact username match ranks first.

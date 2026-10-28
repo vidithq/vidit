@@ -615,10 +615,9 @@ class EventFilters:
                     status_code=422, detail=f"{field} must match {AUTHOR_FILTER_PATTERN}"
                 )
 
-    @property
-    def active_beyond_author(self) -> bool:
-        """True when a filter other than ``author`` narrows the view.
+    def active_beyond(self, *kept: str) -> bool:
+        """True when a filter other than the ``kept`` field names narrows the view.
 
-        The collections group of search reads this: it can honour "this analyst's collections"
-        but empties on any filter it cannot answer (``services/search.search_all``)."""
-        return any(getattr(self, f.name) for f in fields(self) if f.name != "author")
+        The collections group of search reads this: it honours ``author`` and ``tag`` but
+        empties on any filter it cannot answer (``services/search.search_all``)."""
+        return any(getattr(self, f.name) for f in fields(self) if f.name not in kept)

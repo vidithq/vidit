@@ -61,6 +61,7 @@ from app.services.event_filters import (
     collectable_events,
     credited_to,
     owner_username_matches,
+    taxonomy_predicates,
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD, live_geolocators
@@ -422,7 +423,12 @@ def search_requests(
 
 
 def search_collections(
-    db: Session, *, query: str, limit: int, author: str | None = None
+    db: Session,
+    *,
+    query: str,
+    limit: int,
+    author: str | None = None,
+    tags: list[str] | None = None,
 ) -> tuple[list[CollectionRead], int]:
     """Top-N collections matching ``query`` + the pre-LIMIT total.
 
@@ -434,24 +440,29 @@ def search_collections(
     so a hit never opens on an empty shelf.
 
     ``author`` scopes to one owner, with the same exact case-insensitive match
-    as the event groups. No highlights: the card prints the collection's own
-    text.
+    as the event groups. ``tags`` keeps the collections holding a showable
+    event tagged with any of them, on the event or a source: the tags the card
+    prints (``services/collections.tags_for``). No highlights: the card prints
+    the collection's own text.
 
-    With an empty ``query`` and an ``author`` the FTS predicate drops (browse
-    mode, newest first; the profile's Collections "Show more" lands here). An
-    empty query with no author returns nothing: that is a listing, not a search.
+    With an empty ``query`` and an ``author`` or ``tags`` the FTS predicate
+    drops (browse mode, newest first; the profile's Collections "Show more"
+    lands here). An empty query with neither returns nothing: that is a
+    listing, not a search.
 
     One statement selects the collection with its owner, already in rank
     order: there are no per-hit highlights to key back onto, so no id re-fetch.
     """
     q = query.strip()
-    if not q and not author:
+    if not q and not author and not tags:
         return [], 0
     stmt = (
         db.query(Collection, func.count().over().label("total_count"))
         .options(joinedload(Collection.owner))
         .filter(*visible_collections(), has_showable_item())
     )
+    if tags:
+        stmt = stmt.filter(has_showable_item(*taxonomy_predicates(tag=tags)))
     if author:
         stmt = stmt.filter(Collection.owner.has(owner_username_matches(author)))
     if q:
@@ -641,9 +652,10 @@ def search_all(
     ``filters`` scopes the two event groups. While any filter is active the
     users and organizations groups empty, since the filters are event
     predicates. The
-    collections group follows the same rule except for ``author``, which
-    narrows it (and enables browse mode); any other filter names an event
-    property and empties it (``EventFilters.active_beyond_author``).
+    collections group follows the same rule except for ``author`` and ``tag``,
+    which narrow it (and enable browse mode); any other filter names an event
+    property a collection has no reading of, and empties it
+    (``EventFilters.active_beyond``).
 
     ``after`` pages the geolocations group (``search_geolocations``).
 
@@ -671,9 +683,9 @@ def search_all(
     if "request" in types:
         hits, total = search_requests(db, query=query, limit=limit, filters=filters)
         result["requests"] = {"hits": hits, "total": total}
-    if "collection" in types and not filters.active_beyond_author:
+    if "collection" in types and not filters.active_beyond("author", "tag"):
         collection_hits, total = search_collections(
-            db, query=query, limit=limit, author=filters.author
+            db, query=query, limit=limit, author=filters.author, tags=filters.tag
         )
         result["collections"] = {"hits": collection_hits, "total": total}
     if "user" in types and not filters.active:

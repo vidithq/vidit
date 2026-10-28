@@ -26,6 +26,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Changed
 
 - The event page, the detection queue and the two event groups of search each read one shared eager-load set instead of restating it, and `docs/engineering.md` lists those sets ([#779](https://github.com/vidithq/vidit/pull/779)).
+- On the search page, the Tags filter narrows the Collections group to the collections that hold the tag instead of emptying it, and the Collections scope offers Tags beside Author ([#778](https://github.com/vidithq/vidit/pull/778)).
 - The event page's Add to collection matches the search page's: each collection shows its cover, a field finds one by title once you hold six or more, and New collection sits at the foot of both ([#774](https://github.com/vidithq/vidit/pull/774)).
 - You link and unlink an event's sites in its submit and edit forms, with a site search and the sites nearby; the event page lists them as Linked sites, and the site page keeps only Link one of my events in its action bar ([#765](https://github.com/vidithq/vidit/pull/777)).
 - A satellite or aircraft source no longer shows amber imagery warnings on the event page, the map side panel, a site page or the source forms; the `?` help of Links and Captured says what lets a reader reopen the image ([#771](https://github.com/vidithq/vidit/pull/772)).
