@@ -127,6 +127,23 @@ describe("CollectionDetailsForm", () => {
     expect(screen.getByText(/^Fill in the required fields/)).not.toHaveTextContent("Title");
   });
 
+  it("refuses a title alone: the description is required on its own", async () => {
+    await renderForm();
+    fireEvent.change(titleField(), { target: { value: "March strikes" } });
+
+    expect(
+      screen.getByRole("button", { name: "1 missing: Description" }),
+    ).toBeInTheDocument();
+    fireEvent.click(submit());
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent(
+      "Fill in the required fields before continuing: Description.",
+    );
+    expect(descriptionField()).toHaveAttribute("data-invalid", "true");
+    expect(titleField().className).not.toContain("border-red-500");
+  });
+
   it("refuses a description whose text is blank", async () => {
     await renderForm();
     fill("March strikes", "   ");
