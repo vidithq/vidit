@@ -48,6 +48,7 @@ async function renderForm(props: Record<string, unknown> = {}) {
       backFallback="/profile/ana"
       username="ana"
       submitLabel="Create collection"
+      submitAction="newCollection"
       onSubmit={onSubmit}
       onCancel={onCancel}
       {...props}

@@ -144,6 +144,7 @@ export function useReportContent(
       <ConfirmDialog
         title={`Report this ${NOUN[kind]}`}
         confirmLabel="Send report"
+        confirmAction="report"
         busyLabel="Sending…"
         busy={busy}
         error={reportMutation.error}

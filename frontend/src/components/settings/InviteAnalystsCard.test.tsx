@@ -91,7 +91,7 @@ describe("InviteAnalystsCard", () => {
     expect(
       await screen.findByRole("button", { name: "Copy the invite link for @new_hawk" }),
     ).toBeInTheDocument();
-    expect(await screen.findByText("Link copied")).toBeInTheDocument();
+    expect(await screen.findAllByText("Link copied")).toHaveLength(2);
     expect(writeText).toHaveBeenCalledWith(MINTED.link);
     expect(screen.queryByText(/copied to your clipboard|Copy its link below/)).toBeNull();
     const post = api.apiFetch.mock.calls.find(([, init]) => init?.method === "POST");

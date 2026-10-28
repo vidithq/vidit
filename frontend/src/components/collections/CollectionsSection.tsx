@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Plus } from "lucide-react";
 
 import { CollectionCard } from "@/components/collections/CollectionCard";
-import { buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -89,7 +88,7 @@ export function CollectionsSection({
           lead="No collections yet."
           cta={
             <Link href={newCollectionHref()} className={buttonClasses("secondary")}>
-              <Plus size={14} strokeWidth={1.8} />
+              <ActionIcon action="newCollection" />
               New collection
             </Link>
           }

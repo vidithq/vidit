@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { chipSummary } from "@/components/ui/FilterSection";
 import {
@@ -184,7 +184,7 @@ export default function FeedPage() {
   }
 
   const showAll = (
-    <Button variant="primary" onClick={() => setScope("all")}>
+    <Button action="activity" variant="primary" onClick={() => setScope("all")}>
       Show all activity
     </Button>
   );
@@ -235,6 +235,7 @@ export default function FeedPage() {
           <>
             {showAll}
             <Link href="/map" className={buttonClasses("secondary")}>
+              <ActionIcon action="map" />
               Explore the map
             </Link>
           </>

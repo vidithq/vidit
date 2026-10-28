@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { UserPlus, UserCheck, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { loginNext } from "@/lib/navigation";
@@ -52,20 +52,15 @@ export default function FollowButton({
     }
   };
 
-  const Icon = following ? UserCheck : UserPlus;
-
   return (
     <div className="inline-flex flex-col items-end gap-1">
       <Button
+        action={loading ? undefined : following ? "following" : "follow"}
         variant={following ? "secondary" : "primary"}
         onClick={toggleFollow}
         disabled={loading}
       >
-        {loading ? (
-          <Loader2 size={14} className="animate-spin" />
-        ) : (
-          <Icon size={14} />
-        )}
+        {loading && <Loader2 size={14} className="animate-spin" />}
         {following ? "Following" : "Follow"}
       </Button>
       {error && (

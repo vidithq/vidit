@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 
 import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
-import { buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -71,6 +71,7 @@ export function CollectionItems({
               className: "shrink-0 whitespace-nowrap",
             })}
           >
+            <ActionIcon action="search" />
             Your geolocations
           </Link>
         )}

@@ -15,11 +15,14 @@ import {
  * Renders in a portal with `position: fixed` (`popoverStyle`) so an `overflow` ancestor can't
  * clip it: the placement effect measures it, places it under the anchor, flips above on bottom
  * overflow, clamps left/right, and keeps it hidden until measured. Callers spread
- * `wrapperProps` / `anchorProps` / `popoverProps` on their own markup. */
+ * `wrapperProps` / `anchorProps` / `popoverProps` on their own markup.
+ *
+ * `shown` holds it open whatever the pointer does (a copy's confirmation); `content` names what
+ * it holds, so a change of text re-places it at its new width. */
 export function usePinnedPopover<
   Popover extends HTMLElement = HTMLSpanElement,
   Anchor extends HTMLElement = HTMLButtonElement,
->() {
+>({ shown = false, content }: { shown?: boolean; content?: string } = {}) {
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -28,7 +31,7 @@ export function usePinnedPopover<
   const popoverRef = useRef<Popover>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const open = pinned || hovered;
+  const open = pinned || hovered || shown;
 
   // The one dismissal, used by the effect below and by callers (a menu item that acts and closes).
   const close = useCallback(() => {
@@ -66,7 +69,7 @@ export function usePinnedPopover<
       top = above >= margin ? above : Math.max(margin, window.innerHeight - tip.height - margin);
     }
     setCoords({ top, left });
-  }, [open]);
+  }, [open, content]);
 
   // While open: dismiss on outside click (the popover counts as inside), Escape, scroll or
   // resize. Keyed on `open` so a hover-only popover dismisses too.

@@ -141,6 +141,7 @@ function ResetPasswordInner() {
         </div>
 
         <Button
+          action="password"
           variant="primary"
           fullWidth
           type="submit"

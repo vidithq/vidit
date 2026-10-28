@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 
 import { SourceEditor } from "@/components/sources/SourceEditor";
 import { sourceDraftUpdaters, sourcesBlockWrite } from "@/components/sources/SourcesField";
-import { Button } from "@/components/ui/Button";
+import { Button, type ButtonAction } from "@/components/ui/Button";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { CountBadge } from "@/components/ui/CountBadge";
 import { FieldLabel } from "@/components/ui/FieldLabel";
@@ -106,7 +106,7 @@ export function SiteSourceEditor({
 export function SiteWriteActions({
   label,
   busyLabel,
-  icon,
+  action,
   missing,
   attempt,
   busy,
@@ -115,7 +115,7 @@ export function SiteWriteActions({
 }: {
   label: string;
   busyLabel: string;
-  icon: ReactNode;
+  action: ButtonAction;
   missing: string[];
   attempt: number;
   busy: boolean;
@@ -126,8 +126,13 @@ export function SiteWriteActions({
     <div className="flex max-w-sm flex-col items-end gap-2">
       <CountBadge count={missing.length} label={missingSummary(missing.map((m) => ({ label: m })))}>
         {(describedBy) => (
-          <Button variant="primary" disabled={busy} aria-describedby={describedBy} onClick={onWrite}>
-            {icon}
+          <Button
+            action={action}
+            variant="primary"
+            disabled={busy}
+            aria-describedby={describedBy}
+            onClick={onWrite}
+          >
             {busy ? busyLabel : label}
           </Button>
         )}

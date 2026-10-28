@@ -109,7 +109,7 @@ function ConfirmedLink({
               {href}
             </a>
             <div className="flex justify-end">
-              <Button variant="ghost" data-overlay-close="" onClick={close}>
+              <Button action="cancel" variant="ghost" data-overlay-close="" onClick={close}>
                 Cancel
               </Button>
             </div>

@@ -107,7 +107,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
               cursor: "pointer",
             }}
           >
-            Try again
+            Retry
           </button>
         </div>
       </body>

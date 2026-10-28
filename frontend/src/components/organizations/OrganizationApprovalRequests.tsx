@@ -55,7 +55,12 @@ function RequestRow({
         href={eventHref(event.id)}
         external={false}
         action={
-          <Button variant="ghost" onClick={() => void decline.run()} disabled={decline.loading}>
+          <Button
+            action="decline"
+            variant="ghost"
+            onClick={() => void decline.run()}
+            disabled={decline.loading}
+          >
             Decline
           </Button>
         }

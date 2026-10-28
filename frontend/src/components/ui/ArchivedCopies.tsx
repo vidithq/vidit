@@ -1,10 +1,10 @@
 "use client";
 
-import { Archive, ArchiveRestore, ExternalLink } from "lucide-react";
+import { ArchiveRestore, ExternalLink } from "lucide-react";
 
 import type { ArchivedLink } from "@/types";
 import { parseHttp } from "@/lib/format";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { ACTION_ICONS, ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -42,7 +42,7 @@ const PROVIDER_LABELS: Record<ArchivedLink["provider"], string> = {
  * The one mark for an archived copy, in every state and for every provider.
  * State shows in colour and interactivity, provider in the accessible name.
  */
-const ArchiveMark = Archive;
+const ArchiveMark = ACTION_ICONS.archive;
 
 const SAVE_PAGE_LABEL = PROVIDER_LABELS.wayback;
 
@@ -209,7 +209,7 @@ export function ArchiveBox({
           aria-label={copyLabel(provider, describes)}
           className={buttonClasses("ghost", { className: "min-w-0" })}
         >
-          <ArchiveMark size={14} className="shrink-0" />
+          <ActionIcon action="archive" />
           <span className="truncate">{PROVIDER_LABELS[provider]}</span>
         </OutboundLink>
       </Tooltip>

@@ -90,6 +90,7 @@ function RemoveSourceDialog({
     <ConfirmDialog
       title={`Remove ${siteSourceMention(source)}?`}
       confirmLabel="Remove"
+      confirmAction="delete"
       busyLabel="Removing…"
       busy={remove.loading}
       error={remove.error}
@@ -125,6 +126,7 @@ function ModerationDialog({
     <ConfirmDialog
       title={withheld ? "Restore this site?" : "Withhold this site?"}
       confirmLabel={withheld ? "Restore" : "Withhold"}
+      confirmAction={withheld ? "show" : "hide"}
       busyLabel={withheld ? "Restoring…" : "Withholding…"}
       busy={write.loading}
       error={write.error}

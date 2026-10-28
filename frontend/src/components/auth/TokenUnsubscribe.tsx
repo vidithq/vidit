@@ -48,6 +48,7 @@ function TokenUnsubscribeInner({
     >
       {run.error && <ErrorNotice error={run.error} />}
       <Button
+        action="unsubscribe"
         variant="primary"
         fullWidth
         disabled={!token || run.loading}

@@ -181,6 +181,7 @@ export default function RegisterForm({
         </div>
 
         <Button
+          action="continue"
           variant="primary"
           fullWidth
           type="submit"

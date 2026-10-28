@@ -1,4 +1,4 @@
-import { Layers } from "lucide-react";
+import { ACTION_ICONS } from "@/components/ui/Button";
 
 import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
@@ -46,7 +46,7 @@ export type CollectionMemberships =
 
 /** The mark that names a collection wherever a surface says what kind of thing it is.
  *  The profile card wears none: its mosaic tells collections apart. */
-export const CollectionIcon = Layers;
+export const CollectionIcon = ACTION_ICONS.collect;
 
 export function collectionHref(id: string): string {
   return `/collections/${encodeURIComponent(id)}`;

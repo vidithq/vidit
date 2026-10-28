@@ -51,7 +51,7 @@ describe("EventShare without the Web Share API", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("turns the mark into a check, announces the copy without visible text, then turns back", async () => {
+  it("turns the mark into a check, shows and announces the copy, then turns back", async () => {
     withClipboard();
     render(<EventShare event={geolocated} />);
     const share = screen.getByRole("button", { name: "Share" });
@@ -61,11 +61,13 @@ describe("EventShare without the Web Share API", () => {
       fireEvent.click(share);
     });
     expect(visibleMark(share)).toBe("check");
-    // The name holds still; the confirmation is a screen-reader-only live region.
+    // The name holds still: the tooltip shows the confirmation, and a live region says it.
     expect(screen.getByRole("button", { name: "Share" })).toBe(share);
-    const status = screen.getByText("Link copied");
+    const [status, bubble] = screen.getAllByText("Link copied");
     expect(status).toHaveClass("sr-only");
     expect(status).toHaveAttribute("aria-live", "polite");
+    expect(bubble).toHaveAttribute("aria-hidden", "true");
+    expect(bubble).not.toHaveClass("sr-only");
 
     act(() => {
       vi.advanceTimersByTime(1500);

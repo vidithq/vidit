@@ -10,7 +10,7 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import {
@@ -153,6 +153,7 @@ export default function DetectionsPage() {
       actions={
         summary && summary.ready_total + summary.incomplete_total > 0 ? (
           <Link href={reviewHref} className={buttonClasses("primary")}>
+            <ActionIcon action="review" />
             Start reviewing
           </Link>
         ) : undefined

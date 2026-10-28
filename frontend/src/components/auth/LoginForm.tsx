@@ -110,6 +110,7 @@ export default function LoginForm({ onSuccess }: Props) {
         </div>
 
         <Button
+          action="signIn"
           variant="primary"
           fullWidth
           type="submit"

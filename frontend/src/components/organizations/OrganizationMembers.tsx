@@ -64,12 +64,13 @@ function MemberRow({ slug, member, viewer, canManage, lastManager, onChanged }: 
     <>
       {lastManager && (isSelf || canManage) && <FieldHelp concept="last_org_manager" />}
       {canManage && !lastManager && (
-        <Button variant="ghost" onClick={() => void roleChange.run()} disabled={busy}>
+        <Button action="role" variant="ghost" onClick={() => void roleChange.run()} disabled={busy}>
           {nextRole === "manager" ? "Make org manager" : "Make member"}
         </Button>
       )}
       {(isSelf || canManage) && !lastManager && (
         <Button
+          action={isSelf ? "leave" : "delete"}
           ref={removeRef}
           variant="danger"
           className={armed ? DANGER_CONFIRM : ""}

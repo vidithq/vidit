@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { Button } from "./Button";
+import { Button, type ButtonAction } from "./Button";
 import { Card } from "./Card";
 import { cn } from "@/lib/cn";
 import { MediaOverlay } from "./MediaLightbox";
@@ -23,6 +23,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
+  confirmAction,
   busyLabel,
   busy = false,
   confirmDisabled = false,
@@ -35,6 +36,8 @@ export function ConfirmDialog({
   /** What the action does and what cannot be undone. */
   children: ReactNode;
   confirmLabel: ReactNode;
+  /** The action `confirmLabel` names, whose icon leads it. */
+  confirmAction: ButtonAction;
   /** The confirm button's text while `busy`. */
   busyLabel?: ReactNode;
   busy?: boolean;
@@ -58,10 +61,17 @@ export function ConfirmDialog({
           <ErrorNotice error={error} />
         )}
         <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" data-overlay-close="" onClick={onCancel} disabled={busy}>
+          <Button
+            action="cancel"
+            variant="ghost"
+            data-overlay-close=""
+            onClick={onCancel}
+            disabled={busy}
+          >
             Cancel
           </Button>
           <Button
+            action={confirmAction}
             variant={tone === "danger" ? "danger" : "primary"}
             onClick={onConfirm}
             disabled={busy || confirmDisabled}

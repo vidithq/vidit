@@ -112,6 +112,7 @@ export function SingleEmailFlow({
       </div>
 
       <Button
+        action="send"
         variant="primary"
         fullWidth
         type="submit"

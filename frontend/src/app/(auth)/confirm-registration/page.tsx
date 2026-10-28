@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { readError, type ReadableError } from "@/lib/errors";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthCard } from "@/components/auth/AuthCard";
-import { buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { TEXT_LINK } from "@/components/ui/styles";
 
@@ -75,9 +75,11 @@ function ConfirmInner() {
           </p>
           <div className="flex flex-col gap-2">
             <Link href="/submit?import=1" className={buttonClasses("primary", { fullWidth: true })}>
+              <ActionIcon action="import" />
               Import your X archive
             </Link>
             <Link href="/guide" className={buttonClasses("secondary", { fullWidth: true })}>
+              <ActionIcon action="guide" />
               Read Getting started
             </Link>
           </div>

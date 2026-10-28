@@ -106,7 +106,12 @@ function AppointManager({ slug, onDone }: { slug: string; onDone: () => void }) 
           onChange={setUsername}
         />
       </div>
-      <Button type="submit" variant="secondary" disabled={!username || appoint.loading}>
+      <Button
+        action="role"
+        type="submit"
+        variant="secondary"
+        disabled={!username || appoint.loading}
+      >
         Name org manager
       </Button>
       {appoint.error && <ErrorNotice error={appoint.error} className="w-full" />}
@@ -134,6 +139,7 @@ function DeleteOrganization({
     <ConfirmDialog
       title={`Delete ${slug}?`}
       confirmLabel="Delete organization"
+      confirmAction="delete"
       busyLabel="Deleting…"
       busy={remove.loading}
       confirmDisabled={typed !== slug}
@@ -179,6 +185,7 @@ function OrganizationRow({ org, onChanged }: { org: AdminOrganization; onChanged
         external={false}
         action={
           <Button
+            action="delete"
             variant="dangerGhost"
             aria-label={`Delete ${org.name}`}
             onClick={() => setDeleting(true)}
@@ -291,7 +298,7 @@ export function OrganizationsPanel() {
             className="mt-1 min-h-[72px] resize-y"
           />
         </div>
-        <Button type="submit" variant="secondary" disabled={!ready || create.loading}>
+        <Button action="add" type="submit" variant="secondary" disabled={!ready || create.loading}>
           {create.loading ? "Creating…" : "Create organization"}
         </Button>
       </form>

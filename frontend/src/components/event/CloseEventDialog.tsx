@@ -90,6 +90,7 @@ export function CloseEventDialog({
     <ConfirmDialog
       title={closeActionLabel(status)}
       confirmLabel={closeActionLabel(status)}
+      confirmAction="delete"
       busyLabel="Closing…"
       busy={closeMutation.loading}
       confirmDisabled={disabled}

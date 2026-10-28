@@ -44,7 +44,7 @@ export function ErrorNotice({
           <p className="text-neutral-200">{message}</p>
         )}
         {title && onRetry && (
-          <Button variant="secondary" onClick={onRetry}>
+          <Button action="retry" variant="secondary" onClick={onRetry}>
             Retry
           </Button>
         )}

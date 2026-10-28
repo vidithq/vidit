@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, FileArchive, ShieldCheck, Upload } from "lucide-react";
 
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TEXT_LINK } from "@/components/ui/styles";
@@ -212,6 +212,7 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
             href={detectionsQueueHref(username)}
             className={buttonClasses("primary")}
           >
+            <ActionIcon action="review" />
             Open the detections queue
           </Link>
         </div>
@@ -404,10 +405,12 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
                       href={detectionsQueueHref(username)}
                       className={buttonClasses("primary")}
                     >
+                      <ActionIcon action="review" />
                       Review your detections
                     </Link>
                   ) : (
                     <Button
+                      action={failedSome ? "retry" : "import"}
                       variant="primary"
                       onClick={() => {
                         setResult(null);
@@ -419,7 +422,7 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
                         }
                       }}
                     >
-                      {failedSome ? "Try again" : "Choose a different file"}
+                      {failedSome ? "Retry" : "Choose a different file"}
                     </Button>
                   )}
                 </div>
@@ -433,7 +436,13 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
 
   // In the page's actions, outside the form: `form` ties it back.
   const actions = (
-    <Button type="submit" form={formId} variant="primary" disabled={!file || loading}>
+    <Button
+      action="import"
+      type="submit"
+      form={formId}
+      variant="primary"
+      disabled={!file || loading}
+    >
       {loading ? "Importing…" : "Import archive"}
     </Button>
   );
