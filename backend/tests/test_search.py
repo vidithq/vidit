@@ -1302,6 +1302,36 @@ def test_author_filter_is_exact_on_search(db, caller):
         db.commit()
 
 
+def test_a_handle_in_the_query_matches_the_analysts_credited_events(db, caller, other_author):
+    """Regression: on `type=all` an analyst's handle found their profile but none of their work,
+    and a handle beside another word matched nothing at all."""
+    token = _unique_token()
+    mine = _seed_geo(db, caller, f"Strike {token} east")
+    untitled = _seed_geo(db, caller, "Convoy at the bridge")
+    theirs = _seed_geo(db, other_author, f"Strike {token} west")
+    try:
+        body = client.get(
+            "/api/v1/search", params={"q": f"@{caller.username.upper()}", "type": "all"}
+        ).json()
+        assert {h["id"] for h in body["geolocations"]} == {str(mine), str(untitled)}
+        assert [u["username"] for u in body["users"]] == [caller.username]
+
+        body = client.get(
+            "/api/v1/search", params={"q": f"{token} {caller.username}", "type": "all"}
+        ).json()
+        assert [h["id"] for h in body["geolocations"]] == [str(mine)]
+        assert (
+            f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}"
+            in body["geolocations"][0]["title_highlight"]
+        )
+        assert [u["username"] for u in body["users"]] == [caller.username]
+    finally:
+        db.query(Event).filter(Event.id.in_([mine, untitled, theirs])).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+
 def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
     """Browse mode (plain title as highlight) strips planted STX/ETX like the ts_headline branch."""
     token = _unique_token()
