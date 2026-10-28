@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
-import { Pill } from "@/components/ui/Pill";
 import { PageFrame } from "@/components/ui/PageFrame";
 import { buttonClasses } from "@/components/ui/Button";
 import DemoVideo from "@/components/landing/DemoVideo";
@@ -107,59 +106,6 @@ const FEATURE_GROUPS: {
 ];
 
 const GITHUB_URL = "https://github.com/vidithq/vidit";
-const CHANGELOG_URL = `${GITHUB_URL}/blob/main/CHANGELOG.md`;
-
-// Reader-facing roadmap. Mirrors the open epics of vidithq/vidit, Future
-// considerations aside; change both. Shipped work lives in the CHANGELOG.
-type RoadmapStatus = "in-progress" | "planned";
-
-const ROADMAP_STATUS_LABEL: Record<RoadmapStatus, string> = {
-  "in-progress": "In progress",
-  planned: "Planned",
-};
-
-const ROADMAP: { status: RoadmapStatus; title: string; body: string }[] = [
-  {
-    status: "in-progress",
-    title: "Sites",
-    body: "A new kind of record for permanent locations such as military installations, each marked active or former, next to the dated events.",
-  },
-  {
-    status: "planned",
-    title: "Moderation",
-    body: "Readers report events and profiles to a moderation queue, every upload is scanned and stripped of metadata, and a public content policy sets the rules.",
-  },
-  {
-    status: "planned",
-    title: "Readers and contributors",
-    body: "Anyone can sign up as a reader to follow analysts. Publishing belongs to contributors, who earn the status through a verified X handle or another contributor's sponsorship.",
-  },
-  {
-    status: "planned",
-    title: "Safer sign-up and sign-in",
-    body: "Sign-up resists automated abuse, and sign-in locks an account after repeated failures and refuses known-breached passwords.",
-  },
-  {
-    status: "planned",
-    title: "Every source archived",
-    body: "Every source link of a geolocation, secondary links included, gets an archived copy, and you see how many of your links are archived.",
-  },
-  {
-    status: "planned",
-    title: "Search beyond titles",
-    body: "Search reaches proof text and source URLs, an event can mark several points, and related events and near-duplicate media show next to an event.",
-  },
-  {
-    status: "planned",
-    title: "A map ready for everyone",
-    body: "The map stays fast for a large audience, keeps its view and filters in the link you share, and says so when no event matches.",
-  },
-  {
-    status: "planned",
-    title: "Backup and recovery",
-    body: "Every backup passes a restore check, a missed backup raises an alert, and the database can be restored to any point in time.",
-  },
-];
 
 export default function LandingPage() {
   return (
@@ -243,48 +189,6 @@ export default function LandingPage() {
             </div>
           </section>
         ))}
-
-        <section className="pb-20">
-          <div className="text-center">
-            <h2 className="text-sm font-medium uppercase tracking-wider text-neutral-200">
-              Roadmap
-            </h2>
-          </div>
-          <ol className="mt-6 space-y-3">
-            {ROADMAP.map(({ status, title, body }) => (
-              <li
-                key={title}
-                className={`flex gap-4 rounded-lg border p-4 ${
-                  status === "in-progress"
-                    ? "border-orange-500/40 bg-orange-500/4"
-                    : "border-neutral-800 bg-neutral-900"
-                }`}
-              >
-                <Pill
-                  tone={status === "in-progress" ? "accent" : "neutral"}
-                  className="self-start whitespace-nowrap"
-                >
-                  {ROADMAP_STATUS_LABEL[status]}
-                </Pill>
-                <div>
-                  <h3 className="text-sm font-medium text-neutral-100">
-                    {title}
-                  </h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-neutral-400">
-                    {body}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-4 text-center text-[13px] text-neutral-400">
-            What already shipped is in the{" "}
-            <OutboundLink href={CHANGELOG_URL} className={TEXT_LINK}>
-              changelog
-            </OutboundLink>
-            .
-          </p>
-        </section>
       </PageFrame>
     </main>
   );
