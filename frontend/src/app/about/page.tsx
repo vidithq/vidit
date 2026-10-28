@@ -187,7 +187,7 @@ export default function AboutPage() {
           {COMMITMENTS.map(({ title, body }) => (
             <li key={title}>
               <p className="text-sm font-medium text-neutral-100">{title}</p>
-              <p className="text-xs text-neutral-400 mt-0.5 leading-relaxed">
+              <p className="text-sm text-neutral-300 mt-0.5 leading-relaxed">
                 {body}
               </p>
             </li>

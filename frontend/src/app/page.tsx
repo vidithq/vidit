@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
+import { LegalLinks } from "@/components/ui/LegalLinks";
 import { PageFrame } from "@/components/ui/PageFrame";
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import DemoVideo from "@/components/landing/DemoVideo";
@@ -188,6 +189,10 @@ export default function LandingPage() {
             </div>
           </section>
         ))}
+
+        <footer className="pb-8 text-center">
+          <LegalLinks />
+        </footer>
       </PageFrame>
     </main>
   );
