@@ -18,11 +18,23 @@ parameter) or Postgres falls back to a sequential scan: ``_geo_tsvector``,
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, cast, false, func, literal_column, or_, text, tuple_
-from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION
+from sqlalchemy import (
+    ColumnElement,
+    String,
+    bindparam,
+    cast,
+    false,
+    func,
+    literal_column,
+    or_,
+    text,
+    tuple_,
+)
+from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.elements import ColumnClause
@@ -104,12 +116,67 @@ def _event_match(q: str, tsquery: ColumnElement) -> ColumnElement[bool]:
     )
 
 
-def _matching(stmt: SAQuery, *criteria, query: str, view: str, filters: EventFilters) -> SAQuery:
+def _handle_candidates(query: str) -> list[str]:
+    """The lowercased spellings of ``query`` (already stripped) that could be an analyst's handle:
+    each word and the whole query (a handle may hold a space), without a leading ``@``."""
+    words = query.split()
+    candidates = [w.lstrip("@").lower() for w in words]
+    if len(words) > 1:
+        candidates.append(" ".join(words).lstrip("@").lower())
+    return [c for c in dict.fromkeys(candidates) if c]
+
+
+@dataclass(frozen=True)
+class _EventTerms:
+    """A query split for the event groups: ``handles`` pairs each word naming a live analyst with
+    that analyst's id, ``text`` holds the other words."""
+
+    text: str
+    handles: tuple[tuple[str, uuid.UUID], ...] = ()
+
+
+def _event_terms(db: Session, query: str) -> _EventTerms:
+    """Split ``query`` (already stripped) into the words that are a live analyst's exact handle
+    (case-insensitive, optional ``@``) and the rest. A handle holding a space names the analyst
+    only as the whole query."""
+    candidates = _handle_candidates(query)
+    if not candidates:
+        return _EventTerms(text=query)
+    ids = dict(
+        db.query(func.lower(User.username), User.id)
+        .filter(User.deleted_at.is_(None), func.lower(User.username).in_(candidates))
+        .all()
+    )
+    whole = " ".join(query.split()).lstrip("@").lower()
+    if " " in whole and whole in ids:
+        return _EventTerms(text="", handles=((whole, ids[whole]),))
+    text_words: list[str] = []
+    handles: list[tuple[str, uuid.UUID]] = []
+    for word in query.split():
+        handle = word.lstrip("@").lower()
+        if handle in ids:
+            handles.append((handle, ids[handle]))
+        else:
+            text_words.append(word)
+    return _EventTerms(text=" ".join(text_words), handles=tuple(handles))
+
+
+def _matching(
+    stmt: SAQuery, *criteria, terms: _EventTerms, view: str, filters: EventFilters
+) -> SAQuery:
     """Narrow ``stmt`` to the events an event group matches: ``filters`` on ``view``, the group's
-    ``criteria``, and :func:`_event_match` on a non-empty ``query`` (already stripped)."""
+    ``criteria``, and :func:`_event_match` on the words of ``terms``. A word naming an analyst
+    also matches the events credited to them (``services/event_filters.credited_to``)."""
     stmt = filters.apply(stmt, view=view).filter(*criteria)
-    if query:
-        stmt = stmt.filter(_event_match(query, func.plainto_tsquery(_TS_CONFIG, query)))
+    if terms.text:
+        stmt = stmt.filter(_event_match(terms.text, func.plainto_tsquery(_TS_CONFIG, terms.text)))
+    for handle, user_id in terms.handles:
+        stmt = stmt.filter(
+            or_(
+                credited_to([user_id]),
+                _event_match(handle, func.plainto_tsquery(_TS_CONFIG, handle)),
+            )
+        )
     return stmt
 
 
@@ -165,16 +232,22 @@ def _search_events(
     ``extra_criteria`` narrow the view further (closed rows stay out of search).
     """
     q = query.strip()
+    terms = _event_terms(db, q)
     # Sentinel-stripped in browse mode too: planted STX/ETX must not render fake <mark>s.
     title = func.translate(Event.title, literal_column("chr(2) || chr(3)"), literal_column("''"))
     rank: ColumnElement[float] = literal_column("0", DOUBLE_PRECISION)
     if q:
-        tsquery = func.plainto_tsquery(_TS_CONFIG, q)
-        title = func.ts_headline(_TS_CONFIG, title, tsquery, _HEADLINE_OPTS_FULL)
+        title = func.ts_headline(
+            _TS_CONFIG, title, func.plainto_tsquery(_TS_CONFIG, q), _HEADLINE_OPTS_FULL
+        )
+        # Ranked on the words that are not a handle, which a credited event's title need not hold.
         # ``real`` widened to ``double precision``: a ``real`` reaches Python as its
         # shortest float4 text, a different double than the one Postgres compares
         # against the cursor, so the walk would skip the cursor row's rank ties.
-        rank = cast(func.ts_rank(_geo_tsvector(), tsquery), DOUBLE_PRECISION)
+        rank = cast(
+            func.ts_rank(_geo_tsvector(), func.plainto_tsquery(_TS_CONFIG, terms.text or q)),
+            DOUBLE_PRECISION,
+        )
     stmt = db.query(
         Event.id,
         Event.created_at,
@@ -182,7 +255,7 @@ def _search_events(
         rank.label("rank"),
         func.count().over().label("total_count"),
     )
-    ranked = _matching(stmt, *extra_criteria, query=q, view=view, filters=filters).subquery()
+    ranked = _matching(stmt, *extra_criteria, terms=terms, view=view, filters=filters).subquery()
 
     page = db.query(ranked)
     if after is not None:
@@ -292,7 +365,7 @@ def collectable_matches(
         *_located_hits(),
         credited_to([user.id]),
         collectable_events(),
-        query=q,
+        terms=_event_terms(db, q),
         view="located",
         filters=filters,
     )
@@ -401,15 +474,29 @@ def search_collections(
 
 
 def _search_profiles(
-    db: Session, *, table: str, tsvector: str, name_col: str, live: str, query: str, limit: int
+    db: Session,
+    *,
+    table: str,
+    tsvector: str,
+    name_col: str,
+    live: str,
+    query: str,
+    limit: int,
+    handle_col: str | None = None,
 ) -> tuple[list[uuid.UUID], dict[uuid.UUID, tuple[str, str | None]], int]:
     """Rank one profile table (analysts or organizations) for ``query``.
 
     Returns the ranked ids, each id's ``(name highlight, bio highlight)``, and
     the pre-LIMIT total. The bio highlight is ``None`` unless the bio
-    contributed a fragment. ``table``, ``tsvector``, ``name_col`` and ``live``
-    are module constants, never caller input.
+    contributed a fragment. A row whose ``handle_col`` a word of ``query`` names
+    exactly (:func:`_handle_candidates`) matches whatever the other words are,
+    and ranks first. ``table``, ``tsvector``, ``name_col``, ``live`` and
+    ``handle_col`` are module constants, never caller input.
     """
+    named_or, named_first = "", ""
+    if handle_col:
+        named = f"lower({handle_col}) = ANY(:handles)"
+        named_or, named_first = f"OR {named}", f"{named} DESC,"
     sql = text(
         f"""
         SELECT id,
@@ -430,15 +517,18 @@ def _search_profiles(
                COUNT(*) OVER () AS total_count
         FROM {table}
         WHERE {live}
-          AND {tsvector} @@ plainto_tsquery('simple', :q)
-        ORDER BY rank DESC, created_at DESC
+          AND ({tsvector} @@ plainto_tsquery('simple', :q) {named_or})
+        ORDER BY {named_first} rank DESC, created_at DESC
         LIMIT :lim
         """
     )
+    if handle_col:
+        sql = sql.bindparams(bindparam("handles", type_=ARRAY(String)))
     rows = db.execute(
         sql,
         {
             "q": query,
+            "handles": _handle_candidates(query.strip()),
             "lim": limit,
             "opts_full": _HEADLINE_OPTS_FULL,
             "opts_fragment": _HEADLINE_OPTS_FRAGMENT,
@@ -469,6 +559,7 @@ def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], in
         live="deleted_at IS NULL",
         query=query,
         limit=limit,
+        handle_col="username",
     )
     if not ids:
         return [], 0
