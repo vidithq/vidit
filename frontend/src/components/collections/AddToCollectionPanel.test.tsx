@@ -205,7 +205,8 @@ describe("AddToCollectionPanel", () => {
     const { container } = render(<AddToCollectionPanel eventId="e1" />);
 
     expect(container.querySelector('img[src*="plant.jpg"]')).not.toBeNull();
-    expect(screen.getByText("no media")).toBeInTheDocument();
+    expect(container.querySelector(".lucide-layers")).not.toBeNull();
+    expect(screen.queryByText("no media")).toBeNull();
   });
 
   it("narrows a long list by title, as the bulk add does", () => {
