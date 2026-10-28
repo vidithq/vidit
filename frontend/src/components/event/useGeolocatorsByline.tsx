@@ -244,7 +244,13 @@ export function GeolocatorsByline({
  * they pick, faded until the publish invites them. Nothing is sent from the byline: `invitees`
  * are the picked usernames, which only the publish posts.
  */
-export function useDraftGeolocatorsByline(): { byline: ReactNode; invitees: string[] } {
+export function useDraftGeolocatorsByline(): {
+  byline: ReactNode;
+  invitees: string[];
+  /** The accounts picked so far, which the submit form's stored draft keeps. */
+  picks: Account[];
+  setPicks: (picks: Account[]) => void;
+} {
   const { user } = useAuth();
   const [picked, setPicked] = useState<Account[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -285,5 +291,7 @@ export function useDraftGeolocatorsByline(): { byline: ReactNode; invitees: stri
       />
     ),
     invitees: picked.map(accountName),
+    picks: picked,
+    setPicks: setPicked,
   };
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useStoredDraft } from "@/hooks/useStoredDraft";
 import { createEvent, createEventRequest } from "@/lib/events";
 import { draftUrls } from "@/lib/sources";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -69,6 +70,17 @@ function SubmitForm() {
   // geolocation publish posts them.
   const geolocators = useDraftGeolocatorsByline();
 
+  // The draft, the picks included, also survives a reload: it is stored in the browser for the
+  // signed-in analyst, and a publish drops it.
+  const draft = useMemo(
+    () => ({ form: form.draft, geolocators: geolocators.picks }),
+    [form.draft, geolocators.picks]
+  );
+  const stored = useStoredDraft(user ? `submit:${user.id}` : null, draft, (restored) => {
+    form.restoreDraft(restored.form);
+    geolocators.setPicks(restored.geolocators);
+  });
+
   // Both publishes are public, so each arms on a first click and writes on the second. They
   // share one error banner; each click clears the other's.
   const geolocation = useEventWrite(form, {
@@ -81,7 +93,10 @@ function SubmitForm() {
       return created;
     },
     fallback: WRITE_FALLBACK.publish,
-    onSuccess: (result) => router.push(eventHref(result.id)),
+    onSuccess: (result) => {
+      stored.clear();
+      router.push(eventHref(result.id));
+    },
     confirm: PUBLISH_CONFIRM,
     resetAll: () => writes.reset(),
   });
@@ -89,13 +104,16 @@ function SubmitForm() {
     floor: "request",
     post: () => createEventRequest(form.requestInput()),
     fallback: WRITE_FALLBACK.publish,
-    onSuccess: (created) => router.push(requestHref(created.id)),
+    onSuccess: (created) => {
+      stored.clear();
+      router.push(requestHref(created.id));
+    },
     confirm: REQUEST_CONFIRM,
     resetAll: () => writes.reset(),
   });
   const writes = writeGroup(geolocation, request);
 
-  if (authLoading || !user) {
+  if (authLoading || !user || !stored.ready) {
     return <PageLoading />;
   }
 

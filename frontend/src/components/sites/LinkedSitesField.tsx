@@ -42,13 +42,15 @@ export interface SiteLinksDraft {
   save: (eventId: string) => Promise<void>;
 }
 
+const NO_LINKS: DraftSiteLink[] = [];
+
 /** The form's Linked sites, seeded from the live links of a published row, else empty. */
 export function useSiteLinksDraft(row: EventDetail | null): SiteLinksDraft {
   const live = useApiResource<EventSiteLink[]>(
     row?.status === "geolocated" ? eventSiteLinksPath(row.id) : null,
   );
   const [edited, setEdited] = useState<DraftSiteLink[] | null>(null);
-  const before: DraftSiteLink[] = live.data ?? [];
+  const before = live.data ?? NO_LINKS;
   const links = edited ?? before;
   const key = (list: DraftSiteLink[]) =>
     list

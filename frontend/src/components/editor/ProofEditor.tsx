@@ -285,23 +285,27 @@ export default function ProofEditor({
     },
   });
 
-  // Seed once; the parent re-keys to re-seed. The cleanup empties the staging, so a dev double
-  // mount restages, and revokes the staged blob URLs (compose then navigate must not leak them)
-  // on the next task, once the editor's images are gone: a revoked blob still in an `img` fails.
+  // Seed once; the parent re-keys to re-seed. An unmount empties the staging and revokes its blob
+  // URLs (compose then navigate must not leak them) on the next task, once the editor's images
+  // are gone: a revoked blob still in an `img` fails. A dev double mount mounts again before that
+  // task, and its images resolve their URLs again in between, so the staging stays for them.
+  const mountedRef = useRef(false);
   useEffect(() => {
+    mountedRef.current = true;
     const staged = stagedRef.current;
     const usedNames = usedNamesRef.current;
-    initialProofFiles?.forEach(stage);
+    if (staged.length === 0) initialProofFiles?.forEach(stage);
     if (initialContent) {
       seedingRef.current = true;
       editor.replaceBlocks(editor.document, editor.tryParseHTMLToBlocks(initialContent));
       seedingRef.current = false;
     }
     return () => {
-      const dropped = staged.splice(0);
-      usedNames.clear();
+      mountedRef.current = false;
       setTimeout(() => {
-        for (const s of dropped) URL.revokeObjectURL(s.previewUrl);
+        if (mountedRef.current) return;
+        for (const s of staged.splice(0)) URL.revokeObjectURL(s.previewUrl);
+        usedNames.clear();
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

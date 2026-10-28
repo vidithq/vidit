@@ -18,6 +18,7 @@ import { DetailsFields } from "@/components/geolocations/fields/DetailsFields";
 import { LocationPicker } from "@/components/geolocations/fields/LocationPicker";
 import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/geolocations/fields/ProofEditorPanel";
 import { LinkedSitesField, useSiteLinksDraft, type SiteLinksDraft } from "@/components/sites/LinkedSitesField";
+import type { DraftSiteLink } from "@/lib/sites";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { cleanNumber } from "@/lib/coordinates";
@@ -33,6 +34,7 @@ import {
 } from "@/lib/events";
 import {
   newSourceDraft,
+  restoredSourceDraft,
   sourceCreatePayload,
   sourceDraftFrom,
   sourceFloor,
@@ -86,6 +88,25 @@ export interface EventFormState {
   validationAttempt: number;
   flagIncomplete: (fields: MissingField[]) => void;
   clearIncomplete: () => void;
+  /** Every field as it stands, memoised on them: what the submit form stores across a reload. */
+  draft: EventFormDraft;
+  /** Puts a stored `draft` back into every field. */
+  restoreDraft: (draft: EventFormDraft) => void;
+}
+
+/** The fields of an event form as one storable value. */
+export interface EventFormDraft {
+  title: string;
+  lat: string;
+  lng: string;
+  sources: SourceDraft[];
+  eventDate: string;
+  eventTime: string;
+  proof: string | null;
+  proofFiles: File[];
+  tagIds: string[];
+  conflictIds: string[];
+  siteLinks: DraftSiteLink[];
 }
 
 /** The editors a row seeds: one per stored source, or one blank editor. */
@@ -144,6 +165,49 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
     [title, lat, lng, proof, floor, selectedConflictIds, siteLinks.missingEffect]
   );
 
+  const draft = useMemo<EventFormDraft>(
+    () => ({
+      title,
+      lat,
+      lng,
+      sources,
+      eventDate,
+      eventTime,
+      proof,
+      proofFiles,
+      tagIds: selectedTagIds,
+      conflictIds: selectedConflictIds,
+      siteLinks: siteLinks.links,
+    }),
+    [
+      title,
+      lat,
+      lng,
+      sources,
+      eventDate,
+      eventTime,
+      proof,
+      proofFiles,
+      selectedTagIds,
+      selectedConflictIds,
+      siteLinks.links,
+    ]
+  );
+  const restoreDraft = (stored: EventFormDraft) => {
+    const now = Date.now();
+    setTitle(stored.title);
+    setLat(stored.lat);
+    setLng(stored.lng);
+    setSources(stored.sources.map((source) => restoredSourceDraft(source, now)));
+    setEventDate(stored.eventDate);
+    setEventTime(stored.eventTime);
+    setProof(stored.proof);
+    setProofFiles(stored.proofFiles);
+    setSelectedTagIds(stored.tagIds);
+    setSelectedConflictIds(stored.conflictIds);
+    siteLinks.setLinks(stored.siteLinks);
+  };
+
   const shared = (): Omit<EventWriteInput, "lat" | "lng"> => ({
     title: title.trim(),
     sources: sources.map(sourceCreatePayload),
@@ -197,6 +261,8 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
     validationAttempt: incomplete.validationAttempt,
     flagIncomplete: incomplete.flagIncomplete,
     clearIncomplete: incomplete.clearIncomplete,
+    draft,
+    restoreDraft,
   };
 }
 

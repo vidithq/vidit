@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { en } from "@blocknote/core/locales";
@@ -153,6 +154,22 @@ describe("ProofEditor", () => {
     await waitFor(() => expect(second).toHaveBeenLastCalledWith([file]));
   });
 
+  it("previews its seeded images through a dev double mount", async () => {
+    const file = png("frame.png");
+    const { container } = render(
+      <StrictMode>
+        <ProofEditor
+          onChange={() => {}}
+          initialContent='<img src="placeholder://frame.png">'
+          initialProofFiles={[file]}
+        />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(container.querySelector("img")?.src).toMatch(/^blob:/));
+    await act(() => new Promise((done) => setTimeout(done, 10)));
+    expect(container.querySelector("img")?.src).toMatch(/^blob:/);
+  });
+
   describe("a GIF", () => {
     const gif = (frames: number) =>
       new File([tinyGif(frames)], "scan.gif", { type: "image/gif" });
@@ -178,7 +195,7 @@ describe("ProofEditor", () => {
 
       expect(await pick(gif(4))).toBe("placeholder://scan-1.png");
       expect(splitGif).toHaveBeenLastCalledWith(expect.any(File), 4);
-      expect(editor.document.filter((b) => b.type === "image")).toHaveLength(4);
+      expect(editor.document.filter((b: { type: string }) => b.type === "image")).toHaveLength(4);
       await waitFor(() => expect(onProofFilesChange).toHaveBeenLastCalledWith(frames));
     });
 
@@ -186,7 +203,7 @@ describe("ProofEditor", () => {
       splitGif.mockResolvedValueOnce(null);
       render(<ProofEditor onChange={() => {}} />);
       expect(await pick(gif(2))).toBe("placeholder://scan.gif");
-      expect(editor.document.filter((b) => b.type === "image")).toHaveLength(1);
+      expect(editor.document.filter((b: { type: string }) => b.type === "image")).toHaveLength(1);
     });
 
     it("is refused past six frames, leaving no image and saying why", async () => {
@@ -196,7 +213,7 @@ describe("ProofEditor", () => {
       expect(await findByRole("alert")).toHaveTextContent(
         "This GIF holds 7 frames, and a GIF may hold at most 6. Insert a GIF of 6 frames or fewer.",
       );
-      expect(editor.document.some((b) => b.type === "image")).toBe(false);
+      expect(editor.document.some((b: { type: string }) => b.type === "image")).toBe(false);
       expect(splitGif).not.toHaveBeenCalledWith(expect.any(File), 7);
     });
   });
