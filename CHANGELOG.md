@@ -20,6 +20,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Type a latitude and a longitude, or paste a Google Maps link, to centre the map there: from a map control beside the basemap control on the map, and above the contour map of the site forms; a pair out of bounds says why ([#748](https://github.com/vidithq/vidit/pull/748)).
 - The tag field of the event and source forms suggests your most used tags, or the platform's, in one line of one-click chips under the search; `GET /tags/suggested` lists them ([#725](https://github.com/vidithq/vidit/pull/742)).
 - When a detection's proof holds the footage its source lacks, the edit form copies that proof image into the empty source file slot in one click; `POST /uploads/from-proof` stages the copy ([#746](https://github.com/vidithq/vidit/pull/746)).
+- A pulsing dot above the basemap control shows while the daily satellite imagery or the fire detections are still loading, including after you move the map ([#758](https://github.com/vidithq/vidit/pull/761)).
 - In the basemap control, a `?` beside each basemap, label setting, layer and overlay says what it shows and links to the source of its data or tiles ([#757](https://github.com/vidithq/vidit/pull/757)).
 
 ### Changed
