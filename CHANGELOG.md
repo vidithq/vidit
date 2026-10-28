@@ -78,6 +78,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Pasting an X post you already imported says *Already imported* and links the existing detection, request or event ([#802](https://github.com/vidithq/vidit/pull/802)).
 - Bulk import refuses a file that is not a zip as soon as you pick or drop it, with one message, instead of failing after the import starts ([#802](https://github.com/vidithq/vidit/pull/802)).
 - The Detections queue names a detection short of evidence *Incomplete* everywhere, drops the line under its title, and each row is a link you can open in a new tab ([#802](https://github.com/vidithq/vidit/pull/802)).
+- On a profile, Insights and Coverage show each count once; Follow and Unfollow move the followers count at once and put it back on an error; Edit profile shows the avatar once and a refused website under its field ([#798](https://github.com/vidithq/vidit/pull/798)).
+- Opening a page that needs an account while signed out, such as a new collection, a site edit or your profile, sends you to sign in and then back to that page ([#796](https://github.com/vidithq/vidit/pull/796)).
+- When your session ends because its cookies expired or were cleared, the next page you open says so, the sign-in page included ([#796](https://github.com/vidithq/vidit/pull/796)).
+- An unsubscribe link opened without its token says the link is incomplete and points to Settings, instead of showing a disabled button ([#796](https://github.com/vidithq/vidit/pull/796)).
 - A collection's owner no longer sees Report on their own collection ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a phone, the pinned actions and the menu button sit on one full-width bar once the page scrolls, so fields and lists no longer show between them ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a wide screen, the pinned actions stay on one line, such as Approve, Accept and Decline on an invitation ([#794](https://github.com/vidithq/vidit/pull/794)).
