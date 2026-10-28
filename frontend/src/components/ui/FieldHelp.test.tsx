@@ -39,6 +39,21 @@ describe("FieldHelp", () => {
     expect(btn).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("links each source of a concept in a new tab", () => {
+    render(<FieldHelp concept="map_fire_detections" />);
+    const btn = screen.getByRole("button", { name: FIELD_HELP.map_fire_detections.label });
+    fireEvent.click(btn);
+    const tooltip = screen.getByRole("tooltip");
+    expect(btn).toHaveAttribute("aria-controls", tooltip.id);
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual(["NASA FIRMS", "NASA GIBS"]);
+    for (const [i, link] of links.entries()) {
+      expect(link).toHaveAttribute("href", FIELD_HELP.map_fire_detections.sources[i].href);
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    }
+  });
+
   it("renders nothing when the user has hidden help (settings toggle)", () => {
     window.localStorage.setItem("vidit:help-hidden", "1");
     render(<FieldHelp concept="title" />);

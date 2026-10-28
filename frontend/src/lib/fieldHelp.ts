@@ -1,3 +1,17 @@
+import { MAP_SOURCES } from "@/components/map/mapSources";
+
+/** One concept's help: the tooltip `text`, the trigger's aria `label`, and the `sources` linked
+ *  after the text, for a concept whose data comes from outside Vidit. */
+export interface HelpEntry {
+  text: string;
+  label: string;
+  sources?: readonly { name: string; href: string }[];
+}
+
+const { openFreeMap, openStreetMap, openMapTiles } = MAP_SOURCES;
+const VIDIT_STYLE = [openFreeMap, openStreetMap] as const;
+const OPENSTREETMAP_LAYER = [openStreetMap, openMapTiles] as const;
+
 /**
  * Canonical concept registry for the `?` help affordance (see `FieldHelp`): each entry pairs
  * the tooltip `text` with the trigger's aria `label`, so a concept reads identically
@@ -37,7 +51,7 @@ export const FIELD_HELP = {
     label: "What is the source file?",
   },
   captured_at: {
-    text: "Optional. When the file was captured (UTC), if known. Not when it was posted, nor when the event was added here.",
+    text: "Optional. When the file was captured (UTC), if known. Not when it was posted, nor when the event was added here. Give it on a satellite or aircraft image: a reader reopens the same image at that date.",
     label: "What is the capture time?",
   },
   capture_position: {
@@ -45,7 +59,7 @@ export const FIELD_HELP = {
     label: "What is the capture position?",
   },
   source_links: {
-    text: "Where the file was posted: the original post or channel first, then each mirror of the same file. Not your own geolocation post. Each link takes its post time (UTC) when known. The archive mark beside a link is its archived copy, so the evidence survives the post being deleted: orange opens the stored copy, grey means there is none yet. On a form, Archive opens a field that offers the Wayback Machine with the link filled in and accepts a snapshot from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive. On a satellite or aircraft source, link the provider's permalink that reopens the same image at its capture date: the form names the provider, how to reopen it and its credit, and warns when a reader could not reopen the image.",
+    text: "Where the file was posted: the original post or channel first, then each mirror of the same file. Not your own geolocation post. Each link takes its post time (UTC) when known. The archive mark beside a link is its archived copy, so the evidence survives the post being deleted: orange opens the stored copy, grey means there is none yet. On a form, Archive opens a field that offers the Wayback Machine with the link filled in and accepts a snapshot from the Wayback Machine, archive.today (or any of its mirrors) or Ghostarchive. On a satellite or aircraft source, link the full permalink of a listed imagery provider that reopens the same image at its capture date, not a short link, or archive the publication that shows the image: the form names the provider, how to reopen it and its credit.",
     label: "What are the source links?",
   },
   coordinates: {
@@ -201,14 +215,94 @@ export const FIELD_HELP = {
     label: "What is the effect?",
   },
   event_sites: {
-    text: "The sites this event is linked to, each with what the event shows there. Only the event's owner links it, and a link holds even when the event lies outside the site's zone.",
+    text: "The sites this event is linked to, each with what the event shows there. The event's owner links and unlinks sites by editing the event, and a link holds even when the event lies outside the site's zone.",
     label: "What are linked sites?",
   },
   site_linked_events: {
-    text: "The published events their authors linked to this site, newest first by the date they occurred, each with what it shows at the site and where it lies against the zone valid on its date. A link holds even when the event lies outside the zone. Only an event's author links it, changes its effect or unlinks it.",
+    text: "The published events their authors linked to this site, newest first by the date they occurred, each with what it shows at the site and where it lies against the zone valid on its date. A link holds even when the event lies outside the zone. An event's author links it, changes its effect or unlinks it by editing the event, and can also link it from here.",
     label: "What are linked events?",
   },
-} as const;
+  basemap_auto: {
+    text: "Dark or Light, following the app theme.",
+    label: "What is the Auto basemap?",
+    sources: VIDIT_STYLE,
+  },
+  basemap_dark: {
+    text: "The Vidit dark style, drawn from vector tiles of OpenStreetMap data.",
+    label: "What is the Dark basemap?",
+    sources: VIDIT_STYLE,
+  },
+  basemap_light: {
+    text: "The Vidit light style, drawn from vector tiles of OpenStreetMap data.",
+    label: "What is the Light basemap?",
+    sources: VIDIT_STYLE,
+  },
+  basemap_streets: {
+    text: "The OpenFreeMap Liberty street style, with Natural Earth shaded relief at low zoom.",
+    label: "What is the Streets basemap?",
+    sources: [openFreeMap, openStreetMap, MAP_SOURCES.naturalEarth],
+  },
+  basemap_terrain: {
+    text: "A topographic map with contour lines and hill shading.",
+    label: "What is the Terrain basemap?",
+    sources: [MAP_SOURCES.openTopoMap],
+  },
+  basemap_satellite: {
+    text: "A cloud-free satellite mosaic of 2016 at 10 m per pixel, not current imagery.",
+    label: "What is the Satellite 2016 basemap?",
+    sources: [MAP_SOURCES.sentinel2Cloudless],
+  },
+  map_label_language: {
+    text: "Latin: the name in Latin script. Local: the name used on the ground. Both: Latin over local.",
+    label: "What is the label language?",
+    sources: OPENSTREETMAP_LAYER,
+  },
+  map_label_density: {
+    text: "Sparse names only countries and capitals below zoom 5 and adds smaller places as you zoom in. Normal draws every label the style holds.",
+    label: "What is the label density?",
+    sources: [openMapTiles],
+  },
+  map_region_borders: {
+    text: "Borders of states, provinces and districts within a country.",
+    label: "What are region borders?",
+    sources: OPENSTREETMAP_LAYER,
+  },
+  map_roads: {
+    text: "Roads, railways and their names.",
+    label: "What does the roads layer show?",
+    sources: OPENSTREETMAP_LAYER,
+  },
+  map_buildings: {
+    text: "Building footprints, from zoom 13.",
+    label: "What does the buildings layer show?",
+    sources: OPENSTREETMAP_LAYER,
+  },
+  map_military_airports: {
+    text: "Military land, airport grounds, runways and taxiways, from zoom 10.",
+    label: "What does the military areas and airports layer show?",
+    sources: OPENSTREETMAP_LAYER,
+  },
+  map_relief: {
+    text: "Hills and mountains shaded from elevation data.",
+    label: "What does the relief layer show?",
+    sources: [MAP_SOURCES.terrainTiles],
+  },
+  map_disputed_borders: {
+    text: "Dashed, a disputed country border reads apart from a settled one.",
+    label: "What are dashed disputed borders?",
+    sources: OPENSTREETMAP_LAYER,
+  },
+  map_daily_imagery: {
+    text: "True colour VIIRS imagery of the previous UTC day, about 250 m per pixel. Clouds hide the ground.",
+    label: "What is the daily satellite imagery?",
+    sources: [MAP_SOURCES.nasaGibs],
+  },
+  map_fire_detections: {
+    text: "Hot spots the VIIRS sensor detected on the previous UTC day, at 375 m: fires, flares and other heat sources.",
+    label: "What are fire detections?",
+    sources: [MAP_SOURCES.nasaFirms, MAP_SOURCES.nasaGibs],
+  },
+} as const satisfies Record<string, HelpEntry>;
 
 /** A concept key: the single argument every `<FieldHelp>` takes. */
 export type Concept = keyof typeof FIELD_HELP;

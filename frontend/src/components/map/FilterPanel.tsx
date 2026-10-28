@@ -1,19 +1,17 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import Link from "next/link";
-import { ChevronDown, ChevronUp, Filter, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Filter } from "lucide-react";
 
 import { filterPointsByStatus } from "@/types";
 import type { Conflict, MapPoint, Tag } from "@/types";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
 import { Dot } from "@/components/ui/Dot";
-import { buttonClasses } from "@/components/ui/Button";
-import { ToggleRow } from "@/components/ui/ToggleRow";
-import { useAuth } from "@/contexts/AuthContext";
+import { FieldHelp } from "@/components/ui/FieldHelp";
+import { META_LINE } from "@/components/ui/styles";
 import { formatDate } from "@/lib/format";
-import { NEW_SITE_HREF, sitesAsOf, todayUtc } from "@/lib/sites";
+import { sitesAsOf, todayUtc } from "@/lib/sites";
 import {
   EMPTY_DATE_WINDOWS,
   EMPTY_EVENT_FILTERS,
@@ -26,6 +24,8 @@ import {
 } from "@/components/filters/EventFilterSections";
 import { useMapState } from "@/contexts/MapStateContext";
 import { TimelineScrubber } from "@/components/map/TimelineScrubber";
+
+const SITES_LABEL = "Sites";
 
 interface FilterPanelProps {
   /** Live tag taxonomy driving the tag chips. */
@@ -42,9 +42,9 @@ interface FilterPanelProps {
 
 /**
  * The map's filter overlay: header button, `ActiveFilterPills`, and the shared
- * `EventFilterSections`, with the sites layer as its Layers group and the two timeline scrubbers as
- * date sections. The sites layer counts as one active filter with its own pill, so the collapsed
- * panel shows it. Filter state lives in MapStateContext so it survives navigation.
+ * `EventFilterSections`, with the sites layer as a chip after the status chips and the two timeline
+ * scrubbers as date sections. The sites layer counts as one active filter with its own pill, so the
+ * collapsed panel shows it. Filter state lives in MapStateContext so it survives navigation.
  */
 export function FilterPanel({ tags, conflicts, points, pointCount, loading }: FilterPanelProps) {
   const {
@@ -61,7 +61,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     sitesShown,
     setSitesShown,
   } = useMapState();
-  const { user } = useAuth();
   const asOf = sitesAsOf(dateWindows.eventTo, todayUtc());
 
   const onPatch: EventFilterPatch = (patch) =>
@@ -110,11 +109,15 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     [points, filters.statuses]
   );
 
+  // buildActiveFilterPills emits the status pills first; the Sites pill follows them, as its chip
+  // follows the status chips.
+  const eventPills = buildActiveFilterPills(filters, onPatch);
   const activeFilters: ActiveFilter[] = [
+    ...eventPills.slice(0, filters.statuses.length),
     ...(sitesShown
-      ? [{ key: "sites", label: "Sites", onRemove: () => setSitesShown(false) }]
+      ? [{ key: "sites", label: SITES_LABEL, onRemove: () => setSitesShown(false) }]
       : []),
-    ...buildActiveFilterPills(filters, onPatch),
+    ...eventPills.slice(filters.statuses.length),
     ...buildDateWindowPills(dateWindows, clearEventWindow, clearAddedWindow),
   ];
   const activeFilterCount = activeFilters.length;
@@ -167,30 +170,17 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
             conflicts={conflicts}
             values={filters}
             onPatch={onPatch}
-            lead={{ title: "Layers", sections: [
-              {
-                title: "Sites",
-                concept: "sites_layer",
-                summary: sitesShown ? "On" : "Off",
-                active: sitesShown,
-                children: (
-                  <>
-                    <ToggleRow
-                      label="Show sites"
-                      description={`Zones as of ${asOf ? formatDate(asOf) : "today"}`}
-                      on={sitesShown}
-                      onToggle={() => setSitesShown(!sitesShown)}
-                    />
-                    {user && (
-                      <Link href={NEW_SITE_HREF} className={buttonClasses("ghost", { className: "mt-1" })}>
-                        <Plus size={14} />
-                        New site
-                      </Link>
-                    )}
-                  </>
-                ),
-              },
-            ]}}
+            layer={{
+              label: SITES_LABEL,
+              on: sitesShown,
+              onToggle: () => setSitesShown(!sitesShown),
+              note: (
+                <p className={`${META_LINE} mt-2`}>
+                  Zones as of {asOf ? formatDate(asOf) : "today"}
+                  <FieldHelp concept="sites_layer" size={12} />
+                </p>
+              ),
+            }}
             dateSections={[
               {
                 title: "Event date",

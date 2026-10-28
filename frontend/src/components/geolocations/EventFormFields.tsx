@@ -17,6 +17,7 @@ import { useTaxonomy, type TaxonomyState } from "@/components/geolocations/Taxon
 import { DetailsFields } from "@/components/geolocations/fields/DetailsFields";
 import { LocationPicker } from "@/components/geolocations/fields/LocationPicker";
 import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/geolocations/fields/ProofEditorPanel";
+import { LinkedSitesField, useSiteLinksDraft, type SiteLinksDraft } from "@/components/sites/LinkedSitesField";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { cleanNumber } from "@/lib/coordinates";
@@ -67,6 +68,8 @@ export interface EventFormState {
   setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
+  /** The Linked sites, written after a geolocation write. */
+  siteLinks: SiteLinksDraft;
   /** What a geolocation publish still misses, live: the request floor, then the coordinates,
    *  the proof and the conflict. */
   publishMissing: MissingField[];
@@ -118,6 +121,7 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
     seed?.conflicts.map((c) => c.id) ?? []
   );
 
+  const siteLinks = useSiteLinksDraft(seed);
   const incomplete = useIncompleteForm();
 
   // Memoised so the scans rerun only when an input changes.
@@ -135,8 +139,9 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
         proof,
         sources: floor,
         hasConflict: selectedConflictIds.length > 0,
+        siteEffectMissing: siteLinks.missingEffect,
       }),
-    [title, lat, lng, proof, floor, selectedConflictIds]
+    [title, lat, lng, proof, floor, selectedConflictIds, siteLinks.missingEffect]
   );
 
   const shared = (): Omit<EventWriteInput, "lat" | "lng"> => ({
@@ -177,6 +182,7 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
     setSelectedTagIds,
     selectedConflictIds,
     setSelectedConflictIds,
+    siteLinks,
     publishMissing,
     requestMissing,
     publishInput: (invitees) => ({
@@ -357,6 +363,14 @@ function eventFormSlots(
         ),
         invalid: invalidKeys.has("coordinates"),
       },
+      sites: (
+        <LinkedSitesField
+          draft={form.siteLinks}
+          lat={form.lat}
+          lng={form.lng}
+          invalid={invalidKeys.has("site_effect")}
+        />
+      ),
     },
   };
 }

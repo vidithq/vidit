@@ -55,7 +55,8 @@ const EDIT_FORM_ID = "event-edit-form";
  *
  * **Save version** (a `geolocated` row): the same fields, and the write files the version it
  * supersedes. The first click asks for the optional note that travels with that version, in a
- * panel on the button, whose save writes.
+ * panel on the button, whose save writes. A change to the Linked sites alone reads **Save** and
+ * files no version.
  *
  * Built like the create form: `EventShell`, `eventFormSlots`, `useEventForm`. State is seeded
  * from props (the form mounts after the row loaded), so the proof editor gets its
@@ -120,16 +121,31 @@ export function EventEditForm({
     conflictIds: form.selectedConflictIds,
   });
 
+  const versionChanged = editingPublished && hasVersionChanges(geo, versionState());
+  const linksOnly = editingPublished && !versionChanged && form.siteLinks.changed;
+  const save = () =>
+    saveVersion(geo.id, {
+      ...form.publishInput(editingPublished ? undefined : draftCredit.invitees),
+      version_no: geo.version_no,
+      ...(editingPublished && { note: editNote }),
+    });
+
   // The write enforces the full floor on every click. A version asks for its note in a panel on
-  // the button; a publish is public, so it arms and writes on the second click.
+  // the button; a publish is public, so it arms and writes on the second click. The Linked sites
+  // are no part of a version: a published row writes them first, since each link write is
+  // idempotent and a retry after a refused version rewrites them; a publish writes them once the
+  // row is published, and a refused link never holds it.
   const submit = useEventWrite(form, {
     floor: "publish",
-    post: () =>
-      saveVersion(geo.id, {
-        ...form.publishInput(editingPublished ? undefined : draftCredit.invitees),
-        version_no: geo.version_no,
-        ...(editingPublished && { note: editNote }),
-      }),
+    post: async () => {
+      if (editingPublished) {
+        await form.siteLinks.save(geo.id);
+        return versionChanged ? save() : null;
+      }
+      const published = await save();
+      await form.siteLinks.save(geo.id).catch(() => undefined);
+      return published;
+    },
     fallback: editingPublished ? WRITE_FALLBACK.version : WRITE_FALLBACK.publish,
     // The row may have moved under an open form, so `nothing_changed` prints the server's sentence
     // (it names the version actually compared against); the loaded number is only the fallback.
@@ -150,10 +166,10 @@ export function EventEditForm({
       else finish();
     },
     confirm: editingPublished ? undefined : PUBLISH_CONFIRM,
-    ask: editingPublished,
+    ask: versionChanged,
     // The server refuses the same edit with the same words.
     extraCheck: () =>
-      editingPublished && !hasVersionChanges(geo, versionState())
+      editingPublished && !versionChanged && !form.siteLinks.changed
         ? nothingChangedMessage(geo.version_no)
         : null,
     resetAll: () => writes.reset(),
@@ -178,8 +194,9 @@ export function EventEditForm({
         : "Geolocate request"
       : "Publish detection";
 
-  // The version the save produces (live row N becomes N + 1).
-  const saveLabel = `Save version ${geo.version_no + 1}`;
+  // The version the save produces (live row N becomes N + 1). A change to the Linked sites alone
+  // files no version.
+  const saveLabel = linksOnly ? "Save" : `Save version ${geo.version_no + 1}`;
 
   const actions = (
     <PublishActions

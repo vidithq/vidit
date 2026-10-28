@@ -6,7 +6,7 @@ import type { MissingField } from "@/lib/events";
 import { UPLOADS_RUNNING_MESSAGE, newSourceDraft, type SourceDraft } from "@/lib/sources";
 
 import type { EventFormState } from "./EventFormFields";
-import { WRITE_FALLBACK, useEventWrite, writeGroup } from "./useEventWrite";
+import { REQUEST_SITE_LINKS, WRITE_FALLBACK, useEventWrite, writeGroup } from "./useEventWrite";
 
 const TITLE: MissingField = { key: "title", label: "Title" };
 const CONFLICT: MissingField = { key: "conflict_tag", label: "Conflict" };
@@ -24,17 +24,21 @@ function stubForm({
   requestMissing = [],
   blockedMessage = null,
   sources = [],
+  siteLinks = 0,
 }: {
   publishMissing?: MissingField[];
   requestMissing?: MissingField[];
   blockedMessage?: string | null;
   sources?: SourceDraft[];
+  /** How many Linked sites the form holds. */
+  siteLinks?: number;
 } = {}) {
   return {
     publishMissing,
     requestMissing,
     taxonomy: { blockedMessage },
     sources,
+    siteLinks: { links: Array.from({ length: siteLinks }, () => ({})) },
     flagIncomplete: vi.fn(),
     clearIncomplete: vi.fn(),
   } as unknown as EventFormState & {
@@ -96,6 +100,18 @@ describe("useEventWrite gate order", () => {
     attempt();
     expect(hook.result.current.error).toBe(UPLOADS_RUNNING_MESSAGE);
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it("holds a request write that carries Linked sites, and lets a geolocation write post them", () => {
+    const request = renderWrite(stubForm({ siteLinks: 1 }), { floor: "request" });
+    request.attempt();
+    expect(request.hook.result.current.error).toBe(REQUEST_SITE_LINKS);
+    expect(request.post).not.toHaveBeenCalled();
+
+    const publish = renderWrite(stubForm({ siteLinks: 1 }));
+    publish.attempt();
+    expect(publish.hook.result.current.error).toBeNull();
+    expect(publish.post).toHaveBeenCalledTimes(1);
   });
 
   it("runs the surface's own check last", () => {

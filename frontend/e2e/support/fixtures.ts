@@ -72,6 +72,21 @@ export const TAGS: Tag[] = [
   { id: "33333333-3333-4333-8333-333333333334", name: LONG_TAG_NAME },
 ];
 
+/**
+ * `GET /tags/suggested`: more chips than one line of a form card holds, none on `EVENT`, so the
+ * row clips its last chips the way a real analyst's suggestions do.
+ */
+export const SUGGESTED_TAGS: Tag[] = [
+  "military equipment",
+  "drone strike",
+  "Operation Ancient Babylon",
+  "air defence",
+  "artillery",
+  "fortification",
+  "logistics",
+  "naval",
+].map((name, i) => ({ id: `33333333-3333-4333-8333-33333333334${i}`, name }));
+
 export const CONFLICTS: Conflict[] = [
   {
     id: "44444444-4444-4444-8444-444444444441",

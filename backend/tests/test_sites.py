@@ -861,6 +861,37 @@ def test_site_suggestions_by_distance_and_by_name(db, users):
     assert by_name[0]["distance_m"] > 40_000
 
 
+def test_site_suggestions_near_a_point_by_distance_and_by_name(users):
+    owner = users()
+    lat = LAT - 0.45
+    site = _create_site(owner, _square(0.01, lat=lat), name=f"Depot {uuid.uuid4().hex[:6]}")
+    headers = login_as(client, owner)
+    path = f"{SITES}/suggestions"
+
+    near = client.get(path, params={"lat": lat, "lng": LNG + 0.015}, headers=headers)
+    assert near.status_code == 200, near.text
+    assert site["id"] in {row["id"] for row in near.json()}
+    far = {"lat": lat, "lng": LNG + 0.5}
+    assert site["id"] not in {
+        row["id"] for row in client.get(path, params=far, headers=headers).json()
+    }
+    by_name = client.get(path, params={**far, "q": site["name"][-6:]}, headers=headers).json()
+    assert [row["id"] for row in by_name] == [site["id"]]
+    assert by_name[0]["distance_m"] > 40_000
+    no_point = client.get(path, params={"q": site["name"][-6:]}, headers=headers).json()
+    assert [(row["id"], row["distance_m"]) for row in no_point] == [(site["id"], None)]
+    assert client.get(path, headers=headers).json() == []
+
+    lone = client.get(path, params={"lat": lat}, headers=headers)
+    assert lone.status_code == 400
+    assert _code(lone) == "invalid_coordinates"
+    assert _code(client.get(path, params={"lat": 91, "lng": 0}, headers=headers)) == (
+        "invalid_coordinates"
+    )
+    client.cookies.clear()
+    assert client.get(path, params={"q": "Depot"}).status_code == 401
+
+
 def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, users):
     owner, admin = users(), users(is_admin=True)
     lat = LAT + 0.55

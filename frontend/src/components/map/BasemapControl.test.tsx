@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { FIELD_HELP } from "@/lib/fieldHelp";
+
 import { BasemapControl } from "./BasemapControl";
 import type { BasemapSettings } from "./basemapSettings";
 
@@ -79,6 +81,53 @@ describe("<BasemapControl>", () => {
     expect(onChange).toHaveBeenLastCalledWith({ dailyImagery: true });
     fireEvent.click(screen.getByRole("switch", { name: "Fire detections" }));
     expect(onChange).toHaveBeenLastCalledWith({ fires: true });
+  });
+
+  it("shows the loading dot above the closed control while the overlays load", () => {
+    const { rerender } = render(
+      <BasemapControl settings={SETTINGS} adjustable overlaysLoading onChange={vi.fn()} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading satellite overlays");
+    expect(screen.getByRole("button", { name: "Basemap" }).parentElement?.querySelector(".animate-pulse")).not.toBeNull();
+    rerender(<BasemapControl settings={SETTINGS} adjustable onChange={vi.fn()} />);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(document.querySelector(".animate-pulse")).toBeNull();
+  });
+
+  it("explains the preset on show beside the heading", () => {
+    open({ preset: "satellite" }, false);
+    fireEvent.click(screen.getByRole("button", { name: FIELD_HELP.basemap_satellite.label }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent(FIELD_HELP.basemap_satellite.text);
+    expect(screen.getByRole("link", { name: "EOX Sentinel-2 cloudless" })).toBeInTheDocument();
+  });
+
+  it("puts a help button beside each setting with a source, outside its switch", () => {
+    const onChange = open();
+    for (const concept of [
+      "map_label_language",
+      "map_label_density",
+      "map_region_borders",
+      "map_roads",
+      "map_buildings",
+      "map_military_airports",
+      "map_relief",
+      "map_disputed_borders",
+      "map_daily_imagery",
+      "map_fire_detections",
+    ] as const) {
+      const help = screen.getByRole("button", { name: FIELD_HELP[concept].label });
+      expect(help.closest("[role=switch]")).toBeNull();
+    }
+    fireEvent.click(screen.getByRole("button", { name: FIELD_HELP.map_roads.label }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the panel open while a source link is pressed", () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: FIELD_HELP.map_relief.label }));
+    fireEvent.mouseDown(screen.getByRole("link", { name: "Terrain Tiles" }));
+    expect(screen.getByRole("dialog", { name: "Basemap" })).toBeInTheDocument();
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
   });
 
   it("hides the label and layer settings on a third-party basemap and keeps the overlays", () => {

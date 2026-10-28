@@ -20,14 +20,21 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - Type a latitude and a longitude, or paste a Google Maps link, to centre the map there: from a map control beside the basemap control on the map, and above the contour map of the site forms; a pair out of bounds says why ([#748](https://github.com/vidithq/vidit/pull/748)).
 - The tag field of the event and source forms suggests your most used tags, or the platform's, in one line of one-click chips under the search; `GET /tags/suggested` lists them ([#725](https://github.com/vidithq/vidit/pull/742)).
 - When a detection's proof holds the footage its source lacks, the edit form copies that proof image into the empty source file slot in one click; `POST /uploads/from-proof` stages the copy ([#746](https://github.com/vidithq/vidit/pull/746)).
+- A pulsing dot above the basemap control shows while the daily satellite imagery or the fire detections are still loading, including after you move the map ([#758](https://github.com/vidithq/vidit/pull/761)).
+- In the basemap control, a `?` beside each basemap, label setting, layer and overlay says what it shows and links to the source of its data or tiles ([#757](https://github.com/vidithq/vidit/pull/757)).
 
 ### Changed
 
+- You link and unlink an event's sites in its submit and edit forms, with a site search and the sites nearby; the event page lists them as Linked sites, and the site page keeps only Link one of my events in its action bar ([#765](https://github.com/vidithq/vidit/pull/777)).
+- A satellite or aircraft source no longer shows amber imagery warnings on the event page, the map side panel, a site page or the source forms; the `?` help of Links and Captured says what lets a reader reopen the image ([#771](https://github.com/vidithq/vidit/pull/772)).
+- The sidebar's GitHub, X and Discord icons show in the accent colour, in the rail and in the phone drawer ([#764](https://github.com/vidithq/vidit/pull/766)).
 - A collection's page and its create and edit forms share the event page's layout: the description and events on the left, 20 at a time, and the map with the current event and the details on the right, in view while you scroll ([#732](https://github.com/vidithq/vidit/pull/754)).
 - The Submit page opens on six tiles across the full width: Geolocation, Request, From an X post, Bulk import, Site and Collection, each with a drawing of the result, when to pick it and what it needs ([#728](https://github.com/vidithq/vidit/pull/752)).
 - The filter panel groups its filters under labels (Layers, Event, Source and people), and filters that belong together share one row, so the map shows five rows for its eleven filters; search, the Requests board and the feed group the same way ([#750](https://github.com/vidithq/vidit/pull/750)).
+- On the map, Sites is one more filter chip after Requested, Detected and Geolocated, in a row now labelled Show, counted, removed and cleared like the other filters; the filter panel drops its group headings and its New site link ([#763](https://github.com/vidithq/vidit/pull/768)).
 - On a wide screen, the About page keeps the prose in its main column and moves Guides, Stay in touch and Legal to the right rail, which stays in view while you read; on a phone the links follow the prose ([#735](https://github.com/vidithq/vidit/pull/749)).
 - A site on the map previews its name when you rest the mouse on it and opens the same side panel as an event; the map draws sites as squares and zones without names, in a colour of their own that stands out from the military and airport highlight ([#747](https://github.com/vidithq/vidit/pull/747)).
+- The site side panel on the map reads like the event side panel: the site name links to its page, the owner sits under it, and the latest source shows with its image, above the location and the details ([#755](https://github.com/vidithq/vidit/pull/759)).
 - `POST /uploads` answers an `UploadList` whose `items` holds one `UploadRead` per staged file, one per frame for a GIF ([#744](https://github.com/vidithq/vidit/pull/744)).
 - The map draws OpenFreeMap tiles, which need no API key, and credits OpenMapTiles and OpenStreetMap contributors ([#709](https://github.com/vidithq/vidit/pull/709)).
 - The map labels only countries and capitals when zoomed out, hides region borders, and shows one name per label, in Latin script ([#709](https://github.com/vidithq/vidit/pull/709)).
@@ -47,9 +54,14 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - More page actions sit in the top right action bar: Post request on the Requests board, Geolocate on a request, Link to a site on your event, New collection and Sign out on your profile, and Create the detection and Import archive on Submit ([#751](https://github.com/vidithq/vidit/pull/751)).
 - You approve, decline an approval request, and answer a geolocator or organization invitation from the page's top right action bar; with several identities to approve as, one Approve opens a menu of them ([#753](https://github.com/vidithq/vidit/pull/753)).
 
+### Removed
+
+- The landing page no longer shows a roadmap; the open epics on GitHub list what is planned ([#767](https://github.com/vidithq/vidit/pull/770)).
+
 ### Fixed
 
 - Search finds an analyst's work by their handle: on All and Events, a word that is an analyst's username lists the events credited to them, the other words narrow those events, and the Analysts group keeps the analyst ([#769](https://github.com/vidithq/vidit/pull/769)).
+- The event edit and submit forms no longer scroll sideways when the tag field suggests more tags than fit on its line ([#775](https://github.com/vidithq/vidit/pull/776)).
 - A Telegram post whose text holds a custom emoji now imports with its photo instead of the date alone ([#697](https://github.com/vidithq/vidit/pull/697)).
 
 ## v0.8.0, 2026-10-25
