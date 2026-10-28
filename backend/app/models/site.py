@@ -3,7 +3,17 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from geoalchemy2 import Geometry
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -91,6 +101,9 @@ class SiteVersion(Base):
     edited_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # The owner's note on the edit that superseded this version. Unbounded ``Text``; the API caps
+    # input at ``schemas/event.VERSION_NOTE_MAX_LENGTH``.
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # ``schemas/site.SiteSnapshot``: the name, the kind, and each source with its contour.
     snapshot = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

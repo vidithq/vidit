@@ -43,6 +43,16 @@ describe("<GoToCoordinates>", () => {
     fireEvent.change(field(), { target: { value: "45, 37" } });
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("explains text that does not read as a pair, and keeps it in the field", () => {
+    const onGo = vi.fn();
+    render(<GoToCoordinates onGo={onGo} />);
+    fireEvent.change(field(), { target: { value: "near Donetsk" } });
+    fireEvent.keyDown(field(), { key: "Enter" });
+    expect(onGo).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/^Not a coordinate pair\./);
+    expect(field()).toHaveValue("near Donetsk");
+  });
 });
 
 describe("<GoToCoordinatesControl>", () => {

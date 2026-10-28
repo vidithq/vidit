@@ -374,6 +374,7 @@ erDiagram
         UUID site_id FK
         INTEGER version_no "the version this row holds"
         UUID edited_by_id FK "nullable, SET NULL"
+        TEXT note "nullable, the owner's note on the edit"
         JSONB snapshot "name, kind, each source and its contour"
         TIMESTAMPTZ created_at "when the write superseded it"
     }
@@ -1341,6 +1342,7 @@ One superseded state of a site, on the pattern of [`event_versions`](#event_vers
 | `site_id` | `UUID` | FK → `sites.id` ON DELETE CASCADE, NOT NULL |
 | `version_no` | `INTEGER` | NOT NULL. The version this row holds. |
 | `edited_by_id` | `UUID` | FK → `users.id` ON DELETE SET NULL, nullable. The analyst whose write superseded this version: the owner's edit, or any analyst's filing or removal of a source. |
+| `note` | `TEXT` | nullable. The owner's note on the edit that superseded this version, at most 280 characters at the API. NULL when the owner left none, and on a version a source filing or removal superseded. |
 | `snapshot` | `JSONB` | NOT NULL. `schemas/site.SiteSnapshot`: `{"name", "kind", "sources": [{"id", "contour_id"}]}`, the sources oldest capture first, each with the contour it carried or `null`. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the write superseded this version. |
 

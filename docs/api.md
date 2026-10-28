@@ -2465,7 +2465,8 @@ A site is a named area of interest that analysts monitor through dated satellite
 
 - **Shape (422):** a ring holds at least 4 positions and ends on its first position, and a zone holds at most 1000 positions across all its rings.
 - **Content (400 `invalid_zone`):** a position outside the event coordinate bounds, a self-crossing polygon, or a polygon without area.
-- **Size (400 `zone_too_wide`, `zone_too_large`):** a zone spans less than 180 degrees of longitude and covers at most 10,000 km², measured on the spheroid. The caps keep a zone from wrapping the antimeridian or covering a continent. The longitude span is checked first.
+- **Size (400 `zone_too_wide`, `zone_too_large`):** a zone spans less than 180 degrees of longitude and covers at most 1,000 km², measured on the spheroid. The longitude span is checked first, and keeps a zone from wrapping the antimeridian.
+- **Area cap:** a site is a depot, a port, a base, an airfield, a position or a training ground. Depots, ports and airfields cover a few km² to a few tens of km², and the largest training grounds a few hundred km². The 1,000 km² cap holds the largest of them with margin and refuses a region drawn by mistake. The site forms apply the same cap while you draw.
 
 **Site source fields.** A site source is a [source](#sources) of kind `satellite` and level `context` that states no effect. Every write that files one takes `SiteSourceCreate`:
 
@@ -2623,7 +2624,7 @@ The sites a point may link to, nearest first, for an event form whose event is n
 | Param | Rule |
 |---|---|
 | `lat`, `lng` | The point, both or neither, in the event coordinate bounds |
-| `margin_m` | Metres from the point to a site's current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
+| `margin_m` | Metres from the point to a site's current zone, 0 to 10000, default 10000. A value outside the range is a 422 |
 | `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
 
 - **Without `q`:** the visible sites whose current zone lies within `margin_m` of the point. No point gets an empty array.
@@ -2774,7 +2775,8 @@ Edit your site in one transaction. Owner only. The body states the record and th
     { "source_id": "uuid", "zone": null },
     { "added_source": 0, "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.66, 47.5], [34.66, 47.45], [34.55, 47.45], [34.55, 47.5]]] } }
   ],
-  "event_links": [{ "event_id": "uuid", "effect": "damage" }]
+  "event_links": [{ "event_id": "uuid", "effect": "damage" }],
+  "note": "Drew the contour on the August capture"
 }
 ```
 
@@ -2786,11 +2788,12 @@ Edit your site in one transaction. Owner only. The body states the record and th
 | `removed_source_ids` | Live sources of the site to remove. Each must be one you filed |
 | `contours` | The contour each listed source carries after the edit: `zone`, or none when `zone` is `null`. Each entry names `source_id` (a live source of the site) or `added_source` (an index into `added_sources`), not both, and a source takes one entry. A `zone` replaces the source's contour; an unlisted source keeps its own |
 | `event_links` | Your events linked to the site after the edit, each with its effect, on the rules of [`POST /events/{id}/site-links`](#post-eventsidsite-links). A link of yours the list leaves out is deleted, a new effect rewrites a link, and links to other analysts' events stay. `null` or absent leaves your links as they are |
+| `note` | Optional, at most 280 characters, stored on the version this edit supersedes. A blank note is absent, and an edit that files no version keeps none |
 
 - **One version:** a change to the name, the kind, the sources or a contour files one version for all of them. A change to `event_links` alone files none.
 - **Removal:** a source is removed only once it carries no contour after the edit: drop its contour in `contours` or draw it on another source in the same call. The source's row stays, so the versions that list it stay readable.
 - **At least one contour:** the site keeps at least one source with a contour.
-- **Nothing changed:** an edit that changes nothing answers 409 `nothing_changed`.
+- **Nothing changed:** an edit that changes nothing answers 409 `nothing_changed`. The note is not compared.
 
 **Response 200:** the [`SiteRead`](#get-sitesid) after the edit.
 
@@ -2820,6 +2823,7 @@ Paged like [`GET /events/{id}/versions`](#get-eventsidversions): 50 rows by defa
       "version_no": 2,
       "edited_by": { "id": "uuid", "username": "analyst", "avatar_url": null },
       "created_at": "2026-08-03T08:00:00Z",
+      "note": "Drew the contour on the August capture",
       "name": "Saky airbase",
       "kind": "airbase",
       "zone": { "type": "Polygon", "coordinates": [[[34.55, 47.5], [34.65, 47.5], [34.65, 47.45], [34.55, 47.45], [34.55, 47.5]]] },
@@ -2838,6 +2842,7 @@ Paged like [`GET /events/{id}/versions`](#get-eventsidversions): 50 rows by defa
 |---|---|
 | `version_no` | The version this row holds. A site at version 3 lists versions 2 and 1 |
 | `edited_by`, `created_at` | The analyst whose write superseded this version, and when, as on an event version. `edited_by` is `null` once that account is soft-deleted or erased. Version 1 was produced by the site's creation |
+| `note` | The owner's note on the edit that superseded this version, `null` when they left none or when a source was filed or removed |
 | `name`, `kind` | The record at this version |
 | `sources`, `contours` | The sources of this version, in the shape of [`GET /sites/{id}`](#get-sitesid), removed ones included, and the contour each carried |
 | `zone`, `centroid`, `contour_id`, `last_source` | The state this version gives now: the contour of its latest captured source with a contour, that zone's centroid, and its latest captured source |
@@ -2975,7 +2980,7 @@ The sites an event may link to, nearest first. Any signed-in analyst may call it
 
 | Param | Rule |
 |---|---|
-| `margin_m` | Metres from the event's point to a site's current zone, 0 to 10000, default 2000. A value outside the range is a 422 |
+| `margin_m` | Metres from the event's point to a site's current zone, 0 to 10000, default 10000. A value outside the range is a 422 |
 | `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
 
 - **Without `q`:** the visible sites whose current zone lies within `margin_m` of the event's point. An event without a point gets an empty array.

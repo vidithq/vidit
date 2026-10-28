@@ -26,11 +26,17 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A pulsing dot above the basemap control shows while the daily satellite imagery or the fire detections are still loading, including after you move the map ([#758](https://github.com/vidithq/vidit/pull/761)).
 - In the basemap control, a `?` beside each basemap, label setting, layer and overlay says what it shows and links to the source of its data or tiles ([#757](https://github.com/vidithq/vidit/pull/757)).
 - When the basemap's tile server does not respond, offline or with one provider down, a line over the map says so instead of leaving it blank ([#792](https://github.com/vidithq/vidit/pull/792)).
+- Saving a site edit asks for an optional version note, like an event edit, and the site's history shows it ([#800](https://github.com/vidithq/vidit/pull/800)).
 
 ### Changed
 
 - A minor destructive action, such as dismissing a notification, acts at once from a red cross; an important one, such as removing a co-geolocator or deleting an approval, asks for a second click in place instead of a dialog ([#803](https://github.com/vidithq/vidit/pull/803)).
 - The version history starts every title on one line, Current included, and drops the count above the list; the invitation cards no longer point at Accept and Decline, and the geolocator invite picker states the limit of 10 geolocators ([#803](https://github.com/vidithq/vidit/pull/803)).
+- A site zone covers at most 1,000 km², down from 10,000 km²: the contour editor says so while you draw, and areas read with thousands separators ([#800](https://github.com/vidithq/vidit/pull/800)).
+- Filing a source on a site opens the site page, like the other submit forms, in place of a separate confirmation page ([#800](https://github.com/vidithq/vidit/pull/800)).
+- The event forms' Location block shows the event page's map under the coordinates: click the map or drag the pin to set the coordinates, and typed coordinates move the pin ([#801](https://github.com/vidithq/vidit/pull/801)).
+- Site suggestions reach 10 km from the event instead of 2 km, and sites found by a name search show under their own Search results heading ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The edit form of an open request no longer offers Linked sites, since only a published event links to a site ([#801](https://github.com/vidithq/vidit/pull/801)).
 - The status filter is called Show everywhere and stays in view with Conflict and Tags; filters apply at once on a phone, each active-filter pill names its filter, and the feed's Following or All choice moves into the filter panel ([#799](https://github.com/vidithq/vidit/pull/799)).
 - Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
@@ -78,6 +84,14 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- Pasting an X post you already imported says *Already imported* and links the existing detection, request or event ([#802](https://github.com/vidithq/vidit/pull/802)).
+- Bulk import refuses a file that is not a zip as soon as you pick or drop it, with one message, instead of failing after the import starts ([#802](https://github.com/vidithq/vidit/pull/802)).
+- The Detections queue names a detection short of evidence *Incomplete* everywhere, drops the line under its title, and each row is a link you can open in a new tab ([#802](https://github.com/vidithq/vidit/pull/802)).
+- A source shows when it was posted on its own Posted row, so an unknown post date no longer reads as an unknown capture date ([#800](https://github.com/vidithq/vidit/pull/800)).
+- The site edit form no longer shows a missing count on Save before you change anything ([#800](https://github.com/vidithq/vidit/pull/800)).
+- A latitude or longitude out of bounds or not a number says why under the coordinate fields, and the greyed map link names the real reason ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The map credits on small maps fit on one line in smaller type instead of wrapping over what the map shows ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The File a source page of a site has the Go to coordinates field above its zone map, like the site forms ([#801](https://github.com/vidithq/vidit/pull/801)).
 - Search on All with a tag lists the collections carrying it instead of switching to Events, and a highlighted term reads in the light theme; the conflict list closes on a pick, and the map's filter panel stays clear of the attribution on a phone ([#799](https://github.com/vidithq/vidit/pull/799)).
 - The home page ends on links to the legal notice and the privacy policy, and the About page sets its Commitments text at the size of its other sections ([#797](https://github.com/vidithq/vidit/pull/797)).
 - Vercel Web Analytics and Speed Insights load only when the build sets `NEXT_PUBLIC_VERCEL_ANALYTICS=true`, so an instance hosted elsewhere no longer makes failing `/_vercel/*` requests ([#797](https://github.com/vidithq/vidit/pull/797)).

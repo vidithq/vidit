@@ -57,11 +57,12 @@ describe("DetectionQueueRow", () => {
     // Title, event date and source host: the whole row, nothing else.
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
     expect(screen.getByText("t.me")).toBeInTheDocument();
-    // One click, to the form, inside a review pass starting at this detection.
-    expect(screen.getByRole("link", { name: "Strike near Bakhmut" })).toHaveAttribute(
-      "href",
-      "/events/d1/edit?queue=1"
-    );
+    // The row itself is the link, so a middle click or a new tab opens it from anywhere on it:
+    // to the form, inside a review pass starting at this detection.
+    const row = screen.getByRole("link", { name: /Strike near Bakhmut/ });
+    expect(row).toHaveAttribute("href", "/events/d1/edit?queue=1");
+    expect(row).toContainElement(screen.getByText("Ready to review"));
+    expect(row).toContainElement(screen.getByText("t.me"));
   });
 
   it("says which entry the detection came in from, beside the date and the host", () => {
@@ -75,7 +76,7 @@ describe("DetectionQueueRow", () => {
     expect(screen.queryByText(/archive|Pasted|bot/)).toBeNull();
   });
 
-  it("names the one piece a detection is missing", () => {
+  it("names the one piece an incomplete detection is missing", () => {
     render(
       <DetectionQueueRow
         detection={detectionFixture({ proof: "<p></p>" })}
@@ -83,7 +84,7 @@ describe("DetectionQueueRow", () => {
     );
     expect(screen.queryByText("Ready to review")).not.toBeInTheDocument();
     // The common case is one missing piece, and its name tells the analyst whether the row is worth opening.
-    expect(screen.getByText("Missing: Proof image")).toBeInTheDocument();
+    expect(screen.getByText("Incomplete: Proof image")).toBeInTheDocument();
   });
 
   it("collapses several missing pieces to a count", () => {
@@ -96,7 +97,7 @@ describe("DetectionQueueRow", () => {
       />
     );
     // The row stays dense whatever the import missed: three joined names outgrow it, and the edit form names them in place.
-    expect(screen.getByText("Missing: 2 pieces")).toBeInTheDocument();
+    expect(screen.getByText("Incomplete: 2 pieces")).toBeInTheDocument();
   });
 
   it("says so when the detection declares no source and no event date", () => {
@@ -105,9 +106,9 @@ describe("DetectionQueueRow", () => {
         detection={detectionFixture({ sources: [], occurred_date: null })}
       />
     );
-    expect(screen.getByText("Missing: Source file")).toBeInTheDocument();
+    expect(screen.getByText("Incomplete: Source file")).toBeInTheDocument();
     expect(screen.getByText("No event date")).toBeInTheDocument();
-    // A source-less detection says so rather than rendering an empty host.
-    expect(screen.getByText("To confirm")).toBeInTheDocument();
+    // The badge already says the source is missing, so the line names no host and no second state.
+    expect(screen.queryByText(/no source|To confirm/)).toBeNull();
   });
 });

@@ -25,7 +25,6 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { TagsField } from "@/components/ui/TagPicker";
 import { cn } from "@/lib/cn";
-import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
 import { safeHostname } from "@/lib/format";
 import {
   capturePositionInvalid,
@@ -327,12 +326,6 @@ export function SourceEditor({
             setLng={(captureLng) => update({ captureLng })}
             invalid={positionInvalid}
           />
-          {positionInvalid && (
-            <FieldError>
-              Enter a latitude from {LAT_MIN} to {LAT_MAX} and a longitude from {LNG_MIN} to{" "}
-              {LNG_MAX}, or clear both. Until then the capture position is not saved.
-            </FieldError>
-          )}
         </div>
       )}
 
@@ -391,13 +384,13 @@ export function SourceEditor({
             }
             columns={[
               {
-                header: "Posted (UTC)",
+                header: `${SOURCE_FIELDS.posted.label} (UTC)`,
                 width: "13rem",
                 cell: ({ index: i, row, update: updateLink }) => (
                   <DateTimeInput
                     type="datetime-local"
                     variant="compact"
-                    aria-label={`Posted (UTC), ${describe(i, row.url)}`}
+                    aria-label={`${SOURCE_FIELDS.posted.label} (UTC), ${describe(i, row.url)}`}
                     title="When the file was posted at this link (UTC)"
                     value={row.postedAt}
                     onChange={(e) => updateLink({ ...row, postedAt: e.target.value })}

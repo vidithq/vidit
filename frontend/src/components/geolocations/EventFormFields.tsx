@@ -205,8 +205,11 @@ interface EventFormFieldsOptions {
   /** The stored row behind the form (the edited or published event). `null` on a fresh
    *  submit. */
   row?: EventDetail | null;
-  /** Follows the Location card (the submit form's duplicate probe). */
+  /** Follows the Location block (the submit form's duplicate probe). */
   afterLocation?: ReactNode;
+  /** Shows the Linked sites field. An open request's form leaves it out: only a published
+   *  event links to a site. */
+  siteLinks?: boolean;
 }
 
 /**
@@ -282,6 +285,7 @@ function eventFormSlots(
   {
     row = null,
     afterLocation,
+    siteLinks = true,
     formId,
   }: EventFormFieldsOptions & {
     /** The body `<form>`'s id, which the Title field joins from the title section. */
@@ -363,7 +367,7 @@ function eventFormSlots(
         ),
         invalid: invalidKeys.has("coordinates"),
       },
-      sites: (
+      sites: siteLinks && (
         <LinkedSitesField
           draft={form.siteLinks}
           lat={form.lat}

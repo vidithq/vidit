@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CONTOUR_REQUIREMENT,
   EMPTY_DRAW,
+  MAX_ZONE_AREA_KM2,
   drawFromZone,
   drawReady,
+  drawRefusal,
   edgeMidpoints,
+  formatAreaKm2,
   insertVertex,
   moveVertex,
   nearestPointOnZone,
@@ -116,5 +120,37 @@ describe("contour editing", () => {
   it("refuses a closed ring whose edges cross", () => {
     const bowtie = { vertices: [SQUARE[0], SQUARE[2], SQUARE[1], SQUARE[3]], closed: true, selected: null };
     expect(drawReady(bowtie)).toBe(false);
+    expect(drawRefusal(bowtie)).toBe("Two edges cross. Move a corner.");
+  });
+});
+
+describe("zone size cap", () => {
+  // A square of 0.3 degrees near the equator encloses about 1,100 km², of 0.28 about 960 km².
+  const square = (side: number): Position[] => [
+    [30, 10],
+    [30 + side, 10],
+    [30 + side, 10 + side],
+    [30, 10 + side],
+  ];
+
+  it("refuses a ring over the cap while it is drawn, before it closes", () => {
+    const open = { vertices: square(0.3).slice(0, 3), closed: false, selected: null };
+    expect(drawRefusal(open)).toBeNull();
+    const wide = { vertices: square(0.3), closed: false, selected: null };
+    expect(zoneAreaKm2(wide.vertices)).toBeGreaterThan(MAX_ZONE_AREA_KM2);
+    expect(drawRefusal(wide)).toBe("A site covers at most 1,000 km². Move the corners closer.");
+    expect(drawReady({ ...wide, closed: true })).toBe(false);
+  });
+
+  it("takes a ring just under the cap", () => {
+    const ring = { vertices: square(0.28), closed: true, selected: null };
+    expect(drawRefusal(ring)).toBeNull();
+    expect(drawReady(ring)).toBe(true);
+  });
+
+  it("groups thousands in an area and names the cap in the form's requirement", () => {
+    expect(formatAreaKm2(230643.891)).toBe("230,643.89 km²");
+    expect(formatAreaKm2(0.8)).toBe("0.80 km²");
+    expect(CONTOUR_REQUIREMENT).toBe("A closed contour of at most 1,000 km² whose edges do not cross");
   });
 });

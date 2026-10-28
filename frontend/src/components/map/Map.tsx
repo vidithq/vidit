@@ -700,6 +700,8 @@ interface MapProps {
   embedded?: boolean;
   /** Ceiling for the `fitBounds` camera, for content smaller than a region (a site's zone). */
   fitMaxZoom?: number;
+  /** Opens a hovered pin's event card. Off where the pin is no stored event (a form's point). */
+  pinPreview?: boolean;
   /** Extra sources and layers, drawn under the event pins (see `useUnderEventPins`). */
   children?: ReactNode;
 }
@@ -880,6 +882,7 @@ export default function Map({
   onBoundsChange,
   embedded = false,
   fitMaxZoom = FIT_MAX_ZOOM,
+  pinPreview = true,
   children,
 }: MapProps) {
   const [mounted, setMounted] = useState(false);
@@ -934,7 +937,7 @@ export default function Map({
     // A tap fires one compatibility `mousemove` before its click, which would arm the timer, open
     // the card over the selected pin and fetch twice. A coarse pointer arms no preview: only the
     // clearing half runs. This is the single choke point for the layer `mousemove` and ring dot `onMouseEnter`.
-    const target = raw && isCoarsePointer() ? null : raw;
+    const target = raw && (isCoarsePointer() || !pinPreview) ? null : raw;
     if (previewTimerRef.current) {
       clearTimeout(previewTimerRef.current);
       previewTimerRef.current = null;
@@ -984,7 +987,7 @@ export default function Map({
         setPreviewEntry(entry);
       }
     }, PREVIEW_INTENT_MS);
-  }, []);
+  }, [pinPreview]);
   useEffect(
     () => () => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
@@ -1176,8 +1179,9 @@ export default function Map({
     <div
       className={className || ""}
       style={{ width: "100%", height: "100%", position: "relative" }}
-      // Read by the light-basemap tint in globals.css.
+      // Read by the light-basemap tint and the small-map credits in globals.css.
       data-basemap={brightness}
+      data-embedded={embedded || undefined}
     >
     <MapGL
       mapLib={guardedMaplibre}
