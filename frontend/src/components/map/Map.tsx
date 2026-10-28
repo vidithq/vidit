@@ -79,6 +79,7 @@ import type { MapSite } from "./SiteLayers";
 import { triangleSdf } from "./triangle";
 import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
 import { BasemapControl } from "./BasemapControl";
+import { BasemapFailureNotice } from "./BasemapFailureNotice";
 import { CoordinateGrid } from "./CoordinateGrid";
 import { GoToCoordinatesControl, goToPoint } from "./GoToCoordinatesControl";
 import type { CoordinatePair } from "@/lib/coordinates";
@@ -1226,6 +1227,7 @@ export default function Map({
       {process.env.NODE_ENV !== "production" && <DevMapHandle />}
       <TriangleImage />
       <BasemapStyle style={basemapStyle} />
+      <BasemapFailureNotice />
       <BasemapControl
         settings={basemap}
         adjustable={BASEMAP_PRESETS[presetId].adjustable}

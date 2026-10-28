@@ -163,6 +163,14 @@ describe.each(BASES)("buildViditStyle on the %s style", (brightness, base) => {
     );
   });
 
+  it("draws a region border at every zoom the tiles carry one", () => {
+    const regions = withRole(build(brightness, { regionBorders: true }), "region-border");
+    const oblast = { admin_level: 4, disputed: 0, maritime: 0 };
+    for (const zoom of [5, 6, 8, 12]) {
+      expect(regions.some((layer) => shows(layer, zoom, oblast)), `z${zoom}`).toBe(true);
+    }
+  });
+
   it("hides every road layer when roads are off", () => {
     const layers = build(brightness, { roads: false });
     for (const role of ["road", "minor-road", "road-label"]) {

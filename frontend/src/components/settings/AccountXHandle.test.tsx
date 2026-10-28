@@ -27,7 +27,8 @@ describe("AccountXHandle", () => {
 
     expect(await screen.findByText("@osint_hawk")).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByRole("button")).toBeNull();
+    // The only button is the label's help.
+    expect(screen.getByRole("button")).toHaveAccessibleName("What is the X handle for?");
   });
 
   it("says so when no handle is linked", async () => {

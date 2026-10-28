@@ -1,5 +1,7 @@
 import { MAP_SOURCES } from "@/components/map/mapSources";
 
+import { NOTIFICATION_KIND_COPY, type NotificationKind } from "./notifications";
+
 /** One concept's help: the tooltip `text`, the trigger's aria `label`, and the `sources` linked
  *  after the text, for a concept whose data comes from outside Vidit. */
 export interface HelpEntry {
@@ -7,6 +9,14 @@ export interface HelpEntry {
   label: string;
   sources?: readonly { name: string; href: string }[];
 }
+
+/** One concept per notification kind, its email switch's help: the kind's `setting` sentence. */
+const NOTIFICATION_HELP = Object.fromEntries(
+  Object.entries(NOTIFICATION_KIND_COPY).map(([kind, { label, setting }]) => [
+    `notification_${kind}`,
+    { text: setting, label: `What is the ${label} notification?` },
+  ]),
+) as Record<`notification_${NotificationKind}`, HelpEntry>;
 
 const { openFreeMap, openStreetMap, openMapTiles } = MAP_SOURCES;
 const VIDIT_STYLE = [openFreeMap, openStreetMap] as const;
@@ -166,6 +176,39 @@ export const FIELD_HELP = {
     text: "The last org manager cannot leave, be removed or become a member. Make another member org manager first.",
     label: "Why can the last org manager not leave?",
   },
+  x_handle: {
+    text: "The Vidit bot and the archive import credit posts from this handle to your account. An admin links it.",
+    label: "What is the X handle for?",
+  },
+  invite_analysts: {
+    text: "Each invite code is single use and bound to the invitee's X handle, which their new account links on sign-up. Share the link with the analyst you invite.",
+    label: "How do invite codes work?",
+  },
+  display_settings: {
+    text: "Saved to your account and applied wherever you sign in.",
+    label: "Where do display settings apply?",
+  },
+  help_tooltips: {
+    text: "The small ? icons that explain each field and section. Turn them off once you know the form.",
+    label: "What are help tooltips?",
+  },
+  light_mode: {
+    text: "Switches the interface and the map to a light background. Dark by default.",
+    label: "What does light mode change?",
+  },
+  accent_color: {
+    text: "The highlight color for buttons, links, selected states and map points.",
+    label: "What is the accent color?",
+  },
+  notification_settings: {
+    text: "Every notification appears in your Notifications feed. Each switch chooses whether Vidit also sends that kind to your email address.",
+    label: "Which notifications reach my email?",
+  },
+  approval_request_audience: {
+    text: "Who can ask you to approve their geolocation.",
+    label: "Who can send me approval requests?",
+  },
+  ...NOTIFICATION_HELP,
   sites_layer: {
     text: "Places analysts monitor through dated satellite imagery, such as bases, depots and radars. Below zoom 10 each site is a square; from zoom 10 the map draws its zone. A zone turns amber when its latest linked event shows damage and red for destruction. Each zone is the one valid at the end of the event date window.",
     label: "What is the sites layer?",
@@ -288,7 +331,7 @@ export const FIELD_HELP = {
     sources: [MAP_SOURCES.terrainTiles],
   },
   map_disputed_borders: {
-    text: "Dashed, a disputed country border reads apart from a settled one.",
+    text: "The map data, not Vidit, decides which country borders are disputed. On, those borders draw dashed; off, they draw solid like any other border.",
     label: "What are dashed disputed borders?",
     sources: OPENSTREETMAP_LAYER,
   },

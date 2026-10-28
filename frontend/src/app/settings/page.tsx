@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { PASSWORD_MAX_BYTES, validatePasswordChange } from "@/lib/auth";
 import { useMutation } from "@/hooks/useMutation";
@@ -19,7 +20,10 @@ import {
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
-import { ToggleRow } from "@/components/ui/ToggleRow";
+import { META_LINE } from "@/components/ui/styles";
+import { PreferenceText, ToggleRow } from "@/components/ui/ToggleRow";
+import type { Concept } from "@/lib/fieldHelp";
+import { useFlash } from "@/hooks/useFlash";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { usePalette } from "@/hooks/usePalette";
@@ -47,13 +51,18 @@ const SAVE_FAILED = "Could not save to your account. Try again.";
 function NotificationsCard() {
   const { data, error } = useApiResource<UserPreferences>(PREFERENCES_PATH);
   const [saved, setSaved] = useState<UserPreferences | null>(null);
+  const confirm = useFlash();
+  const onSuccess = (prefs: UserPreferences) => {
+    setSaved(prefs);
+    confirm.flash();
+  };
   const toggle = useMutation(
     (kind: NotificationKind, on: boolean) => updatePreferences({ notifications: { [kind]: on } }),
-    { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
+    { fallback: SAVE_FAILED, onSuccess }
   );
   const audience = useMutation(
     (value: ApprovalRequestAudience) => updatePreferences({ approval_request_audience: value }),
-    { fallback: SAVE_FAILED, onSuccess: (prefs) => setSaved(prefs) }
+    { fallback: SAVE_FAILED, onSuccess }
   );
   const currentAudience =
     (saved ?? data)?.approval_request_audience ?? APPROVAL_REQUEST_AUDIENCE_DEFAULT;
@@ -65,37 +74,55 @@ function NotificationsCard() {
 
   return (
     <Card>
-      <div className="space-y-1">
-        <SectionEyebrow title="Notifications" margin="none" />
-        <p className="text-xs text-neutral-500">
-          Every notification appears in your Notifications feed. The switches below choose
-          which kinds Vidit also sends to your email address.
-        </p>
-      </div>
+      <SettingsHeading title="Notifications" concept="notification_settings" saved={confirm.on} />
       {(error || toggle.error || audience.error) && (
         <div className={FORM_ERROR_BANNER}>{toggle.error ?? audience.error ?? error}</div>
       )}
       <ChoiceRow
         label="Accept approval requests from"
-        description="Who can ask you to approve their geolocation."
+        concept="approval_request_audience"
         options={APPROVAL_REQUEST_AUDIENCE_OPTIONS}
         value={currentAudience}
         onChange={(value) => void audience.run(value)}
       />
-      {rows.map((row) => {
-        const copy = NOTIFICATION_KIND_COPY[row.kind];
-        return (
-          <ToggleRow
-            key={row.kind}
-            label={copy.label}
-            description={`${copy.setting} Default: ${row.default ? "on" : "off"}.`}
-            on={row.email}
-            onToggle={() => void toggle.run(row.kind, !row.email)}
-            className="border-t border-neutral-800 pt-4"
-          />
-        );
-      })}
+      {rows.map((row) => (
+        <ToggleRow
+          key={row.kind}
+          label={NOTIFICATION_KIND_COPY[row.kind].label}
+          concept={`notification_${row.kind}`}
+          variant="setting"
+          on={row.email}
+          onToggle={() => void toggle.run(row.kind, !row.email)}
+          className="border-t border-neutral-800 pt-4"
+        />
+      ))}
     </Card>
+  );
+}
+
+/** A card's heading and its `?`, with *Saved* beside it for a moment after one of its settings
+ *  reaches the account. */
+function SettingsHeading({
+  title,
+  concept,
+  saved,
+}: {
+  title: string;
+  concept: Concept;
+  saved: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <SectionEyebrow title={title} concept={concept} margin="none" />
+      <span role="status" className={META_LINE}>
+        {saved && (
+          <>
+            <Check size={12} aria-hidden />
+            Saved
+          </>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -111,10 +138,11 @@ export default function SettingsPage() {
   const helpHidden = useHelpHidden();
   const palette = usePalette();
   const theme = useTheme();
+  const displaySaved = useFlash();
   const display = useMutation(
     (change: Parameters<typeof saveDisplay>[1]) =>
       user ? saveDisplay(user.id, change) : Promise.resolve(undefined),
-    { fallback: SAVE_FAILED }
+    { fallback: SAVE_FAILED, onSuccess: displaySaved.flash }
   );
 
   const changePassword = useMutation(
@@ -192,32 +220,23 @@ export default function SettingsPage() {
         <InviteAnalystsCard />
 
         <Card>
-          <div className="space-y-1">
-            <SectionEyebrow title="Display" margin="none" />
-            <p className="text-xs text-neutral-500">
-              Saved to your account and applied wherever you sign in.
-            </p>
-          </div>
+          <SettingsHeading title="Display" concept="display_settings" saved={displaySaved.on} />
           {display.error && (
             <div className={FORM_ERROR_BANNER}>{display.error}</div>
           )}
           {/* `<ToggleRow>` makes the whole row the switch, so a thumb on the label still toggles. The divider is this card's. */}
           <ToggleRow
             label="Show help tooltips"
-            description={
-              <>
-                The small <span className="font-medium">?</span> icons that
-                explain each field and section. Turn them off once you know the
-                form.
-              </>
-            }
+            concept="help_tooltips"
+            variant="setting"
             on={!helpHidden}
             onToggle={() => display.run({ help_tooltips: helpHidden })}
           />
 
           <ToggleRow
             label="Light mode"
-            description="Switch the interface and map to a light background. Dark by default."
+            concept="light_mode"
+            variant="setting"
             on={theme === "light"}
             onToggle={() => display.run({ theme: theme === "light" ? "dark" : "light" })}
             className="border-t border-neutral-800 pt-4"
@@ -225,13 +244,7 @@ export default function SettingsPage() {
 
           {/* Stacks below `sm`: five 36px controls take 212px, leaving the label no room at 320px. */}
           <div className="flex max-sm:flex-col max-sm:items-start items-center justify-between gap-4 border-t border-neutral-800 pt-4">
-            <div>
-              <p className="text-sm text-neutral-200">Accent color</p>
-              <p className="text-xs text-neutral-500">
-                The highlight color for buttons, links, selected states, and map
-                points.
-              </p>
-            </div>
+            <PreferenceText label="Accent color" concept="accent_color" />
             <SwatchPicker
               aria-label="Accent color"
               options={PALETTES.map((p) => ({ value: p.id, label: p.label, color: p.swatch }))}
@@ -244,12 +257,7 @@ export default function SettingsPage() {
         <NotificationsCard />
 
         <Card>
-          <div className="space-y-1">
-            <SectionEyebrow title="Change password" margin="none" />
-            <p className="text-xs text-neutral-500">
-              Update the password used to sign in to Vidit.
-            </p>
-          </div>
+          <SectionEyebrow title="Change password" margin="none" />
 
           <form onSubmit={handleSubmit} noValidate className="space-y-3">
             <IncompleteFormAnnouncer
