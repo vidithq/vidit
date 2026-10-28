@@ -75,7 +75,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
-- On a profile, Insights loses its helper lines and the Coverage count, so each figure shows once; Follow and Unfollow move the followers count at once and put it back on an error; Edit profile shows the avatar once and a refused website reads under its field ([#798](https://github.com/vidithq/vidit/pull/798)).
+- On a profile, Insights loses its helper lines and the Coverage count, so each figure shows once; Follow and Unfollow move the followers count at once and put it back on an error; Edit profile shows the avatar once and a refused website under its field ([#798](https://github.com/vidithq/vidit/pull/798)).
 - A collection's owner no longer sees Report on their own collection ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a phone, the pinned actions and the menu button sit on one full-width bar once the page scrolls, so fields and lists no longer show between them ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a wide screen, the pinned actions stay on one line, such as Approve, Accept and Decline on an invitation ([#794](https://github.com/vidithq/vidit/pull/794)).
