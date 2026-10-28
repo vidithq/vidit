@@ -24,6 +24,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- A satellite or aircraft source no longer shows amber imagery warnings on the event page, the map side panel, a site page or the source forms; the `?` help of Links and Captured says what lets a reader reopen the image ([#771](https://github.com/vidithq/vidit/pull/PRNUM)).
 - A collection's page and its create and edit forms share the event page's layout: the description and events on the left, 20 at a time, and the map with the current event and the details on the right, in view while you scroll ([#732](https://github.com/vidithq/vidit/pull/754)).
 - The Submit page opens on six tiles across the full width: Geolocation, Request, From an X post, Bulk import, Site and Collection, each with a drawing of the result, when to pick it and what it needs ([#728](https://github.com/vidithq/vidit/pull/752)).
 - The filter panel groups its filters under labels (Layers, Event, Source and people), and filters that belong together share one row, so the map shows five rows for its eleven filters; search, the Requests board and the feed group the same way ([#750](https://github.com/vidithq/vidit/pull/750)).

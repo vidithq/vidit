@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { apiFetch } from "@/lib/api";
@@ -66,8 +66,8 @@ afterEach(() => {
 });
 
 describe("SourceImageryCheck", () => {
-  it("checks a satellite source and shows each reopenable provider's help and credit", async () => {
-    render(<SourceImageryCheck draft={draft({ kind: "satellite" })} name="Source 1" />);
+  it("checks a satellite source and shows each provider's help and credit", async () => {
+    render(<SourceImageryCheck draft={draft({ kind: "satellite" })} />);
     await settle();
     const [path, init] = (apiFetch as unknown as Mock).mock.calls[0];
     expect(path).toBe("/sources/check");
@@ -84,35 +84,21 @@ describe("SourceImageryCheck", () => {
     expect(
       screen.getByText("Credit: Google and every provider listed in Data attribution")
     ).toBeInTheDocument();
-    // A provider no reader can reopen speaks through its warning alone.
-    expect(screen.queryByText("Google Maps")).toBeNull();
+    expect(screen.getByText("Google Maps")).toBeInTheDocument();
+    expect(screen.getByText(CHECK.links[1].provider!.help)).toBeInTheDocument();
+    expect(screen.queryByText(/^Credit: $/)).toBeNull();
   });
 
-  it("lists the warnings, each led by its link's host", async () => {
-    render(<SourceImageryCheck draft={draft({ kind: "aircraft" })} name="Source 1" />);
+  it("shows no warning", async () => {
+    render(<SourceImageryCheck draft={draft({ kind: "aircraft" })} />);
     await settle();
-    const list = screen.getByRole("list", { name: "Warnings of Source 1" });
-    const items = within(list).getAllByRole("listitem").map((li) => li.textContent);
-    expect(items).toEqual([
-      "earth.google.com: The link carries no imagery date.",
-      "google.com: Google Maps shows no capture date.",
-      "Give the capture date.",
-    ]);
-  });
-
-  it("drops the missing capture date warning where the form requires the field", async () => {
-    render(
-      <SourceImageryCheck draft={draft({ kind: "satellite" })} name="Source 1" captureRequired />
-    );
-    await settle();
-    const list = screen.getByRole("list", { name: "Warnings of Source 1" });
-    expect(within(list).queryByText("Give the capture date.")).toBeNull();
-    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.queryByText("The link carries no imagery date.")).toBeNull();
+    expect(screen.queryByText("Give the capture date.")).toBeNull();
   });
 
   it("runs no check for another kind", async () => {
     const { container } = render(
-      <SourceImageryCheck draft={draft({ kind: "drone" })} name="Source 1" />
+      <SourceImageryCheck draft={draft({ kind: "drone" })} />
     );
     await settle();
     expect(apiFetch).not.toHaveBeenCalled();
@@ -121,8 +107,8 @@ describe("SourceImageryCheck", () => {
 
   it("shows nothing when the check fails", async () => {
     (apiFetch as unknown as Mock).mockRejectedValue(new Error("down"));
-    render(<SourceImageryCheck draft={draft({ kind: "satellite" })} name="Source 1" />);
+    const { container } = render(<SourceImageryCheck draft={draft({ kind: "satellite" })} />);
     await settle();
-    expect(screen.queryByRole("list")).toBeNull();
+    expect(container.textContent).toBe("");
   });
 });

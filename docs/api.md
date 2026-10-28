@@ -708,7 +708,7 @@ A site source names one file, through `upload_id` or `media_id`, or none; both i
 
 ### Imagery warnings
 
-A source of kind `satellite` or `aircraft` carries `warnings`: what keeps a reader from reopening its image at its date, checked against the [imagery providers](imagery.md). Each warning is `{code, message, url}`; `url` names the link it is about, `null` the whole source, and `message` is the sentence the form shows. A warning never blocks a write or a publication of an event. A site's source is refused instead when no link reopens it ([`POST /sites/{id}/sources`](#post-sitesidsources)). Every other kind carries `[]`.
+A source of kind `satellite` or `aircraft` carries `warnings`: what keeps a reader from reopening its image at its date, checked against the [imagery providers](imagery.md). Each warning is `{code, message, url}`; `url` names the link it is about, `null` the whole source, and `message` is one sentence for the analyst. The Vidit frontend shows none of them. A warning never blocks a write or a publication of an event. A site's source is refused instead when no link reopens it ([`POST /sites/{id}/sources`](#post-sitesidsources)). Every other kind carries `[]`.
 
 | Code | Case |
 |---|---|
