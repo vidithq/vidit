@@ -642,8 +642,9 @@ def _snapshot(db: Session, site: Site) -> SiteSnapshot:
     )
 
 
-def _file_version(db: Session, *, site: Site, editor: User) -> None:
-    """File the live state of the locked ``site`` and move it to the next version.
+def _file_version(db: Session, *, site: Site, editor: User, note: str | None = None) -> None:
+    """File the live state of the locked ``site``, with the editor's ``note``, and move it to
+    the next version.
 
     Call it before any write to the state. Raises ``VersionLimitError`` past the event ceiling of
     versions. Staged, not committed.
@@ -657,6 +658,7 @@ def _file_version(db: Session, *, site: Site, editor: User) -> None:
             site_id=site.id,
             version_no=site.version_no,
             edited_by_id=editor.id,
+            note=note,
             snapshot=_snapshot(db, site).model_dump(mode="json"),
         )
     )
@@ -965,7 +967,7 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
             raise SiteNothingChangedError(f"Nothing changed since version {locked.version_no}.")
 
         if state_moves:
-            _file_version(db, site=locked, editor=user)
+            _file_version(db, site=locked, editor=user, note=body.note)
         locked.name, locked.kind = body.name, body.kind
         added = [
             _stage_site_source(db, site_id=site.id, author=user, body=source)
@@ -1201,6 +1203,7 @@ def build_version_reads(db: Session, rows: Sequence[SiteVersion]) -> list[SiteVe
                 version_no=row.version_no,
                 edited_by=_actor(row.edited_by),
                 created_at=row.created_at,
+                note=row.note,
                 name=snapshot.name,
                 kind=snapshot.kind,
                 zone=current.zone,

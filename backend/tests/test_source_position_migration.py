@@ -12,7 +12,7 @@ from app.config import settings
 from tests.conftest import _admin_conn, _db_name, _swap_db
 
 REVISION = "b6d2f8a4c0e7"
-DOWN_REVISION = "0df564d5f320"
+DOWN_REVISION = "b7e2d9c4a1f6"
 
 
 def _alembic(url: str, *args: str) -> None:

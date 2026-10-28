@@ -417,7 +417,7 @@ export function siteVersion(
     view,
     editor: producedBy ? producedBy.edited_by : first ? current.owner : null,
     createdAt: producedBy ? producedBy.created_at : first ? current.created_at : null,
-    note: null,
+    note: producedBy?.note ?? null,
     redacted: false,
     changed: view && previous ? siteChangedFields(view, previous) : null,
   };

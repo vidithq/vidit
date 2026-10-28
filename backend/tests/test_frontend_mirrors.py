@@ -24,6 +24,7 @@ from app.models.source import (
 from app.schemas.collection import MAX_CREATE_EVENTS
 from app.schemas.event import CLOSE_REASON_MAX_LENGTH, VERSION_NOTE_MAX_LENGTH
 from app.schemas.report import DETAILS_MAX_LENGTH
+from app.schemas.site import MAX_ZONE_AREA_KM2
 from app.services.event_filters import STATUSES
 from app.services.events import InvalidCoordinatesError, validate_coordinates
 from app.services.geolocator_credit import MAX_EVENT_GEOLOCATORS
@@ -80,6 +81,7 @@ def _strings(path: str, name: str) -> list[str]:
         ("lib/geolocatorCredit.ts", "MAX_EVENT_GEOLOCATORS", MAX_EVENT_GEOLOCATORS),
         ("lib/collections.ts", "BULK_ADD_MAX_EVENTS", MAX_CREATE_EVENTS),
         ("lib/mediaTypes.ts", "MAX_GIF_FRAMES", MAX_GIF_FRAMES),
+        ("lib/siteZone.ts", "MAX_ZONE_AREA_KM2", MAX_ZONE_AREA_KM2),
     ],
 )
 def test_numeric_caps_match(path: str, name: str, backend: int) -> None:

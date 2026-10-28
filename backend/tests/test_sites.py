@@ -235,13 +235,13 @@ def test_create_site_with_its_first_source_and_contour(users):
 
 def test_a_zone_over_the_size_caps_is_refused_wherever_a_contour_is_accepted(users):
     owner = users()
-    # Half a side of 0.5 degrees is about 12,000 km2; 0.44 is about 9,400 km2.
-    too_large = _square(0.5, lng=LNG + 0.9)
+    # Half a side of 0.15 degrees is about 1,090 km2; 0.14 is about 950 km2.
+    too_large = _square(0.15, lng=LNG + 0.9)
     too_wide = {
         "type": "Polygon",
         "coordinates": [[[-90, LAT], [90, LAT], [90, LAT + 0.001], [-90, LAT + 0.001], [-90, LAT]]],
     }
-    just_under = _square(0.44, lng=LNG + 0.9)
+    just_under = _square(0.14, lng=LNG + 0.9)
 
     site = _create_site(owner, _square(0.01, lng=LNG + 0.9))
     source_id = site["sources"][0]["id"]
@@ -506,6 +506,7 @@ def test_the_owner_saves_one_version_and_the_version_is_read_in_full(db, users):
     assert stale.status_code == 409
     assert _code(stale) == "version_mismatch"
     assert _save(owner, site["id"], contours=[{"zone": None}]).status_code == 422
+    assert _save(owner, site["id"], name="Depot South", note="x" * 281).status_code == 422
 
     # One save: the record, a new source and a contour drawn on it.
     saved = _save(
@@ -515,6 +516,7 @@ def test_the_owner_saves_one_version_and_the_version_is_read_in_full(db, users):
         kind="depot",
         added_sources=[_source("2025-06-01", note="After the fire")],
         contours=[{"added_source": 0, "zone": _square(0.02, lat=LAT + 0.2)}],
+        note="  Renamed after the fire ",
     )
     assert saved.status_code == 200, saved.text
     body = saved.json()
@@ -529,6 +531,7 @@ def test_the_owner_saves_one_version_and_the_version_is_read_in_full(db, users):
     (version,) = db.query(SiteVersion).filter(SiteVersion.site_id == site["id"]).all()
     assert version.version_no == 1
     assert version.edited_by_id == owner.id
+    assert version.note == "Renamed after the fire"
     assert version.snapshot == {
         "name": "Depot North",
         "kind": "airbase",
@@ -538,6 +541,7 @@ def test_the_owner_saves_one_version_and_the_version_is_read_in_full(db, users):
     (v1,) = _versions(site["id"])
     assert (v1["version_no"], v1["name"], v1["kind"]) == (1, "Depot North", "airbase")
     assert v1["edited_by"]["id"] == str(owner.id)
+    assert v1["note"] == "Renamed after the fire"
     assert [source["id"] for source in v1["sources"]] == [first_source]
     assert [contour["id"] for contour in v1["contours"]] == [site["contour_id"]]
     assert v1["contour_id"] == site["contour_id"]

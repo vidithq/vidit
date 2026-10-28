@@ -182,7 +182,7 @@ describe("eventPanelContent", () => {
       "href",
       "https://t.me/channel/12345"
     );
-    expect(within(first).getByText("Posted 1 Jun 2026, 10:05 UTC")).toBeInTheDocument();
+    expect(within(first).getByText("t.me · 1 Jun 2026, 10:05 UTC")).toBeInTheDocument();
     expect(
       within(first).getByRole("link", { name: "Wayback Machine copy of source 1, link 1, t.me" })
     ).toHaveAttribute("href", "https://web.archive.org/web/2026/https://t.me/channel/12345");
@@ -384,7 +384,7 @@ describe("eventPanelContent", () => {
     expect(screen.getByText("Event time")).toBeInTheDocument();
     expect(screen.getByText("14:30 UTC")).toBeInTheDocument();
     // A null date reads as Unknown, not an empty cell.
-    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(screen.getByText("Event date").parentElement).toHaveTextContent("Unknown");
   });
 
   it("omits the Event time row when no time is set", () => {

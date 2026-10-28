@@ -1,7 +1,7 @@
 """store the order of an event's sources
 
 Revision ID: b6d2f8a4c0e7
-Revises: 0df564d5f320
+Revises: b7e2d9c4a1f6
 Create Date: 2026-10-28 20:00:00.000000
 
 ``sources.position`` holds an event's source's place in its list, as the last write posted it.
@@ -16,7 +16,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b6d2f8a4c0e7"
-down_revision: Union[str, None] = "0df564d5f320"
+down_revision: Union[str, None] = "b7e2d9c4a1f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -5578,7 +5578,8 @@ export interface components {
         /**
          * SiteVersionCreate
          * @description Body of ``POST /sites/{id}/versions``: the record, the sources to add and to remove, the
-         *     contour changes, and your events linked to the site (``null`` leaves the links as they are).
+         *     contour changes, your events linked to the site (``null`` leaves the links as they are), and
+         *     the optional note filed with the version the edit supersedes.
          */
         SiteVersionCreate: {
             /** Added Sources */
@@ -5594,6 +5595,8 @@ export interface components {
             kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
             /** Name */
             name: string;
+            /** Note */
+            note?: string | null;
             /** Removed Source Ids */
             removed_source_ids?: string[];
             /** Version No */
@@ -5646,6 +5649,8 @@ export interface components {
             last_source: components["schemas"]["SiteLastSourceRead"] | null;
             /** Name */
             name: string;
+            /** Note */
+            note: string | null;
             /** Sources */
             sources: components["schemas"]["SiteSourceRead"][];
             /** Version No */
