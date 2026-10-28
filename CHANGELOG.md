@@ -67,6 +67,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- The search field's placeholder fits on a phone, search result cards no longer leave an empty band under their details, and an empty collection shows its icon in the Add to collection picker instead of a cramped *no media* ([#789](https://github.com/vidithq/vidit/pull/789)).
+- The API reference now marks a collection's `title` and `description` as required on create, with their limits, and lists a missing field among the 422 causes ([#783](https://github.com/vidithq/vidit/pull/783)).
 - Search finds an analyst's work by their handle: on All and Events, a word that is an analyst's username lists the events credited to them, the other words narrow those events, and the Analysts group keeps the analyst ([#769](https://github.com/vidithq/vidit/pull/769)).
 - The event edit and submit forms no longer scroll sideways when the tag field suggests more tags than fit on its line ([#775](https://github.com/vidithq/vidit/pull/776)).
 - A Telegram post whose text holds a custom emoji now imports with its photo instead of the date alone ([#697](https://github.com/vidithq/vidit/pull/697)).

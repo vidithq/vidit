@@ -443,7 +443,7 @@ function SearchPageBody() {
           icon={<SearchIcon size={14} />}
           value={queryInput}
           onChange={(e) => setQueryInput(e.target.value)}
-          placeholder="Try a location, an analyst handle, or a keyword from a title…"
+          placeholder="Place, analyst or keyword"
           autoFocus
         />
 
@@ -685,6 +685,7 @@ function EventResult({ hit, selection }: { hit: SearchEventHit; selection: Searc
     <SelectableHit hit={hit} selection={selection}>
       <EntityCard
         variant="compact"
+        uniformHeight={false}
         detailHref={eventHref(hit.id)}
         title={<Highlighted value={hit.title_highlight} />}
         titleText={hit.title}
@@ -704,6 +705,7 @@ function RequestResult({ hit }: { hit: SearchRequestHit }) {
   return (
     <EntityCard
       variant="compact"
+      uniformHeight={false}
       detailHref={requestHref(hit.id)}
       title={<Highlighted value={hit.title_highlight} />}
       titleText={hit.title}

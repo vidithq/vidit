@@ -2197,7 +2197,13 @@ Open a collection, holding the events you pick.
 }
 ```
 
-`event_ids` is optional and defaults to empty. Repeated ids collapse to one membership, and more than 500 ids is a 422. Each id runs the checks of [`PUT /collections/{id}/events/{event_id}`](#put-collectionsideventsevent_id) in the same transaction: a refusal on any id fails the whole create.
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `title` | string | yes | 1 to 255 characters after surrounding whitespace is stripped. |
+| `description` | string | yes | HTML, sanitized on the [rich text](#rich-text) rules. Its plain-text projection holds 1 to 500 characters. |
+| `event_ids` | array of UUIDs | no | Defaults to empty. |
+
+A body without `title` or without `description` is a 422. Repeated ids collapse to one membership, and more than 500 ids is a 422. Each id runs the checks of [`PUT /collections/{id}/events/{event_id}`](#put-collectionsideventsevent_id) in the same transaction: a refusal on any id fails the whole create.
 
 **Response 201:** the new [`CollectionRead`](#get-collectionsid).
 
@@ -2208,7 +2214,7 @@ Open a collection, holding the events you pick.
 | 403 | One of `event_ids` does not credit you |
 | 404 | `event_not_found`: an id no event carries |
 | 409 | `event_not_collectable`: an event's state is not one a collection shows |
-| 422 | Title empty or over 255 characters; `description` not a string; or more than 500 `event_ids` |
+| 422 | `title` or `description` missing; title empty or over 255 characters; `description` not a string; or more than 500 `event_ids` |
 
 ---
 
@@ -2297,7 +2303,7 @@ Write your collection's title and description. Owner only. Both fields are requi
 | 400 | `invalid_description` |
 | 403 | Not your collection |
 | 404 | `collection_not_found` |
-| 422 | Title empty or over 255 characters, or `description` not a string |
+| 422 | `title` or `description` missing; title empty or over 255 characters; or `description` not a string |
 
 ---
 
