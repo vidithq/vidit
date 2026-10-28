@@ -277,10 +277,13 @@ export function TagChips({
       />
       {create.error && <p className="text-xs text-red-400">{create.error}</p>}
       {offered.length > 0 && (
+        // The clipped chips must not widen the page: `relative` makes the row clip their absolute
+        // `sr-only` text, and `contain-inline-size` keeps the unwrapped row out of the min-content
+        // width of an auto grid track or a block around it.
         <div
           role="group"
           aria-label={owner ? `Suggested tags for ${owner}` : "Suggested tags"}
-          className="flex gap-2 overflow-hidden whitespace-nowrap"
+          className="relative flex gap-2 overflow-hidden whitespace-nowrap contain-inline-size"
         >
           {offered.map((tag) => (
             <Pill key={tag.id} onClick={() => adopt(tag)} icon={<Plus size={12} aria-hidden />}>

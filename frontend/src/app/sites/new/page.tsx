@@ -12,7 +12,6 @@ import { PageColumns, PageLoading } from "@/components/ui/PageShell";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import { SiteKindCard, SiteNameField } from "@/components/sites/SiteFormFields";
 import { SiteSourceEditor, SiteWriteActions, useSiteSourceDraft } from "@/components/sites/SiteSourceEditor";
-import { SiteLinksField, linkPayload, type DraftLink } from "@/components/sites/SiteLinksField";
 import { ZoneEditor, useDrawHistory } from "@/components/sites/ZoneEditor";
 import { useSitesInView } from "@/components/sites/useSitesInView";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -76,8 +75,8 @@ function OverlapWarning({ overlaps }: { overlaps: SiteOverlap[] }) {
 
 /**
  * Creates a site, on the site page's frame: the name typed in the page title like an event form's
- * Title, the write pinned top right, the Sources section with the first source then the Linked
- * events block with the creator's events in the main column, then the side column's Location
+ * Title, the write pinned top right, the Sources section with the first source in the main
+ * column, then the side column's Location
  * section, the contour drawn on the map, and its Details section, the kind. Below `lg` the side
  * column follows the main column, the site page's order. A contour that shares area with an
  * existing site raises a warning naming both shares. One `POST /sites` writes it all.
@@ -89,7 +88,6 @@ export default function NewSitePage() {
   const history = useDrawHistory(EMPTY_DRAW);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<SiteKind | "">("");
-  const [links, setLinks] = useState<DraftLink[]>([]);
   const source = useSiteSourceDraft();
   const [overlaps, setOverlaps] = useState<SiteOverlap[]>([]);
   const [attempt, setAttempt] = useState(0);
@@ -129,7 +127,6 @@ export default function NewSitePage() {
         kind: kind as SiteKind,
         contour: zone!,
         source: source.payload(),
-        event_links: linkPayload(links),
       }),
     {
       fallback: "The site was not created. Try again.",
@@ -176,7 +173,6 @@ export default function NewSitePage() {
               <SourcesRow count={1} invalid={flagged && source.missing.length > 0}>
                 <SiteSourceEditor state={source} flagged={flagged} name={sourceName(0)} />
               </SourcesRow>
-              <SiteLinksField links={links} onChange={setLinks} author={user} />
             </>
           }
           side={
