@@ -1983,7 +1983,9 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | `taiz OR taizz` | Either word. |
 | `hezbollah -drone` | `hezbollah`, without `drone`. |
 
-Matching is case-insensitive and reads whole words through the `simple` dictionary: no stemming, so `drone` and `drones` are different words, and place names and handles match as typed.
+Matching is case-insensitive and folds accents, so `cafe` finds `Café` and `Hézbollah` finds `Hezbollah`. It reads words through the `simple` dictionary with no stemming: `drone` and `drones` are different words, and place names and handles match as typed.
+
+The last word of `q` also matches as a prefix, so a word you are still typing finds results: `zapor` finds `Zaporizhzhia`, and `osint_an` finds the analyst `osint_analyst`. This applies when the last word holds 3 letters or digits or more and is neither quoted, excluded with `-`, nor `OR`. A word that matches whole ranks above a word it only begins.
 
 **Rules.**
 
@@ -2000,6 +2002,7 @@ Matching is case-insensitive and reads whole words through the `simple` dictiona
 - Ranking is `ts_rank` descending, then `created_at` descending, then `id` descending. In browse mode every row ranks equal, so the order is newest first.
 - The geolocations group pages by cursor. `geolocations_cursor` is set when another page holds at least one row, and `null` on the last page. To read the next page, repeat the request with `type=geolocation` and `cursor` set to that value. The cursor encodes the last row's position in the ranking, so a walk never repeats or skips a row. The other groups return their first `limit` rows only.
 - Every group excludes soft-deleted rows.
+- When every group is empty, no filter is active and no `cursor` is sent, `suggestion` may hold a respelling of `q` that finds results. Each word that no visible event title and no live username holds is replaced by the closest one that does, by trigram similarity (`pg_trgm`, at least 0.35): `Khan Younis` suggests `Khan Yunis`. A word that names an analyst is spelled as their username. `OR`, excluded words, quotes and punctuation stay as typed. `suggestion` is `null` when no word has a close match, or when the respelling finds nothing either.
 
 **Highlight markers:** each event, user and organization hit carries one or more `*_highlight` fields with STX (`U+0002`) / ETX (`U+0003`) control bytes around matched fragments. JSON encodes them as `\u0002` / `\u0003`. The frontend (`lib/search.ts::splitHighlights`) splits on those bytes and wraps the inner segments in `<mark>`. No raw HTML crosses the wire.
 
@@ -2060,6 +2063,7 @@ Matching is case-insensitive and reads whole words through the `simple` dictiona
   ],
   "total": { "geolocations": 1, "requests": 1, "collections": 1, "users": 1, "organizations": 1 },
   "geolocations_cursor": null,
+  "suggestion": null,
   "query": "kharkiv",
   "type": "all"
 }

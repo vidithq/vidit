@@ -398,6 +398,12 @@ function SearchPageBody() {
     setTypeFilter(t);
   };
 
+  // A suggestion replaces the query at once, without waiting out the typing debounce.
+  const respell = (q: string) => {
+    setQueryInput(q);
+    setCommitted({ q, values, dates });
+  };
+
   const showGroup = (
     group: "geolocation" | "request" | "collection" | "user" | "organization"
   ): boolean => {
@@ -549,7 +555,20 @@ function SearchPageBody() {
               <> for <span className="text-neutral-300">&ldquo;{activeQuery.trim()}&rdquo;</span></>
             )}
             {hasActiveFilters && <> with the active filters</>}.
-            {typeFilter !== "all" && !hasActiveFilters && (
+            {results.suggestion && (
+              <>
+                {" "}Did you mean{" "}
+                <button
+                  type="button"
+                  onClick={() => respell(results.suggestion ?? "")}
+                  className={TEXT_LINK}
+                >
+                  {results.suggestion}
+                </button>
+                ?
+              </>
+            )}
+            {typeFilter !== "all" && !hasActiveFilters && !results.suggestion && (
               <>
                 {" "}
                 <button
