@@ -8,7 +8,7 @@ import { CollectionCover } from "@/components/collections/CollectionCover";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
-import type { CollectionCoverTile } from "@/lib/collections";
+import { CollectionIcon, type CollectionCoverTile } from "@/lib/collections";
 
 /** Past this many collections the picker offers a field that narrows them by title. */
 const FIND_FROM = 6;
@@ -23,8 +23,18 @@ const NEW_COLLECTION = (
 /** The row padding both pickers give their `<ActionRow>` or `<ToggleRow>`. */
 export const PICKER_ROW = "px-2 py-1.5";
 
-/** A row's lead picture: the collection's first cover tile as a 40px square. */
+/** A row's lead picture: the collection's first cover tile as a 40px square, or the collection
+ *  icon on an empty one, where the "no media" label would wrap. */
 export function PickerCover({ cover }: { cover: CollectionCoverTile[] }) {
+  if (cover.length === 0) {
+    return (
+      <div
+        className="flex size-10 shrink-0 items-center justify-center rounded-md bg-neutral-800 text-neutral-600"
+      >
+        <CollectionIcon size={16} strokeWidth={1.8} aria-hidden />
+      </div>
+    );
+  }
   return <CollectionCover cover={cover.slice(0, 1)} className="aspect-square size-10" />;
 }
 
