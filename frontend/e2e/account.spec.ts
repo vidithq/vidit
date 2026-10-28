@@ -66,6 +66,22 @@ test.describe("settings", () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  // The pill is drawn over the row-wide switch button, so a click on it has to reach that button.
+  // jsdom does no hit testing, so only a browser can tell.
+  test("toggles a switch from a click on its pill", async ({ context, page }) => {
+    await grantSession(context);
+    await mockApi(page);
+    await page.goto("/settings");
+
+    const tooltips = page.getByRole("switch", { name: "Show help tooltips" });
+    await expect(tooltips).toHaveAttribute("aria-checked", "true");
+    const pill = tooltips.locator("xpath=..").locator("span[aria-hidden=true]").last();
+    const box = (await pill.boundingBox())!;
+    await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
+
+    await expect(tooltips).toHaveAttribute("aria-checked", "false");
+  });
+
   test("flags every blank password field at once instead of a native bubble", async ({
     context,
     page,

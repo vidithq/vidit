@@ -212,6 +212,8 @@ class EventRead(BaseModel):
     geolocated_at: datetime | None
     # NULL until the event is closed.
     closed_at: datetime | None
+    # Set only on a withheld event, which only an admin reads.
+    hidden_at: datetime | None
     # Whether any source is graphic (``Source.is_graphic``); derived, never stored.
     is_graphic: bool
     # See ``models.event.STATUS_*``.

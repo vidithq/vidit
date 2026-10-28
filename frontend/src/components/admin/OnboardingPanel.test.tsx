@@ -29,6 +29,33 @@ beforeEach(() => {
   api.apiFetchPage.mockResolvedValue({ items: [code], nextCursor: null });
 });
 
+const deletedCode = {
+  ...code,
+  status: "used",
+  used_at: "2026-10-02T00:00:00Z",
+  redeemer: {
+    user_id: "u1",
+    username: "ana",
+    email: "ana@example.org",
+    is_admin: false,
+    x_handle: null,
+    is_invite_minting_enabled: true,
+    archives_imported: 0,
+    bot_detection_count: 0,
+    detected_count: 0,
+    geolocated_count: 3,
+    last_seen_at: null,
+    deleted_at: "2026-10-20T10:00:00Z",
+  },
+};
+
+async function manageDeletedAccount() {
+  api.apiFetchPage.mockResolvedValue({ items: [deletedCode], nextCursor: null });
+  render(<OnboardingPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
+  fireEvent.click(screen.getByRole("button", { name: "Actions for ana" }));
+}
+
 async function openItem(name: string) {
   fireEvent.click(await screen.findByRole("button", { name: "More actions for abcdef" }));
   fireEvent.click(screen.getByRole("menuitem", { name }));
@@ -50,6 +77,58 @@ describe("<OnboardingPanel>", () => {
       }),
     );
     await waitFor(() => expect(api.apiFetchPage).toHaveBeenCalledTimes(2));
+  });
+
+  it("marks a soft-deleted account and offers only Restore and Hard delete", async () => {
+    await manageDeletedAccount();
+
+    expect(screen.getByText("Soft-deleted")).toBeInTheDocument();
+    expect(screen.getByText("Soft-deleted 20 Oct 2026, 10:00 UTC")).toBeInTheDocument();
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Restore",
+      "Hard delete",
+    ]);
+    expect(screen.queryByText("Can mint invite codes")).toBeNull();
+  });
+
+  it("restores a soft-deleted account from the confirm dialog", async () => {
+    api.apiFetch.mockResolvedValue({ user_id: "u1", username: "ana", restored_events: 3 });
+    await manageDeletedAccount();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Restore" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
+
+    await waitFor(() =>
+      expect(api.apiFetch).toHaveBeenCalledWith("/admin/users/u1/restore", { method: "POST" }),
+    );
+    expect(
+      await screen.findByText(
+        "Restored the account and 3 events. Link its X handle again if it had one.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("sums up what a hard delete erased", async () => {
+    api.apiFetch.mockResolvedValue({
+      user_id: "u1",
+      username: "ana",
+      mode: "hard",
+      deleted_at: null,
+      cascaded_geolocations: 3,
+      transferred_events: 1,
+      media_count: 7,
+    });
+    await manageDeletedAccount();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hard delete" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Hard delete" }));
+
+    expect(
+      await screen.findByText(
+        "Erased the account, 3 events and 7 storage objects. Handed 1 event to a co-geolocator.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.apiFetch).toHaveBeenCalledWith("/admin/users/u1?hard=true", { method: "DELETE" });
   });
 
   it("keeps the dialog open with the refusal when a delete fails", async () => {

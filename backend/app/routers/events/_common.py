@@ -284,6 +284,7 @@ def build_event_read(
         created_at=geo.created_at,
         geolocated_at=geo.geolocated_at,
         closed_at=geo.closed_at,
+        hidden_at=geo.hidden_at,
         is_graphic=geo.is_graphic,
         status=geo.status,
         version_no=geo.version_no,

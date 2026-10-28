@@ -9,7 +9,6 @@ import { useAdmin } from "@/contexts/AdminContext";
 import { useMutation } from "@/hooks/useMutation";
 import { setSiteModeration } from "@/lib/admin";
 import { apiFetch } from "@/lib/api";
-import { formatInstant } from "@/lib/format";
 import {
   contourOfSource,
   linkEventToSite,
@@ -32,8 +31,7 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { RemoveButton } from "@/components/ui/RemoveButton";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { cn } from "@/lib/cn";
+import { WithheldBanner } from "@/components/ui/WithheldBanner";
 import { LinkDialog } from "./LinkDialog";
 import { SatelliteSourcesOffer, fileOffered, useSatelliteOffer } from "./SatelliteSourcesOffer";
 import { removeSourceLabel, siteSourceMention } from "./SiteSourceBlock";
@@ -245,11 +243,7 @@ export function useSiteActions({
 
   const panels = (
     <>
-      {withheld && (
-        <p role="status" className={cn("rounded-lg px-4 py-3 text-sm", WARNING_CALLOUT)}>
-          Withheld since {formatInstant(site.hidden_at)}. Only admins read this site until it is restored.
-        </p>
-      )}
+      {site.hidden_at && <WithheldBanner since={site.hidden_at} noun="site" />}
       {!owner && report.panel}
       {dialog?.kind === "remove" && (
         <RemoveSourceDialog

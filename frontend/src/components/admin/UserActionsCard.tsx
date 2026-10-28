@@ -1,18 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { AtSign, Bot, Ellipsis, EyeOff, Trash2 } from "lucide-react";
+import { AtSign, Bot, Ellipsis, EyeOff, RotateCcw, Trash2 } from "lucide-react";
 
 import {
   deleteUser,
   purgeDetectedEvents,
+  restoreUser,
   setUserInviteMinting,
   setUserXHandle,
-  type AdminPurgeDetectedResponse,
   type AdminUser,
-  type AdminUserDeleteResponse,
 } from "@/lib/admin";
+import { formatInstant } from "@/lib/format";
 import { useMutation } from "@/hooks/useMutation";
+import type { UserOutcome } from "@/components/admin/ActionReceipt";
 import { FORM_ERROR_BANNER, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { Button } from "@/components/ui/Button";
@@ -22,33 +23,34 @@ import { Pill } from "@/components/ui/Pill";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 
 /** The fields the action card needs; `AdminUser` minus the list-only
- *  `created_at`, so the invite-list redeemer converts without inventing one. */
-type ActionableUser = Omit<AdminUser, "created_at">;
+ *  `created_at`, so the invite-list redeemer converts without inventing one. `deleted_at` is set
+ *  on a soft-deleted account, which only the invite list reaches. */
+type ActionableUser = Omit<AdminUser, "created_at"> & { deleted_at?: string | null };
 
-type DangerMode = "soft" | "hard" | "purge";
+type DangerMode = "soft" | "hard" | "purge" | "restore";
 
 const DANGER_LABELS: Record<DangerMode, string> = {
   soft: "Soft delete",
   hard: "Hard delete",
   purge: "Purge detected",
+  restore: "Restore",
 };
 
 /** One user's admin actions: X-handle link, invite minting switch, soft/hard delete, detections
  * purge. The link and the destructive actions sit in the card's action menu, and each destructive
- * one opens a `ConfirmDialog`. Shared by Manage-analysts search and the onboarding table. */
+ * one opens a `ConfirmDialog`. A soft-deleted account says so and offers only Restore and Hard
+ * delete. Shared by Manage-analysts search and the onboarding table. */
 export function UserActionsCard({
   user,
   detectedCount,
   onUpdated,
-  onDeleted,
-  onPurged,
+  onOutcome,
 }: {
   user: ActionableUser;
   /** Live detections, shown on the purge item when known. */
   detectedCount?: number;
   onUpdated: (u: AdminUser) => void;
-  onDeleted: (userId: string, response: AdminUserDeleteResponse) => void;
-  onPurged?: (response: AdminPurgeDetectedResponse) => void;
+  onOutcome: (outcome: UserOutcome) => void;
 }) {
   const [xHandle, setXHandle] = useState(user.x_handle ?? "");
   const [showXHandleForm, setShowXHandleForm] = useState(false);
@@ -78,37 +80,43 @@ export function UserActionsCard({
     },
   );
 
+  const finish = (outcome: UserOutcome) => {
+    setDangerMode(null);
+    onOutcome(outcome);
+  };
+
   const deleteMutation = useMutation(
     (hard: boolean) => deleteUser(user.id, { hard }),
     {
       fallback: "Failed to delete user",
-      onSuccess: (response) => {
-        setDangerMode(null);
-        onDeleted(user.id, response);
-      },
+      onSuccess: (data) => finish({ kind: "delete", data }),
     },
   );
 
   const purgeMutation = useMutation(() => purgeDetectedEvents(user.id), {
     fallback: "Failed to purge detections",
-    onSuccess: (response) => {
-      setDangerMode(null);
-      onPurged?.(response);
-    },
+    onSuccess: (data) => finish({ kind: "purge", data }),
   });
 
+  const restoreMutation = useMutation(() => restoreUser(user.id), {
+    fallback: "Failed to restore the account",
+    onSuccess: (data) => finish({ kind: "restore", data }),
+  });
+
+  const deleted = Boolean(user.deleted_at);
   const linking = xHandleMutation.loading;
-  const acting = deleteMutation.loading || purgeMutation.loading;
+  const acting = deleteMutation.loading || purgeMutation.loading || restoreMutation.loading;
   // The card's error slot serves the inline actions; a destructive action's refusal shows in its
   // dialog.
   const error = xHandleMutation.error ?? mintingMutation.error;
-  const dangerError = deleteMutation.error ?? purgeMutation.error;
+  const dangerError = deleteMutation.error ?? purgeMutation.error ?? restoreMutation.error;
 
   const resetAll = () => {
     xHandleMutation.reset();
     mintingMutation.reset();
     deleteMutation.reset();
     purgeMutation.reset();
+    restoreMutation.reset();
   };
 
   const submitXHandle = () => {
@@ -130,6 +138,8 @@ export function UserActionsCard({
   const submitDanger = () => {
     if (dangerMode === "purge") {
       void purgeMutation.run();
+    } else if (dangerMode === "restore") {
+      void restoreMutation.run();
     } else if (dangerMode !== null) {
       void deleteMutation.run(dangerMode === "hard");
     }
@@ -144,6 +154,7 @@ export function UserActionsCard({
     setDangerMode(null);
     deleteMutation.reset();
     purgeMutation.reset();
+    restoreMutation.reset();
   };
 
   return (
@@ -154,6 +165,9 @@ export function UserActionsCard({
             {user.username}
             {user.is_admin && (
               <Pill className="uppercase tracking-wider">admin</Pill>
+            )}
+            {user.deleted_at && (
+              <Pill tone="danger">Soft-deleted {formatInstant(user.deleted_at)}</Pill>
             )}
           </div>
           {user.email && (
@@ -176,27 +190,38 @@ export function UserActionsCard({
           label={`Actions for ${user.username}`}
           icon={<Ellipsis size={14} />}
           items={[
-            {
-              key: "x-handle",
-              label: user.x_handle ? "Edit X handle" : "Link X handle",
-              icon: <AtSign size={14} aria-hidden />,
-              onSelect: () => {
-                resetAll();
-                setShowXHandleForm(true);
-              },
-            },
-            {
-              key: "purge",
-              label: `${DANGER_LABELS.purge}${detectedCount !== undefined ? ` (${detectedCount})` : ""}`,
-              icon: <Bot size={14} aria-hidden />,
-              onSelect: () => openDanger("purge"),
-            },
-            {
-              key: "soft",
-              label: DANGER_LABELS.soft,
-              icon: <EyeOff size={14} aria-hidden />,
-              onSelect: () => openDanger("soft"),
-            },
+            ...(deleted
+              ? [
+                  {
+                    key: "restore",
+                    label: DANGER_LABELS.restore,
+                    icon: <RotateCcw size={14} aria-hidden />,
+                    onSelect: () => openDanger("restore"),
+                  },
+                ]
+              : [
+                  {
+                    key: "x-handle",
+                    label: user.x_handle ? "Edit X handle" : "Link X handle",
+                    icon: <AtSign size={14} aria-hidden />,
+                    onSelect: () => {
+                      resetAll();
+                      setShowXHandleForm(true);
+                    },
+                  },
+                  {
+                    key: "purge",
+                    label: `${DANGER_LABELS.purge}${detectedCount !== undefined ? ` (${detectedCount})` : ""}`,
+                    icon: <Bot size={14} aria-hidden />,
+                    onSelect: () => openDanger("purge"),
+                  },
+                  {
+                    key: "soft",
+                    label: DANGER_LABELS.soft,
+                    icon: <EyeOff size={14} aria-hidden />,
+                    onSelect: () => openDanger("soft"),
+                  },
+                ]),
             {
               key: "hard",
               label: DANGER_LABELS.hard,
@@ -207,16 +232,18 @@ export function UserActionsCard({
         />
       </div>
 
-      <ToggleRow
-        label="Can mint invite codes"
-        description="Lets this analyst invite others from Settings, up to the daily quota. Codes already minted stay valid."
-        on={mintingEnabled}
-        onToggle={() => {
-          if (mintingMutation.loading) return;
-          resetAll();
-          void mintingMutation.run(!mintingEnabled);
-        }}
-      />
+      {!deleted && (
+        <ToggleRow
+          label="Can mint invite codes"
+          description="Lets this analyst invite others from Settings, up to the daily quota. Codes already minted stay valid."
+          on={mintingEnabled}
+          onToggle={() => {
+            if (mintingMutation.loading) return;
+            resetAll();
+            void mintingMutation.run(!mintingEnabled);
+          }}
+        />
+      )}
 
       {showXHandleForm && (
         <div className="space-y-2">
@@ -280,7 +307,7 @@ export function UserActionsCard({
           busyLabel="Working…"
           busy={acting}
           error={dangerError}
-          tone="danger"
+          tone={dangerMode === "restore" ? "accent" : "danger"}
           onConfirm={submitDanger}
           onCancel={cancelDanger}
         >
@@ -295,6 +322,12 @@ export function UserActionsCard({
             <p>
               Soft-deleting hides {user.username} from public reads and
               cascade-hides every geolocation they authored.
+            </p>
+          ) : dangerMode === "restore" ? (
+            <p>
+              Restoring lets {user.username} sign in again and brings back the
+              events the soft delete hid. The X handle it released stays
+              unlinked.
             </p>
           ) : (
             <p>

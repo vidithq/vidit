@@ -19,7 +19,6 @@ import {
   deleteInviteCode,
   inviteCodesPath,
   revokeInviteCode,
-  type AdminPurgeDetectedResponse,
   type InviteCode,
 } from "@/lib/admin";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
@@ -39,7 +38,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { InviteStatusPill } from "@/components/invites/InviteStatusPill";
-import { PurgeReceipt } from "@/components/admin/ActionReceipt";
+import { UserOutcomeReceipt, type UserOutcome } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
 
 const COLUMN_COUNT = 11;
@@ -169,14 +168,17 @@ function InviteCodeRow({
       </td>
       <td className="py-2 pr-3 text-xs text-neutral-400">
         {redeemer ? (
-          <span
-            title={
-              invite.used_at
-                ? new Date(invite.used_at).toLocaleString()
-                : undefined
-            }
-          >
-            {redeemer.username}
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              title={
+                invite.used_at
+                  ? new Date(invite.used_at).toLocaleString()
+                  : undefined
+              }
+            >
+              {redeemer.username}
+            </span>
+            {redeemer.deleted_at && <Pill tone="danger">Soft-deleted</Pill>}
           </span>
         ) : (
           <span className="text-neutral-600">—</span>
@@ -283,9 +285,7 @@ export function OnboardingPanel() {
   // A failed later page shows in the load-more row; only a failed first page leaves no rows.
   const loadError = codes.length === 0 ? walk.error : null;
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [lastPurge, setLastPurge] = useState<AdminPurgeDetectedResponse | null>(
-    null,
-  );
+  const [outcome, setOutcome] = useState<UserOutcome | null>(null);
 
   const [expiresInDays, setExpiresInDays] = useState<number | "">(14);
   const [xHandle, setXHandle] = useState("");
@@ -314,8 +314,8 @@ export function OnboardingPanel() {
     await createMutation.run();
   };
 
-  const onPurged = (response: AdminPurgeDetectedResponse) => {
-    setLastPurge(response);
+  const onOutcome = (next: UserOutcome) => {
+    setOutcome(next);
     reload();
   };
 
@@ -428,7 +428,7 @@ export function OnboardingPanel() {
                   invite={c}
                   expanded={expandedId === c.id}
                   onToggle={() => {
-                    setLastPurge(null);
+                    setOutcome(null);
                     setExpandedId((prev) => (prev === c.id ? null : c.id));
                   }}
                   // A mint, revoke or delete changes what the first page holds: restart the walk
@@ -459,15 +459,15 @@ export function OnboardingPanel() {
             x_handle: managed.x_handle,
             is_invite_minting_enabled: managed.is_invite_minting_enabled,
             sponsor: managedCode?.sponsor ?? null,
+            deleted_at: managed.deleted_at,
           }}
           detectedCount={managed.detected_count}
           onUpdated={reload}
-          onDeleted={reload}
-          onPurged={onPurged}
+          onOutcome={onOutcome}
         />
       )}
 
-      {lastPurge && <PurgeReceipt purge={lastPurge} />}
+      {outcome && <UserOutcomeReceipt outcome={outcome} />}
     </Card>
   );
 }

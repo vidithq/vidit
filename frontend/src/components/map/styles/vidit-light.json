@@ -1691,7 +1691,6 @@
       "type": "line",
       "source": "openmaptiles",
       "source-layer": "boundary",
-      "minzoom": 8,
       "filter": [
         "all",
         [
@@ -1746,23 +1745,22 @@
         ]
       ],
       "paint": {
-        "line-color": "hsl(0,0%,70%)",
+        "line-color": "hsl(0,0%,62%)",
         "line-dasharray": [
-          1,
-          1
+          2,
+          2
         ],
         "line-width": [
           "interpolate",
           [
-            "linear",
-            1
+            "linear"
           ],
           [
             "zoom"
           ],
-          7,
+          4,
           1,
-          11,
+          12,
           2
         ]
       },

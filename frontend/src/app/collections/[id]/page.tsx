@@ -11,6 +11,7 @@ import { CollectionDetails, CollectionShell } from "@/components/collections/Col
 import { useReportContent } from "@/components/report/useReportContent";
 import ShareOnX from "@/components/share/ShareOnX";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { WithheldBanner } from "@/components/ui/WithheldBanner";
 import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading } from "@/components/ui/PageShell";
@@ -46,7 +47,8 @@ import { profileHref } from "@/lib/routes";
  * Actions: **Share on X** (`<ShareOnX>`, a plain click since a collection has no `detected`
  * state), **Report** for every reader but the owner (signed out included, via
  * `useReportContent`), then the owner's **Edit** and **Drop** (red trash under the two-click
- * confirm, landing on the owner's profile). Drop lives only here.
+ * confirm, landing on the owner's profile). Drop lives only here. A withheld collection, which
+ * only an admin reads, says so under the header.
  */
 export default function CollectionPage() {
   // `useSearchParams` opts out of static prerender, so the body sits under Suspense.
@@ -162,6 +164,7 @@ function CollectionPageBody() {
       }
       panels={
         <>
+          {collection.hidden_at && <WithheldBanner since={collection.hidden_at} noun="collection" />}
           {/* Under the header, where the trigger is. */}
           {!isOwner && report.panel}
           {drop.error && (

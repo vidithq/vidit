@@ -81,6 +81,7 @@ const CURRENT: EventDetail = {
   detected_via: null,
   proof: '<img src="https://m/c.jpg">',
   created_at: "2026-06-01T00:00:00Z",
+  hidden_at: null,
   // Apart from `created_at`: submitted at midnight, published nine hours later; version 1 is the publication.
   geolocated_at: "2026-06-01T09:00:00Z",
   closed_at: null,

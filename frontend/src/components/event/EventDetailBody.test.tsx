@@ -90,6 +90,7 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     sources: [FOOTAGE, ARTICLE],
     proof: "<p>Anchor points match the imagery.</p>",
     created_at: "2026-06-02T10:00:00Z",
+    hidden_at: null,
     geolocated_at: "2026-06-03T10:00:00Z",
     closed_at: null,
     thumbnail: IMAGE,
