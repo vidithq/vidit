@@ -142,7 +142,7 @@ export default function FeedPage() {
         setPanel({ ...panel, values: { ...panel.values, ...patch } })
       }
       sections={FEED_SECTIONS}
-      lead={{ title: "Activity", sections: [
+      lead={[
         {
           title: "Kind",
           summary: chipSummary(panel.kinds.map(kindLabel)),
@@ -163,7 +163,7 @@ export default function FeedPage() {
             />
           ),
         },
-      ]}}
+      ]}
     />
   );
 
