@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 const navigation = vi.hoisted(() => ({ hardNavigate: vi.fn() }));
+const cookie = vi.hoisted(() => ({ present: true }));
 
 vi.mock("@/lib/api", () => ({
   apiFetch: api.apiFetch,
@@ -15,11 +16,11 @@ vi.mock("@/lib/api", () => ({
     }
   },
 }));
-vi.mock("@/lib/auth", () => ({ hasSessionCookie: () => true }));
+vi.mock("@/lib/auth", () => ({ hasSessionCookie: () => cookie.present }));
 vi.mock("@/lib/navigation", () => navigation);
 
 import { ApiError } from "@/lib/api";
-import { reportSessionRejected } from "@/lib/session";
+import { markSessionHeld, reportSessionRejected } from "@/lib/session";
 import { AuthProvider, useAuth } from "./AuthContext";
 
 describe("AuthProvider logout", () => {
@@ -137,5 +138,75 @@ describe("AuthProvider and a rejected session", () => {
     act(() => reportSessionRejected());
     await waitFor(() => expect(meReads()).toBe(2));
     expect(screen.getByText("ana")).toBeInTheDocument();
+  });
+});
+
+describe("AuthProvider and a session that ended between loads", () => {
+  beforeEach(() => {
+    api.apiFetch.mockReset();
+    window.localStorage.clear();
+    cookie.present = true;
+  });
+
+  function boot() {
+    return render(
+      <AuthProvider>
+        <State />
+      </AuthProvider>,
+    );
+  }
+
+  it("tells it once when the cookies are gone", async () => {
+    meAnswers();
+    const first = boot();
+    await screen.findByText("ana");
+    first.unmount();
+
+    cookie.present = false;
+    const second = boot();
+    expect(await screen.findByText("signed out, session ended")).toBeInTheDocument();
+    second.unmount();
+
+    boot();
+    expect(await screen.findByText("signed out")).toBeInTheDocument();
+  });
+
+  it("tells it when /auth/me refuses the cookie the browser kept", async () => {
+    markSessionHeld(true);
+    api.apiFetch.mockRejectedValue(new ApiError("Invalid token", 401));
+    boot();
+    expect(await screen.findByText("signed out, session ended")).toBeInTheDocument();
+  });
+
+  it("says nothing to a browser that never signed in", async () => {
+    cookie.present = false;
+    boot();
+    expect(await screen.findByText("signed out")).toBeInTheDocument();
+  });
+
+  it("says nothing after a sign-out", async () => {
+    meAnswers();
+    function SignOut() {
+      const { logout } = useAuth();
+      return (
+        <button type="button" onClick={() => void logout()}>
+          Sign out
+        </button>
+      );
+    }
+    const first = render(
+      <AuthProvider>
+        <State />
+        <SignOut />
+      </AuthProvider>,
+    );
+    await screen.findByText("ana");
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await screen.findByText("signed out");
+    first.unmount();
+
+    cookie.present = false;
+    boot();
+    expect(await screen.findByText("signed out")).toBeInTheDocument();
   });
 });
