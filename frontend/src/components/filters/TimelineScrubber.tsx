@@ -82,7 +82,7 @@ export function TimelineScrubber({
   const winStartMs = winStart ? toMs(winStart) : axisMinMs;
   const winEndMs = winEnd ? toMs(winEnd) : axisMaxMs;
 
-  const isWindowed = startFrac > 0.001 || endFrac < 0.999;
+  const isWindowed = !!(start || end);
 
   // Latest `end` readable inside the play interval without re-subscribing the timer.
   const endRef = useRef(end);
