@@ -9,6 +9,7 @@ import {
   SOURCE_LEVELS,
   newSourceDraft,
   proofImagesFor,
+  restoredSourceDraft,
   sourceCreatePayload,
   sourceDraftFrom,
   sourceFloor,
@@ -166,6 +167,34 @@ describe("proofImagesFor", () => {
   });
 });
 
+describe("restoredSourceDraft", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  const upload = (expires_at: string) =>
+    ({ id: "u1", kind: "image", sha256: "0", original_filename: "frame.jpg", storage_url: "https://cdn/u1", expires_at }) as const;
+
+  it("keeps the fields and a staged file under a fresh key", () => {
+    const draft = { ...newSourceDraft(), title: "North angle", file: { state: "staged", upload: upload("2026-10-29T00:00:00Z") } } as SourceDraft;
+    const restored = restoredSourceDraft(draft, now);
+    expect(restored.key).not.toBe(draft.key);
+    expect({ ...restored, key: draft.key }).toEqual(draft);
+  });
+
+  it("asks for a new pick of a file the reload cut or whose upload expired", () => {
+    const cut = { ...newSourceDraft(), file: { state: "uploading", file: new File(["x"], "clip.mp4"), token: 1 } } as SourceDraft;
+    expect(restoredSourceDraft(cut, now).file).toEqual({
+      state: "failed",
+      name: "clip.mp4",
+      error: "The page reloaded before this file finished uploading. Pick it again.",
+    });
+    const expired = { ...newSourceDraft(), file: { state: "staged", upload: upload("2026-10-28T11:00:00Z") } } as SourceDraft;
+    expect(restoredSourceDraft(expired, now).file).toEqual({
+      state: "failed",
+      name: "frame.jpg",
+      error: "This file's upload expired. Pick it again.",
+    });
+  });
+});
+
 describe("sourcesChanged", () => {
   it("reads the seeded editors as unchanged", () => {
     expect(sourcesChanged([STORED], [sourceDraftFrom(STORED)])).toBe(false);
@@ -182,6 +211,13 @@ describe("sourcesChanged", () => {
     ).toBe(true);
     expect(sourcesChanged([STORED], [draft, newSourceDraft()])).toBe(true);
     expect(sourcesChanged([STORED], [])).toBe(true);
+  });
+
+  it("reads two sources swapped in the list as a change", () => {
+    const other = { ...STORED, id: "s2" };
+    const drafts = [sourceDraftFrom(STORED), sourceDraftFrom(other)];
+    expect(sourcesChanged([STORED, other], drafts)).toBe(false);
+    expect(sourcesChanged([STORED, other], [...drafts].reverse())).toBe(true);
   });
 
   it("reads a cleared graphic switch on a flagged source as no change", () => {

@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- On the event forms, each source carries Move earlier and Move later, and readers see the sources in the order the author set ([#804](https://github.com/vidithq/vidit/pull/804)).
 - An admin can restore a soft-deleted account from the onboarding table: the account and the events its soft delete hid come back ([#793](https://github.com/vidithq/vidit/pull/793)).
 - On the search page, a typed coordinate pair offers to open that point on the map, and on All a query that names an analyst or an organization exactly puts a link to their page right under the search field ([#791](https://github.com/vidithq/vidit/pull/791)).
 - When a search finds nothing, the search page suggests the closest spelling that finds results, such as *Khan Yunis* for *Khan Younis* or a handle missing a letter ([#790](https://github.com/vidithq/vidit/pull/790)).
@@ -30,6 +31,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The Links help on the source forms holds two sentences, and the methodology guide says how to link, archive and permalink a source ([#804](https://github.com/vidithq/vidit/pull/804)).
+- The suggested tags under a tag field wrap instead of running off the card, the first 6 then one Show more ([#804](https://github.com/vidithq/vidit/pull/804)).
 - A minor destructive action, such as dismissing a notification, acts at once from a red cross; an important one, such as removing a co-geolocator or deleting an approval, asks for a second click in place instead of a dialog ([#803](https://github.com/vidithq/vidit/pull/803)).
 - The version history starts every title on one line, Current included, and drops the count above the list; the invitation cards no longer point at Accept and Decline, and the geolocator invite picker states the limit of 10 geolocators ([#803](https://github.com/vidithq/vidit/pull/803)).
 - A site zone covers at most 1,000 km², down from 10,000 km²: the contour editor says so while you draw, and areas read with thousands separators ([#800](https://github.com/vidithq/vidit/pull/800)).
@@ -84,6 +87,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A GIF inserted into a proof shows one image per frame, and one past 6 frames is refused under the editor with the reason ([#804](https://github.com/vidithq/vidit/pull/804)).
+- The submit form keeps its draft across a reload, files and proof images included, until you publish ([#804](https://github.com/vidithq/vidit/pull/804)).
 - Pasting an X post you already imported says *Already imported* and links the existing detection, request or event ([#802](https://github.com/vidithq/vidit/pull/802)).
 - Bulk import refuses a file that is not a zip as soon as you pick or drop it, with one message, instead of failing after the import starts ([#802](https://github.com/vidithq/vidit/pull/802)).
 - The Detections queue names a detection short of evidence *Incomplete* everywhere, drops the line under its title, and each row is a link you can open in a new tab ([#802](https://github.com/vidithq/vidit/pull/802)).

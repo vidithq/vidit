@@ -1384,6 +1384,7 @@ def _add_media(
         Source(
             level=level,
             kind="unknown",
+            position=len(event.sources),
             is_graphic=is_graphic,
             links=[SourceLink(url=f"https://example.com/{name}")],
             media=media,
@@ -1464,18 +1465,18 @@ def test_mosaic_skips_an_item_with_any_graphic_source(db, cleanup, owner):
 
 
 def test_a_tile_takes_the_first_source_image_in_source_order(db, cleanup, owner):
-    """Source files come first in source order (level before insertion), proof images after
-    them, and the first image of that walk is the tile."""
+    """Source files come first in source order, proof images after them, and the first image
+    of that walk is the tile."""
     collection = _make_collection(db, cleanup, owner=owner)
     event = _make_event(db, cleanup, owner=owner, occurred_date=date(2026, 3, 1))
-    _add_media(db, event, "context.jpg", level="context")
     _add_media(db, event, "proof.jpg", role="proof")
-    _add_media(db, event, "indirect.jpg", level="indirect")
+    _add_media(db, event, "context.jpg", level="context")
+    _add_media(db, event, "direct.jpg")
     _add(db, collection, event)
     db.commit()
 
     assert client.get(f"/api/v1/collections/{collection.id}").json()["cover"] == [
-        {"url": "https://media.example.com/indirect.jpg", "kind": "image", "role": "source"}
+        {"url": "https://media.example.com/context.jpg", "kind": "image", "role": "source"}
     ]
 
 

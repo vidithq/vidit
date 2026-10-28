@@ -5,6 +5,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
+import { FIELD_HELP } from "@/lib/fieldHelp";
 import MethodologyPage from "./page";
 
 describe("/methodology", () => {
@@ -18,6 +19,16 @@ describe("/methodology", () => {
     expect(
       within(caption).getByRole("link", { name: "Destruction of the checkpoint at Vodyane" }),
     ).toHaveAttribute("href", "/events/03bc6ca6-a5fb-489b-94fc-f100ef2aa88d");
+  });
+
+  it("holds what the short Links help leaves out: the link order, archiving, imagery permalinks", () => {
+    render(<MethodologyPage />);
+
+    const [verify, , crossReference] = screen.getAllByRole("listitem");
+    expect(verify.textContent).toContain("original post first, then each mirror");
+    expect(verify.textContent).toContain("Archive beside a link opens the Wayback Machine");
+    expect(crossReference.textContent).toContain("full permalink");
+    expect(FIELD_HELP.source_links.text.split(/(?<=\.) /)).toHaveLength(2);
   });
 
   it("lists the six steps the image's numbers point at", () => {

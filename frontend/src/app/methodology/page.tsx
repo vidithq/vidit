@@ -26,7 +26,7 @@ export const metadata: Metadata = staticPageMetadata({
 const PROOF_STEPS: NumberedStep[] = [
   {
     title: "Verify and archive the source",
-    body: "Reverse-image-search it to rule out recycled footage, then archive it. The Archived copy field under Source URL opens the Wayback Machine and takes back its snapshot, or an archive.today (any mirror) or Ghostarchive copy.",
+    body: "Link the original post first, then each mirror of the same file, each with its post time (UTC) when known, never your own geolocation post. Reverse-image-search the file to rule out recycled footage, then archive each link: Archive beside a link opens the Wayback Machine with the link filled in and takes back its snapshot, or an archive.today (any mirror) or Ghostarchive copy.",
   },
   {
     title: "Pin the visual anchors",
@@ -34,7 +34,7 @@ const PROOF_STEPS: NumberedStep[] = [
   },
   {
     title: "Cross-reference on satellite imagery",
-    body: "In Google Earth or Sentinel Hub, match shape, scale and relative position.",
+    body: "In Google Earth or Sentinel Hub, match shape, scale and relative position. On a satellite or aircraft source, link the provider's full permalink that reopens the same image at its capture date, not a short link, or archive the publication that shows it: the form names the provider, how to reopen the image and its credit.",
   },
   {
     title: "Annotate the match",

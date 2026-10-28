@@ -50,7 +50,20 @@ vi.mock("@/lib/events", async (importOriginal) => ({
   createEventRequest: vi.fn(),
 }));
 
+/** Whether the browser offers a draft store: jsdom has no IndexedDB, so the form starts empty. */
+let storesDrafts = false;
+const storedDraft = vi.hoisted(() => ({ value: null as unknown }));
+
+vi.mock("@/lib/drafts", () => ({
+  canStoreDrafts: () => storesDrafts,
+  readDraft: vi.fn(async () => storedDraft.value),
+  writeDraft: vi.fn(async () => {}),
+  clearDraft: vi.fn(async () => {}),
+}));
+
 import { apiFetch } from "@/lib/api";
+import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { newSourceDraft } from "@/lib/sources";
 import { newCollectionHref } from "@/lib/collections";
 import { createEvent, createEventRequest } from "@/lib/events";
 import { NEW_SITE_HREF } from "@/lib/sites";
@@ -62,6 +75,10 @@ const announced = () => screen.queryByText(/^Fill in the required fields/);
 beforeEach(() => {
   query = "mode=single";
   conflictsLoaded = true;
+  storesDrafts = false;
+  storedDraft.value = null;
+  vi.mocked(writeDraft).mockClear();
+  vi.mocked(clearDraft).mockClear();
   vi.mocked(createEvent).mockReset();
   vi.mocked(createEventRequest).mockReset();
   vi.mocked(apiFetch).mockResolvedValue([]);
@@ -98,6 +115,78 @@ describe("the submit form's gate", () => {
     fireEvent.click(screen.getByRole("button", { name: "Publish request" }));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(announced()).toHaveTextContent("Title");
+  });
+});
+
+describe("the submit draft", () => {
+  const source = {
+    ...newSourceDraft(),
+    kind: "drone" as const,
+    links: [{ url: "https://t.me/channel/42", postedAt: "", snapshotUrl: "", stored: null }],
+  };
+  const stored = {
+    form: {
+      title: "Strike on a fuel depot",
+      lat: "48.3112",
+      lng: "38.0421",
+      sources: [source],
+      eventDate: "2026-10-20",
+      eventTime: "14:05",
+      proof: "<p>Shadows match.</p>",
+      proofFiles: [],
+      tagIds: [],
+      conflictIds: ["c1"],
+      siteLinks: [],
+    },
+    geolocators: [],
+  };
+
+  it("restores every field a reload left, for the signed-in analyst", async () => {
+    storesDrafts = true;
+    storedDraft.value = stored;
+    render(<SubmitPage />);
+
+    expect(await screen.findByDisplayValue("Strike on a fuel depot")).toBeInTheDocument();
+    expect(readDraft).toHaveBeenLastCalledWith("submit:u1");
+    expect(screen.getByRole("textbox", { name: "Latitude" })).toHaveValue("48.3112");
+    expect(screen.getByRole("textbox", { name: "Longitude" })).toHaveValue("38.0421");
+    expect(screen.getByRole("textbox", { name: "Source 1 link 1" })).toHaveValue(
+      "https://t.me/channel/42"
+    );
+    expect(screen.getByDisplayValue("2026-10-20")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("14:05")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Russian invasion of Ukraine/ })).toBeInTheDocument();
+  });
+
+  it("stores each change, and drops the draft once a publish lands", async () => {
+    storesDrafts = true;
+    const upload = {
+      id: "up1",
+      kind: "image",
+      sha256: "0",
+      original_filename: "frame.jpg",
+      storage_url: "https://cdn.test/uploads/up1.jpg",
+      expires_at: "2099-01-01T00:00:00Z",
+    } as const;
+    storedDraft.value = {
+      ...stored,
+      form: { ...stored.form, sources: [{ ...source, file: { state: "staged", upload } }] },
+    };
+    vi.mocked(createEventRequest).mockResolvedValue({ id: "r1" } as never);
+    render(<SubmitPage />);
+
+    const title = await screen.findByDisplayValue("Strike on a fuel depot");
+    fireEvent.change(title, { target: { value: "Convoy on the bridge" } });
+    await vi.waitFor(() =>
+      expect(writeDraft).toHaveBeenLastCalledWith(
+        "submit:u1",
+        expect.objectContaining({ form: expect.objectContaining({ title: "Convoy on the bridge" }) })
+      )
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish request" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await vi.waitFor(() => expect(clearDraft).toHaveBeenCalledWith("submit:u1"));
   });
 });
 

@@ -2,7 +2,7 @@
 
 import "@blocknote/mantine/style.css";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BlockNoteSchema,
   createHeadingBlockSpec,
@@ -29,12 +29,19 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 
+import { FieldError } from "@/components/ui/ErrorNotice";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { FIELD_TEXT } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
-import { ACCEPTED_EVIDENCE_IMAGE_MIME } from "@/lib/mediaTypes";
+import { ACCEPTED_EVIDENCE_IMAGE_MIME, GIF_MIME, MAX_GIF_FRAMES } from "@/lib/mediaTypes";
 import { isSafeLinkHref, proofImageSrcs } from "@/lib/proof";
-import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "@/lib/proofImages";
+import {
+  gifFrameCount,
+  gifRefusal,
+  PROOF_PLACEHOLDER_PREFIX,
+  safeProofFilename,
+  splitGif,
+} from "@/lib/proofImages";
 
 interface ProofEditorProps {
   onChange: (html: string) => void;
@@ -217,12 +224,43 @@ export default function ProofEditor({
     return placeholder;
   };
 
-  const uploadFile = async (file: File) => {
+  const stageNamed = (file: File) => {
     const name = safeProofFilename(file.name, usedNamesRef.current);
     if (name === null) throw new Error("Unusable filename");
     // Upload under exactly `name` so the server's `safe_original_filename` reproduces the
     // placeholder suffix (a File can't be renamed).
     return stage(file.name === name ? file : new File([file], name, { type: file.type }));
+  };
+
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  // A GIF goes in as its frames, one image block each, the way the server stores it: the first
+  // frame fills the block that picked it and the others follow it. A GIF the server refuses
+  // leaves no block and prints why. Both block edits wait a task, past BlockNote's own update of
+  // the picking block.
+  const uploadFile = async (file: File, blockId?: string) => {
+    setRefusal(null);
+    if (file.type !== GIF_MIME) return stageNamed(file);
+    const frames = gifFrameCount(new Uint8Array(await file.arrayBuffer()));
+    const refused = gifRefusal(frames, MAX_GIF_FRAMES);
+    if (refused !== null || frames === null) {
+      setRefusal(refused);
+      if (blockId) setTimeout(() => editor.removeBlocks([blockId]));
+      return "";
+    }
+    const pngs = await splitGif(file, frames);
+    if (pngs === null) return stageNamed(file);
+    const [first, ...rest] = pngs.map(stageNamed);
+    if (blockId && rest.length > 0) {
+      setTimeout(() =>
+        editor.insertBlocks(
+          rest.map((url) => ({ type: "image" as const, props: { url } })),
+          blockId,
+          "after",
+        ),
+      );
+    }
+    return first;
   };
 
   const editor = useCreateBlockNote({
@@ -247,23 +285,27 @@ export default function ProofEditor({
     },
   });
 
-  // Seed once; the parent re-keys to re-seed. The cleanup empties the staging, so a dev double
-  // mount restages, and revokes the staged blob URLs (compose then navigate must not leak them)
-  // on the next task, once the editor's images are gone: a revoked blob still in an `img` fails.
+  // Seed once; the parent re-keys to re-seed. An unmount empties the staging and revokes its blob
+  // URLs (compose then navigate must not leak them) on the next task, once the editor's images
+  // are gone: a revoked blob still in an `img` fails. A dev double mount mounts again before that
+  // task, and its images resolve their URLs again in between, so the staging stays for them.
+  const mountedRef = useRef(false);
   useEffect(() => {
+    mountedRef.current = true;
     const staged = stagedRef.current;
     const usedNames = usedNamesRef.current;
-    initialProofFiles?.forEach(stage);
+    if (staged.length === 0) initialProofFiles?.forEach(stage);
     if (initialContent) {
       seedingRef.current = true;
       editor.replaceBlocks(editor.document, editor.tryParseHTMLToBlocks(initialContent));
       seedingRef.current = false;
     }
     return () => {
-      const dropped = staged.splice(0);
-      usedNames.clear();
+      mountedRef.current = false;
       setTimeout(() => {
-        for (const s of dropped) URL.revokeObjectURL(s.previewUrl);
+        if (mountedRef.current) return;
+        for (const s of staged.splice(0)) URL.revokeObjectURL(s.previewUrl);
+        usedNames.clear();
       }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,6 +346,7 @@ export default function ProofEditor({
         <FormattingToolbarController formattingToolbar={ProofFormattingToolbar} />
         <FilePanelController filePanel={UploadOnlyFilePanel} />
       </BlockNoteView>
+      <FieldError alert>{refusal}</FieldError>
     </div>
   );
 }

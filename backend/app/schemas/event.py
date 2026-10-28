@@ -199,7 +199,7 @@ class EventRead(BaseModel):
     # ``geolocated`` row. Required-nullable: ``build_event_read`` always passes
     # it, so the key is always serialised.
     coords: CoordsRead | None
-    # In their derived order: level, then capture time (``models/source.source_order``).
+    # In the order the author set (``models/source.source_order``).
     sources: list[SourceRead]
     # Sanitised HTML (``services/sanitize.sanitize_html``).
     proof: str | None

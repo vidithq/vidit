@@ -2,11 +2,11 @@ import { ApiError, apiFetch } from "./api";
 import type { components } from "./api-types";
 import { coordinatePair, LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import type { SourceFloorState } from "./events";
-import { toDatetimeLocalUTC } from "./format";
+import { safeHostname, toDatetimeLocalUTC } from "./format";
 import type { FieldName } from "./fieldHelp";
 import type { ArchivedLink, Media } from "@/types";
 
-/** One source of an event, in the event's derived order (level, then capture time). */
+/** One source of an event, in the event's source order. */
 export type Source = components["schemas"]["SourceRead"];
 type SourceLink = components["schemas"]["SourceLinkRead"];
 /** A staged source file (`POST /uploads`), referenced by a source's `upload_id`. */
@@ -213,6 +213,29 @@ export function newSourceDraft(): SourceDraft {
   };
 }
 
+const RELOADED_UPLOAD = "The page reloaded before this file finished uploading. Pick it again.";
+const EXPIRED_UPLOAD = "This file's upload expired. Pick it again.";
+
+/** An editor a reload restores from its stored draft: a fresh key, since the key counter starts
+ *  over, and a file that cannot stand any more turned into a refusal the slot prints. A request
+ *  the reload cut, or a staged upload past its expiry, needs a new pick. */
+export function restoredSourceDraft(draft: SourceDraft, now: number): SourceDraft {
+  const { file } = draft;
+  let restored = file;
+  if (fileRunning(file)) {
+    const name =
+      file.state === "uploading"
+        ? file.file.name
+        : file.state === "importing"
+          ? safeHostname(file.post.url)
+          : "Proof image";
+    restored = { state: "failed", name, error: RELOADED_UPLOAD };
+  } else if (file?.state === "staged" && Date.parse(file.upload.expires_at) <= now) {
+    restored = { state: "failed", name: file.upload.original_filename ?? "File", error: EXPIRED_UPLOAD };
+  }
+  return { ...draft, key: nextKey(), file: restored };
+}
+
 function linkDraftsOf(links: SourceLink[]): LinkDraft[] {
   return links.map((link) => ({
     url: link.url,
@@ -334,15 +357,14 @@ export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
   };
 }
 
-/** The editors whose post would differ from the stored list. A copied or uploaded file, a new
- *  or removed source, or any moved field counts. Archived copies count too, since a pasted copy
- *  is an edit. */
+/** The editors whose post would differ from the stored list. A copied or uploaded file, a new,
+ *  removed or moved source, or any changed field counts. Archived copies count too, since a
+ *  pasted copy is an edit. */
 export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean {
   if (stored.length !== drafts.length) return true;
-  const byId = new Map(stored.map((s) => [s.id, s]));
-  return drafts.some((draft) => {
-    const source = draft.id ? byId.get(draft.id) : undefined;
-    if (!source) return true;
+  return drafts.some((draft, index) => {
+    const source = stored[index];
+    if (draft.id !== source.id) return true;
     const posted = sourceCreatePayload(draft);
     if (posted.media_id !== (source.media?.id ?? null) || posted.upload_id) return true;
     if (fileRunning(draft.file) || draft.file?.state === "failed") return true;

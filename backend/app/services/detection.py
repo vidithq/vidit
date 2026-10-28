@@ -18,7 +18,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Literal, Protocol, cast
@@ -384,20 +384,18 @@ async def _store_media(
 
 
 def _import_sources(detection: Detection, source_media: Media | None) -> list[Source]:
-    """The sources a detection declares, spaced a microsecond apart so they keep its order.
+    """The sources a detection declares, in its order.
 
     The declared source (its URL and post time, and the footage) when there is one, ``direct``
     and ``unknown`` (a review names the kind); then one source per mirror or context link, with
     the level, kind, title and post time the resolution gave it.
     """
-    now = datetime.now(UTC)
     sources: list[Source] = []
     if detection.source_url is not None or source_media is not None:
         sources.append(
             Source(
                 level="direct",
                 kind="unknown",
-                created_at=now,
                 links=(
                     [SourceLink(url=detection.source_url, posted_at=detection.source_posted_at)]
                     if detection.source_url is not None
@@ -406,16 +404,17 @@ def _import_sources(detection: Detection, source_media: Media | None) -> list[So
                 media=source_media,
             )
         )
-    for offset, extra in enumerate(detection.secondary_sources, start=1):
+    for extra in detection.secondary_sources:
         sources.append(
             Source(
                 level=extra.level,
                 kind=extra.kind,
                 title=extra.title,
-                created_at=now + timedelta(microseconds=offset),
                 links=[SourceLink(url=extra.url, posted_at=extra.posted_at)],
             )
         )
+    for position, source in enumerate(sources):
+        source.position = position
     return sources
 
 

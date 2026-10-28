@@ -540,25 +540,30 @@ def test_stats_source_hosts_count_a_source_less_detection(db, live_user):
 
 
 def test_stats_source_hosts_read_the_first_sources_first_link(db, live_user):
-    """The host of an event is its first source's (level, then capture time) earliest
-    posted link, whatever order the rows were written in."""
+    """The host of an event is its first source's (in source order) earliest posted link,
+    whatever order the rows were written in."""
     early = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     _make_geo(
         db,
         author=live_user,
         sources=[
             Source(
-                level="context", kind="unknown", links=[SourceLink(url="https://context.example/1")]
+                level="context",
+                kind="unknown",
+                position=2,
+                links=[SourceLink(url="https://context.example/1")],
             ),
             Source(
                 level="direct",
                 kind="unknown",
+                position=1,
                 captured_at=early + timedelta(hours=1),
                 links=[SourceLink(url="https://later-capture.example/1")],
             ),
             Source(
                 level="direct",
                 kind="unknown",
+                position=0,
                 captured_at=early,
                 links=[
                     SourceLink(url="https://repost.example/1", posted_at=early + timedelta(days=1)),

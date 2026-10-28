@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { PROOF_PLACEHOLDER_PREFIX, safeProofFilename } from "./proofImages";
+import { MAX_GIF_FRAMES } from "@/lib/mediaTypes";
+import { tinyGif } from "@/test/gif";
+import {
+  gifFrameCount,
+  gifFrameFilename,
+  gifRefusal,
+  PROOF_PLACEHOLDER_PREFIX,
+  safeProofFilename,
+  splitGif,
+} from "./proofImages";
 
 describe("PROOF_PLACEHOLDER_PREFIX", () => {
   it("mirrors the backend placeholder scheme", () => {
@@ -40,5 +49,46 @@ describe("safeProofFilename", () => {
   it("keeps disambiguating past a second collision", () => {
     const used = new Set(["p.png", "p-2.png"]);
     expect(safeProofFilename("p.png", used)).toBe("p-3.png");
+  });
+});
+
+describe("gifFrameCount", () => {
+  it.each([1, 4, 7])("counts the %i frames of a GIF", (frames) => {
+    expect(gifFrameCount(tinyGif(frames))).toBe(frames);
+  });
+
+  it("reads no GIF out of other bytes or a GIF with no frame", () => {
+    expect(gifFrameCount(new TextEncoder().encode("not a gif"))).toBeNull();
+    expect(gifFrameCount(tinyGif(0))).toBeNull();
+  });
+
+  it("counts the frames before a truncation inside the last one", () => {
+    const whole = tinyGif(3);
+    expect(gifFrameCount(whole.subarray(0, whole.length - 25))).toBe(2);
+  });
+});
+
+describe("gifRefusal", () => {
+  it("takes a GIF up to the frame cap and words the refusal past it", () => {
+    expect(gifRefusal(6, MAX_GIF_FRAMES)).toBeNull();
+    expect(gifRefusal(7, MAX_GIF_FRAMES)).toBe(
+      "This GIF holds 7 frames, and a GIF may hold at most 6. Insert a GIF of 6 frames or fewer.",
+    );
+    expect(gifRefusal(null, MAX_GIF_FRAMES)).toBe("Could not read this GIF. Insert a valid GIF file.");
+  });
+});
+
+describe("gifFrameFilename", () => {
+  it("numbers the frames of a GIF and names a lone frame after the GIF", () => {
+    expect(gifFrameFilename("scan.gif", 0, 3)).toBe("scan-1.png");
+    expect(gifFrameFilename("scan.gif", 2, 3)).toBe("scan-3.png");
+    expect(gifFrameFilename("scan.gif", 0, 1)).toBe("scan.png");
+  });
+});
+
+describe("splitGif", () => {
+  it("leaves the GIF whole where the browser cannot decode it frame by frame", async () => {
+    const gif = new File([tinyGif(2)], "scan.gif", { type: "image/gif" });
+    expect(await splitGif(gif, 2)).toBeNull();
   });
 });

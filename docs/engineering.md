@@ -490,11 +490,11 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 
 | Frontend | Backend source | Drift breaks |
 |---|---|---|
-| `lib/mediaTypes.ts` | `storage.ALLOWED_IMAGE_TYPES`, `GIF_CONTENT_TYPE`, `ALLOWED_VIDEO_TYPES` | picker accepts a file the API refuses |
+| `lib/mediaTypes.ts` | `storage.ALLOWED_IMAGE_TYPES`, `GIF_CONTENT_TYPE`, `ALLOWED_VIDEO_TYPES`, `MAX_GIF_FRAMES` | picker accepts a file the API refuses; the proof editor inserts a GIF the publish refuses |
 | `lib/coordinates.ts` | `events.validate_coordinates` | form accepts coordinates the API refuses |
 | `lib/auth.ts` `PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_BYTES` | `schemas/auth.PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_BYTES` | password form accepts a password the API refuses, or refuses one it accepts |
 | `lib/auth.ts` CSRF cookie and header names; the cookie name again in `proxy.ts` (edge runtime) | `auth_cookies.CSRF_COOKIE`, `CSRF_HEADER` | every write is refused |
-| `lib/proofImages.ts` | `sanitize.PROOF_PLACEHOLDER_PREFIX`, `storage.safe_original_filename` | proof images lose their upload binding |
+| `lib/proofImages.ts` | `sanitize.PROOF_PLACEHOLDER_PREFIX`, `storage.safe_original_filename`, `storage._gif_frame_filename` | proof images lose their upload binding; a GIF's frames take other names in the editor than at publish |
 | `lib/proof.tsx::LOCAL_STORAGE_URL_PREFIX` | `storage.LOCAL_STORAGE_URL_PREFIX` | a development proof image fails the image source check |
 | `lib/search.ts::AUTHOR_FILTER_RE` | `event_filters.AUTHOR_FILTER_PATTERN` | author filter parses differently |
 | `components/filters/EventFilterSections.tsx` media options, `FILTER_STATUSES` | `event_filters.MEDIA_TYPES`; `STATUSES` minus `closed`, in declared order | filter offers a value the API refuses |

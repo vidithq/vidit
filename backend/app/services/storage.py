@@ -75,6 +75,7 @@ ALLOWED_TYPES = ALLOWED_IMAGE_TYPES | ALLOWED_VIDEO_TYPES
 # ``MAX_GIF_FRAMES`` make a clip, refused for an MP4 upload. An avatar takes none.
 GIF_CONTENT_TYPE = "image/gif"
 GIF_FRAME_CONTENT_TYPE = "image/png"
+# Mirrored by ``frontend/src/lib/mediaTypes.ts``; change both.
 MAX_GIF_FRAMES = 6
 
 # Extension comes from the validated MIME, never ``file.filename`` (attacker
@@ -607,7 +608,10 @@ def stored_file_count(file: UploadFile) -> int:
 
 
 def _gif_frame_filename(name: str | None, index: int, count: int) -> str | None:
-    """``scan.gif`` gives ``scan-1.png``, ``scan-2.png``, or ``scan.png`` for a lone frame."""
+    """``scan.gif`` gives ``scan-1.png``, ``scan-2.png``, or ``scan.png`` for a lone frame.
+
+    Mirrored by ``frontend/src/lib/proofImages.ts::gifFrameFilename``; change both.
+    """
     safe = safe_original_filename(name)
     if safe is None:
         return None

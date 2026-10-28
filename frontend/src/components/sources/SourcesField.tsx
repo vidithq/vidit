@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { MoveLeft, MoveRight } from "lucide-react";
 
 import { SourceEditor, type SourceEditorInvalid } from "@/components/sources/SourceEditor";
 import { SourcesRow } from "@/components/sources/SourcesRow";
@@ -38,9 +39,9 @@ let uploadToken = 0;
 /**
  * The **Sources** section every event form carries: the event page's `SourcesRow`, one
  * `SourceEditor` per source (a lone one `wide`, its file beside its fields), **Add a source** in
- * its header
- * (capped at `MAX_SOURCES_PER_EVENT`), and per editor a two-click remove. Every editor stays
- * mounted, so one scrolled out of view keeps its upload.
+ * its header (capped at `MAX_SOURCES_PER_EVENT`), and per editor a move earlier, a move later and
+ * a two-click remove. The list order is the order the write posts and readers see. Every editor
+ * stays mounted, so one scrolled out of view keeps its upload.
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
  * event write names it. A GIF stages one file per frame: the first fills the editor that picked
@@ -102,6 +103,26 @@ export function SourcesField({
     setSources((prev) => prev.filter((d) => d.key !== sources[index].key));
   };
 
+  // The control that moved a source keeps the focus, or hands it to its pair at the row's end.
+  const moved = useRef<{ key: string; step: Step } | null>(null);
+  const move = (index: number, step: Step) => {
+    const key = sources[index].key;
+    reveal.current = key;
+    moved.current = { key, step };
+    setSources((prev) => moveDraft(prev, key, step));
+  };
+  useEffect(() => {
+    const focus = moved.current;
+    moved.current = null;
+    if (!focus) return;
+    const control = (step: Step) =>
+      document.querySelector<HTMLButtonElement>(
+        `[data-source-move="${focus.key}"][data-step="${step}"]`
+      );
+    const same = control(focus.step);
+    (same && !same.disabled ? same : control(-focus.step as Step))?.focus();
+  });
+
   const fileMissing = invalidKeys.has("source_file");
 
   return (
@@ -141,7 +162,27 @@ export function SourcesField({
           setTags={setTags}
           suggestedTags={suggestedTags}
           invalid={sourceGaps(draft, invalidKeys)}
-          actions={sources.length > 1 && <RemoveSource index={index} onRemove={() => remove(index)} />}
+          actions={
+            sources.length > 1 && (
+              <>
+                <MoveSource
+                  draftKey={draft.key}
+                  index={index}
+                  step={-1}
+                  disabled={index === 0}
+                  onMove={() => move(index, -1)}
+                />
+                <MoveSource
+                  draftKey={draft.key}
+                  index={index}
+                  step={1}
+                  disabled={index === sources.length - 1}
+                  onMove={() => move(index, 1)}
+                />
+                <RemoveSource index={index} onRemove={() => remove(index)} />
+              </>
+            )
+          }
           wide={sources.length === 1}
         />
       ))}
@@ -246,6 +287,49 @@ function placeUploads(
     ...added,
     ...drafts.slice(index + 1),
   ];
+}
+
+type Step = -1 | 1;
+
+/** The drafts with the one under `key` swapped with its neighbour `step` away; the same list at
+ *  either end. */
+function moveDraft(drafts: SourceDraft[], key: string, step: Step): SourceDraft[] {
+  const from = drafts.findIndex((d) => d.key === key);
+  const to = from + step;
+  if (from < 0 || to < 0 || to >= drafts.length) return drafts;
+  const next = [...drafts];
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
+}
+
+/** An editor's move control: a ghost icon button that swaps the source with its neighbour. */
+function MoveSource({
+  draftKey,
+  index,
+  step,
+  disabled,
+  onMove,
+}: {
+  draftKey: string;
+  index: number;
+  step: Step;
+  disabled: boolean;
+  onMove: () => void;
+}) {
+  const Icon = step === -1 ? MoveLeft : MoveRight;
+  return (
+    <Button
+      icon
+      variant="ghost"
+      aria-label={`Move ${sourceName(index).toLowerCase()} ${step === -1 ? "earlier" : "later"}`}
+      disabled={disabled}
+      onClick={onMove}
+      data-source-move={draftKey}
+      data-step={step}
+    >
+      <Icon size={14} />
+    </Button>
+  );
 }
 
 /** An editor's red trash button, which confirms in place. */

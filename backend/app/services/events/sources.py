@@ -16,7 +16,7 @@ import json
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from geoalchemy2.elements import WKBElement
@@ -260,7 +260,7 @@ def apply_sources(db: Session, geo: Event, planned: list[PlannedSource]) -> list
     """Write the planned list onto ``geo`` (already flushed) and return the files it dropped.
 
     Stored sources the list leaves out are deleted; the others are updated in place and new
-    ones created. A taken upload becomes the source's ``media`` row and its staged row goes; a
+    ones created, each at its place in the list. A taken upload becomes the source's ``media`` row and its staged row goes; a
     copied file becomes a new ``media`` row on the same stored object.
 
     Two flushes: the replaced files and links go first, since ``uq_media_source_id`` and
@@ -286,15 +286,14 @@ def apply_sources(db: Session, geo: Event, planned: list[PlannedSource]) -> list
                 p.stored.media = None
     db.flush()
 
-    now = datetime.now(UTC)
     with db.no_autoflush:
         for index, p in enumerate(planned):
             source = p.stored
             if source is None:
-                # Spaced a microsecond apart so equal sources keep the posted order.
-                source = Source(event=geo, created_at=now + timedelta(microseconds=index))
+                source = Source(event=geo)
                 db.add(source)
                 links_by_source[index] = _link_rows(source, p.links)
+            source.position = index
             source.title = p.spec.title
             source.level = p.spec.level
             source.kind = p.spec.kind
@@ -369,7 +368,7 @@ def _comparable_link(
 
 
 def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives: bool) -> list[str]:
-    """A source list as an order-free value the no-change check compares.
+    """A source list as the value the no-change check compares, in list order: a move is a change.
 
     Stored sources and a planned list fold to the same shape: the editable fields, the links
     (with their snapshot when ``archives``) and tag ids, and the file as the stored URL it names
@@ -419,7 +418,7 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
                 "file": item.media.storage_url if item.media is not None else None,
             }
         entries.append(json.dumps(value, sort_keys=True, default=str))
-    return sorted(entries)
+    return entries
 
 
 def build_source_read(source: Source) -> SourceRead:

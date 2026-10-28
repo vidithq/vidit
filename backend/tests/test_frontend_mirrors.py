@@ -29,6 +29,7 @@ from app.services.event_filters import STATUSES
 from app.services.events import InvalidCoordinatesError, validate_coordinates
 from app.services.geolocator_credit import MAX_EVENT_GEOLOCATORS
 from app.services.source_archive import PROVIDER_HOSTS, SNAPSHOT_URL_MAX_LENGTH
+from app.services.storage import MAX_GIF_FRAMES
 
 FRONTEND_SRC = Path(__file__).resolve().parents[2] / "frontend" / "src"
 
@@ -79,6 +80,7 @@ def _strings(path: str, name: str) -> list[str]:
         ("lib/events.ts", "CLOSE_REASON_MAX_LEN", CLOSE_REASON_MAX_LENGTH),
         ("lib/geolocatorCredit.ts", "MAX_EVENT_GEOLOCATORS", MAX_EVENT_GEOLOCATORS),
         ("lib/collections.ts", "BULK_ADD_MAX_EVENTS", MAX_CREATE_EVENTS),
+        ("lib/mediaTypes.ts", "MAX_GIF_FRAMES", MAX_GIF_FRAMES),
         ("lib/siteZone.ts", "MAX_ZONE_AREA_KM2", MAX_ZONE_AREA_KM2),
     ],
 )
