@@ -4,12 +4,14 @@ import type { ReactNode } from "react";
 import { Map as MapIcon } from "lucide-react";
 
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import {
   SegmentedControl,
   type SegmentedControlOption,
 } from "@/components/ui/SegmentedControl";
 import { ToggleRow } from "@/components/ui/ToggleRow";
+import type { Concept } from "@/lib/fieldHelp";
 
 import type { BasemapPresetId, LabelDensity, LabelLanguage } from "./basemap";
 import type { BasemapSettings } from "./basemapSettings";
@@ -36,6 +38,16 @@ const PRESET_ROWS: { label: string; options: SegmentedControlOption<BasemapPrese
   },
 ];
 
+// The `?` beside the heading explains the preset on show, since a `?` cannot sit in a segment.
+const PRESET_HELP: Record<BasemapPresetId, Concept> = {
+  auto: "basemap_auto",
+  "vidit-dark": "basemap_dark",
+  "vidit-light": "basemap_light",
+  streets: "basemap_streets",
+  terrain: "basemap_terrain",
+  satellite: "basemap_satellite",
+};
+
 const LANGUAGE_OPTIONS: SegmentedControlOption<LabelLanguage>[] = [
   { value: "latin", label: "Latin" },
   { value: "local", label: "Local" },
@@ -54,21 +66,23 @@ type SwitchKey = {
 interface SwitchSetting {
   key: SwitchKey;
   label: string;
+  concept?: Concept;
 }
 
 const LAYER_TOGGLES: SwitchSetting[] = [
-  { key: "regionBorders", label: "Region borders" },
-  { key: "roads", label: "Roads" },
-  { key: "buildings", label: "Buildings" },
-  { key: "militaryAndAirports", label: "Military areas and airports" },
-  { key: "relief", label: "Relief" },
-  { key: "disputedDashed", label: "Dashed disputed borders" },
+  { key: "regionBorders", label: "Region borders", concept: "map_region_borders" },
+  { key: "roads", label: "Roads", concept: "map_roads" },
+  { key: "buildings", label: "Buildings", concept: "map_buildings" },
+  { key: "militaryAndAirports", label: "Military areas and airports", concept: "map_military_airports" },
+  { key: "relief", label: "Relief", concept: "map_relief" },
+  { key: "disputedDashed", label: "Dashed disputed borders", concept: "map_disputed_borders" },
 ];
 
+// The grid has no `?`: it draws from no outside source, and its label says what it shows.
 const OVERLAY_TOGGLES: SwitchSetting[] = [
   { key: "grid", label: "Coordinate grid" },
-  { key: "dailyImagery", label: "Daily satellite imagery" },
-  { key: "fires", label: "Fire detections" },
+  { key: "dailyImagery", label: "Daily satellite imagery", concept: "map_daily_imagery" },
+  { key: "fires", label: "Fire detections", concept: "map_fire_detections" },
 ];
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
@@ -101,6 +115,7 @@ export function BasemapControl({
       <ToggleRow
         key={toggle.key}
         label={toggle.label}
+        concept={toggle.concept}
         variant="setting"
         on={settings[toggle.key]}
         onToggle={() => onChange({ [toggle.key]: !settings[toggle.key] })}
@@ -118,7 +133,7 @@ export function BasemapControl({
       {() => (
         <div className="max-h-[calc(100dvh-12rem)] space-y-2 overflow-y-auto">
           <div className="space-y-1.5">
-            <p className={FORM_LABEL}>Basemap</p>
+            <FieldLabel label="Basemap" concept={PRESET_HELP[settings.preset]} />
             {PRESET_ROWS.map((row) => (
               <SegmentedControl
                 key={row.label}
@@ -135,12 +150,14 @@ export function BasemapControl({
               <SettingsGroup title="Labels">
                 <ChoiceRow
                   label="Label language"
+                  concept="map_label_language"
                   options={LANGUAGE_OPTIONS}
                   value={settings.language}
                   onChange={(language) => onChange({ language })}
                 />
                 <ChoiceRow
                   label="Label density"
+                  concept="map_label_density"
                   options={DENSITY_OPTIONS}
                   value={settings.density}
                   onChange={(density) => onChange({ density })}

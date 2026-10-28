@@ -1,8 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { EventDetailBody, eventPageSlots } from "./EventDetailBody";
+import { eventPageSlots, eventPanelContent } from "./EventDetailBody";
 import { EventLayout, type EventSlot } from "./EventLayout";
+import { MapPanelBody } from "@/components/map/MapSidePanel";
 import { displayUrlsFor } from "@/lib/mediaUrls";
 import type { Source } from "@/lib/sources";
 import { source } from "@/test/eventDetail";
@@ -101,6 +102,11 @@ function geoFixture(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
+// The map panel's body under its heading.
+function PanelBody({ geo }: { geo: EventDetail }) {
+  return <MapPanelBody content={eventPanelContent(geo)} />;
+}
+
 // The event page's body, as `EventShell` lays it out.
 function PageBody({ geo, location }: { geo: EventDetail; location?: EventSlot }) {
   return <EventLayout {...eventPageSlots(geo, location)} />;
@@ -108,9 +114,9 @@ function PageBody({ geo, location }: { geo: EventDetail; location?: EventSlot })
 
 const block = (n: number) => screen.getByRole("region", { name: `Source ${n}` });
 
-describe("EventDetailBody", () => {
+describe("eventPanelContent", () => {
   it("panel: thumbnail media, section headings, no request/author rows", () => {
-    render(<EventDetailBody geo={geoFixture()} />);
+    render(<PanelBody geo={geoFixture()} />);
     const img = screen.getByRole("img", { name: TITLE });
     // Derive the expected URL from the component's helper, decoded to survive next/image's loader encoding.
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
@@ -204,14 +210,14 @@ describe("EventDetailBody", () => {
   });
 
   it("says so when the event has no source yet", () => {
-    render(<EventDetailBody geo={geoFixture({ sources: [], proof: null })} />);
+    render(<PanelBody geo={geoFixture({ sources: [], proof: null })} />);
     expect(screen.getByText("No source yet")).toBeInTheDocument();
     expect(screen.getByText("No proof provided")).toBeInTheDocument();
   });
 
   it("renders video media in the shared player, not as an image", () => {
     const { container } = render(
-      <EventDetailBody
+      <PanelBody
         geo={geoFixture({
           sources: [
             { ...FOOTAGE, media: { ...IMAGE, id: "m2", storage_url: "/local-storage/clip.mp4", kind: "video" } },

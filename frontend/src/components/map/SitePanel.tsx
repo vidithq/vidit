@@ -1,18 +1,46 @@
 "use client";
 
-import Link from "next/link";
-
 import type { ApiResource } from "@/hooks/useApiResource";
-import { siteHref, type Site, type SiteListItem } from "@/lib/sites";
+import { latestSource, siteHref, type Site, type SiteListItem } from "@/lib/sites";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { buttonClasses } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { LinkEffectPill, SiteKindPill } from "@/components/sites/SiteBadges";
 import { LastSourceValue, LatestEffectValue, lastSourceText } from "@/components/sites/SiteFacts";
-import { MapSidePanel } from "./MapSidePanel";
+import { MapSidePanel, type MapPanelContent } from "./MapSidePanel";
 
-/** The map's side panel on a site: what it is, when it was last captured, the latest effect a
- *  linked event shows, and the way to its page. */
+/** The site panel's filling, the event panel's blocks: the owner under the name, the latest
+ *  source by the site page's order, the zone's centre, then the kind, the last source, the
+ *  latest effect and the counts. */
+function sitePanelContent(site: Site): MapPanelContent {
+  const latest = latestSource(site.sources);
+  return {
+    title: site.name,
+    href: siteHref(site.id),
+    byline: <AuthorByline author={site.owner} size="xs" avatar />,
+    sources: latest ? [latest] : [],
+    coords: site.centroid,
+    concepts: { location: "site_location", details: "site_details", coordinates: "site_coordinates" },
+    details: (
+      <>
+        <DetailRow compact label="Kind" concept="site_kind" align="center">
+          <SiteKindPill kind={site.kind} />
+        </DetailRow>
+        <DetailRow compact label="Last source" concept="site_last_source">
+          <LastSourceValue site={site} />
+        </DetailRow>
+        {site.latest_link_effect && (
+          <DetailRow compact label="Latest effect" concept="link_effect" align="center">
+            <LatestEffectValue effect={site.latest_link_effect} />
+          </DetailRow>
+        )}
+        <DetailRow compact label="Sources" value={site.sources.length} />
+        <DetailRow compact label="Linked events" value={site.linked_events.length} />
+      </>
+    ),
+  };
+}
+
+/** The map's side panel on a site. */
 export function SitePanel({
   resource,
   onClose,
@@ -25,39 +53,8 @@ export function SitePanel({
       resource={resource}
       onClose={onClose}
       errorFallback="Couldn't load this site."
-      heading={(site) => ({
-        title: site.name,
-        href: siteHref(site.id),
-        meta: (
-          <div className="flex flex-wrap gap-1.5">
-            <SiteKindPill kind={site.kind} />
-          </div>
-        ),
-      })}
-    >
-      {(site) => (
-        <>
-          <div className="space-y-2 text-sm">
-            <DetailRow compact label="Last source" concept="site_last_source">
-              <LastSourceValue site={site} />
-            </DetailRow>
-            {site.latest_link_effect && (
-              <DetailRow compact label="Latest effect" align="center">
-                <LatestEffectValue effect={site.latest_link_effect} />
-              </DetailRow>
-            )}
-            <DetailRow compact label="Sources" value={site.sources.length} />
-            <DetailRow compact label="Linked events" value={site.linked_events.length} />
-            <DetailRow compact label="Owner">
-              <AuthorByline author={site.owner} size="xs" avatar />
-            </DetailRow>
-          </div>
-          <Link href={siteHref(site.id)} className={buttonClasses("secondary", { fullWidth: true })}>
-            Open the site page
-          </Link>
-        </>
-      )}
-    </MapSidePanel>
+      content={sitePanelContent}
+    />
   );
 }
 

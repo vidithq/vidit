@@ -10,6 +10,8 @@ describe("linkKind", () => {
     ["a known host in another case", "HTTPS://T.ME/channel/4"],
     ["a known host over http", "http://youtube.com/watch?v=1"],
     ["the map check", "https://www.google.com/maps?q=48.85,2.35"],
+    ["a map source page", "https://registry.opendata.aws/terrain-tiles/"],
+    ["a map source home page", "https://openfreemap.org/"],
   ])("opens %s directly", (_, href) => {
     expect(linkKind(href)).toBe("known");
   });
@@ -24,6 +26,7 @@ describe("linkKind", () => {
     ["a path below a path entry", "https://www.google.com/maps/url?q=https://evil.example"],
     ["a dot segment out of a path entry", "https://www.google.com/maps/../url?q=https://evil.example"],
     ["a subdomain of a path entry", "https://evil.www.google.com/maps"],
+    ["another page of a map source host", "https://registry.opendata.aws/other/"],
   ])("asks before %s", (_, href) => {
     expect(linkKind(href)).toBe("unknown");
   });

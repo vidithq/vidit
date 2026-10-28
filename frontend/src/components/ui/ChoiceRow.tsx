@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
+import type { Concept } from "@/lib/fieldHelp";
 import { SegmentedControl, type SegmentedControlOption } from "./SegmentedControl";
 import { PreferenceText } from "./ToggleRow";
 
@@ -12,6 +13,7 @@ import { PreferenceText } from "./ToggleRow";
  */
 export function ChoiceRow<T extends string>({
   label,
+  concept,
   description,
   options,
   value,
@@ -19,6 +21,8 @@ export function ChoiceRow<T extends string>({
   className = "",
 }: {
   label: string;
+  /** A `?` after the label. */
+  concept?: Concept;
   /** A line under the label saying what the setting does. */
   description?: ReactNode;
   options: SegmentedControlOption<T>[];
@@ -34,7 +38,7 @@ export function ChoiceRow<T extends string>({
         className,
       )}
     >
-      <PreferenceText label={label} description={description} />
+      <PreferenceText label={label} concept={concept} description={description} />
       <SegmentedControl aria-label={label} options={options} value={value} onChange={onChange} />
     </div>
   );
