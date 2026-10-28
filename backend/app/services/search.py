@@ -89,32 +89,70 @@ def _strip_sentinels(col: str) -> str:
     return f"translate({col}, chr(2) || chr(3), '')"
 
 
+# ``simple`` with accents folded (migration ``a8d4f2c6e1b3``): ``cafe`` finds ``café``.
 # The config name stays a SQL literal, never a bound parameter: a
 # ``$1::regconfig`` would not match the index expression tree. The events and
 # collections vectors use ORM ``func`` calls to compose with the shared
 # filters; the users and organizations ones are raw SQL (no event filters).
-_TS_CONFIG: ColumnClause[str] = literal_column("'simple'")
-_USER_TSVECTOR = "to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(bio, ''))"
-_ORGANIZATION_TSVECTOR = "to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(bio, ''))"
+_TS_CONFIG_NAME = "'simple_unaccent'"
+_TS_CONFIG: ColumnClause[str] = literal_column(_TS_CONFIG_NAME)
+_USER_TSVECTOR = (
+    f"to_tsvector({_TS_CONFIG_NAME}, coalesce(username, '') || ' ' || coalesce(bio, ''))"
+)
+_ORGANIZATION_TSVECTOR = (
+    f"to_tsvector({_TS_CONFIG_NAME}, "
+    "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(bio, ''))"
+)
+
+# A shorter last word would match most of the catalogue as a prefix.
+_PREFIX_MIN = 3
 
 
-def _parse(db: Session, *queries: str) -> list[str]:
-    """Each of ``queries`` as the text of its ``websearch_to_tsquery``, in one round trip. An
-    input without a word parses to the empty query, which matches nothing."""
+@dataclass(frozen=True)
+class _Query:
+    """A query parsed by ``websearch_to_tsquery``: ``exact`` matches whole words, ``typed`` also
+    reads the last word as a prefix, the word a reader is still typing."""
+
+    exact: str
+    typed: str
+
+
+def _typed(query: str, exact: str) -> str:
+    """``exact`` with its last word matched as a prefix, when ``query`` ends on a plain word of
+    at least ``_PREFIX_MIN`` letters or digits: not excluded, not ``OR``, not in quotes."""
+    words = query.split()
+    if not words or not exact.endswith("'") or query.count('"') % 2 or query.endswith('"'):
+        return exact
+    last = words[-1]
+    if last.startswith("-") or last.lower() == "or" or sum(c.isalnum() for c in last) < _PREFIX_MIN:
+        return exact
+    return f"{exact}:*"
+
+
+def _parse(db: Session, *queries: str) -> list[_Query]:
+    """Each of ``queries`` parsed, in one round trip. An input without a word parses to the
+    empty query, which matches nothing."""
     row = db.execute(
         select(*(cast(func.websearch_to_tsquery(_TS_CONFIG, q), Text) for q in queries))
     ).one()
-    return list(row)
+    return [_Query(exact, _typed(q, exact)) for q, exact in zip(queries, row, strict=True)]
 
 
 def _tsquery(parsed: str) -> ColumnElement:
-    """A :func:`_parse` result back as a ``tsquery`` value."""
+    """A :class:`_Query` text back as a ``tsquery`` value."""
     return cast(bindparam(None, parsed, type_=Text), TSQUERY)
 
 
+def _rank(tsvector, query: _Query) -> ColumnElement[float]:
+    """``ts_rank`` on the typed query, plus the exact one, so a whole word ranks above a word it
+    only begins."""
+    return func.ts_rank(tsvector, _tsquery(query.typed)) + func.ts_rank(
+        tsvector, _tsquery(query.exact)
+    )
+
+
 def _geo_tsvector():
-    """``to_tsvector('simple', coalesce(title, ''))``: the event title, which the rank and the
-    highlight read."""
+    """The event title's ``tsvector``, which the rank and the highlight read."""
     return func.to_tsvector(_TS_CONFIG, func.coalesce(Event.title, literal_column("''")))
 
 
@@ -169,7 +207,8 @@ def _handle_candidates(query: str) -> list[str]:
 
 @dataclass(frozen=True)
 class _Handle:
-    """A word of the query naming a live analyst: the lowercased handle, its parse, the id."""
+    """A word of the query naming a live analyst: the lowercased handle, its exact parse (a
+    handle is typed whole), the id."""
 
     handle: str
     parsed: str
@@ -183,8 +222,8 @@ class _EventTerms:
     the whole query, which the highlight reads."""
 
     text: str
-    parsed: str = ""
-    query_parsed: str = ""
+    parsed: _Query = _Query("", "")
+    query_parsed: _Query = _Query("", "")
     handles: tuple[_Handle, ...] = ()
 
 
@@ -222,7 +261,7 @@ def _event_terms(db: Session, query: str) -> _EventTerms:
         parsed=parsed,
         query_parsed=query_parsed,
         handles=tuple(
-            _Handle(handle, handle_parsed, user_id)
+            _Handle(handle, handle_parsed.exact, user_id)
             for (handle, user_id), handle_parsed in zip(named, handles_parsed, strict=True)
         ),
     )
@@ -236,7 +275,7 @@ def _matching(
     also matches the events credited to them (``services/event_filters.credited_to``)."""
     stmt = filters.apply(stmt, view=view).filter(*criteria)
     if terms.text:
-        stmt = stmt.filter(_event_match(terms.text, terms.parsed))
+        stmt = stmt.filter(_event_match(terms.text, terms.parsed.typed))
     for named in terms.handles:
         stmt = stmt.filter(
             or_(credited_to([named.user_id]), _event_match(named.handle, named.parsed))
@@ -252,11 +291,11 @@ def _located_hits() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
 
 
 def _collection_tsvector():
-    """``to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(description_text, ''))``.
+    """The ``tsvector`` of ``coalesce(title, '') || ' ' || coalesce(description_text, '')``.
 
     Uses the plain-text projection, not the HTML, which would index
     tag names. Expression-tree-equal to ``ix_collections_search_fts`` in
-    migration ``s7u9w1y3a5c7`` (the parenthesising is the parsing).
+    migration ``a8d4f2c6e1b3`` (the parenthesising is the parsing).
     """
     document = (
         func.coalesce(Collection.title, literal_column("''"))
@@ -307,16 +346,14 @@ def _search_events(
     rank: ColumnElement[float] = literal_column("0", DOUBLE_PRECISION)
     if q:
         title = func.ts_headline(
-            _TS_CONFIG, title, _tsquery(terms.query_parsed), _HEADLINE_OPTS_FULL
+            _TS_CONFIG, title, _tsquery(terms.query_parsed.typed), _HEADLINE_OPTS_FULL
         )
         # Ranked on the words that are not a handle, which a credited event's title need not hold.
         # ``real`` widened to ``double precision``: a ``real`` reaches Python as its
         # shortest float4 text, a different double than the one Postgres compares
         # against the cursor, so the walk would skip the cursor row's rank ties.
         rank = cast(
-            func.ts_rank(
-                _geo_tsvector(), _tsquery(terms.parsed if terms.text else terms.query_parsed)
-            ),
+            _rank(_geo_tsvector(), terms.parsed if terms.text else terms.query_parsed),
             DOUBLE_PRECISION,
         )
     stmt = db.query(
@@ -531,9 +568,9 @@ def search_collections(
     if author:
         stmt = stmt.filter(Collection.owner.has(owner_username_matches(author)))
     if q:
-        tsquery = _tsquery(_parse(db, q)[0])
-        stmt = stmt.filter(_collection_tsvector().op("@@")(tsquery)).order_by(
-            func.ts_rank(_collection_tsvector(), tsquery).desc(),
+        parsed = _parse(db, q)[0]
+        stmt = stmt.filter(_collection_tsvector().op("@@")(_tsquery(parsed.typed))).order_by(
+            _rank(_collection_tsvector(), parsed).desc(),
             Collection.created_at.desc(),
         )
     else:
@@ -571,16 +608,17 @@ def _search_profiles(
     sql = text(
         f"""
         SELECT id,
-               ts_rank({tsvector}, CAST(:tsq AS tsquery)) AS rank,
+               ts_rank({tsvector}, CAST(:tsq AS tsquery))
+                 + ts_rank({tsvector}, CAST(:tsq_exact AS tsquery)) AS rank,
                ts_headline(
-                   'simple', {_strip_sentinels(name_col)},
+                   {_TS_CONFIG_NAME}, {_strip_sentinels(name_col)},
                    CAST(:tsq AS tsquery),
                    :opts_full
                ) AS name_highlight,
                CASE
                    WHEN bio IS NULL OR length(bio) = 0 THEN NULL
                    ELSE ts_headline(
-                       'simple', {_strip_sentinels("bio")},
+                       {_TS_CONFIG_NAME}, {_strip_sentinels("bio")},
                        CAST(:tsq AS tsquery),
                        :opts_fragment
                    )
@@ -595,10 +633,12 @@ def _search_profiles(
     )
     if handle_col:
         sql = sql.bindparams(bindparam("handles", type_=ARRAY(String)))
+    parsed = _parse(db, query)[0]
     rows = db.execute(
         sql,
         {
-            "tsq": _parse(db, query)[0],
+            "tsq": parsed.typed,
+            "tsq_exact": parsed.exact,
             "handles": _handle_candidates(query.strip()),
             "lim": limit,
             "opts_full": _HEADLINE_OPTS_FULL,

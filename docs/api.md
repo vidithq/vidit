@@ -1983,7 +1983,9 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 | `taiz OR taizz` | Either word. |
 | `hezbollah -drone` | `hezbollah`, without `drone`. |
 
-Matching is case-insensitive and reads whole words through the `simple` dictionary: no stemming, so `drone` and `drones` are different words, and place names and handles match as typed.
+Matching is case-insensitive and folds accents, so `cafe` finds `Café` and `Hézbollah` finds `Hezbollah`. It reads words through the `simple` dictionary with no stemming: `drone` and `drones` are different words, and place names and handles match as typed.
+
+The last word of `q` also matches as a prefix, so a word you are still typing finds results: `zapor` finds `Zaporizhzhia`, and `osint_an` finds the analyst `osint_analyst`. This applies when the last word holds 3 letters or digits or more and is neither quoted, excluded with `-`, nor `OR`. A word that matches whole ranks above a word it only begins.
 
 **Rules.**
 

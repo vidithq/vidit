@@ -1405,6 +1405,49 @@ def test_the_query_takes_phrases_or_and_exclusions(db, caller):
         db.commit()
 
 
+def test_the_last_word_matches_as_a_prefix_while_typing(db, caller, seed_collection):
+    """A word still being typed finds the events, the analyst and the collection it begins, and
+    a whole word ranks above a longer word it only begins."""
+    token = _unique_token()
+    longer = _seed_geo(db, caller, f"Shelling near {token}ka")
+    whole = _seed_geo(db, caller, f"Shelling near {token}")
+    collection_id = seed_collection(f"Front of {token}ka", "What this one holds.")
+    try:
+        body = client.get("/api/v1/search", params={"q": f"shelling {token[:-2]}"}).json()
+        assert {h["id"] for h in body["geolocations"]} == {str(whole), str(longer)}
+        body = client.get("/api/v1/search", params={"q": token}).json()
+        assert [h["id"] for h in body["geolocations"]] == [str(whole), str(longer)]
+        assert [c["id"] for c in body["collections"]] == [str(collection_id)]
+        users = client.get("/api/v1/search", params={"q": caller.username[:-3], "type": "user"})
+        assert [u["username"] for u in users.json()["users"]] == [caller.username]
+        for q in (f'"{token[:-2]}"', f"{token[:-2]} -x", token[:2]):
+            assert _geo_ids(q=q) == [], q
+    finally:
+        db.query(Event).filter(Event.id.in_([longer, whole])).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_accents_fold_on_both_sides(db, caller):
+    """`cafe` finds `Café` and `Hézbollah` finds `Hezbollah`, in titles, bios and highlights."""
+    token = _unique_token()
+    cafe = _seed_geo(db, caller, f"Strike on the Café {token}")
+    hezbollah = _seed_geo(db, caller, f"Hezbollah position {token}")
+    caller.bio = f"Géolocalisation {token}"
+    db.commit()
+    try:
+        body = client.get("/api/v1/search", params={"q": f"cafe {token}"}).json()
+        assert [h["id"] for h in body["geolocations"]] == [str(cafe)]
+        assert (
+            f"{HIGHLIGHT_START}Café{HIGHLIGHT_STOP}" in body["geolocations"][0]["title_highlight"]
+        )
+        assert _geo_ids(q=f"Hézbollah {token}") == [str(hezbollah)]
+        users = client.get("/api/v1/search", params={"q": f"geolocalisation {token}"}).json()
+        assert [u["username"] for u in users["users"]] == [caller.username]
+    finally:
+        db.query(Event).filter(Event.id.in_([cafe, hezbollah])).delete(synchronize_session=False)
+        db.commit()
+
+
 def test_a_short_query_skips_source_urls(db, caller):
     """Regression: a single letter matched every URL holding it. A URL matches a word of 4
     characters or more, so a pasted link still finds the events that cite it."""
