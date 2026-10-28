@@ -4,6 +4,7 @@ import { en } from "@blocknote/core/locales";
 import type { useCreateBlockNote } from "@blocknote/react";
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+import { tinyGif } from "@/test/gif";
 
 import ProofEditor, { previewUrl, referencedProofFiles } from "./ProofEditor";
 
@@ -17,6 +18,13 @@ vi.mock("@blocknote/react", async (importOriginal) => {
       (editor = actual.useCreateBlockNote(...args)),
   };
 });
+
+// jsdom decodes no image: a test names the frames a GIF splits into.
+const splitGif = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/proofImages", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/proofImages")>()),
+  splitGif,
+}));
 
 // The toolbar positions itself from the selection's rects, which jsdom's Range does not implement.
 beforeAll(() => {
@@ -143,6 +151,54 @@ describe("ProofEditor", () => {
       editor.insertBlocks([{ type: "paragraph", content: "More" }], editor.document[0], "after");
     });
     await waitFor(() => expect(second).toHaveBeenLastCalledWith([file]));
+  });
+
+  describe("a GIF", () => {
+    const gif = (frames: number) =>
+      new File([tinyGif(frames)], "scan.gif", { type: "image/gif" });
+
+    // What BlockNote does with a pick: an empty image block, then the URL `uploadFile` answers.
+    async function pick(file: File) {
+      let url = "";
+      await act(async () => {
+        editor.replaceBlocks(editor.document, [{ type: "image" }]);
+        const blockId = editor.document[0].id;
+        url = (await editor.uploadFile!(file, blockId)) as string;
+        if (editor.getBlock(blockId)) editor.updateBlock(blockId, { props: { url } });
+        await new Promise((done) => setTimeout(done));
+      });
+      return url;
+    }
+
+    it("goes in as one image per frame, in frame order", async () => {
+      const frames = ["scan-1.png", "scan-2.png", "scan-3.png", "scan-4.png"].map(png);
+      splitGif.mockResolvedValueOnce(frames);
+      const onProofFilesChange = vi.fn();
+      render(<ProofEditor onChange={() => {}} onProofFilesChange={onProofFilesChange} />);
+
+      expect(await pick(gif(4))).toBe("placeholder://scan-1.png");
+      expect(splitGif).toHaveBeenLastCalledWith(expect.any(File), 4);
+      expect(editor.document.filter((b) => b.type === "image")).toHaveLength(4);
+      await waitFor(() => expect(onProofFilesChange).toHaveBeenLastCalledWith(frames));
+    });
+
+    it("goes in whole where the browser cannot split it", async () => {
+      splitGif.mockResolvedValueOnce(null);
+      render(<ProofEditor onChange={() => {}} />);
+      expect(await pick(gif(2))).toBe("placeholder://scan.gif");
+      expect(editor.document.filter((b) => b.type === "image")).toHaveLength(1);
+    });
+
+    it("is refused past six frames, leaving no image and saying why", async () => {
+      const { findByRole } = render(<ProofEditor onChange={() => {}} />);
+      expect(await pick(gif(7))).toBe("");
+
+      expect(await findByRole("alert")).toHaveTextContent(
+        "This GIF holds 7 frames, and a GIF may hold at most 6. Insert a GIF of 6 frames or fewer.",
+      );
+      expect(editor.document.some((b) => b.type === "image")).toBe(false);
+      expect(splitGif).not.toHaveBeenCalledWith(expect.any(File), 7);
+    });
   });
 
   it("keeps an image out of a text-only body", async () => {
