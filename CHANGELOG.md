@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- An admin can restore a soft-deleted account from the onboarding table: the account and the events its soft delete hid come back ([#793](https://github.com/vidithq/vidit/pull/793)).
 - On the search page, a typed coordinate pair offers to open that point on the map, and on All a query that names an analyst or an organization exactly puts a link to their page right under the search field ([#791](https://github.com/vidithq/vidit/pull/791)).
 - When a search finds nothing, the search page suggests the closest spelling that finds results, such as *Khan Yunis* for *Khan Younis* or a handle missing a letter ([#790](https://github.com/vidithq/vidit/pull/790)).
 - A map control beside the zoom buttons picks the basemap: Auto, which follows the theme, Dark, Light, Streets or Terrain; the browser keeps the choice ([#709](https://github.com/vidithq/vidit/pull/709)).
@@ -68,6 +69,9 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- The content reports queue names a reported event by its title and author, and the Manage an event picker shows each event's date and author, so two events with the same title stay apart ([#793](https://github.com/vidithq/vidit/pull/793)).
+- An admin opening a withheld event or collection sees that it is withheld and since when, as on a withheld site ([#793](https://github.com/vidithq/vidit/pull/793)).
+- The admin console marks a soft-deleted account and offers only the actions that apply to it, sums up what a hard delete erased, and names the action on each event receipt instead of hard or soft ([#793](https://github.com/vidithq/vidit/pull/793)).
 - The search field's placeholder fits on a phone, search result cards no longer leave an empty band under their details, and an empty collection shows its icon in the Add to collection picker instead of a cramped *no media* ([#789](https://github.com/vidithq/vidit/pull/789)).
 - The API reference now marks a collection's `title` and `description` as required on create, with their limits, and lists a missing field among the 422 causes ([#783](https://github.com/vidithq/vidit/pull/783)).
 - Search finds an analyst's work by their handle: on All and Events, a word that is an analyst's username lists the events credited to them, the other words narrow those events, and the Analysts group keeps the analyst ([#769](https://github.com/vidithq/vidit/pull/769)).
