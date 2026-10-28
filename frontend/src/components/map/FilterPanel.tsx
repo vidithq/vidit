@@ -7,10 +7,6 @@ import type { Conflict, MapPoint, Tag } from "@/types";
 import { ActiveFilterPills, type ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { rangeSummary } from "@/components/ui/FilterSection";
 import { Dot } from "@/components/ui/Dot";
-import { FieldHelp } from "@/components/ui/FieldHelp";
-import { META_LINE } from "@/components/ui/styles";
-import { formatDate } from "@/lib/format";
-import { sitesAsOf, todayUtc } from "@/lib/sites";
 import {
   EMPTY_DATE_WINDOWS,
   FILTER_NAMES,
@@ -62,7 +58,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
     sitesSelected,
     setSitesSelected,
   } = useMapState();
-  const asOf = sitesAsOf(dateWindows.eventTo, todayUtc());
 
   const onPatch: EventFilterPatch = (patch) =>
     setFilters((v) => ({ ...v, ...patch }));
@@ -177,12 +172,6 @@ export function FilterPanel({ tags, conflicts, points, pointCount, loading }: Fi
               label: SITES_LABEL,
               selected: sitesSelected,
               onToggle: () => setSitesSelected(!sitesSelected),
-              note: (
-                <p className={`${META_LINE} mt-2`}>
-                  Zones as of {asOf ? formatDate(asOf) : "today"}
-                  <FieldHelp concept="sites_layer" size={12} />
-                </p>
-              ),
             }}
             dateSections={[
               {

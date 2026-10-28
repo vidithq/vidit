@@ -87,7 +87,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
-- On the map, the Show field shows every event and every site while no chip is selected; once you select chips, it shows only what they name, so Sites alone hides the events and Clear all brings the sites back ([#808](https://github.com/vidithq/vidit/pull/808)).
+- On the map, no Show chip selected shows every event and every site, and selected chips show only what they name: Sites alone hides the events, and Clear all brings the sites back. No zones date sits under the chips ([#808](https://github.com/vidithq/vidit/pull/808)).
 - A GIF inserted into a proof shows one image per frame, and one past 6 frames is refused under the editor with the reason ([#804](https://github.com/vidithq/vidit/pull/804)).
 - The submit form keeps its draft across a reload, files and proof images included, until you publish ([#804](https://github.com/vidithq/vidit/pull/804)).
 - Pasting an X post you already imported says *Already imported* and links the existing detection, request or event ([#802](https://github.com/vidithq/vidit/pull/802)).

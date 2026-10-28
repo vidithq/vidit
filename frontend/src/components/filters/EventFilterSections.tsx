@@ -134,13 +134,11 @@ interface InjectedSection extends PanelField {
   active: boolean;
 }
 
-/** A map layer offered as one more Show chip after the status chips. `note` shows under the chips
- * while the layer is shown (`showFieldScope`). */
+/** A map layer offered as one more Show chip after the status chips (`showFieldScope`). */
 interface FilterLayer {
   label: string;
   selected: boolean;
   onToggle: () => void;
-  note?: ReactNode;
 }
 
 /** What the Show field leaves on the map. With no chip selected, every event and the layer show;
@@ -410,17 +408,14 @@ export function EventFilterSections({
       title: FILTER_NAMES.show,
       concept: "status",
       children: (
-        <>
-          <ChipBucket
-            options={[
-              ...SHOW_OPTIONS.map(([value, label]) => ({ id: value, name: value, label })),
-              ...(layer ? [{ id: LAYER_CHIP, name: LAYER_CHIP, label: layer.label }] : []),
-            ]}
-            selected={[...values.show, ...(layer?.selected ? [LAYER_CHIP] : [])]}
-            onToggle={(n) => (n === LAYER_CHIP ? layer?.onToggle() : toggleIn("show", n))}
-          />
-          {layer && showFieldScope(values.show, layer.selected).layer && layer.note}
-        </>
+        <ChipBucket
+          options={[
+            ...SHOW_OPTIONS.map(([value, label]) => ({ id: value, name: value, label })),
+            ...(layer ? [{ id: LAYER_CHIP, name: LAYER_CHIP, label: layer.label }] : []),
+          ]}
+          selected={[...values.show, ...(layer?.selected ? [LAYER_CHIP] : [])]}
+          onToggle={(n) => (n === LAYER_CHIP ? layer?.onToggle() : toggleIn("show", n))}
+        />
       ),
     }),
     ...when(offers("conflict") && conflicts.length > 0, {

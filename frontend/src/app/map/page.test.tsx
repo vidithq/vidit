@@ -286,9 +286,6 @@ describe("map sites layer", () => {
     expect(drawn()).toEqual({ events: 2, sites: 1 });
     expect(filterCount()).toBe("");
     expect(pills()).toEqual([]);
-
-    fireEvent.click(filtersButton());
-    expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
   });
 
   it("hides the sites when Geolocated alone is selected", async () => {
@@ -298,7 +295,6 @@ describe("map sites layer", () => {
 
     expect(drawn()).toEqual({ events: 1, sites: 0 });
     expect(screen.queryByRole("button", { name: "site s1" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Zones as of/)).not.toBeInTheDocument();
     expect(filterCount()).toBe("1");
     expect(pills()).toEqual(["Geolocated"]);
   });
@@ -309,7 +305,6 @@ describe("map sites layer", () => {
     fireEvent.click(sitesChip());
 
     expect(drawn()).toEqual({ events: 0, sites: 1 });
-    expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
     expect(filterCount()).toBe("1");
     expect(pills()).toEqual(["Sites"]);
 
@@ -331,7 +326,6 @@ describe("map sites layer", () => {
 
     chip("Detected");
     expect(drawn()).toEqual({ events: 1, sites: 1 });
-    expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
     expect(filterCount()).toBe("3");
     expect(pills()).toEqual(["Requested", "Detected", "Sites"]);
   });
@@ -347,6 +341,5 @@ describe("map sites layer", () => {
     expect(drawn()).toEqual({ events: 2, sites: 1 });
     expect(pills()).toEqual([]);
     expect(filterCount()).toBe("");
-    expect(screen.getByText(/^Zones as of/)).toBeInTheDocument();
   });
 });

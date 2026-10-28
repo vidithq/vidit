@@ -99,26 +99,6 @@ describe("<EventFilterSections>", () => {
     expect(onPatch).toHaveBeenCalledWith({ show: ["geolocated"] });
   });
 
-  it("shows the layer note whenever the Show field shows the layer", () => {
-    const panel = (show: string[], selected: boolean) => (
-      <EventFilterSections
-        tags={TAGS}
-        conflicts={CONFLICTS}
-        values={{ ...EMPTY_EVENT_FILTERS, show }}
-        onPatch={vi.fn()}
-        layer={{ label: "Sites", selected, onToggle: vi.fn(), note: <p>zones note</p> }}
-      />
-    );
-    const { rerender } = render(panel([], false));
-    expect(screen.getByText("zones note")).toBeInTheDocument();
-
-    rerender(panel(["geolocated"], false));
-    expect(screen.queryByText("zones note")).not.toBeInTheDocument();
-
-    rerender(panel(["requested"], true));
-    expect(screen.getByText("zones note")).toBeInTheDocument();
-  });
-
   it("names the Show field the same without a layer", () => {
     renderPanel();
     expect(screen.getByText("Show")).toBeInTheDocument();
