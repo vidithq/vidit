@@ -82,25 +82,66 @@ export function parsePastedCoordinates(text: string): CoordinatePair | null {
   return pair !== null && inBounds(pair.lat, pair.lng) ? pair : null;
 }
 
-/** Read a typed pair, in the forms a paste takes, or say why it is not one. The bound sentences
- *  are the backend's. */
+// The bound sentences are the backend's.
+const LAT_BOUNDS = `Latitude must be between ${LAT_MIN} and ${LAT_MAX}.`;
+const LNG_BOUNDS = `Longitude must be between ${LNG_MIN} and ${LNG_MAX}.`;
+const NO_PAIR = "Type a latitude and a longitude.";
+
+const HALVES = [
+  { half: "lat", name: "Latitude", example: "48.015883", min: LAT_MIN, max: LAT_MAX, bounds: LAT_BOUNDS },
+  { half: "lng", name: "Longitude", example: "37.802411", min: LNG_MIN, max: LNG_MAX, bounds: LNG_BOUNDS },
+] as const;
+
+/** What keeps two inputs from holding a usable pair. `half` names the input at fault, null when
+ *  both are blank. A blank half is `missing`: nothing typed is wrong yet. */
+export interface PairProblem {
+  message: string;
+  half: "lat" | "lng" | null;
+  missing: boolean;
+}
+
+/** Why two inputs hold no usable pair, or `null` when they do: a malformed or out-of-bounds
+ *  half first, latitude before longitude, then a blank one. */
+export function pairProblem(latValue: string, lngValue: string): PairProblem | null {
+  const values = { lat: latValue, lng: lngValue };
+  for (const { half, name, example, min, max, bounds } of HALVES) {
+    if (values[half].trim() === "") continue;
+    const n = cleanNumber(values[half]);
+    if (n === null) {
+      return { message: `${name} must be a number in decimal degrees, like ${example}.`, half, missing: false };
+    }
+    if (n < min || n > max) return { message: bounds, half, missing: false };
+  }
+  const latBlank = latValue.trim() === "";
+  const lngBlank = lngValue.trim() === "";
+  if (latBlank && lngBlank) return { message: NO_PAIR, half: null, missing: true };
+  if (latBlank) return { message: "Type a latitude.", half: "lat", missing: true };
+  if (lngBlank) return { message: "Type a longitude.", half: "lng", missing: true };
+  return null;
+}
+
+/** Read a typed pair, in the forms a paste takes, or say why it is not one. */
 export function readCoordinates(text: string): { pair: CoordinatePair } | { error: string } {
-  if (text.trim() === "") return { error: "Type a latitude and a longitude." };
+  if (text.trim() === "") return { error: NO_PAIR };
   const pair = matchPair(text);
   if (pair === null) {
     return {
-      error: "Type the latitude, a comma, then the longitude, in decimal degrees: 48.015883, 37.802411.",
+      error:
+        "Not a coordinate pair. Type the latitude, a comma, then the longitude, in decimal degrees: 48.015883, 37.802411.",
     };
   }
   const { lat, lng } = pair;
   if (lat < LAT_MIN || lat > LAT_MAX) {
     const swapped = inBounds(lng, lat) ? " The latitude comes first." : "";
-    return { error: `Latitude must be between ${LAT_MIN} and ${LAT_MAX}.${swapped}` };
+    return { error: `${LAT_BOUNDS}${swapped}` };
   }
-  if (lng < LNG_MIN || lng > LNG_MAX) {
-    return { error: `Longitude must be between ${LNG_MIN} and ${LNG_MAX}.` };
-  }
+  if (lng < LNG_MIN || lng > LNG_MAX) return { error: LNG_BOUNDS };
   return { pair };
+}
+
+/** A point as the coordinate inputs hold it: the 6 decimals of `formatCoordinates`. */
+export function pairInputs({ lat, lng }: CoordinatePair): { lat: string; lng: string } {
+  return { lat: lat.toFixed(6), lng: lng.toFixed(6) };
 }
 
 /** The one coordinate rendering, shared by the detail page and the copy button so a copied

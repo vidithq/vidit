@@ -99,8 +99,12 @@ export function LinkSuggestionPills({
   );
 }
 
+/** The heading of a name search's rows, apart from the suggestions' own. */
+const SEARCH_RESULTS = "Search results";
+
 /** The name search of a link picker, on `Combobox`: `search` runs once typing rests, and a pick
- *  empties the field. */
+ *  empties the field. Its rows sit under their own heading, since a site found by name may lie
+ *  past the suggestions' distance. */
 export function LinkSearch({
   label,
   placeholder,
@@ -165,6 +169,7 @@ export function LinkSearch({
       open={open && q !== ""}
       onOpenChange={setOpen}
       status={status}
+      heading={SEARCH_RESULTS}
     />
   );
 }

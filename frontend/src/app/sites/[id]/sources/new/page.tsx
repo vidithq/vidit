@@ -86,7 +86,7 @@ export default function FileSiteSourcePage() {
         side={
           <section>
             <SectionEyebrow title="Current zone" concept="site_zone" besideScroller />
-            <SiteLocation site={site} source={latestSource(site.sources)} />
+            <SiteLocation site={site} source={latestSource(site.sources)} goToField />
           </section>
         }
       />

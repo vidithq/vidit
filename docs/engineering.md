@@ -531,7 +531,7 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/siteZone.ts::MAX_ZONE_AREA_KM2` (the contour editor's live refusal, `drawRefusal`) | `schemas/site.MAX_ZONE_AREA_KM2` (`services/sites.zone_shape`) | the contour editor takes a zone the API refuses (`zone_too_large`), or refuses one it takes |
 | `lib/sites.ts::contourOn` | `services/sites.zones_at` (the latest contour whose source was captured on or before the day, the later contour breaking a tie) | the site page shows a zone for a date that the map and the API read differently |
 | `lib/sites.ts::siteSourceFromEventSource` | `services/sites._event_file` (a `satellite` source with a file, not flagged graphic) and `schemas/site.SiteSourceCreate` (a capture time) | the link dialog offers to file an event source the API refuses (`source_media_not_found`) |
-| `lib/sites.ts::SITE_MARGIN_KM` | the `margin_m` default of `routers/events/sites` | the link dialog names a distance the suggestions do not use |
+| `lib/sites.ts::SITE_MARGIN_KM` | `services/sites.DEFAULT_MARGIN_M`, the `margin_m` default of the site suggestions | the site pickers name a distance the suggestions do not use |
 | `components/sites/useEventSites.tsx` link gate on `geolocated` | `event_filters.site_linkable_events` | the event page offers a link the API refuses (409) |
 | `components/collections/EventPicker.tsx::chronological` | `collections.chronological_key` | the picker orders a collection's events differently from its page |
 | `lib/og.ts::MOSAIC_MAX_TILES` | `collections.COVER_TILES` | a share card draws more tiles than the server sends |

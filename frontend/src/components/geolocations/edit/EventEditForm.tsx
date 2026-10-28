@@ -287,7 +287,7 @@ export function EventEditForm({
       actions={actions}
       formId={EDIT_FORM_ID}
       onSubmit={submit.action.attempt}
-      fields={{ row: geo }}
+      fields={{ row: geo, siteLinks: !isRequest }}
     />
   );
 }

@@ -92,6 +92,8 @@ from app.services.versions import MAX_VERSIONS_PER_EVENT, VersionLimitError
 MAP_SITES_LIMIT = 1000
 OVERLAPS_LIMIT = 20
 SUGGESTIONS_LIMIT = 20
+# Mirrored by `frontend/src/lib/sites.ts::SITE_MARGIN_KM`; change both.
+DEFAULT_MARGIN_M = 10_000
 MAX_MARGIN_M = 10_000
 
 
