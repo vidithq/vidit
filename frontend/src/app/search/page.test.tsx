@@ -23,6 +23,12 @@ vi.mock("@/lib/search", async (importOriginal) => ({
   suggestAuthors: () => Promise.resolve([]),
 }));
 
+const setViewState = vi.fn();
+const setSelectedId = vi.fn();
+vi.mock("@/contexts/MapStateContext", () => ({
+  useMapState: () => ({ setViewState, setSelectedId }),
+}));
+
 let currentUser: { id: string; username: string } | null = null;
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: currentUser }) }));
 
@@ -642,6 +648,48 @@ describe("the active filters on the search page", () => {
     expect(within(rail).queryByTitle("Remove filter: By ana")).not.toBeInTheDocument();
     expect(screen.getAllByTitle("Remove filter: By ana")).toHaveLength(1);
     expect(screen.getAllByTitle("Remove filter: drone")).toHaveLength(2);
+  });
+});
+
+describe("the shortcut under the search field", () => {
+  it("opens a typed coordinate pair on the map", async () => {
+    searchParams = new URLSearchParams("q=31.46939%2C+34.38510");
+    search.mockResolvedValue(response({ query: "31.46939, 34.38510" }));
+    render(<SearchPage />);
+
+    const row = screen.getByRole("link", { name: /31\.469390, 34\.385100/ });
+    expect(row).toHaveAttribute("href", "/map");
+    fireEvent.click(row);
+    expect(setSelectedId).toHaveBeenCalledWith(null);
+    expect(setViewState).toHaveBeenCalledWith({ latitude: 31.46939, longitude: 34.3851, zoom: 14 });
+  });
+
+  it("leads to the analyst a query names exactly, on All only", async () => {
+    searchParams = new URLSearchParams("q=%40KAKHOVKA_WATCH");
+    search.mockResolvedValue(
+      response({ query: "@KAKHOVKA_WATCH", users: [userHit()], total: { ...NO_TOTALS, users: 1 } }),
+    );
+    const { unmount } = render(<SearchPage />);
+
+    const row = await screen.findByRole("link", { name: /kakhovka_watch\s*Analyst/ });
+    expect(row).toHaveAttribute("href", "/profile/kakhovka_watch");
+    unmount();
+
+    searchParams = new URLSearchParams("q=kakhovka_watch&type=user");
+    render(<SearchPage />);
+    await screen.findByText("kakhovka_watch");
+    expect(screen.queryByText("Analyst")).not.toBeInTheDocument();
+  });
+
+  it("leads to the organization a query names by its name", async () => {
+    searchParams = new URLSearchParams("q=kakhovka+watch");
+    search.mockResolvedValue(
+      response({ query: "kakhovka watch", organizations: [orgHit()], total: { ...NO_TOTALS, organizations: 1 } }),
+    );
+    render(<SearchPage />);
+
+    const row = await screen.findByRole("link", { name: /Kakhovka Watch\s*Organization/ });
+    expect(row).toHaveAttribute("href", "/organizations/kakhovka-watch");
   });
 });
 

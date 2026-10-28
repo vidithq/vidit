@@ -3,17 +3,13 @@
 import { useMap, type MapRef } from "react-map-gl/maplibre";
 import { LocateFixed } from "lucide-react";
 
-import type { CoordinatePair } from "@/lib/coordinates";
+import { GO_TO_ZOOM, type CoordinatePair } from "@/lib/coordinates";
 
 import { GoToCoordinates } from "./GoToCoordinates";
 import { MapPopoverControl } from "./MapPopoverControl";
 
-// The least zoom a typed coordinate lands at, where roads and buildings read. A reader zoomed in
-// further keeps their zoom.
-const GO_TO_ZOOM = 14;
-
-/** Centres `map` on a typed point. No `essential` flag, so reduced motion gets the camera
- *  without the flight. */
+/** Centres `map` on a typed point, keeping a reader's deeper zoom. No `essential` flag, so
+ *  reduced motion gets the camera without the flight. */
 export function goToPoint(map: MapRef, { lat, lng }: CoordinatePair) {
   map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), GO_TO_ZOOM) });
 }

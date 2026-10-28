@@ -23,10 +23,14 @@ import { CollectionIcon } from "@/lib/collections";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
   appendEventFilterParams,
+  exactProfile,
   readEventFilterParams,
   search,
   splitHighlights,
 } from "@/lib/search";
+import { GO_TO_ZOOM, formatCoordinates, parsePastedCoordinates } from "@/lib/coordinates";
+import { useMapState } from "@/contexts/MapStateContext";
+import { LinkRow } from "@/components/ui/LinkRow";
 import { Avatar } from "@/components/ui/Avatar";
 import { EntityCard } from "@/components/ui/EntityCard";
 import type {
@@ -323,6 +327,13 @@ function SearchPageBody() {
   }, [committed, typeFilter]);
 
   const activeQuery = committed.q;
+  const { setViewState, setSelectedId } = useMapState();
+  const point = parsePastedCoordinates(queryInput);
+  // On All only: a scope already lists its own group, and the other scopes hold no profiles.
+  const named =
+    typeFilter === "all" && results && queryInput.trim() === activeQuery.trim()
+      ? exactProfile(activeQuery, results)
+      : null;
   const selection = useSearchSelection(
     { q: committed.q, ...committed.values, ...committed.dates },
     results?.geolocations ?? [],
@@ -446,6 +457,52 @@ function SearchPageBody() {
           placeholder="Place, analyst or keyword"
           autoFocus
         />
+
+        {/* One shortcut under the field: a typed coordinate pair opens the map there, a query
+            that names an analyst or an organization exactly opens their page. */}
+        {point ? (
+          <LinkRow
+            icon={MapPin}
+            value={formatCoordinates(point.lat, point.lng)}
+            meta="Open on the map"
+            href="/map"
+            external={false}
+            variant="arrow"
+            onClick={() => {
+              setSelectedId(null);
+              setViewState({ latitude: point.lat, longitude: point.lng, zoom: GO_TO_ZOOM });
+            }}
+          />
+        ) : named?.kind === "analyst" ? (
+          <LinkRow
+            icon={Users}
+            leading={
+              <Avatar src={named.hit.avatar_url} username={named.hit.username} size="size-7" />
+            }
+            value={named.hit.username}
+            meta="Analyst"
+            href={profileHref(named.hit.username)}
+            external={false}
+            variant="arrow"
+          />
+        ) : named?.kind === "organization" ? (
+          <LinkRow
+            icon={Building2}
+            leading={
+              <Avatar
+                src={named.hit.avatar_url}
+                username={named.hit.name}
+                size="size-7"
+                shape="square"
+              />
+            }
+            value={named.hit.name}
+            meta={`Organization · ${memberCountLabel(named.hit.member_count)}`}
+            href={organizationPath(named.hit.slug)}
+            external={false}
+            variant="arrow"
+          />
+        ) : null}
 
         {filterSections ? (
           <FilterBar

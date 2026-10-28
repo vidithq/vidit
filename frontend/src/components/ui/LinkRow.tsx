@@ -26,6 +26,8 @@ import { OutboundLink } from "./OutboundLink";
 //   not fit on one line, the action and the arrow wrap to a second line.
 //   `meta` is a muted line under the value; it renders inside the link, so it
 //   holds text and pills, never a link.
+// - `onClick` runs before an in-app `href` navigates: the search page's coordinates row puts the
+//   point in the map state, then opens the map.
 const ROW =
   "group flex items-center gap-3 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md";
 
@@ -33,16 +35,18 @@ function RowLink({
   href,
   external,
   className,
+  onClick,
   children,
 }: {
   href: string;
   external: boolean;
   className: string;
+  onClick?: () => void;
   children: ReactNode;
 }) {
   if (!external && href.startsWith("/")) {
     return (
-      <Link href={href} className={className}>
+      <Link href={href} className={className} onClick={onClick}>
         {children}
       </Link>
     );
@@ -71,6 +75,7 @@ export function LinkRow({
   external = true,
   variant = "accent",
   action,
+  onClick,
 }: {
   icon: LucideIcon;
   leading?: ReactNode;
@@ -81,6 +86,7 @@ export function LinkRow({
   external?: boolean;
   variant?: "accent" | "arrow";
   action?: ReactNode;
+  onClick?: () => void;
 }) {
   const lead = leading ?? (
     <Icon
@@ -101,6 +107,7 @@ export function LinkRow({
         <RowLink
           href={href}
           external={external}
+          onClick={onClick}
           className="flex grow basis-40 min-w-0 items-center gap-3 outline-hidden after:absolute after:inset-0 after:rounded-md"
         >
           {lead}
@@ -151,7 +158,12 @@ export function LinkRow({
   }
 
   return (
-    <RowLink href={href} external={external} className={`${ROW} ${TAPPABLE_HOVER}`}>
+    <RowLink
+      href={href}
+      external={external}
+      onClick={onClick}
+      className={`${ROW} ${TAPPABLE_HOVER}`}
+    >
       {inner}
     </RowLink>
   );

@@ -2,8 +2,10 @@ import type { Account } from "@/components/ui/AccountPicker";
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import type {
+  SearchOrganizationHit,
   SearchResponse,
   SearchType,
+  SearchUserHit,
 } from "@/types";
 
 /** `GET /search`. Debouncing is the caller's job; the endpoint short-circuits empty queries. The
@@ -168,6 +170,26 @@ export async function suggestAuthors(q: string): Promise<Account[]> {
   const params = new URLSearchParams({ q: trimmed });
   const res = await apiFetch<components["schemas"]["AuthorSuggestions"]>(`/search/authors?${params.toString()}`);
   return res.authors.map((username) => ({ kind: "analyst", username }));
+}
+
+/** The analyst or organization a query names exactly, among a response's hits: a username
+ *  (case and a leading `@` ignored), or an organization's slug or name (case ignored). An analyst
+ *  wins over an organization of the same name. */
+export function exactProfile(
+  q: string,
+  results: Pick<SearchResponse, "users" | "organizations">,
+):
+  | { kind: "analyst"; hit: SearchUserHit }
+  | { kind: "organization"; hit: SearchOrganizationHit }
+  | null {
+  const named = q.trim().replace(/^@/, "").toLowerCase();
+  if (!named) return null;
+  const analyst = results.users.find((u) => u.username.toLowerCase() === named);
+  if (analyst) return { kind: "analyst", hit: analyst };
+  const organization = results.organizations.find(
+    (o) => o.slug === named || o.name.toLowerCase() === named,
+  );
+  return organization ? { kind: "organization", hit: organization } : null;
 }
 
 /** Split a sentinel-wrapped highlight string into alternating text and mark segments. The
