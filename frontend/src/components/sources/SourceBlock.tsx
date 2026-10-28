@@ -22,15 +22,13 @@ import {
 } from "@/lib/sources";
 
 import { SourcesRow } from "./SourcesRow";
-import { SourceWarnings } from "./SourceWarnings";
 
 /**
  * One source of an event on a reading surface, read like the event's Details card: its file
  * (behind its own graphic gate when this source is flagged) or a *No file* box, then one row
  * each for the title, level, kind (with the file's kind), links, capture time, capture position
  * and tags, the order of the editor's fields. A row with no value drops out. A context source
- * without a file has no file area at all: a URL alone (an article, a statement) is no gap. A
- * satellite or aircraft source's warnings follow the links.
+ * without a file has no file area at all: a URL alone (an article, a statement) is no gap.
  *
  * `compact` is the map panel's density: `thumbnail` media and bare rows in a `LIST_TILE`.
  * `wide` is for a block that owns the whole sources area: the file grows and sits left of the
@@ -129,7 +127,7 @@ function SourceRows({
         <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
       </DetailRow>
       {kind && <DetailRow {...SOURCE_FIELDS.kind} compact={compact} value={kind} />}
-      <SourceLinkRows source={source} name={name.charAt(0).toLowerCase() + name.slice(1)} compact={compact} />
+      <LinksRow source={source} name={name.charAt(0).toLowerCase() + name.slice(1)} compact={compact} />
       <CapturedRow source={source} compact={compact} />
       {position && (
         <DetailRow
@@ -150,8 +148,8 @@ function SourceRows({
   );
 }
 
-/** A source's links, each with its archived copy and post time, then its imagery warnings. */
-function SourceLinkRows({
+/** A source's links, each with its archived copy and post time. */
+function LinksRow({
   source,
   name,
   compact,
@@ -161,35 +159,31 @@ function SourceLinkRows({
   compact: boolean;
 }) {
   const links = source.links;
+  if (links.length === 0) return null;
   return (
-    <>
-      {links.length > 0 && (
-        <DetailRow
-          {...SOURCE_FIELDS.links}
-          label={`${SOURCE_FIELDS.links.label} (${links.length})`}
-          compact={compact}
-          align="start"
-        >
-          <ul className="space-y-1.5 text-right" aria-label={`Links of ${name}`}>
-            {links.map((link, i) => (
-              <li key={link.url}>
-                <div className="flex items-center justify-end">
-                  <SourceLabel url={link.url} variant="link" className="text-sm" />
-                  <ArchivedCopies
-                    copy={link.archived}
-                    describes={linkDescription(name, safeHostname(link.url), i, links.length)}
-                  />
-                </div>
-                <p className={META_LINE}>
-                  {link.posted_at ? `Posted ${formatInstantOrDate(link.posted_at)}` : "Date unknown"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </DetailRow>
-      )}
-      <SourceWarnings warnings={source.warnings} label={`Warnings of ${name}`} />
-    </>
+    <DetailRow
+      {...SOURCE_FIELDS.links}
+      label={`${SOURCE_FIELDS.links.label} (${links.length})`}
+      compact={compact}
+      align="start"
+    >
+      <ul className="space-y-1.5 text-right" aria-label={`Links of ${name}`}>
+        {links.map((link, i) => (
+          <li key={link.url}>
+            <div className="flex items-center justify-end">
+              <SourceLabel url={link.url} variant="link" className="text-sm" />
+              <ArchivedCopies
+                copy={link.archived}
+                describes={linkDescription(name, safeHostname(link.url), i, links.length)}
+              />
+            </div>
+            <p className={META_LINE}>
+              {link.posted_at ? `Posted ${formatInstantOrDate(link.posted_at)}` : "Date unknown"}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </DetailRow>
   );
 }
 
