@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- On the event forms, each source carries Move earlier and Move later, and readers see the sources in the order the author set ([#804](https://github.com/vidithq/vidit/pull/804)).
 - An admin can restore a soft-deleted account from the onboarding table: the account and the events its soft delete hid come back ([#793](https://github.com/vidithq/vidit/pull/793)).
 - On the search page, a typed coordinate pair offers to open that point on the map, and on All a query that names an analyst or an organization exactly puts a link to their page right under the search field ([#791](https://github.com/vidithq/vidit/pull/791)).
 - When a search finds nothing, the search page suggests the closest spelling that finds results, such as *Khan Yunis* for *Khan Younis* or a handle missing a letter ([#790](https://github.com/vidithq/vidit/pull/790)).
@@ -29,6 +30,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The Links help on the source forms holds two sentences, and the methodology guide says how to link, archive and permalink a source ([#804](https://github.com/vidithq/vidit/pull/804)).
+- The suggested tags under a tag field wrap instead of running off the card, the first 6 then one Show more ([#804](https://github.com/vidithq/vidit/pull/804)).
 - Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a request page, the asker sees Edit, which opens the request's form, and every other reader sees Geolocate; the asker no longer gets both for the same page ([#794](https://github.com/vidithq/vidit/pull/794)).
@@ -75,6 +78,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A GIF inserted into a proof shows one image per frame, and one past 6 frames is refused under the editor with the reason ([#804](https://github.com/vidithq/vidit/pull/804)).
+- The submit form keeps its draft across a reload, files and proof images included, until you publish ([#804](https://github.com/vidithq/vidit/pull/804)).
 - A collection's owner no longer sees Report on their own collection ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a phone, the pinned actions and the menu button sit on one full-width bar once the page scrolls, so fields and lists no longer show between them ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a wide screen, the pinned actions stay on one line, such as Approve, Accept and Decline on an invitation ([#794](https://github.com/vidithq/vidit/pull/794)).
