@@ -1,13 +1,14 @@
 "use client";
 
-import { useId } from "react";
+import { Fragment, useId } from "react";
 import { createPortal } from "react-dom";
 import { HelpCircle } from "lucide-react";
 
 import { useHelpHidden } from "@/hooks/useHelpHidden";
 import { usePinnedPopover } from "@/hooks/usePinnedPopover";
-import { FIELD_HELP, type Concept } from "@/lib/fieldHelp";
-import { TOOLTIP_SURFACE } from "./styles";
+import { FIELD_HELP, type Concept, type HelpEntry } from "@/lib/fieldHelp";
+import { OutboundLink } from "./OutboundLink";
+import { TEXT_LINK, TOOLTIP_SURFACE } from "./styles";
 
 /**
  * A `?` help affordance next to a field or section: a one-line explanation on
@@ -16,8 +17,8 @@ import { TOOLTIP_SURFACE } from "./styles";
  * viewport clamp so an `overflow` ancestor (the map detail side panel) can't
  * clip it.
  *
- * Takes a `concept` key: the text and accessible label come from the one
- * registry in `lib/fieldHelp.ts`.
+ * Takes a `concept` key: the text, the accessible label and the source links
+ * come from the one registry in `lib/fieldHelp.ts`.
  *
  * Neutral, not orange: orange stays reserved for primary affordances.
  */
@@ -28,7 +29,7 @@ export function FieldHelp({
   concept: Concept;
   size?: number;
 }) {
-  const { text, label } = FIELD_HELP[concept];
+  const { text, label, sources }: HelpEntry = FIELD_HELP[concept];
   const { open, pinned, wrapperProps, anchorProps, popoverProps } =
     usePinnedPopover();
   const tooltipId = useId();
@@ -45,6 +46,9 @@ export function FieldHelp({
         aria-label={label}
         aria-describedby={open ? tooltipId : undefined}
         aria-expanded={pinned}
+        // A `<PopoverPanel>` around the `?` counts a press in a popup its controls name as inside
+        // it, so a click on a source link does not close the panel before the link opens.
+        aria-controls={open && sources ? tooltipId : undefined}
         /* On a phone the padding and negative margin grow the hit area to 29 by
            25px around the 13px glyph. The vertical bleed is capped at 6px (the
            label-to-input gap) so a tap just below still lands on the input.
@@ -63,6 +67,19 @@ export function FieldHelp({
             className={`z-[2000] w-max max-w-xs px-3 py-2 rounded-md text-xs leading-relaxed font-normal normal-case tracking-normal ${TOOLTIP_SURFACE}`}
           >
             {text}
+            {sources && (
+              <span className="mt-1 block">
+                {sources.length > 1 ? "Sources" : "Source"}:{" "}
+                {sources.map((source, i) => (
+                  <Fragment key={source.href}>
+                    {i > 0 && ", "}
+                    <OutboundLink href={source.href} className={TEXT_LINK}>
+                      {source.name}
+                    </OutboundLink>
+                  </Fragment>
+                ))}
+              </span>
+            )}
           </span>,
           document.body
         )}

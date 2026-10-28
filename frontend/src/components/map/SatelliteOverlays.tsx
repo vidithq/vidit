@@ -45,34 +45,72 @@ function useAboveBasemap() {
   }, [map]);
 }
 
+// The events that start or end a tile or data load; `idle` ends every load, a failed one included.
+const LOAD_EVENTS = ["dataloading", "data", "moveend", "idle"] as const;
+
+/** Whether the map is still loading `id` while `on`: the tiles in view of a raster source, or a
+ *  GeoJSON source's data. A tile that fails to load counts as done. */
+function useSourceLoading(id: string, on: boolean): boolean {
+  const { current: map } = useMap();
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!map || !on) return;
+    const raw = map.getMap();
+    const check = () => setLoading(raw.getSource(id) !== undefined && !raw.isSourceLoaded(id));
+    for (const event of LOAD_EVENTS) raw.on(event, check);
+    return () => {
+      for (const event of LOAD_EVENTS) raw.off(event, check);
+    };
+  }, [map, id, on]);
+  return on && loading;
+}
+
 /** NASA GIBS overlays of the day before, in UTC: the VIIRS true-colour imagery and the VIIRS fire
  *  detections. Both are overlays, so a basemap swap keeps them (`carryOverlays`). */
 export function SatelliteOverlays({
   imagery,
   fires,
   brightness,
+  onLoadingChange,
 }: {
   imagery: boolean;
   fires: boolean;
   brightness: Brightness;
+  /** Called with true while a shown overlay is still loading, and with false once both have
+   *  loaded or failed, or when the overlays unmount. */
+  onLoadingChange: (loading: boolean) => void;
 }) {
   const date = useMemo(() => gibsDate(new Date()), []);
   const [detections, setDetections] = useState<FireDetections>(EMPTY);
+  // Whether the day's detections have arrived or failed: a failure stops the loading state too.
+  const [settled, setSettled] = useState(false);
   useAboveBasemap();
 
   useEffect(() => {
     if (!fires) return;
     let live = true;
-    loadFireDetections(date).then(
-      (loaded) => {
-        if (live) setDetections(loaded);
-      },
-      () => {},
-    );
+    loadFireDetections(date)
+      .then(
+        (loaded) => {
+          if (live) setDetections(loaded);
+        },
+        () => {},
+      )
+      .finally(() => {
+        if (live) setSettled(true);
+      });
     return () => {
       live = false;
     };
   }, [fires, date]);
+
+  const imageryLoading = useSourceLoading(DAILY_IMAGERY_SOURCE, imagery);
+  const firesSourceLoading = useSourceLoading(FIRES, fires);
+  const loading = imageryLoading || (fires && (!settled || firesSourceLoading));
+  useEffect(() => {
+    onLoadingChange(loading);
+    return () => onLoadingChange(false);
+  }, [loading, onLoadingChange]);
 
   return (
     <>
