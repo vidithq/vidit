@@ -68,6 +68,7 @@ function eventFixture(
     sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null, warnings: [] }],
     proof: null,
     created_at: "2026-06-02T10:00:00Z",
+    hidden_at: null,
     geolocated_at: null,
     closed_at: null,
     thumbnail: null,
@@ -305,6 +306,26 @@ describe("panels the row opens", () => {
     renderAs(null, { status: "geolocated", surface: "event" });
     fireEvent.click(within(row()).getByRole("button", { name: "Report" }));
     expect(screen.getByRole("heading", { name: "Report this event" })).toBeInTheDocument();
+  });
+
+  it("says a withheld event is withheld, which only an admin reads", () => {
+    function Withheld() {
+      const { panels } = useEventActions({
+        event: { ...eventFixture("geolocated"), hidden_at: "2026-10-28T09:30:00Z" },
+        surface: "event",
+      });
+      return <>{panels}</>;
+    }
+    api.viewer = OWNER;
+    render(<Withheld />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Withheld since 28 Oct 2026, 09:30 UTC. Only admins read this event until it is restored.",
+    );
+  });
+
+  it("shows no withheld banner on a live event", () => {
+    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    expect(screen.queryByText(/Withheld since/)).toBeNull();
   });
 });
 

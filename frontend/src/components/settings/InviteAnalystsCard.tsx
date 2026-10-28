@@ -127,13 +127,7 @@ export function InviteAnalystsCard() {
 
   return (
     <Card>
-      <div className="space-y-1">
-        <SectionEyebrow title="Invite analysts" margin="none" />
-        <p className="text-xs text-neutral-500">
-          Each invite code is single use and bound to the invitee&apos;s X handle, which their new
-          account links on sign-up. Share the link with the analyst you invite.
-        </p>
-      </div>
+      <SectionEyebrow title="Invite analysts" concept="invite_analysts" margin="none" />
 
       <ErrorNotice error={mint.error ?? revoke.error ?? error} onRetry={refetch} />
 

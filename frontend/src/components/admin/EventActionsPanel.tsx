@@ -9,7 +9,7 @@ import {
   type AdminEventDeleteResponse,
   type AdminEventModeration,
 } from "@/lib/admin";
-import { countLabel, formatInstant } from "@/lib/format";
+import { countLabel, formatDate, formatInstant, formatInstantDate } from "@/lib/format";
 import { search } from "@/lib/search";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
@@ -33,19 +33,22 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 type ModerationBody = { is_graphic?: boolean; hidden?: boolean };
 
+// `done` names the action on its receipt.
 const MODERATION_ACTIONS = [
-  { key: "mark", label: "Mark graphic", body: { is_graphic: true } },
-  { key: "unmark", label: "Unmark graphic", body: { is_graphic: false } },
-  { key: "unhide", label: "Restore", body: { hidden: false } },
+  { key: "mark", label: "Mark graphic", done: "Marked graphic", body: { is_graphic: true } },
+  { key: "unmark", label: "Unmark graphic", done: "Unmarked graphic", body: { is_graphic: false } },
+  { key: "unhide", label: "Restore", done: "Restored", body: { hidden: false } },
 ] as const;
+const HIDE_DONE = "Hidden";
 
 type Receipt =
-  | { kind: "moderation"; data: AdminEventModeration }
+  | { kind: "moderation"; action: string; title: string | null; data: AdminEventModeration }
   | { kind: "delete"; data: AdminEventDeleteResponse };
 
-/** An event the panel acts on. A pasted ID carries no title. */
-type Target = { id: string; title: string | null };
-type Hit = { id: string; title: string; owner: string };
+/** An event the panel acts on. A pasted ID carries no title. `meta` is its date and author, which
+ *  tell apart two events with the same title. */
+type Target = { id: string; title: string | null; meta: string | null };
+type Hit = { id: string; title: string; meta: string };
 
 // An event ID alone or inside an event link (`/events/{id}`, `/events/{id}/v2`).
 const EVENT_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -54,11 +57,19 @@ const SEARCH_LIMIT = 10;
 
 async function searchEvents(q: string): Promise<Hit[]> {
   const found = await search({ q, type: "event", limit: SEARCH_LIMIT });
-  return [...found.geolocations, ...found.requests].map((hit) => ({
-    id: hit.id,
-    title: hit.title,
-    owner: hit.owner.username,
-  }));
+  const hit = (id: string, title: string, date: string, owner: string): Hit => ({
+    id,
+    title,
+    meta: `${date} · ${owner}`,
+  });
+  return [
+    ...found.geolocations.map((e) =>
+      hit(e.id, e.title, e.occurred_date ? formatDate(e.occurred_date) : "Undated", e.owner.username),
+    ),
+    ...found.requests.map((r) =>
+      hit(r.id, r.title, `Requested ${formatInstantDate(r.created_at)}`, r.owner.username),
+    ),
+  ];
 }
 
 /** The event field: a title search over the public events, or a pasted ID or event link, which
@@ -113,6 +124,7 @@ function EventField({
           }}
         >
           <span className={target.title ? undefined : "font-mono"}>{name}</span>
+          {target.meta && <span className="font-normal opacity-70">{target.meta}</span>}
           <X size={12} aria-hidden />
         </Pill>
       </div>
@@ -131,7 +143,7 @@ function EventField({
       query={query}
       onQueryChange={(next) => {
         const id = pasted(next);
-        if (id) pick({ id, title: null });
+        if (id) pick({ id, title: null, meta: null });
         else setQuery(next);
       }}
       open={open && q.length > 0}
@@ -139,12 +151,12 @@ function EventField({
       options={current ? rows : []}
       optionKey={(hit) => hit.id}
       renderOption={(hit) => (
-        <>
-          <span className="min-w-0 truncate">{hit.title}</span>{" "}
-          <span className="min-w-0 truncate text-xs text-neutral-500">{hit.owner}</span>
-        </>
+        <span className="min-w-0">
+          <span className="block truncate">{hit.title}</span>
+          <span className="block truncate text-xs text-neutral-500">{hit.meta}</span>
+        </span>
       )}
-      onPick={(hit) => pick({ id: hit.id, title: hit.title })}
+      onPick={(hit) => pick(hit)}
       status={
         !current
           ? "Searching…"
@@ -166,11 +178,11 @@ export function EventActionsPanel() {
   const id = target?.id ?? "";
 
   const moderateMutation = useMutation(
-    (body: ModerationBody) => setEventModeration(id, body),
+    (move: { body: ModerationBody; done: string }) => setEventModeration(id, move.body),
     {
       fallback: "Moderation failed",
-      onSuccess: (data) => {
-        setReceipt({ kind: "moderation", data });
+      onSuccess: (data, move) => {
+        setReceipt({ kind: "moderation", action: move.done, title: target?.title ?? null, data });
         setConfirming(null);
       },
     }
@@ -188,9 +200,9 @@ export function EventActionsPanel() {
     }
   );
 
-  const moderate = (body: ModerationBody) => {
+  const moderate = (body: ModerationBody, done: string) => {
     deleteMutation.reset();
-    void moderateMutation.run(body);
+    void moderateMutation.run({ body, done });
   };
 
   const confirm = (kind: "hide" | "delete") => {
@@ -243,7 +255,7 @@ export function EventActionsPanel() {
               key={action.key}
               variant="secondary"
               disabled={disabled}
-              onClick={() => moderate(action.body)}
+              onClick={() => moderate(action.body, action.done)}
             >
               {action.label}
             </Button>
@@ -280,7 +292,7 @@ export function EventActionsPanel() {
           busyLabel="Hiding…"
           busy={busy}
           error={moderateMutation.error}
-          onConfirm={() => moderate({ hidden: true })}
+          onConfirm={() => moderate({ hidden: true }, HIDE_DONE)}
           onCancel={() => setConfirming(null)}
         >
           <p>The event drops off every public read until it is restored.</p>
@@ -314,21 +326,20 @@ export function EventActionsPanel() {
 
       {receipt?.kind === "moderation" && (
         <ActionReceipt
-          // `hidden_at` is the takedown: a withheld row reads as hard, a live one as soft.
-          mode={receipt.data.hidden_at ? "hard" : "soft"}
+          action={receipt.action}
+          danger={receipt.action === HIDE_DONE}
           header={
             <>
               <MapPin size={12} className="text-orange-400" />
-              <span className="font-medium">
-                {receipt.data.is_graphic ? "Graphic" : "Not graphic"}
-              </span>
+              <span className="font-medium">{receipt.title ?? receipt.data.id}</span>
             </>
           }
         >
-          <div className="text-neutral-500 font-mono text-[11px]">
-            {receipt.data.id}
-          </div>
+          {receipt.title && (
+            <div className="text-neutral-500 font-mono text-[11px]">{receipt.data.id}</div>
+          )}
           <div className="text-neutral-500">
+            {receipt.data.is_graphic ? "Graphic. " : "Not graphic. "}
             {receipt.data.hidden_at
               ? `Hidden since ${formatInstant(receipt.data.hidden_at)}.`
               : "Visible on every public read."}
@@ -338,7 +349,8 @@ export function EventActionsPanel() {
 
       {receipt?.kind === "delete" && (
         <ActionReceipt
-          mode={receipt.data.mode}
+          action={receipt.data.mode === "hard" ? "Hard delete" : "Soft delete"}
+          danger={receipt.data.mode === "hard"}
           header={
             <>
               <MapPin size={12} className="text-orange-400" />

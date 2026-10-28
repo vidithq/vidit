@@ -40,8 +40,10 @@ export function Switch({
       : "translate-x-0.5",
   );
   if (as === "span") {
+    // A positioned track stacks above a row-wide button laid under it (`<ToggleRow>`), so it lets
+    // the click through to the control that owns it.
     return (
-      <span aria-hidden="true" className={track}>
+      <span aria-hidden="true" className={cn(track, "pointer-events-none")}>
         <span className={knob} />
       </span>
     );

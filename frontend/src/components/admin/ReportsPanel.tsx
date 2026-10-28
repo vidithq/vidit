@@ -32,9 +32,8 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
  * API owns the order). Resolved rows stay, so the queue doubles as the record of what was reported
  * and decided.
  *
- * A report names an event, a collection or a site. An event row links out by id; a collection or
- * site row prints the name and owner it came back with, since those are names, not recognisable
- * ids.
+ * A report names an event, a collection or a site. Every row prints the title or name and the owner
+ * it came back with, so two items with the same title stay apart.
  *
  * Each open row carries the verdicts its target can take. `hidden` withholds the target from every
  * public read, so it opens a `ConfirmDialog`, as on the event actions panel. `Mark graphic` is
@@ -84,7 +83,8 @@ function ReportRow({
 
   const open = report.resolved_at === null;
   const busy = resolveMutation.loading;
-  // Which kind of row this is. A report names one target, so at most one is set; neither once the target was deleted.
+  // Which kind of row this is. A report names one target, so at most one is set; none once the target was deleted.
+  const event = report.event ?? null;
   const collection = report.collection;
   const site = report.site ?? null;
   const isEvent = report.event_id !== null;
@@ -105,10 +105,13 @@ function ReportRow({
         <span className="text-neutral-500">
           {report.reporter_id ? "signed in" : "anonymous"}
         </span>
-        {report.event_id !== null && (
-          <Link href={eventHref(report.event_id)} className={TEXT_LINK}>
-            Open the event
-          </Link>
+        {event && (
+          <>
+            <Link href={eventHref(event.id)} className={TEXT_LINK}>
+              {event.title}
+            </Link>
+            <AuthorByline author={event.owner} size="xs" />
+          </>
         )}
         {collection && (
           <>

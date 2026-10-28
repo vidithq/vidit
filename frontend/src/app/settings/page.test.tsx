@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UserPreferences } from "@/lib/preferences";
@@ -91,15 +91,19 @@ describe("SettingsPage", () => {
     );
   });
 
-  it("lists one email switch per notification kind with its default", async () => {
+  it("lists one email switch per notification kind, its explanation behind its ?", async () => {
     render(<SettingsPage />);
 
     const fulfilled = await screen.findByRole("switch", { name: "Request fulfilled" });
     expect(fulfilled).toHaveAttribute("aria-checked", "true");
-    expect(fulfilled).toHaveAccessibleDescription(/Default: on\./);
-    const follower = screen.getByRole("switch", { name: "New follower" });
-    expect(follower).toHaveAttribute("aria-checked", "false");
-    expect(follower).toHaveAccessibleDescription(/Default: off\./);
+    expect(
+      screen.getByRole("button", { name: "What is the Request fulfilled notification?" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "New follower" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(screen.queryByText(/a request you opened/)).toBeNull();
 
     fireEvent.click(fulfilled);
 
@@ -107,6 +111,16 @@ describe("SettingsPage", () => {
     expect(patchBodies()).toEqual([
       { notifications: { request_fulfilled: false } },
     ]);
+  });
+
+  it("says Saved in the card's heading once a setting reaches the account", async () => {
+    render(<SettingsPage />);
+
+    const notifications = screen.getByRole("heading", { name: /Notifications/ }).parentElement!;
+    expect(within(notifications).getByRole("status")).toHaveTextContent("");
+    fireEvent.click(await screen.findByRole("switch", { name: "Request fulfilled" }));
+
+    await waitFor(() => expect(within(notifications).getByRole("status")).toHaveTextContent("Saved"));
   });
 
   it("saves who may send approval requests", async () => {

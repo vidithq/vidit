@@ -107,6 +107,7 @@ export const EVENT: EventDetail = {
   occurred_date: "2025-01-03",
   occurred_time: "14:20:00",
   created_at: "2025-01-04T10:11:00Z",
+  hidden_at: null,
   geolocated_at: "2025-01-04T10:11:00Z",
   closed_at: null,
   is_graphic: false,
@@ -274,6 +275,7 @@ export const COLLECTION: Collection = {
   first_date: "2025-01-03",
   last_date: "2025-01-04",
   created_at: "2025-01-05T08:00:00Z",
+  hidden_at: null,
 };
 
 /**

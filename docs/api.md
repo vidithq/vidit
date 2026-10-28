@@ -213,6 +213,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/admin/organizations/{slug}/managers` | 🛡️ | Name a live analyst org manager of an organization |
 | DELETE | `/admin/organizations/{slug}` | 🛡️ | Delete an organization with its memberships, invites, approval requests and approvals |
 | DELETE | `/admin/users/{id}` | 🛡️ | Soft delete (default) or `?hard=true` GDPR erasure |
+| POST | `/admin/users/{id}/restore` | 🛡️ | Undo a soft delete |
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/collections/{id}/moderation` | 🛡️ | Withhold a collection from public view, or restore it (moves `hidden_at`) |
@@ -1101,7 +1102,7 @@ One archive-import job. Owner only: another user's job id reads as 404. Poll it 
 
 Full detail for a single event, in any lifecycle state.
 
-A withheld event (`hidden_at` set by an admin, directly or by resolving a [content report](#post-eventsidreport) as `hidden`) answers 404 for everyone but an admin. The payload carries no `hidden_at` field. A soft-deleted event answers 404 for every caller, admins included.
+A withheld event (`hidden_at` set by an admin, directly or by resolving a [content report](#post-eventsidreport) as `hidden`) answers 404 for everyone but an admin. A soft-deleted event answers 404 for every caller, admins included.
 
 **Response 200:** an `EventRead`.
 ```json
@@ -1191,6 +1192,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `version_no` | `0` while the event is a request or a detection, `1` once it is published, then one higher per [correction](#post-eventsidversions). An event created published starts at `1` |
 | `version_zero` | What version 0 of the event is: `request` or `detection`, the row the event was published from or still is. `null` when the history holds no version 0: an event created published, or one published before the publish filed version 0. Served by `GET /events/{id}` and the write responses; `null` on list reads |
 | `geolocated_at` | When the row became `geolocated`; `null` before publication |
+| `hidden_at` | When an admin withheld the event. Only an admin reads a withheld event, so every other reader gets `null` |
 | `close_reason`, `before_closed_status` | `null` while the event is open |
 | `thumbnail` | The card thumbnail, on the rule of [`GET /events`](#get-events) |
 | `is_graphic` | `true` when any source is flagged as showing death, injury or human remains. Derived from the sources; each source carries its own flag |
@@ -2266,7 +2268,8 @@ One collection's header: owner, title, description, tags, item count, and the da
   "event_count": 12,
   "first_date": "2026-03-01",
   "last_date": "2026-07-09",
-  "created_at": "2026-08-01T09:12:00Z"
+  "created_at": "2026-08-01T09:12:00Z",
+  "hidden_at": null
 }
 ```
 
@@ -2279,6 +2282,7 @@ All computed fields are computed per read over the events the collection shows, 
 | `first_date`, `last_date` | The smallest and largest `occurred_date` among them; both `null` when none carries a date |
 | `cover` | Zero to four tiles, in item order, skipping graphic items, each the item's card media (an image preferred over a clip). `kind` is `image` or `video`. `role` is `source` for a source's file or `proof` for a proof image; a `proof` `url` has no `_hero` / `_thumb` derivatives, so read it as is |
 | `tags` | The union of the tags of the items and of their sources (`TagRead`), ordered by `name`. A collection carries no tag of its own |
+| `hidden_at` | When an admin withheld the collection. Only an admin reads a withheld collection, so every other reader gets `null` |
 
 A withheld collection (`hidden_at`, see [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation)) answers 404 for everyone but an admin, its owner included. So do a collection [pending erasure](#delete-collectionsid) and a collection whose owner is soft-deleted.
 
@@ -3914,7 +3918,8 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
       "bot_detection_count": 3,
       "detected_count": 12,
       "geolocated_count": 4,
-      "last_seen_at": "…"
+      "last_seen_at": "…",
+      "deleted_at": null
     }
   }
 ]
@@ -3926,6 +3931,7 @@ List invite codes, newest first, including exhausted, revoked and expired ones. 
 - `bot_detection_count` sums `bot_mentions.created_event_count` for the account's X handle (case-insensitive), a total that later deletes do not reduce.
 - `detected_count` and `geolocated_count` count the live events the account owns in that status.
 - `last_seen_at` is the account's most recent authenticated request, refreshed at most once per 15 minutes and stamped at sign-in. It falls back to the newest `login` row of the [`audit_log`](data-model.md#audit_log), and is `null` when neither exists.
+- `deleted_at` is when the account was soft-deleted, and `null` on a live account. See [`POST /admin/users/{id}/restore`](#post-adminusersidrestore).
 
 ### `POST /admin/invite-codes/{id}/revoke` 🛡️
 
@@ -3985,6 +3991,23 @@ Remove a user. Both modes invalidate the points cache. Audited as `user_soft_del
 ```
 
 `cascaded_geolocations` counts every event the user owned, whatever its status, less the ones handed over. `transferred_events` counts the events handed to a co-geolocator, in both modes. For `mode = "hard"`, `deleted_at` is `null` and `media_count` counts the files swept.
+
+### `POST /admin/users/{id}/restore` 🛡️
+
+Undo a soft delete. Clears `users.deleted_at`, so the user can log in again and their profile reads, and restores every event the soft delete hid: those whose `deleted_at` equals the user's. An event soft-deleted on its own stays deleted. The X handle, the events handed to a co-geolocator and the org manager roles the soft delete moved stay where they went. Invalidates the points cache. Audited as `user_restored`.
+
+Idempotent: a live user answers 200 with `restored_events: 0` and appends no audit row.
+
+**Response 200:**
+```json
+{
+  "user_id": "…",
+  "username": "throwaway",
+  "restored_events": 5
+}
+```
+
+**Response 404:** `user_not_found`, unknown id.
 
 ### `DELETE /admin/users/{id}/detected-events` 🛡️
 
@@ -4180,7 +4203,7 @@ The moderation queue: open reports first, then newest first within each group, e
 **Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-eventsidreport).
 
 - `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `audit_log`, not on the wire.
-- A row names one target. `event_id` carries the event's id. `collection` carries the collection's current title and owner, read at queue time, and `deleted_at`, the time its owner deleted it while a report was open, or `null`. Such a collection takes every verdict a live one takes. `site` carries the site's current `id`, `name` and `owner`.
+- A row names one target. `event_id` carries the event's id, and `event` its `id`, current `title` and `owner`. `collection` carries the collection's current title and owner, read at queue time, and `deleted_at`, the time its owner deleted it while a report was open, or `null`. Such a collection takes every verdict a live one takes. `site` carries the site's current `id`, `name` and `owner`.
 - All three are `null` when the target is gone (a hard-deleted event, an erased collection, or a site erased with its owner). Such a report takes only `dismissed`.
 
 ### `POST /admin/reports/{id}/resolve` 🛡️

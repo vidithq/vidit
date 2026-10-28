@@ -38,6 +38,7 @@ export const eventDetail = (id: string, title: string): EventDetail => ({
   sources: [source()],
   proof: null,
   created_at: "2026-03-15T10:00:00Z",
+  hidden_at: null,
   geolocated_at: "2026-03-15T10:00:00Z",
   closed_at: null,
   thumbnail: null,

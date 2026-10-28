@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- An admin can restore a soft-deleted account from the onboarding table: the account and the events its soft delete hid come back ([#793](https://github.com/vidithq/vidit/pull/793)).
 - On the search page, a typed coordinate pair offers to open that point on the map, and on All a query that names an analyst or an organization exactly puts a link to their page right under the search field ([#791](https://github.com/vidithq/vidit/pull/791)).
 - When a search finds nothing, the search page suggests the closest spelling that finds results, such as *Khan Yunis* for *Khan Younis* or a handle missing a letter ([#790](https://github.com/vidithq/vidit/pull/790)).
 - A map control beside the zoom buttons picks the basemap: Auto, which follows the theme, Dark, Light, Streets or Terrain; the browser keeps the choice ([#709](https://github.com/vidithq/vidit/pull/709)).
@@ -24,10 +25,13 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - When a detection's proof holds the footage its source lacks, the edit form copies that proof image into the empty source file slot in one click; `POST /uploads/from-proof` stages the copy ([#746](https://github.com/vidithq/vidit/pull/746)).
 - A pulsing dot above the basemap control shows while the daily satellite imagery or the fire detections are still loading, including after you move the map ([#758](https://github.com/vidithq/vidit/pull/761)).
 - In the basemap control, a `?` beside each basemap, label setting, layer and overlay says what it shows and links to the source of its data or tiles ([#757](https://github.com/vidithq/vidit/pull/757)).
+- When the basemap's tile server does not respond, offline or with one provider down, a line over the map says so instead of leaving it blank ([#792](https://github.com/vidithq/vidit/pull/792)).
 
 ### Changed
 
 - Search finds results while you type: the last word matches as the start of a longer word, so a partial place name or handle already lists what it begins, and accents no longer matter (`cafe` finds `Café`) ([#788](https://github.com/vidithq/vidit/pull/788)).
+- The settings page shows labels only, with each explanation behind its `?`, and a section says *Saved* for a moment once a setting reaches your account ([#792](https://github.com/vidithq/vidit/pull/792)).
+- The help of the dashed disputed borders switch says the map data, not Vidit, decides which borders are disputed, and what the switch does ([#792](https://github.com/vidithq/vidit/pull/792)).
 - Search reads quotes as a phrase, `OR` as either word and `-word` as a word to exclude, and a query shorter than 4 characters no longer matches every source link that holds it ([#787](https://github.com/vidithq/vidit/pull/787)).
 - The event page, the detection queue and the two event groups of search each read one shared eager-load set instead of restating it, and `docs/engineering.md` lists those sets ([#779](https://github.com/vidithq/vidit/pull/779)).
 - On the search page, the Tags filter narrows the Collections group to the collections that hold the tag instead of emptying it, and the Collections scope offers Tags beside Author ([#778](https://github.com/vidithq/vidit/pull/778)).
@@ -68,7 +72,12 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- The content reports queue names a reported event by its title and author, and the Manage an event picker shows each event's date and author, so two events with the same title stay apart ([#793](https://github.com/vidithq/vidit/pull/793)).
+- An admin opening a withheld event or collection sees that it is withheld and since when, as on a withheld site ([#793](https://github.com/vidithq/vidit/pull/793)).
+- The admin console marks a soft-deleted account and offers only the actions that apply to it, sums up what a hard delete erased, and names the action on each event receipt instead of hard or soft ([#793](https://github.com/vidithq/vidit/pull/793)).
 - The search field's placeholder fits on a phone, search result cards no longer leave an empty band under their details, and an empty collection shows its icon in the Add to collection picker instead of a cramped *no media* ([#789](https://github.com/vidithq/vidit/pull/789)).
+- A click on the pill or knob of a switch row now toggles it, not only a click on its label ([#792](https://github.com/vidithq/vidit/pull/792)).
+- The Light basemap's Region borders switch now draws the borders at every zoom, in a grey that shows on the light map ([#792](https://github.com/vidithq/vidit/pull/792)).
 - The API reference now marks a collection's `title` and `description` as required on create, with their limits, and lists a missing field among the 422 causes ([#783](https://github.com/vidithq/vidit/pull/783)).
 - Search finds an analyst's work by their handle: on All and Events, a word that is an analyst's username lists the events credited to them, the other words narrow those events, and the Analysts group keeps the analyst ([#769](https://github.com/vidithq/vidit/pull/769)).
 - The event edit and submit forms no longer scroll sideways when the tag field suggests more tags than fit on its line ([#775](https://github.com/vidithq/vidit/pull/776)).

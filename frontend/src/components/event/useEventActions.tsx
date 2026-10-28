@@ -20,6 +20,7 @@ import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { WithheldBanner } from "@/components/ui/WithheldBanner";
 import { EventShare } from "@/components/event/EventShare";
 import { GeolocatorInviteCard, InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import type { EventShellActions } from "@/components/event/EventShell";
@@ -74,8 +75,8 @@ interface EventActionsOptions {
 }
 
 interface EventActions {
-  /** The geolocator invitation's card, the report form, a dialog, and the receipt a sent report
-   *  leaves, for under the header. */
+  /** The withheld banner, the geolocator invitation's card, the report form, a dialog, and the
+   *  receipt a sent report leaves, for under the header. */
   panels: ReactNode;
   /** The actions block: the row, pinned; the approvals under it. */
   actions: EventShellActions | undefined;
@@ -200,8 +201,9 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   ].filter(Boolean);
 
   return {
-    panels: (invited || canReport) && (
+    panels: (event.hidden_at || invited || canReport) && (
       <>
+        {event.hidden_at && <WithheldBanner since={event.hidden_at} noun="event" />}
         {invited && <GeolocatorInviteCard event={event} />}
         {canReport && report.panel}
       </>

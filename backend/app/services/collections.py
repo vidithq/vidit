@@ -381,6 +381,7 @@ def build_collection_reads(db: Session, collections: Sequence[Collection]) -> li
                 first_date=row_stats.first_date,
                 last_date=row_stats.last_date,
                 created_at=collection.created_at,
+                hidden_at=collection.hidden_at,
             )
         )
     return reads

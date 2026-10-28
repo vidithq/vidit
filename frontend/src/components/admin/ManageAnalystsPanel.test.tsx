@@ -52,7 +52,9 @@ describe("<ManageAnalystsPanel>", () => {
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/admin/users/u1?hard=true", { method: "DELETE" }),
     );
-    expect(await screen.findByText(/swept 2 media rows/)).toBeInTheDocument();
+    expect(
+      await screen.findByText("Erased the account, 1 event and 2 storage objects."),
+    ).toBeInTheDocument();
     expect(screen.queryByText("ana@example.org")).toBeNull();
   });
 });

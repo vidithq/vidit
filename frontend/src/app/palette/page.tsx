@@ -104,6 +104,7 @@ import { AvatarStack } from "@/components/ui/AvatarStack";
 import { organizationByline } from "@/lib/organizations";
 import { Dot } from "@/components/ui/Dot";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
+import { WithheldBanner } from "@/components/ui/WithheldBanner";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
@@ -296,6 +297,7 @@ const MOCK_DETAIL: EventDetail = {
   detected_via: null,
   proof: null,
   created_at: "2026-06-01T00:00:00Z",
+  hidden_at: null,
   geolocated_at: "2026-06-03T10:00:00Z",
   closed_at: null,
   thumbnail: null,
@@ -508,6 +510,10 @@ export default function PalettePage() {
             <div className={`rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
               Heads up, check this before submitting.
             </div>
+          </Item>
+
+          <Item name="<WithheldBanner>" usage="The state of an event, collection or site a moderator withheld (hidden_at), under the page header. Only an admin reads a withheld item, so only an admin meets it. Painted from WARNING_CALLOUT; `noun` names the item.">
+            <WithheldBanner since="2026-10-28T09:30:00Z" noun="collection" />
           </Item>
 
           <Item name="TOOLTIP_SURFACE" usage="The bubble of an anchored popover (usePinnedPopover): the FieldHelp explanation, the ActionMenu list and the Tooltip bubble. Colour only; callers add rounded-md, padding and text size.">

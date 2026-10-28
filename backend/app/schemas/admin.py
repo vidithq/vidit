@@ -80,6 +80,8 @@ class AdminInviteRedeemerRead(BaseModel):
     # Most recent authenticated request (``users.last_seen_at``), falling back
     # to the newest ``login`` audit row on rows predating it; NULL if neither.
     last_seen_at: datetime | None
+    # Set while the account is soft-deleted.
+    deleted_at: datetime | None
 
 
 class AdminInviteCodeRead(BaseModel):
@@ -157,6 +159,15 @@ class AdminUserDeleteResponse(BaseModel):
     # Storage objects swept across those events (source and proof, derivatives
     # included), so higher than an event delete's media-row count.
     media_count: int = 0
+
+
+class AdminUserRestoreResponse(BaseModel):
+    """Response for `POST /admin/users/{id}/restore`."""
+
+    user_id: uuid.UUID
+    username: str
+    # Events the soft delete hid, now live again.
+    restored_events: int
 
 
 class AdminEventDeleteResponse(BaseModel):
