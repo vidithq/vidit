@@ -72,6 +72,7 @@ import { EventShellPreview } from "./eventShellDemo";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
+import { LegalLinks } from "@/components/ui/LegalLinks";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { StatTile, StatGrid } from "@/components/ui/StatTile";
@@ -1741,6 +1742,13 @@ export default function PalettePage() {
                 />
               </Variant>
             </div>
+          </Item>
+
+          <Item
+            name="<LegalLinks>"
+            usage="The legal notice and the privacy policy on one muted line, the footer of the landing page and the line under every sign-in and sign-up card, so both stay reachable before an account exists."
+          >
+            <LegalLinks />
           </Item>
 
           <Item name="<LinkRow>" usage="Stay in touch and Guides (About), and each row of the Notifications feed (kind and date as the label, the sentence as the value). The profile's linked accounts are icon buttons instead. The trailing ↗ marks external only: an in-app href routes through next/link, a mailto stays a plain <a>, and neither takes the glyph. `leading` (opt-in) shows a node in place of the icon: the feed passes the picture of who is behind the row (an analyst's circle, an organization's square logo), and `icon` stays the fallback when the row has no one behind it. `variant` arrow (opt-in, the feed's rows and every list on the organization page and the admin Organizations panel): neutral value that wraps, an orange ArrowRight at the right edge, the link stretched over the block (hover and focus light the border and the arrow), and `action` inside the block left of the arrow, above the link; when the value and the action do not fit on one line, the action and the arrow wrap to a second line. `label` is optional. `meta` (arrow only) is a muted line under the value (date, version, who, a role or state pill), inside the link, so it never holds a link. `onClick` runs before an in-app href navigates (the search page's coordinates row sets the map view).">
