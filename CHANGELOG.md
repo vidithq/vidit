@@ -52,6 +52,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- The event edit and submit forms no longer scroll sideways when the tag field suggests more tags than fit on its line ([#775](https://github.com/vidithq/vidit/pull/776)).
 - A Telegram post whose text holds a custom emoji now imports with its photo instead of the date alone ([#697](https://github.com/vidithq/vidit/pull/697)).
 
 ## v0.8.0, 2026-10-25
