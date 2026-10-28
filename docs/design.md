@@ -2162,6 +2162,8 @@ An image uploads at publish, not when it is picked:
 3. Each change reports, through `onProofFilesChange`, the staged files whose placeholder is still an `<img src>` in the emitted HTML (`referencedProofFiles`).
 4. The form posts those files as `proof_files[]` beside the HTML. The server matches each file to its placeholder by filename and rewrites the `src` to the stored media URL.
 
+A GIF goes in as its frames, the way the server stores it. `uploadFile` counts the frames from the GIF's blocks (`gifFrameCount` in [`lib/proofImages.ts`](../frontend/src/lib/proofImages.ts)) and refuses a GIF the server refuses: one it cannot read, or one past `MAX_GIF_FRAMES` (6) frames. A refused GIF leaves no image, and a `FieldError` under the editor says why: *This GIF holds 7 frames, and a GIF may hold at most 6. Insert a GIF of 6 frames or fewer.* The next pick clears it. A GIF within the cap splits into one PNG per frame, as the GIF displays it (`splitGif`, through the browser's `ImageDecoder`), named `scan-1.png`, `scan-2.png` and on. The first frame fills the image block that picked the GIF, and each further frame follows it as an image block of its own. Each frame stages and posts like a picked image, so it counts once toward the [proof-image ceiling](api.md#proof-image-ceiling). A browser without `ImageDecoder` stages the GIF whole, and the server splits it at publish.
+
 #### Storage
 
 The server stores the body in a `TEXT` column and sanitizes every write with nh3 in [`sanitize.py`](../backend/app/services/sanitize.py) on the [rich text rules](api.md#rich-text).
