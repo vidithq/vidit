@@ -701,11 +701,11 @@ export default function PalettePage() {
             <PaletteFilterSearchFields />
           </Item>
 
-          <Item name="<ToggleRow>" usage="An on/off row: the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file on a site). Settings lists one described row per notification kind, its Email switch.">
+          <Item name="<ToggleRow>" usage="An on/off row: an empty button over the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `concept` puts a <FieldHelp> after the label in the settings shape, stacked above that button, so a tap on the `?` opens its help and never toggles (the basemap control's layers and overlays). `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file on a site). Settings lists one described row per notification kind, its Email switch.">
             <PaletteToggleRow />
           </Item>
 
-          <Item name="<ChoiceRow>" usage="A pick-one preference row, the <ToggleRow> shape for a setting with a few named choices: the label at reading size over a line saying what the setting does, and a <SegmentedControl> named by the label. Beside the text from sm up; below sm the bar drops under it and takes the full column. `className` carries the caller's own divider and spacing. Settings and the organization page both render Accept approval requests from through it.">
+          <Item name="<ChoiceRow>" usage="A pick-one preference row, the <ToggleRow> shape for a setting with a few named choices: the label at reading size over a line saying what the setting does, and a <SegmentedControl> named by the label. `concept` puts a <FieldHelp> after the label (the basemap control's label language and density). Beside the text from sm up; below sm the bar drops under it and takes the full column. `className` carries the caller's own divider and spacing. Settings and the organization page both render Accept approval requests from through it.">
             <PaletteChoiceRow />
           </Item>
 
@@ -1051,10 +1051,15 @@ export default function PalettePage() {
 
           <Item
             name="<FieldHelp>"
-            usage="The one explanation hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else."
+            usage="The one explanation hover text in the app: a `?` on a label, a section heading, a filter bar or an icon group, whose bubble carries the concept's sentence from the lib/fieldHelp.ts registry (a native title attribute is never used). Registry-only: every instance of a concept reads the same words, so the `?` takes the concept key and nothing else. A concept whose data comes from outside Vidit lists its sources under the sentence, each a link that opens the provider's page in a new tab (the basemap control's presets, layers and overlays); the bubble then stays open while the pointer crosses into it, and a press on a link inside a popover panel keeps the panel open."
           >
-            <span className="inline-flex items-center gap-1 text-sm text-neutral-300">
-              Coordinates <FieldHelp concept="coordinates" />
+            <span className="inline-flex items-center gap-3 text-sm text-neutral-300">
+              <span className="inline-flex items-center gap-1">
+                Coordinates <FieldHelp concept="coordinates" />
+              </span>
+              <span className="inline-flex items-center gap-1">
+                Relief <FieldHelp concept="map_relief" />
+              </span>
             </span>
           </Item>
 
@@ -2549,6 +2554,15 @@ function PaletteToggleRow() {
           description="The small ? icons that explain each field and section."
           on={described}
           onToggle={() => setDescribed((v) => !v)}
+        />
+      </div>
+      <div className="bg-neutral-900 rounded-lg border border-neutral-700 p-3">
+        <ToggleRow
+          label="Relief"
+          concept="map_relief"
+          variant="setting"
+          on={on}
+          onToggle={() => setOn((v) => !v)}
         />
       </div>
     </div>
