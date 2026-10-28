@@ -3,10 +3,11 @@ import { ArrowRight, Bot } from "lucide-react";
 
 import { ACCENT_SURFACE } from "@/components/ui/styles";
 import { Dot } from "@/components/ui/Dot";
+import { countLabel } from "@/lib/format";
 import { detectionsQueueHref } from "@/lib/routes";
 
-/** Own-profile entry into the detections list: the count of machine-`detected` geolocations
- * awaiting submission, linking to `/profile/{username}/detections`. The parent renders it only when
+/** Own-profile entry into the detections list: the count of machine-`detected` geolocations to
+ * review, linking to `/profile/{username}/detections`. The parent renders it only when
  * `count > 0`. Accent-tinted like `StatusBadge`, the same "machine, pending" signal. */
 export function DetectionsEntry({
   username,
@@ -26,14 +27,9 @@ export function DetectionsEntry({
           {/* Same orange dot as the sidebar profile row, tying the nudge to this block. */}
           <Dot className="absolute -top-0.5 -right-0.5 size-2.5 ring-2 ring-neutral-950" />
         </span>
-        <div>
-          <p className="text-sm font-medium text-neutral-100">
-            {count} {count === 1 ? "detection" : "detections"} to submit
-          </p>
-          <p className="text-xs text-neutral-400">
-            Machine-found geolocations awaiting submission.
-          </p>
-        </div>
+        <p className="text-sm font-medium text-neutral-100">
+          {countLabel(count, "detection")} to review
+        </p>
       </div>
       <ArrowRight
         size={16}

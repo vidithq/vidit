@@ -3,7 +3,7 @@
 import { Suspense, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { SquarePen, Trash2 } from "lucide-react";
+import { SquarePen } from "lucide-react";
 
 import { CollectionCoverage } from "@/components/collections/CollectionCoverage";
 import { CollectionItems } from "@/components/collections/CollectionItems";
@@ -12,14 +12,14 @@ import { useReportContent } from "@/components/report/useReportContent";
 import ShareOnX from "@/components/share/ShareOnX";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
-import { Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
+import { buttonClasses } from "@/components/ui/Button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading } from "@/components/ui/PageShell";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCollectionSequence } from "@/hooks/useCollectionSequence";
-import { useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import {
   collectionEditHref,
@@ -104,18 +104,6 @@ function CollectionPageBody() {
     onSuccess: () => router.push(profileHref(collection?.owner.username ?? "")),
   });
 
-  // Two clicks, disarming after a few seconds or on any outside click or focus.
-  const {
-    armed: dropArmed,
-    trigger: triggerDrop,
-    controlRef: dropButtonRef,
-  } = useConfirmAction(() => void drop.run(), {
-    timeoutMs: 4000,
-    dismissOnOutside: true,
-  });
-
-  const dropLabel = dropArmed ? "Confirm dropping this collection" : "Drop this collection";
-
   if (error) return <PageError error={error} onRetry={refetch} backHref="/map" />;
   if (!collection) return <PageLoading />;
 
@@ -145,19 +133,12 @@ function CollectionPageBody() {
                   <SquarePen size={14} />
                 </Link>
               </Tooltip>
-              <Button
-                ref={dropButtonRef}
+              <ConfirmButton
                 icon
-                variant="danger"
+                label="Drop this collection"
                 disabled={drop.loading}
-                onClick={triggerDrop}
-                className={dropArmed ? DANGER_CONFIRM : ""}
-                // The label says which click this is (an icon button has no text to swap).
-                aria-label={dropLabel}
-                title={dropLabel}
-              >
-                <Trash2 size={14} />
-              </Button>
+                onConfirm={drop.run}
+              />
             </>
           )}
         </div>

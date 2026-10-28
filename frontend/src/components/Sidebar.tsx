@@ -416,7 +416,7 @@ export default function Sidebar() {
               title={
                 !showLabels
                   ? detectionCount > 0
-                    ? `${user.username} · ${detectionCount} to submit`
+                    ? `${user.username} · ${detectionCount} to review`
                     : user.username
                   : undefined
               }
@@ -429,7 +429,7 @@ export default function Sidebar() {
               {/* The analyst's own picture in the 18px rail glyph box. `<Avatar>` owns circle, image and icon
                   fallback; the wrapper anchors the badge. `text-current` keeps the fallback on the row colour
                   (hover, active); `decorative` keeps it out of the link's name, which stays the handle (plus
-                  pending count) from `title`. */}
+                  detections count) from `title`. */}
               <span className="relative flex shrink-0">
                 <Avatar
                   as="span"
@@ -440,7 +440,7 @@ export default function Sidebar() {
                   iconClassName="text-current"
                   decorative
                 />
-                {/* Pending-submission nudge. */}
+                {/* Detections-to-review nudge. */}
                 {detectionCount > 0 && (
                   <Dot className="absolute -top-0.5 -right-1 ring-2 ring-neutral-900" />
                 )}
@@ -452,7 +452,7 @@ export default function Sidebar() {
               )}
               {detectionCount > 0 && (
                 <span className="sr-only">
-                  {countLabel(detectionCount, "geolocation")} awaiting submission
+                  {countLabel(detectionCount, "detection")} to review
                 </span>
               )}
             </Link>

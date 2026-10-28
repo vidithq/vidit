@@ -25,7 +25,7 @@ export function VersionRow({
   const name = record.label(version.number);
   return (
     <div
-      className={`group relative flex flex-col gap-1 rounded-md border border-neutral-800 bg-neutral-900 p-2.5 sm:flex-row sm:items-center sm:gap-3 ${TAPPABLE_HOVER}`}
+      className={`group relative flex flex-col gap-1 rounded-md border border-neutral-800 bg-neutral-900 p-2.5 sm:col-span-2 sm:grid sm:grid-cols-subgrid sm:items-center sm:gap-x-3 ${TAPPABLE_HOVER}`}
     >
       {/* Stretched link: nothing inside the row competes for the click, so badges and byline sit under it. */}
       <Link
@@ -33,15 +33,17 @@ export function VersionRow({
         aria-label={name === `v${version.number}` ? `Version ${version.number}` : name}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
-      <span className="flex shrink-0 items-center gap-1.5">
-        {/* The number is a neutral label; the accent is for the state beside it. */}
+      <span className="flex shrink-0">
         <Pill tone="neutral">{name}</Pill>
-        {version.current && <Pill tone="accent">Current</Pill>}
-        {version.redacted && <Pill tone="danger">Redacted</Pill>}
       </span>
       <div className="min-w-0 flex-1 space-y-0.5">
-        {summary && (
-          <p className="text-sm text-neutral-100 group-hover:text-orange-400">{summary}</p>
+        {(summary || version.current || version.redacted) && (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-100">
+            {summary && <span className="group-hover:text-orange-400">{summary}</span>}
+            {/* The number is a neutral label; the accent is for the state after the title. */}
+            {version.current && <Pill tone="accent">Current</Pill>}
+            {version.redacted && <Pill tone="danger">Redacted</Pill>}
+          </p>
         )}
         <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-neutral-500">
           {version.editor && (

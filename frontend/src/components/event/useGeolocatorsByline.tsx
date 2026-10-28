@@ -28,7 +28,6 @@ import {
 import { AuthorByline, BYLINE_GAP } from "@/components/ui/AuthorByline";
 import { cn } from "@/lib/cn";
 import { AvatarStack, type AvatarStackItem } from "@/components/ui/AvatarStack";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Popover } from "@/components/ui/Popover";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
@@ -132,11 +131,10 @@ function AddGeolocator({
   );
 }
 
-type Pending = { kind: "remove" | "withdraw"; username: string };
-
 /** A published edit's byline, for the owner: the credited geolocators, the pending invitations
  *  faded, the add button. Each change applies on click through its own endpoint and never makes a
- *  version; Remove and Withdraw ask first in a `ConfirmDialog`. */
+ *  version. Removing a co-geolocator takes their credit, so its trash confirms in place;
+ *  withdrawing an invitation is undone by inviting again, so its cross acts at once. */
 export function GeolocatorsByline({
   event,
   onChanged,
@@ -145,28 +143,25 @@ export function GeolocatorsByline({
   onChanged: () => void;
 }) {
   const invites = useApiResource<GeolocatorInvite[]>(geolocatorInvitesPath(event.id));
-  const [confirming, setConfirming] = useState<Pending | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const write = useMutation(
-    async (kind: "invite" | Pending["kind"], name: string) => {
-      if (kind === "invite") await inviteGeolocator(event.id, name);
-      else if (kind === "withdraw") await withdrawGeolocatorInvite(event.id, name);
-      else await removeGeolocator(event.id, name);
+  const send = useMutation(
+    async (name: string) => {
+      await inviteGeolocator(event.id, name);
       return true;
     },
+    { fallback: "Failed to update the geolocators", onSuccess: () => invites.refetch() },
+  );
+  const change = useMutation(
+    (kind: "remove" | "withdraw", name: string) =>
+      kind === "remove" ? removeGeolocator(event.id, name) : withdrawGeolocatorInvite(event.id, name),
     {
       fallback: "Failed to update the geolocators",
       onSuccess: (_result, kind) => {
         invites.refetch();
-        setConfirming(null);
         if (kind === "remove") onChanged();
       },
     },
   );
-  const ask = (pending: Pending) => {
-    write.reset();
-    setConfirming(pending);
-  };
   const credited = creditedAuthors(event);
   const [, ...coGeolocators] = credited;
   const invite = async (account: Account): Promise<boolean> => {
@@ -178,13 +173,13 @@ export function GeolocatorsByline({
     );
     setRefusal(refused);
     if (refused) return false;
-    return (await write.run("invite", name)) ?? false;
+    return (await send.run(name)) ?? false;
   };
   const pictures = [
     ...coGeolocators.map((person) =>
       picture(person, person.username, {
         label: `Remove ${person.username}`,
-        onClick: () => ask({ kind: "remove", username: person.username }),
+        onClick: () => void change.run("remove", person.username),
         confirms: true,
       }),
     ),
@@ -194,8 +189,7 @@ export function GeolocatorsByline({
         `${user.username}, invitation pending`,
         {
           label: `Withdraw the invitation of ${user.username}`,
-          onClick: () => ask({ kind: "withdraw", username: user.username }),
-          confirms: true,
+          onClick: () => void change.run("withdraw", user.username),
         },
         true,
       ),
@@ -209,31 +203,12 @@ export function GeolocatorsByline({
         add={
           <AddGeolocator
             onAdd={invite}
-            error={confirming ? null : (refusal ?? write.error)}
-            note="They are credited once they accept. Editing and closing stay with you."
+            error={refusal ?? send.error}
+            note={`They are credited once they accept. Editing and closing stay with you. ${GEOLOCATOR_CAP_MESSAGE}`}
           />
         }
       />
-      {confirming && (
-        <ConfirmDialog
-          title={
-            confirming.kind === "remove"
-              ? `Remove ${confirming.username}?`
-              : `Withdraw the invitation of ${confirming.username}?`
-          }
-          confirmLabel={confirming.kind === "remove" ? "Remove" : "Withdraw"}
-          confirmAction={confirming.kind === "remove" ? "delete" : "withdraw"}
-          busy={write.loading}
-          error={write.error}
-          tone="danger"
-          onConfirm={() => void write.run(confirming.kind, confirming.username)}
-          onCancel={() => setConfirming(null)}
-        >
-          {confirming.kind === "remove"
-            ? `${confirming.username} is no longer credited on this geolocation, and it leaves their collections.`
-            : `${confirming.username} can no longer accept it.`}
-        </ConfirmDialog>
-      )}
+      {change.error && <ErrorNotice error={change.error} className="mt-2" />}
     </>
   );
 }
@@ -285,7 +260,7 @@ export function useDraftGeolocatorsByline(): {
           <AddGeolocator
             onAdd={add}
             error={error}
-            note="Invited when you publish the geolocation, credited once they accept. Publishing or saving a request invites no one."
+            note={`Invited when you publish the geolocation, credited once they accept. Publishing or saving a request invites no one. ${GEOLOCATOR_CAP_MESSAGE}`}
           />
         }
       />

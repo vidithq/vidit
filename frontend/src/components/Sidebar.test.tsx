@@ -66,17 +66,17 @@ describe("Sidebar identity row", () => {
     expect(glyph).toHaveClass("text-current");
   });
 
-  it("anchors the pending-detections badge beside the picture", () => {
+  it("anchors the detections-to-review badge beside the picture", () => {
     viewer.avatar_url = "https://cdn.example.com/analyst.jpg";
     viewer.detections = 3;
     const { container } = render(<Sidebar />);
 
-    const row = screen.getByTitle("analyst · 3 to submit");
+    const row = screen.getByTitle("analyst · 3 to review");
     // The badge sits in the wrapper that holds the picture.
     const wrapper = container.querySelector("img")?.parentElement?.parentElement;
     expect(wrapper).toHaveClass("relative");
     expect(wrapper?.querySelector(".bg-orange-500")).not.toBeNull();
-    expect(row).toHaveTextContent("3 geolocations awaiting submission");
+    expect(row).toHaveTextContent("3 detections to review");
   });
 });
 

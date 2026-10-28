@@ -60,6 +60,8 @@ describe("useEventActions invitation", () => {
     ).toEqual(["Accept", "Decline"]);
     const card = screen.getByText("Geolocator invitation");
     expect(row()).not.toContainElement(card);
+    // The row carries the answer, so the card does not point at it.
+    expect(card.closest("section")).not.toHaveTextContent(/Accept|decline/);
     expect(row().compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

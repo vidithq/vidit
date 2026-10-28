@@ -688,7 +688,7 @@ test.describe("source row on a touch screen", () => {
     await expect(page.getByText("1 of 2", { exact: true })).toBeVisible();
     await first.getByRole("button", { name: "Remove source 1", exact: true }).tap();
     await expect(page.getByRole("region", { name: /^Source \d$/ })).toHaveCount(2);
-    await first.getByRole("button", { name: "Confirm removing source 1", exact: true }).tap();
+    await first.getByRole("button", { name: "Confirm remove source 1", exact: true }).tap();
     await expect(page.getByRole("region", { name: /^Source \d$/ })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Next source" })).toHaveCount(0);
     expect((await first.boundingBox())!.width).toBeGreaterThan(rowBox.width - 1);

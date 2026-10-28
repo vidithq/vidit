@@ -6,7 +6,6 @@ import { SquarePen, Users } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
-import { ARM_MS, useConfirmAction } from "@/hooks/useConfirmAction";
 import { useMutation } from "@/hooks/useMutation";
 import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
@@ -15,7 +14,8 @@ import { answerGeolocatorInvite, creditedAuthors, removeGeolocator } from "@/lib
 import { eventEditHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { AuthorByline } from "@/components/ui/AuthorByline";
-import { ActionIcon, Button, buttonClasses, DANGER_CONFIRM } from "@/components/ui/Button";
+import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -227,8 +227,7 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
 }
 
 /** One credited analyst. The reader's own row carries **Leave**, which takes their credit away,
- * so it arms in place: the first click turns the button into its confirm, and the second runs
- * it. */
+ * so it confirms in place. */
 function CreditRow({
   author,
   leave,
@@ -236,24 +235,16 @@ function CreditRow({
   author: { username: string; avatar_url?: string | null };
   leave?: { run: () => void; disabled: boolean };
 }) {
-  const { armed, trigger, controlRef } = useConfirmAction(() => leave?.run(), {
-    timeoutMs: ARM_MS,
-    dismissOnOutside: true,
-  });
   return (
     <div className="flex items-center justify-between gap-2 py-2">
       <AuthorByline author={author} avatar className="text-sm min-w-0" />
       {leave && (
-        <Button
+        <ConfirmButton
           action="leave"
-          ref={controlRef}
-          variant="danger"
-          className={armed ? DANGER_CONFIRM : ""}
-          onClick={trigger}
+          label="Leave"
+          onConfirm={leave.run}
           disabled={leave.disabled}
-        >
-          {armed ? "Confirm leave" : "Leave"}
-        </Button>
+        />
       )}
     </div>
   );

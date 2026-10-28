@@ -162,27 +162,29 @@ describe("NotificationsPage", () => {
     expect(screen.queryByRole("button", { name: /Accept|Decline|Approve/ })).toBeNull();
   });
 
-  it("reads the sentence in the neutral colour, with the arrow and the delete button inside the block", async () => {
+  it("reads the sentence in the neutral colour, with the arrow and the dismiss cross inside the block", async () => {
     serve([follower]);
     render(<NotificationsPage />);
 
     const link = await screen.findByRole("link", { name: /cy followed you/ });
     expect(screen.getByText("cy followed you")).toHaveClass("text-neutral-200");
     const block = link.parentElement!;
-    const remove = screen.getByRole("button", { name: "Delete notification" });
+    const remove = screen.getByRole("button", { name: "Dismiss notification" });
     const arrow = block.querySelector("svg.lucide-arrow-right")!;
     expect(block).toContainElement(remove);
     expect(link.contains(remove)).toBe(false);
     expect(remove.compareDocumentPosition(arrow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("deletes a row from its own delete button, then reloads the feed and the dot", async () => {
+  it("dismisses a row at once from its cross, then reloads the feed and the dot", async () => {
     serve([follower]);
     render(<NotificationsPage />);
 
     await screen.findByRole("link", { name: /cy followed you/ });
     const loads = api.apiFetchPage.mock.calls.length;
-    fireEvent.click(screen.getByRole("button", { name: "Delete notification" }));
+    const dismiss = screen.getByRole("button", { name: "Dismiss notification" });
+    expect(dismiss.querySelector("svg.lucide-x")).not.toBeNull();
+    fireEvent.click(dismiss);
 
     await waitFor(() =>
       expect(api.apiFetch).toHaveBeenCalledWith("/notifications/n1", { method: "DELETE" }),
@@ -191,12 +193,12 @@ describe("NotificationsPage", () => {
     expect(api.refresh).toHaveBeenCalled();
   });
 
-  it("keeps the row and says so when the delete fails", async () => {
+  it("keeps the row and says so when the dismiss fails", async () => {
     serve([follower]);
     api.apiFetch.mockRejectedValue(new Error("boom"));
     render(<NotificationsPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete notification" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss notification" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /cy followed you/ })).toBeInTheDocument();
   });

@@ -97,40 +97,36 @@ describe("deleting an approval", () => {
     });
     const { container } = render(<VersionApprovals event={event} versionNo={1} />);
     fireEvent.click(await trash());
-    expect(screen.getByRole("dialog")).toHaveTextContent("approval of version 1 by bo");
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete approval" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete approval by bo" }));
     await waitFor(() => expect(container).toBeEmptyDOMElement());
     expect(deleteCalls()).toEqual([["/admin/approvals/a1", { method: "DELETE" }]]);
   });
 
-  it("deletes after the confirmation and refreshes the list", async () => {
+  it("arms in place on the first click, with no dialog, and deletes on the second", async () => {
     api.admin = true;
     render(<Panel />);
     fireEvent.click(await trash());
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent("This cannot be undone");
-    expect(dialog).toHaveTextContent("can approve this version again");
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(deleteCalls()).toHaveLength(0);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete approval" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(deleteCalls()).toEqual([["/admin/approvals/a1", { method: "DELETE" }]]);
+    const armed = screen.getByRole("button", { name: "Confirm delete approval by bo" });
+    expect(armed.querySelector("svg.lucide-trash-2, svg.lucide-trash2")).not.toBeNull();
+    fireEvent.click(armed);
+    await waitFor(() => expect(deleteCalls()).toEqual([["/admin/approvals/a1", { method: "DELETE" }]]));
     await waitFor(() =>
       expect(screen.queryByRole("list", { name: "Approved by" })).toBeNull(),
     );
   });
 
-  it("sends nothing on cancel", async () => {
+  it("sends nothing when Escape disarms it", async () => {
     api.admin = true;
     render(<Panel />);
     fireEvent.click(await trash());
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(await trash());
     expect(deleteCalls()).toHaveLength(0);
   });
 
-  it("explains an approval that no longer exists inside the dialog", async () => {
+  it("explains an approval that no longer exists under the stamps", async () => {
     api.admin = true;
     api.apiFetch.mockImplementation((path: string, init?: { method?: string }) =>
       init?.method === "DELETE"
@@ -139,10 +135,8 @@ describe("deleting an approval", () => {
     );
     render(<Panel />);
     fireEvent.click(await trash());
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Delete approval" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete approval by bo" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("no longer exists");
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Approved by" })).toBeInTheDocument();
   });
 });

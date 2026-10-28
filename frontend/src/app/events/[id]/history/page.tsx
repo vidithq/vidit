@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import type { EventDetail, EventVersion, EventVersionList } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useCursorList } from "@/hooks/useCursorList";
-import { eventVersionsPath, eventVersions, firstVersion } from "@/lib/events";
+import { eventVersionsPath, eventVersions } from "@/lib/events";
 import { EventVersionRow } from "@/components/event/EventVersionRow";
 import { VersionHistory } from "@/components/event/VersionHistory";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
@@ -39,7 +39,7 @@ export default function EventHistoryPage() {
   return (
     // Plain-text title: the *Current* row already links to the event.
     <PageShell back title="Version history" subtitle={geo.title}>
-      <VersionHistory walk={walk} count={geo.version_no - firstVersion(geo) + 1}>
+      <VersionHistory walk={walk}>
         {eventVersions(geo, walk.items, walk.hasMore).map((version) => (
           <EventVersionRow key={version.number} event={geo} version={version} />
         ))}

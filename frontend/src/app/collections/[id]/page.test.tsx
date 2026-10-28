@@ -453,7 +453,7 @@ describe("CollectionPage", () => {
     expect(deleteCollection).not.toHaveBeenCalled();
 
     const armed = screen.getByRole("button", {
-      name: "Confirm dropping this collection",
+      name: "Confirm drop this collection",
     });
     fireEvent.click(armed);
 
@@ -470,7 +470,7 @@ describe("CollectionPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Drop this collection" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Confirm dropping this collection" }),
+      screen.getByRole("button", { name: "Confirm drop this collection" }),
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent("nope");

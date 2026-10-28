@@ -4,7 +4,7 @@ import { OutboundLink } from "@/components/ui/OutboundLink";
 import { TEXT_LINK } from "@/components/ui/styles";
 
 type SourceLabelProps = {
-  /** Null on a machine detection with no declared source: renders "To confirm". */
+  /** Null on an event that declares no source link. */
   url: string | null;
   /** The atom sets palette and affordance; the caller owns size, margin, layout. */
   className?: string;
@@ -15,17 +15,14 @@ type SourceLabelProps = {
 
 /**
  * Source-URL display that reduces a stored URL to its host (no leading `www.`), the full URL in
- * the link's `title`, with italic fallbacks: "To confirm" for a null `url`, "no source" for a
- * value with no host.
+ * the link's `title`, with one italic fallback, "no source", for a null `url` or a value with no
+ * host.
  */
 export function SourceLabel(props: SourceLabelProps) {
   const { url, className } = props;
-  if (url === null) {
-    return <span className={cn("italic text-neutral-500", className)}>To confirm</span>;
-  }
-  const hostname = safeHostname(url);
   // Corrupt data can still fail to parse: show a label, not an empty anchor.
-  if (!hostname) {
+  const hostname = url === null ? null : safeHostname(url);
+  if (url === null || !hostname) {
     return <span className={cn("italic text-neutral-500", className)}>no source</span>;
   }
   if (props.variant === "inline") {

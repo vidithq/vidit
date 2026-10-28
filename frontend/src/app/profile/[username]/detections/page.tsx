@@ -129,7 +129,7 @@ export default function DetectionsPage() {
         {rows.length < summary.total && (
           // Describes the filtered set the walk pages over.
           <p className="text-center text-xs text-neutral-500">
-            {rows.length} of {summary.total} {filter === "all" ? "pending" : filter}
+            {rows.length} of {summary.total} {filter === "all" ? "detections" : filter}
           </p>
         )}
         <LoadMoreRow
@@ -149,7 +149,6 @@ export default function DetectionsPage() {
     <PageShell
       back
       title="Detections"
-      subtitle="Detections awaiting a pass. Open a row to work on it, or review them one after another on the same form."
       actions={
         summary && summary.ready_total + summary.incomplete_total > 0 ? (
           <Link href={reviewHref} className={buttonClasses("primary")}>

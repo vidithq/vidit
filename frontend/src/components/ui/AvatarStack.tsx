@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { Avatar } from "./Avatar";
+import { ConfirmButton } from "./ConfirmButton";
 import { RemoveButton } from "./RemoveButton";
 import { HOVER_REVEAL } from "./styles";
 import { Tooltip } from "./Tooltip";
@@ -23,7 +24,7 @@ export interface AvatarStackItem {
   href?: string;
   /** A remove control on the picture's top-right corner, revealed on hover or keyboard focus
    *  (a site admin's delete of an approval stamp, a co-geolocator taken off a byline). `confirms`
-   *  when the click opens a confirmation: the control shows a trash, else a cross. */
+   *  for an important removal: a trash that confirms in place, else a cross that removes at once. */
   remove?: { label: string; onClick: () => void; confirms?: boolean };
   /** Faded, for an account not credited yet (a pending co-geolocator invitation). */
   muted?: boolean;
@@ -143,15 +144,23 @@ export function AvatarStack({
                 </span>
               )}
             </Tooltip>
-            {item.remove && (
-              <RemoveButton
-                label={item.remove.label}
-                confirms={item.remove.confirms}
-                onClick={item.remove.onClick}
-                iconSize={dims.mark}
-                className={cn(REMOVE, dims.remove)}
-              />
-            )}
+            {item.remove &&
+              (item.remove.confirms ? (
+                <ConfirmButton
+                  icon
+                  label={item.remove.label}
+                  onConfirm={item.remove.onClick}
+                  iconSize={dims.mark}
+                  className={cn(REMOVE, dims.remove)}
+                />
+              ) : (
+                <RemoveButton
+                  label={item.remove.label}
+                  onClick={item.remove.onClick}
+                  iconSize={dims.mark}
+                  className={cn(REMOVE, dims.remove)}
+                />
+              ))}
           </li>
         );
       })}
