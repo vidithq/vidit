@@ -25,7 +25,6 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { TagsField } from "@/components/ui/TagPicker";
 import { cn } from "@/lib/cn";
-import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
 import { safeHostname } from "@/lib/format";
 import {
   capturePositionInvalid,
@@ -327,12 +326,6 @@ export function SourceEditor({
             setLng={(captureLng) => update({ captureLng })}
             invalid={positionInvalid}
           />
-          {positionInvalid && (
-            <FieldError>
-              Enter a latitude from {LAT_MIN} to {LAT_MAX} and a longitude from {LNG_MIN} to{" "}
-              {LNG_MAX}, or clear both. Until then the capture position is not saved.
-            </FieldError>
-          )}
         </div>
       )}
 

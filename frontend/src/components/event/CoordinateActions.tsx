@@ -10,8 +10,6 @@ import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { cn } from "@/lib/cn";
 import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
 
-/** What the map control says while the pair cannot be opened (its name carries the state; the mark only says "maps"). */
-const NO_MAP_LINK = "No map link until the coordinate pair is complete";
 const MAP_LINK = "View on Maps";
 const SMALL_SHAPE = "sm:size-6";
 
@@ -25,8 +23,8 @@ const SMALL_SHAPE = "sm:size-6";
  * the same line.
  *
  * A null pair (half-typed or out of bounds) keeps both controls in place and disabled, so the
- * line never jumps and grey says the point isn't usable yet. The map link becomes a button then:
- * a disabled anchor isn't a thing.
+ * line never jumps and grey says the point isn't usable yet. The map link becomes a button then,
+ * since a disabled anchor isn't a thing, and its name and tooltip give `problem`, the reason.
  *
  * `small` is the 24px desktop square (the phone keeps its tap floor), for a dense row. Its
  * negative margin keeps the square from growing the line.
@@ -34,16 +32,20 @@ const SMALL_SHAPE = "sm:size-6";
 export function CoordinateActions({
   lat,
   lng,
+  problem = null,
   small = false,
 }: {
   /** Null while the pair is half-typed or out of bounds: both controls grey. */
   lat: number | null;
   lng: number | null;
+  /** Why the pair is null (`pairProblem`). */
+  problem?: string | null;
   small?: boolean;
 }) {
   const point = lat === null || lng === null ? null : { lat, lng };
   const shape = small ? SMALL_SHAPE : "";
   const mark = small ? 12 : 14;
+  const noMapLink = problem ? `No map link. ${problem}` : "No map link";
 
   return (
     <span className={cn("inline-flex items-center gap-1", small && "-my-1.5")}>
@@ -62,8 +64,7 @@ export function CoordinateActions({
           icon
           variant="secondary"
           disabled
-          aria-label={NO_MAP_LINK}
-          title={NO_MAP_LINK}
+          aria-label={noMapLink}
           className={shape}
         >
           <ExternalLink size={mark} />

@@ -333,7 +333,7 @@ test.describe("submit", () => {
     }
   });
 
-  // Both pairs share `CoordinateInputs`: the Location card's subject point and a source's capture
+  // Both pairs share `CoordinateInputs`: the Location block's subject point and a source's capture
   // position, the narrowest box the pair renders in. Each width keeps the two fields and the two
   // actions on one line, the side column of a wide screen included. From 375px up a 6-decimal value
   // shows whole; at 320px the 16px field text and the 36px tap squares leave room for about 6

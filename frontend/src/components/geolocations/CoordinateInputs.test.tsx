@@ -1,6 +1,8 @@
 import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+
 import { CoordinateInputs } from "./CoordinateInputs";
 
 const baseProps = {
@@ -78,22 +80,43 @@ describe("CoordinateInputs", () => {
     expect(screen.getByLabelText("Longitude").parentElement).not.toContainElement(link);
   });
 
-  // Greyed, not gone: the line keeps one width.
+  // Greyed, not gone: the line keeps one width. The map control names the true reason.
   it.each([
-    ["half-typed", "48.01", ""],
-    ["out of bounds", "91", "37.8"],
-  ])("greys both while the pair is %s", (_case, lat, lng) => {
+    ["empty", "", "", "No map link. Type a latitude and a longitude."],
+    ["half-typed", "48.01", "", "No map link. Type a longitude."],
+    ["out of bounds", "91", "37.8", "No map link. Latitude must be between -90 and 90."],
+    ["malformed", "48.01", "37,8", "No map link. Longitude must be a number in decimal degrees, like 37.802411."],
+  ])("greys both while the pair is %s", (_case, lat, lng, reason) => {
     render(<CoordinateInputs {...baseProps} lat={lat} lng={lng} />);
     // Not a link: without a point the map control is a disabled button.
     expect(screen.queryByRole("link", { name: "View on Maps" })).toBeNull();
-    expect(
-      screen.getByRole("button", {
-        name: "No map link until the coordinate pair is complete",
-      })
-    ).toBeDisabled();
+    // The icon button's name is also its tooltip.
+    expect(screen.getByRole("button", { name: reason })).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Copy coordinates" })
     ).toBeDisabled();
+  });
+
+  it("says under the fields why a typed value is refused, and reddens that field only", () => {
+    render(<CoordinateInputs {...baseProps} lat="91" lng="0" />);
+    expect(screen.getByLabelText("Latitude")).toHaveAccessibleDescription(
+      "Latitude must be between -90 and 90."
+    );
+    expect(screen.getByLabelText("Latitude").className).toContain(FORM_INVALID_FIELD);
+    expect(screen.getByLabelText("Longitude").className).not.toContain(FORM_INVALID_FIELD);
+  });
+
+  it("waits for the write before flagging a blank half of a required pair", () => {
+    render(<CoordinateInputs {...baseProps} lat="48.01" />);
+    expect(screen.queryByText("Type a longitude.")).toBeNull();
+    expect(screen.getByLabelText("Longitude")).not.toHaveAccessibleDescription();
+  });
+
+  it("says an optional pair holding one half is not saved", () => {
+    render(<CoordinateInputs {...baseProps} lat="48.01" required={false} />);
+    expect(screen.getByLabelText("Longitude")).toHaveAccessibleDescription(
+      "Type a longitude. Until the pair is complete or both fields are empty, the position is not saved."
+    );
   });
 
   it("enables both once the pair parses", () => {

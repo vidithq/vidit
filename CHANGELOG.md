@@ -29,6 +29,9 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The event forms' Location block shows the event page's map under the coordinates: click the map or drag the pin to set the coordinates, and typed coordinates move the pin ([#801](https://github.com/vidithq/vidit/pull/801)).
+- Site suggestions reach 10 km from the event instead of 2 km, and sites found by a name search show under their own Search results heading ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The edit form of an open request no longer offers Linked sites, since only a published event links to a site ([#801](https://github.com/vidithq/vidit/pull/801)).
 - The status filter is called Show everywhere and stays in view with Conflict and Tags; filters apply at once on a phone, each active-filter pill names its filter, and the feed's Following or All choice moves into the filter panel ([#799](https://github.com/vidithq/vidit/pull/799)).
 - Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
@@ -76,6 +79,9 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A latitude or longitude out of bounds or not a number says why under the coordinate fields, and the greyed map link names the real reason ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The map credits on small maps fit on one line in smaller type instead of wrapping over what the map shows ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The File a source page of a site has the Go to coordinates field above its zone map, like the site forms ([#801](https://github.com/vidithq/vidit/pull/801)).
 - Search on All with a tag lists the collections carrying it instead of switching to Events, and a highlighted term reads in the light theme; the conflict list closes on a pick, and the map's filter panel stays clear of the attribution on a phone ([#799](https://github.com/vidithq/vidit/pull/799)).
 - The home page ends on links to the legal notice and the privacy policy, and the About page sets its Commitments text at the size of its other sections ([#797](https://github.com/vidithq/vidit/pull/797)).
 - Vercel Web Analytics and Speed Insights load only when the build sets `NEXT_PUBLIC_VERCEL_ANALYTICS=true`, so an instance hosted elsewhere no longer makes failing `/_vercel/*` requests ([#797](https://github.com/vidithq/vidit/pull/797)).
