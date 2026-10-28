@@ -1493,11 +1493,13 @@ Your collections, each saying whether this event is already on it. Only an analy
 ```json
 {
   "items": [
-    { "id": "uuid", "title": "Zaporizhzhia plant", "event_count": 12, "in_collection": true },
-    { "id": "uuid", "title": "March strikes", "event_count": 0, "in_collection": false }
+    { "id": "uuid", "title": "Zaporizhzhia plant", "cover": [{ "url": "…", "kind": "image", "role": "source" }], "event_count": 12, "in_collection": true },
+    { "id": "uuid", "title": "March strikes", "cover": [], "event_count": 0, "in_collection": false }
   ]
 }
 ```
+
+`cover` is the collection's mosaic, as on [`GET /collections/{id}`](#get-collectionsid).
 
 Thinner than [`CollectionRead`](#get-collectionsid): no description, mosaic or date range. `event_count` uses the same predicate as the collection reads. Unpaged, newest first, and capped at 100 rows (`MAX_POPOVER_COLLECTIONS` in [`services/collections.py`](../backend/app/services/collections.py)); older collections past the cap are absent with nothing marking the cut.
 

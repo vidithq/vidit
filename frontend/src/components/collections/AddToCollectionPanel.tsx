@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { Plus } from "lucide-react";
 
-import { buttonClasses } from "@/components/ui/Button";
-import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  CollectionPicker,
+  PICKER_ROW,
+  PickerCover,
+} from "@/components/collections/CollectionPicker";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { FORM_ERROR_BANNER } from "@/components/ui/form-styles";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -22,12 +23,13 @@ import {
 
 /**
  * The owner's shelving panel for one event: every collection they hold, each
- * with an on/off state, plus a row that opens a new one.
+ * with an on/off state, in the `<CollectionPicker>` the search page's bulk add
+ * shares.
  *
  * Reads `GET /events/{id}/collections` (owner-only, empty collections included).
- * `New collection` links to the create page carrying this event. Each row is a
- * `<ToggleRow>` with the item count as its `description`, which sets the title
- * at reading size (titles run to 255 characters).
+ * `New collection` opens the create page carrying this event. Each row is a
+ * `<ToggleRow>` led by the collection's cover, with the item count as its
+ * `description`, which sets the title at reading size (titles run to 255 characters).
  *
  * **The toggle is optimistic and rolls back.** Membership is one bit and both
  * writes are idempotent, so the row flips on the click; a refusal restores the
@@ -86,35 +88,21 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   }
 
   return (
-    <div className="space-y-4">
-      {rows.length > 0 ? (
-        /* The dividers and row padding are this list's: the described shape
-           carries neither. The list scrolls inside the popover, which is fixed to
-           the viewport and cannot grow past it. */
-        <div className="max-h-72 divide-y divide-neutral-800 overflow-y-auto">
-          {rows.map((row) => (
-            <ToggleRow
-              key={row.id}
-              label={row.title}
-              description={eventCountLabel(row.event_count)}
-              on={row.in_collection}
-              onToggle={() => void toggle(row)}
-              className="py-2.5"
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState variant="plain" lead="No collections yet.">
-          Open one and this geolocation is its first item.
-        </EmptyState>
+    <CollectionPicker
+      items={rows}
+      renderRow={(row) => (
+        <ToggleRow
+          leading={<PickerCover cover={row.cover} />}
+          label={row.title}
+          description={eventCountLabel(row.event_count)}
+          on={row.in_collection}
+          onToggle={() => void toggle(row)}
+          className={PICKER_ROW}
+        />
       )}
-
-      {write.error && <div className={FORM_ERROR_BANNER}>{write.error}</div>}
-
-      <Link href={newCollectionHref(eventId)} className={buttonClasses("ghost")}>
-        <Plus size={14} strokeWidth={1.8} />
-        New collection
-      </Link>
-    </div>
+      emptyHint="Open one and this geolocation is its first item."
+      status={write.error && <div className={FORM_ERROR_BANNER}>{write.error}</div>}
+      newCollection={newCollectionHref(eventId)}
+    />
   );
 }
