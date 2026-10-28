@@ -43,35 +43,60 @@ const DATE_SECTIONS = (eventActive: boolean) => [
 ];
 
 describe("<EventFilterSections>", () => {
-  it("labels its groups and merges the sections that belong together into one row each", () => {
+  it("stacks its rows under no group heading and merges the sections that belong together", () => {
     render(
       <EventFilterSections
         tags={TAGS}
         conflicts={CONFLICTS}
         values={EMPTY_EVENT_FILTERS}
         onPatch={vi.fn()}
-        lead={{
-          title: "Layers",
-          sections: [{ title: "Sites", summary: "Off", active: false, children: <p>sites</p> }],
-        }}
+        lead={[{ title: "Kind", summary: "Any", active: false, children: <p>kind</p> }]}
         dateSections={DATE_SECTIONS(false)}
       />,
     );
 
-    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
-      "Layers",
-      "Event",
-      "Source and people",
-    ]);
-    expect(screen.getByRole("region", { name: "Event" })).toContainElement(header("Dates"));
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { expanded: false }).map((b) => b.textContent)).toEqual([
-      "Sites",
+      "Kind",
       "Status, conflict, tags",
       "Dates",
       "Source",
       "People",
     ]);
     expect(screen.queryByRole("button", { name: "Drone" })).not.toBeInTheDocument();
+  });
+
+  it("offers a layer as one more chip after the status chips", () => {
+    const onPatch = vi.fn();
+    const onToggle = vi.fn();
+    const panel = (on: boolean) => (
+      <EventFilterSections
+        tags={TAGS}
+        conflicts={CONFLICTS}
+        values={{ ...EMPTY_EVENT_FILTERS, statuses: on ? ["detected"] : [] }}
+        onPatch={onPatch}
+        layer={{ label: "Sites", on, onToggle, note: <p>zones note</p> }}
+      />
+    );
+    const { rerender } = render(panel(false));
+
+    expect(header("Status, conflict, tags")).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(header("Status, conflict, tags"));
+    const chips = ["Requested", "Detected", "Geolocated", "Sites"];
+    const row = screen.getByRole("button", { name: "Requested" }).parentElement!;
+    expect([...row.children].map((c) => c.textContent)).toEqual(chips);
+    expect(screen.queryByText("zones note")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sites" }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onPatch).not.toHaveBeenCalled();
+
+    rerender(panel(true));
+    expect(screen.getByText("zones note")).toBeInTheDocument();
+    fireEvent.click(header("Status, conflict, tags"));
+    expect(screen.getByRole("button", { name: "Toggle Status, conflict, tags" })).toHaveTextContent(
+      "Detected +1",
+    );
   });
 
   it("names a merged row after the sections the surface offers, and keeps a lone one as its own row", () => {

@@ -250,8 +250,8 @@ flowchart BT
   - Ordinary clusters keep zoom-on-click.
 - **Cluster to points crossfade.** The map sets `fadeDuration: 0`, so count labels and their circles swap on the same frame; basemap place labels pop in instead of fading. Count labels skip symbol placement (`text-allow-overlap` + `text-ignore-placement`), so a count is never culled apart from its circle. Around the clustering ceiling, a zoom-interpolated opacity crossfade runs in paint expressions, with stops derived from `CLUSTER_MAX_ZOOM`: clusters and counts thin approaching one zoom past the ceiling, and points and stack badges rise just past it. The crossfade applies **only while a zoom is in flight**; at rest every layer holds full opacity, and a cluster click that resolves past the ceiling lands its pins at full opacity.
 - **Sites layer.** A map draws sites through `<Map>`'s `children`, the slot for extra sources and layers. [`SiteLayers`](../frontend/src/components/map/SiteLayers.tsx) keeps them under the event pins through `useUnderEventPins`, so an event always draws above a zone.
-  - On `/map` the **Sites** row is the filter overlay's **Layers** group, above the event filters (see [Filter panel](#filter-panel)). Its **Show sites** switch, a described `<ToggleRow>`, turns the layer on; it starts off. The line under the switch names the date the zones are read at: the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. **New site** under it opens [`/sites/new`](#sites) for a signed-in reader.
-  - The layer counts as one active filter. While it is on, the collapsed section reads **On**, the **Filters** button counts it, and a **Sites** pill heads the active-filter pills. Removing the pill or **Clear all** turns the layer off.
+  - On `/map` the **Sites** chip turns the layer on. It follows the Requested, Detected and Geolocated chips in the filter panel's **Status** field (see [Filter panel](#filter-panel)) and, like them, starts off. While it is on, a line under the chips names the date the zones are read at, with the layer's `?`: the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. The panel creates no site: a site starts from Submit.
+  - The layer counts as one active filter. While it is on, the **Filters** button counts it, a **Sites** pill follows the status pills, and the collapsed row's summary names it. Removing the pill or **Clear all** turns the layer off.
   - Below zoom 10 (`ZONE_MIN_ZOOM`) each site is one square symbol at its centroid, the shape that tells a site from a round event pin. From zoom 10 the map draws every zone. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
   - A zone and its square take Tailwind fuchsia, the `400` stop on a dark basemap and the `700` stop on a light one (`SITE_MAP_COLORS` in [`lib/palette.ts`](../frontend/src/lib/palette.ts), read by the basemap's brightness like the highlights). No accent palette and no basemap highlight uses that hue, so a site on a military area or an airport reads as its own zone over the lime or cyan highlight. Only the effect of the latest linked event changes the colour, read at the same date as the zone: damage takes the warning amber, destruction the danger red. A zone draws like the military and airport highlights, a fill at 12% opacity (22% when selected) under a solid outline of 2 px (3 px when selected), so the pins and labels inside it stay readable. `zoneEmphasis` in [`lib/sites.ts`](../frontend/src/lib/sites.ts) holds this mapping for `/map` and the site page. A link effect shows as a `<Pill>` (`LinkEffectPill`), in the warning or danger tone for those two effects and neutral for the others.
   - On `/map` a site takes the pointer like an event pin: a zone or a square turns the cursor to a pointer, and an event pin over a site takes the hover and the click. A mouse resting on a site shows its preview after the pins' 150 ms hover intent, on the pins' `MapPreviewCard`: the name, the kind, the latest effect and the last source (`SitePreview` in [`SitePanel.tsx`](../frontend/src/components/map/SitePanel.tsx)), read from the list the layer already holds, so the preview fetches nothing. A coarse pointer arms no preview, and a tap opens the panel. A site, like a pin, is not a keyboard stop on the canvas.
@@ -289,7 +289,7 @@ The vocabulary:
   - [`<EmptyState>`](../frontend/src/components/ui/EmptyState.tsx) owns the empty-state grammar (`boxed` / `plain` / `invite`).
   - **Show more** is one control with one label wherever a list has more, a secondary button, in two shapes from [`LoadMoreRow.tsx`](../frontend/src/components/ui/LoadMoreRow.tsx). [`<ShowMoreLink href>`](../frontend/src/components/ui/LoadMoreRow.tsx) is the shape for a preview whose whole list lives on another page: the profile's geolocations, open requests and collections, each opening its list in search.
   - [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) is the shape that grows a list in place, the foot of every [`useCursorList`](../frontend/src/hooks/useCursorList.ts) list: **Show more**, a spinner while the page loads, a failed page's message above **Try again**, and nothing once the walk ends. `infinite` loads the next page as the row nears the viewport (the feed). A failed first page leaves no rows and no row, so the list shows that error itself. The Requests board, the feed, the version history, the notifications page, an organization's Approvals card, the admin invite codes, the admin reports queue, the search page's Geolocations group and the create page's matched geolocations end on it. The create page's walk posts the search match as `useCursorList`'s `body`, and a `null` path is no walk, so a page whose list comes and goes keeps one hook. The Geolocations group follows the `geolocations_cursor` of [`GET /search`](api.md#get-search), which travels in the grouped response rather than a `Link` header, so the page drives the row without `useCursorList`. The reports queue is offset-paged, so it passes `useCursorList` a `next` reader that turns the payload's `page`, `per_page` and `total` into the next page number.
-  - [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) is one filter family as a multi-select row of `<Pill>` chips. A selected option is accent, and a click toggles it. Any option in a bucket matches; combining buckets is the caller's rule (AND on the server). Use it for a small fixed set: the shared filter panel's Status, Source kind, Level, Media, Location guess and Approved only, and the feed's Kind. An open catalogue (conflicts, tags) takes a search field instead (`<ConflictChips>`, `<TagChips>`).
+  - [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) is one filter family as a multi-select row of `<Pill>` chips. A selected option is accent, and a click toggles it. Any option in a bucket matches; combining buckets is the caller's rule (AND on the server). The map's **Sites** chip shares the Status row but toggles the sites layer, outside the bucket's match. Use it for a small fixed set: the shared filter panel's Status, Source kind, Level, Media, Location guess and Approved only, and the feed's Kind. An open catalogue (conflicts, tags) takes a search field instead (`<ConflictChips>`, `<TagChips>`).
   - [`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx) is the one rendering of the applied filters: a removable accent `<Pill>` per filter, with **Clear all** after them once two or more are on. The map's filter overlay, [`<FilterRail>`](../frontend/src/components/filters/FilterRail.tsx) and [`<FilterBar>`](../frontend/src/components/filters/FilterBar.tsx) render it.
   - [`<StatTile>`](../frontend/src/components/ui/StatTile.tsx) is a labelled metric tile (icon, uppercase label, value), and `StatGrid` lays a row of them out in two columns, four from `sm` up. With an `href` the tile is one link into the view the figure was read from, with `TAPPABLE_HOVER` and an accent value. The profile insights use it.
   - [`<IconTile>`](../frontend/src/components/ui/IconTile.tsx) is an icon, a title and an optional one-line note in a bordered tile: the choosers on `/import` and `/submit`, and the concept rows on `/guide`. With an `href` the whole tile is one link with `TAPPABLE_HOVER` and an accent title on hover; without it the tile is inert. The icon is a node, so a brand mark such as `XGlyph` fits. `needs` adds a **Needs** row of neutral `<Pill>`s at the tile's foot: what you need in hand to follow the tile. `preview` puts a drawing of the result over the title from `sm` up; below `sm` the tile becomes a row, the same drawing scaled to a 112x56 thumbnail beside the text. The preview is decorative and hidden from assistive tech. In a grid with `auto-rows-fr` the previewed tiles share one height and their **Needs** rows line up. The file also exports the tile's box and title classes, `TILE` and `TILE_TITLE`, for the plain example panels on `/import`.
@@ -662,40 +662,35 @@ flowchart TB
 
   subgraph legend [Legend]
     direction LR
-    l1["`the panel and its group labels`"]:::core
+    l1["`the panel`"]:::core
     l2["`a FilterSection row, every surface`"]:::shared
-    l3["`a row the surface brings or opts into`"]:::page
+    l3["`a row or chip the surface brings or opts into`"]:::page
     l1 ~~~ l2 ~~~ l3
   end
 
   panel["`**EventFilterSections**`"]:::core
-  lead["`**lead**: Layers on the map, Activity on the feed`"]:::core
-  event["`**Event**`"]:::core
-  source["`**Source and people**`"]:::core
-  sites["`Sites (map), Kind (feed)`"]:::page
+  kind["`Kind (feed, **lead**)`"]:::page
   what["`Status, conflict, tags`"]:::shared
+  sites["`Sites chip after the status chips (map, **layer**)`"]:::page
   dates["`Dates: Event date, Added (**dateSections**)`"]:::page
   guess["`Location guess (Requests board)`"]:::page
   src["`Source: Source kind, Level, Media`"]:::shared
   people["`People: Author, Approvals`"]:::shared
 
-  panel --> lead --> sites
-  panel --> event
-  event --> what
-  event --> dates
-  event --> guess
-  panel --> source
-  source --> src
-  source --> people
+  panel --> kind --> what --> dates --> guess --> src --> people
+  what -.- sites
 ```
 
-[`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx) is the one filter panel of the map overlay, search, the [Requests board](#requests-board) and the feed. It stacks the filters in three groups inside one `CARD_FRAME`, each under a `META_LINE` label, with a `border-neutral-700` rule between two groups:
+[`EventFilterSections`](../frontend/src/components/filters/EventFilterSections.tsx) is the one filter panel of the map overlay, search, the [Requests board](#requests-board) and the feed. It stacks its rows in one `CARD_FRAME`, in a fixed order and with no group heading:
 
-- **The lead group** holds the surface's own rows, passed as `lead`: **Layers** with **Sites** on the map, **Activity** with **Kind** on the feed. Search and the board have none.
-- **Event** holds the **Status, conflict, tags** row, the **Dates** row of the surface's `dateSections`, and **Location guess** on the board alone.
-- **Source and people** holds the **Source** row (Source kind, Level, Media) and the **People** row (Author, Approvals).
+1. The surface's own rows, passed as `lead`: **Kind** on the feed. The other surfaces have none.
+2. The **Status, conflict, tags** row. On the map the Status field ends with the **Sites** chip, passed as `layer` (see [Map](#map)).
+3. The **Dates** row of the surface's `dateSections`.
+4. **Location guess**, on the board alone.
+5. The **Source** row (Source kind, Level, Media).
+6. The **People** row (Author, Approvals).
 
-Each row is a [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx). Filters that share a row show as fields, each under a `<FieldLabel>` with its `?`. A row left with one filter on a surface shows that filter as its own row, with its own title and `?`: the Collections scope of search shows **Author**, and the feed shows **Approvals**. A merged row whose filters change per surface names itself after the ones present, so the board reads **Conflict, tags**. The map shows five rows for its eleven filters.
+Each row is a [`<FilterSection>`](../frontend/src/components/ui/FilterSection.tsx). Filters that share a row show as fields, each under a `<FieldLabel>` with its `?`. A row left with one filter on a surface shows that filter as its own row, with its own title and `?`: the Collections scope of search shows **Author**, and the feed shows **Approvals**. A merged row whose filters change per surface names itself after the ones present, so the board reads **Conflict, tags**. The map shows five rows for its eleven filters and the Sites chip.
 
 A collapsed row sums up its active values, joined by commas, or reads **Any**. Every row opens collapsed, except a row that holds an active value, which opens expanded so the applied filters stay visible. Each header still toggles its row. The panel keeps the open state per row, so a re-render or a scope change on search never resets it.
 
@@ -1327,7 +1322,7 @@ flowchart TB
 
 **A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) under the title picks the scope**, **Following** (default) or **All**. Picking an option starts a new walk with `scope`, so the list and its empty state describe the scope on screen.
 
-**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind**, in its own **Activity** group, then Conflict, Source kind, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
+**The [filter rail](#right-rail) narrows the walk.** The panel offers **Kind** as its first row, then Conflict, Source kind, Level, Tags and Approvals, the filters `GET /feed` serves. A change starts a new walk with `kind`, `conflict`, `source_kind`, `level`, `tag` and the approval keys.
 
 **Kind** is one [`<ChipBucket>`](../frontend/src/components/ui/ChipBucket.tsx) of three chips: **Geolocations**, **Requests** and **Detections**. With no chip selected the feed lists all three kinds, and the page sends no `kind`. Selected chips narrow the feed to those kinds, and the page sends each one as a `kind` value (`geolocation`, `request`, `detected`). Each selected chip has a removable pill, as every other filter does. The filters live in page state and reset on reload. A filtered view that matches nothing reads *Nothing in the feed matches the filters.* in the `boxed` empty state, instead of the follow prompts below.
 

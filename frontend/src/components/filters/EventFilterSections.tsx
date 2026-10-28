@@ -15,7 +15,6 @@ import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { META_LINE } from "@/components/ui/styles";
 import { ChipBucket } from "@/components/ui/ChipBucket";
 import { AccountPicker, accountName, analystAccount } from "@/components/ui/AccountPicker";
 import {
@@ -36,13 +35,13 @@ import {
 
 /**
  * The event filter panel, shared by the map overlay, the search page, the Requests board and the
- * feed: one component owns the grouping, so a vocabulary change lands on all four. Three groups
- * under a light label: the surface's `lead` group, Event (a "Status, conflict, tags" row, a Dates
- * row of the surface's `dateSections`, Location guess) and Source and people (a Source row of
- * Source kind, Level and Media, a People row of Author and Approvals). Sections that share a row
- * show as fields under one collapsible header; a row left with one section shows it as its own row.
- * Surfaces differ in `lead`, `dateSections` and `sections`, the subset they offer (the search
- * page's Collections group is narrowed by `author` alone, and only the board offers Location guess).
+ * feed: one component owns the row order, so a vocabulary change lands on all four. The rows: the
+ * surface's `lead` rows, a "Status, conflict, tags" row, a Dates row of the surface's
+ * `dateSections`, Location guess, a Source row of Source kind, Level and Media, and a People row of
+ * Author and Approvals. Sections that share a row show as fields under one collapsible header; a
+ * row left with one section shows it as its own row. Surfaces differ in `lead`, `layer`,
+ * `dateSections` and `sections`, the subset they offer (the search page's Collections group is
+ * narrowed by `author` alone, and only the board offers Location guess).
  *
  * State stays surface-owned: this component takes one `values` object and emits patches.
  * `buildActiveFilterPills` derives the matching pill entries from the same shape so the
@@ -120,7 +119,7 @@ export const eventWindowActive = (w: DateWindows) => !!(w.eventFrom || w.eventTo
 export const addedWindowActive = (w: DateWindows) => !!(w.addedFrom || w.addedTo);
 
 /** One filter: its own row, or one field of a merged row. A surface passes its own (the date
- * controls, the lead group) in the same shape. */
+ * controls, the lead rows) in the same shape. */
 interface InjectedSection {
   title: string;
   concept?: Concept;
@@ -129,11 +128,16 @@ interface InjectedSection {
   children: ReactNode;
 }
 
-/** A surface's own group, above the shared ones: one row per section. */
-interface LeadGroup {
-  title: string;
-  sections: InjectedSection[];
+/** A map layer offered as one more chip after the status chips: on shows the layer, and `note`
+ * shows under the chips while it is on. */
+interface FilterLayer {
+  label: string;
+  on: boolean;
+  onToggle: () => void;
+  note?: ReactNode;
 }
+
+const LAYER_CHIP = "layer";
 
 // Location-guess options: a request carrying a guessed point, or a blind one.
 const LOCATION_GUESS_OPTIONS: ReadonlyArray<[string, string]> = [
@@ -315,7 +319,8 @@ export function EventFilterSections({
   conflicts,
   values,
   onPatch,
-  lead,
+  lead = [],
+  layer,
   dateSections = [],
   sections = ALL_FILTER_SECTIONS,
 }: {
@@ -325,8 +330,10 @@ export function EventFilterSections({
   conflicts: Conflict[];
   values: EventFilterValues;
   onPatch: EventFilterPatch;
-  /** Surface-specific group above the shared ones (the map's Layers, the feed's Activity). */
-  lead?: LeadGroup;
+  /** Surface-specific rows above the shared ones (the feed's Kind). */
+  lead?: InjectedSection[];
+  /** A layer chip after the status chips (the map's Sites). */
+  layer?: FilterLayer;
   /** The surface's date windows, merged into the Event group's Dates row. */
   dateSections?: InjectedSection[];
   /** Which sections this surface offers (default: all). A surface scoped to a view a section can't
@@ -335,7 +342,6 @@ export function EventFilterSections({
 }) {
   const offers = (name: EventFilterSectionName) => sections.includes(name);
   const approvedById = useId();
-  const groupId = useId();
   // The server's author filter is an exact match, so a typed fragment becomes a handle through
   // the typeahead; an ineligible draft is not committed, instead of 422ing.
   const commitAuthor = (name: string) => {
@@ -353,190 +359,187 @@ export function EventFilterSections({
   const sortedTags = [...tags].sort((a: Tag, b: Tag) => a.name.localeCompare(b.name));
   const when = (offered: boolean, section: InjectedSection) => (offered ? [section] : []);
 
-  const allGroups: FilterGroup[] = [
-    ...(lead ? [{ title: lead.title, rows: lead.sections.map((s) => ({ key: s.title, fields: [s] })) }] : []),
+  const allRows: FilterRow[] = [
+    ...lead.map((s) => ({ key: s.title, fields: [s] })),
     {
-      title: "Event",
-      rows: [
-        {
-          key: "event",
-          fields: [
-            ...when(offers("status"), {
-              title: "Status",
-              concept: "status",
-              summary: chipSummary(values.statuses.map(statusLabel)),
-              active: values.statuses.length > 0,
-              children: (
-                <ChipBucket
-                  options={STATUS_FILTER_OPTIONS.map(([value, label]) => ({ id: value, name: value, label }))}
-                  selected={values.statuses}
-                  onToggle={(n) => toggleIn("statuses", n)}
-                />
-              ),
-            }),
-            ...when(offers("conflict") && conflicts.length > 0, {
-              title: "Conflict",
-              concept: "conflict",
-              summary: chipSummary(values.conflicts),
-              active: values.conflicts.length > 0,
-              children: (
-                <ConflictChips
-                  filter
-                  conflicts={conflicts}
-                  selected={values.conflicts}
-                  setSelected={(next) => onPatch({ conflicts: next })}
-                />
-              ),
-            }),
-            ...when(offers("tags") && tags.length > 0, {
-              title: "Tags",
-              summary: chipSummary(values.tags),
-              active: values.tags.length > 0,
-              children: (
-                <TagChips
-                  filter
-                  tags={sortedTags}
-                  selected={values.tags}
-                  setSelected={(next) => onPatch({ tags: next })}
-                />
-              ),
-            }),
-          ],
-        },
-        { key: "dates", title: "Dates", fields: dateSections },
-        {
-          key: "location",
-          fields: when(offers("location_guess"), {
-            title: "Location guess",
-            summary: chipSummary(values.locationGuess.map(locationGuessLabel)),
-            active: values.locationGuess.length > 0,
-            children: (
+      key: "event",
+      fields: [
+        ...when(offers("status"), {
+          title: "Status",
+          concept: "status",
+          summary: chipSummary([
+            ...values.statuses.map(statusLabel),
+            ...(layer?.on ? [layer.label] : []),
+          ]),
+          active: values.statuses.length > 0 || !!layer?.on,
+          children: (
+            <>
               <ChipBucket
-                options={LOCATION_GUESS_OPTIONS.map(([value, label]) => ({ id: value, name: value, label }))}
-                selected={values.locationGuess}
-                onToggle={(n) => toggleIn("locationGuess", n)}
+                options={[
+                  ...STATUS_FILTER_OPTIONS.map(([value, label]) => ({ id: value, name: value, label })),
+                  ...(layer ? [{ id: LAYER_CHIP, name: LAYER_CHIP, label: layer.label }] : []),
+                ]}
+                selected={[...values.statuses, ...(layer?.on ? [LAYER_CHIP] : [])]}
+                onToggle={(n) => (n === LAYER_CHIP ? layer?.onToggle() : toggleIn("statuses", n))}
               />
-            ),
-          }),
-        },
+              {layer?.on && layer.note}
+            </>
+          ),
+        }),
+        ...when(offers("conflict") && conflicts.length > 0, {
+          title: "Conflict",
+          concept: "conflict",
+          summary: chipSummary(values.conflicts),
+          active: values.conflicts.length > 0,
+          children: (
+            <ConflictChips
+              filter
+              conflicts={conflicts}
+              selected={values.conflicts}
+              setSelected={(next) => onPatch({ conflicts: next })}
+            />
+          ),
+        }),
+        ...when(offers("tags") && tags.length > 0, {
+          title: "Tags",
+          summary: chipSummary(values.tags),
+          active: values.tags.length > 0,
+          children: (
+            <TagChips
+              filter
+              tags={sortedTags}
+              selected={values.tags}
+              setSelected={(next) => onPatch({ tags: next })}
+            />
+          ),
+        }),
+      ],
+    },
+    { key: "dates", title: "Dates", fields: dateSections },
+    {
+      key: "location",
+      fields: when(offers("location_guess"), {
+        title: "Location guess",
+        summary: chipSummary(values.locationGuess.map(locationGuessLabel)),
+        active: values.locationGuess.length > 0,
+        children: (
+          <ChipBucket
+            options={LOCATION_GUESS_OPTIONS.map(([value, label]) => ({ id: value, name: value, label }))}
+            selected={values.locationGuess}
+            onToggle={(n) => toggleIn("locationGuess", n)}
+          />
+        ),
+      }),
+    },
+    {
+      key: "source",
+      title: "Source",
+      fields: [
+        ...when(offers("source_kind"), {
+          title: "Source kind",
+          concept: "source_kind",
+          summary: chipSummary(values.sourceKinds.map(sourceKindLabel)),
+          active: values.sourceKinds.length > 0,
+          children: (
+            <ChipBucket
+              options={SOURCE_KIND_OPTIONS}
+              selected={values.sourceKinds}
+              onToggle={(n) => toggleIn("sourceKinds", n)}
+            />
+          ),
+        }),
+        ...when(offers("level"), {
+          title: "Level",
+          concept: "source_level",
+          summary: chipSummary(values.levels.map(levelLabel)),
+          active: values.levels.length > 0,
+          children: (
+            <ChipBucket options={LEVEL_OPTIONS} selected={values.levels} onToggle={(n) => toggleIn("levels", n)} />
+          ),
+        }),
+        ...when(offers("media"), {
+          title: "Media",
+          summary: chipSummary(values.mediaTypes.map(capitalize)),
+          active: values.mediaTypes.length > 0,
+          children: (
+            <ChipBucket
+              options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
+              selected={values.mediaTypes}
+              onToggle={(n) => toggleIn("mediaTypes", n)}
+            />
+          ),
+        }),
       ],
     },
     {
-      title: "Source and people",
-      rows: [
-        {
-          key: "source",
-          title: "Source",
-          fields: [
-            ...when(offers("source_kind"), {
-              title: "Source kind",
-              concept: "source_kind",
-              summary: chipSummary(values.sourceKinds.map(sourceKindLabel)),
-              active: values.sourceKinds.length > 0,
-              children: (
-                <ChipBucket
-                  options={SOURCE_KIND_OPTIONS}
-                  selected={values.sourceKinds}
-                  onToggle={(n) => toggleIn("sourceKinds", n)}
-                />
-              ),
-            }),
-            ...when(offers("level"), {
-              title: "Level",
-              concept: "source_level",
-              summary: chipSummary(values.levels.map(levelLabel)),
-              active: values.levels.length > 0,
-              children: (
-                <ChipBucket options={LEVEL_OPTIONS} selected={values.levels} onToggle={(n) => toggleIn("levels", n)} />
-              ),
-            }),
-            ...when(offers("media"), {
-              title: "Media",
-              summary: chipSummary(values.mediaTypes.map(capitalize)),
-              active: values.mediaTypes.length > 0,
-              children: (
-                <ChipBucket
-                  options={MEDIA_TYPES.map(([value, label]) => ({ id: value, name: value, label }))}
-                  selected={values.mediaTypes}
-                  onToggle={(n) => toggleIn("mediaTypes", n)}
-                />
-              ),
-            }),
-          ],
-        },
-        {
-          key: "people",
-          title: "People",
-          fields: [
-            ...when(offers("author"), {
-              title: "Author",
-              summary: author || "Any",
-              active: !!author,
-              children: (
-                <AccountPicker
-                  search={suggestAuthors}
-                  minQueryLength={2}
-                  selected={author ? analystAccount({ username: author }) : null}
-                  onSelect={(account) => commitAuthor(accountName(account))}
-                  onSubmitText={commitAuthor}
-                  onClear={() => onPatch({ author: "" })}
-                  placeholder="Type a username…"
-                  aria-label="Author username"
-                  emptyText="No analyst matches"
-                />
-              ),
-            }),
-            ...when(offers("approval"), {
-              title: "Approvals",
-              concept: "approval_filter",
-              summary: values.approvedBy
-                ? accountName(values.approvedBy)
-                : values.approved
-                  ? "Approved"
-                  : "Any",
-              active: values.approved || !!values.approvedBy,
-              children: (
-                <div className="space-y-2">
-                  <ChipBucket
-                    options={[{ id: APPROVED_ONLY, name: APPROVED_ONLY, label: "Approved only" }]}
-                    selected={values.approved ? [APPROVED_ONLY] : []}
-                    onToggle={() => onPatch({ approved: !values.approved })}
-                  />
-                  <label htmlFor={approvedById} className={FORM_LABEL}>
-                    Approved by
-                  </label>
-                  <AccountPicker
-                    id={approvedById}
-                    search={suggestApprovers}
-                    minQueryLength={2}
-                    selected={values.approvedBy}
-                    onSelect={(account) => onPatch({ approvedBy: account })}
-                    onSubmitText={(name) => {
-                      if (AUTHOR_FILTER_RE.test(name)) {
-                        onPatch({ approvedBy: analystAccount({ username: name }) });
-                      }
-                    }}
-                    onClear={() => onPatch({ approvedBy: null })}
-                    placeholder="Type an analyst or organization…"
-                    emptyText="No analyst or organization matches"
-                  />
-                </div>
-              ),
-            }),
-          ],
-        },
+      key: "people",
+      title: "People",
+      fields: [
+        ...when(offers("author"), {
+          title: "Author",
+          summary: author || "Any",
+          active: !!author,
+          children: (
+            <AccountPicker
+              search={suggestAuthors}
+              minQueryLength={2}
+              selected={author ? analystAccount({ username: author }) : null}
+              onSelect={(account) => commitAuthor(accountName(account))}
+              onSubmitText={commitAuthor}
+              onClear={() => onPatch({ author: "" })}
+              placeholder="Type a username…"
+              aria-label="Author username"
+              emptyText="No analyst matches"
+            />
+          ),
+        }),
+        ...when(offers("approval"), {
+          title: "Approvals",
+          concept: "approval_filter",
+          summary: values.approvedBy
+            ? accountName(values.approvedBy)
+            : values.approved
+              ? "Approved"
+              : "Any",
+          active: values.approved || !!values.approvedBy,
+          children: (
+            <div className="space-y-2">
+              <ChipBucket
+                options={[{ id: APPROVED_ONLY, name: APPROVED_ONLY, label: "Approved only" }]}
+                selected={values.approved ? [APPROVED_ONLY] : []}
+                onToggle={() => onPatch({ approved: !values.approved })}
+              />
+              <label htmlFor={approvedById} className={FORM_LABEL}>
+                Approved by
+              </label>
+              <AccountPicker
+                id={approvedById}
+                search={suggestApprovers}
+                minQueryLength={2}
+                selected={values.approvedBy}
+                onSelect={(account) => onPatch({ approvedBy: account })}
+                onSubmitText={(name) => {
+                  if (AUTHOR_FILTER_RE.test(name)) {
+                    onPatch({ approvedBy: analystAccount({ username: name }) });
+                  }
+                }}
+                onClear={() => onPatch({ approvedBy: null })}
+                placeholder="Type an analyst or organization…"
+                emptyText="No analyst or organization matches"
+              />
+            </div>
+          ),
+        }),
       ],
     },
   ];
-  const groups = allGroups
-    .map((g) => ({ ...g, rows: g.rows.filter((r) => r.fields.length > 0) }))
-    .filter((g) => g.rows.length > 0);
+  const rows = allRows.filter((r) => r.fields.length > 0);
 
   // Open state lives here, keyed by row, so a re-render never resets it and a scope change that
   // renames a merged row keeps it. Every row starts collapsed except one holding an active value,
   // so the reader sees what is applied.
   const [openRows, setOpenRows] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(groups.flatMap((g) => g.rows).map((r) => [r.key, r.fields.some((f) => f.active)]))
+    Object.fromEntries(rows.map((r) => [r.key, r.fields.some((f) => f.active)]))
   );
   const toggleRow = (key: string) => setOpenRows((o) => ({ ...o, [key]: !o[key] }));
 
@@ -570,22 +573,7 @@ export function EventFilterSections({
     );
   };
 
-  return (
-    <div className={`${CARD_FRAME} px-3`}>
-      {groups.map((g, i) => (
-        <section
-          key={g.title}
-          aria-labelledby={`${groupId}-${i}`}
-          className={i > 0 ? "border-t border-neutral-700" : undefined}
-        >
-          <h3 id={`${groupId}-${i}`} className={`${META_LINE} pt-2.5 -mb-1`}>
-            {g.title}
-          </h3>
-          {g.rows.map(renderRow)}
-        </section>
-      ))}
-    </div>
-  );
+  return <div className={`${CARD_FRAME} px-3`}>{rows.map(renderRow)}</div>;
 }
 
 /** One collapsible row: a lone section, or several that share it under a field label each. */
@@ -595,11 +583,6 @@ interface FilterRow {
   /** A merged row's name; without one, the row lists its members ("Conflict, tags"). */
   title?: string;
   fields: InjectedSection[];
-}
-
-interface FilterGroup {
-  title: string;
-  rows: FilterRow[];
 }
 
 const rowTitle = (row: FilterRow) =>
