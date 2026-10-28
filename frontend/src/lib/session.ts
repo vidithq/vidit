@@ -23,3 +23,28 @@ export function reportSessionRejected(): boolean {
 export function isSessionRejected(err: unknown): boolean {
   return err instanceof Error && (err as { sessionRejected?: unknown }).sessionRejected === true;
 }
+
+const HELD_KEY = "vidit:session-held";
+
+/** Records whether this browser holds a session, so one that ends without a sign-out (its
+ *  cookies expired or cleared) is told on the next load. */
+export function markSessionHeld(held: boolean): void {
+  try {
+    if (held) window.localStorage.setItem(HELD_KEY, "1");
+    else window.localStorage.removeItem(HELD_KEY);
+  } catch {
+    // Storage blocked: the session-ended notice is skipped, nothing else reads the record.
+  }
+}
+
+/** True, once, when this browser held a session the caller found gone. Clears the record, so
+ *  one ended session is told once. */
+export function takeEndedSession(): boolean {
+  try {
+    const held = window.localStorage.getItem(HELD_KEY) === "1";
+    window.localStorage.removeItem(HELD_KEY);
+    return held;
+  } catch {
+    return false;
+  }
+}
