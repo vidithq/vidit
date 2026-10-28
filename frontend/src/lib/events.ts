@@ -36,7 +36,8 @@ export type MissingFieldKey =
   | "source_kind"
   | "proof"
   | "proof_image"
-  | "conflict_tag";
+  | "conflict_tag"
+  | "site_effect";
 
 export interface MissingField {
   key: MissingFieldKey;
@@ -70,6 +71,7 @@ const FIELD_LABELS: Record<MissingFieldKey, string> = {
   proof: "Proof",
   proof_image: "Proof image",
   conflict_tag: EVENT_FIELDS.conflicts.label,
+  site_effect: "Effect at a linked site",
 };
 
 /** Mirrors `models/event.TITLE_MAX_LENGTH`; change both. */
@@ -878,6 +880,8 @@ export interface EventFieldsState {
   proof: string | null;
   sources: SourceFloorState;
   hasConflict: boolean;
+  /** A linked site still waits for the effect the event shows there. */
+  siteEffectMissing?: boolean;
 }
 
 /** Every unmet required field for a geolocation, all at once: `label` for
@@ -898,6 +902,7 @@ export function missingEventFields(s: EventFieldsState): MissingField[] {
   else if (!proofHasImage(s.proof)) add("proof_image");
   if (!coordsValid) add("coordinates");
   if (!s.hasConflict) add("conflict_tag");
+  if (s.siteEffectMissing) add("site_effect");
   return missing;
 }
 

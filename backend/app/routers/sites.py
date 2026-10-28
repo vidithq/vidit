@@ -29,6 +29,7 @@ from app.schemas.site import (
     SiteRead,
     SiteSourceCreate,
     SiteSourceFiledRead,
+    SiteSuggestionRead,
     SiteVersionCreate,
     SiteVersionList,
     SiteVersionRead,
@@ -36,6 +37,7 @@ from app.schemas.site import (
 from app.services import reports as reports_service
 from app.services import sites as sites_service
 from app.services.event_filters import parse_bbox, parse_optional_iso_date
+from app.services.events import InvalidCoordinatesError
 from app.services.evidence_intake import EvidenceIntakeError
 from app.services.pagination import (
     decode_ordinal_cursor,
@@ -116,6 +118,26 @@ def check_overlaps(
         return sites_service.find_overlaps(db, body.zone)
     except sites_service.SiteError as exc:
         _raise_site_error(exc)
+
+
+@router.get("/suggestions", response_model=list[SiteSuggestionRead])
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def list_site_suggestions(
+    request: Request,
+    lat: float | None = Query(None),
+    lng: float | None = Query(None),
+    margin_m: float = Query(2000, ge=0, le=sites_service.MAX_MARGIN_M),
+    q: str | None = Query(None, min_length=1, max_length=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[SiteSuggestionRead]:
+    """Sites a point may link to, nearest first: those within ``margin_m`` metres of ``lat``,
+    ``lng``, or with ``q``, those whose name contains it. Capped at 20."""
+    try:
+        return sites_service.suggest_sites_near(db, lat=lat, lng=lng, margin_m=margin_m, q=q)
+    except InvalidCoordinatesError as exc:
+        raise_typed_error(exc, sites_service.SITE_ERROR_STATUS)
 
 
 @router.post(
