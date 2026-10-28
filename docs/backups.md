@@ -74,7 +74,7 @@ aws s3 cp s3://<backup-bucket>/YYYY/MM/DD/vidit-<ts>.dump ./vidit.dump
 pg_restore --clean --if-exists --no-owner --no-acl --dbname="$TARGET_DATABASE_URL" ./vidit.dump
 ```
 
-The target database must have the same extensions installed as the source. The dump references only `postgis`, `postgis_topology`, `postgis_tiger_geocoder`, and `fuzzystrmatch`. The stock `postgis/postgis:16-3.4` image includes all four, and [`docker-compose.yml`](../docker-compose.yml) runs that same image locally. Adding an extension to the database that this image does not carry breaks restores into stock Postgres.
+The target database must have the same extensions installed as the source. The dump references only `postgis`, `postgis_topology`, `postgis_tiger_geocoder`, `fuzzystrmatch`, and `unaccent`, which search uses to fold accents. The stock `postgis/postgis:16-3.4` image includes all five, and [`docker-compose.yml`](../docker-compose.yml) runs that same image locally. Adding an extension to the database that this image does not carry breaks restores into stock Postgres.
 
 ---
 

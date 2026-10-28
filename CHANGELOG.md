@@ -25,6 +25,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Search finds results while you type: the last word matches as the start of a longer word, so a partial place name or handle already lists what it begins, and accents no longer matter (`cafe` finds `Café`) ([#788](https://github.com/vidithq/vidit/pull/788)).
 - Search reads quotes as a phrase, `OR` as either word and `-word` as a word to exclude, and a query shorter than 4 characters no longer matches every source link that holds it ([#787](https://github.com/vidithq/vidit/pull/787)).
 - The event page, the detection queue and the two event groups of search each read one shared eager-load set instead of restating it, and `docs/engineering.md` lists those sets ([#779](https://github.com/vidithq/vidit/pull/779)).
 - On the search page, the Tags filter narrows the Collections group to the collections that hold the tag instead of emptying it, and the Collections scope offers Tags beside Author ([#778](https://github.com/vidithq/vidit/pull/778)).
