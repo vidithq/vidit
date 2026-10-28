@@ -8,7 +8,9 @@ import Sidebar from "@/components/Sidebar";
 import BetaBanner from "@/components/BetaBanner";
 import SessionEndedNotice from "@/components/SessionEndedNotice";
 
-const montserrat = Montserrat({
+const VERCEL_ANALYTICS = process.env.NEXT_PUBLIC_VERCEL_ANALYTICS === "true";
+
+const montserrat =Montserrat({
   subsets: ["latin", "cyrillic"],
   variable: "--font-montserrat",
 });
@@ -57,9 +59,13 @@ export default function RootLayout({
           <SessionEndedNotice />
           {children}
         </Providers>
-        {/* Cookieless aggregate analytics (no consent banner needed); no-op outside Vercel. Data flows once the operator enables the toggles (see docs/engineering.md). */}
-        <Analytics />
-        <SpeedInsights />
+        {/* Cookieless aggregate analytics (no consent banner needed). Off unless the build sets the flag: the scripts request `/_vercel/*` paths that exist only on a Vercel deployment. */}
+        {VERCEL_ANALYTICS && (
+          <>
+            <Analytics />
+            <SpeedInsights />
+          </>
+        )}
       </body>
     </html>
   );
