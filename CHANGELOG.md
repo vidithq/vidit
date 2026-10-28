@@ -77,6 +77,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Fixed
 
 - Search on All with a tag lists the collections carrying it instead of switching to Events, and a highlighted term reads in the light theme; the conflict list closes on a pick, and the map's filter panel stays clear of the attribution on a phone ([#799](https://github.com/vidithq/vidit/pull/799)).
+- On a profile, Insights and Coverage show each count once; Follow and Unfollow move the followers count at once and put it back on an error; Edit profile shows the avatar once and a refused website under its field ([#798](https://github.com/vidithq/vidit/pull/798)).
 - Opening a page that needs an account while signed out, such as a new collection, a site edit or your profile, sends you to sign in and then back to that page ([#796](https://github.com/vidithq/vidit/pull/796)).
 - When your session ends because its cookies expired or were cleared, the next page you open says so, the sign-in page included ([#796](https://github.com/vidithq/vidit/pull/796)).
 - An unsubscribe link opened without its token says the link is incomplete and points to Settings, instead of showing a disabled button ([#796](https://github.com/vidithq/vidit/pull/796)).
