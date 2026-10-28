@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 
 import { Button } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
+import { FieldError } from "@/components/ui/ErrorNotice";
 import { GoToCoordinates } from "@/components/map/GoToCoordinates";
 import type { DrawChange } from "@/components/map/ZoneDrawMap";
 import { cn } from "@/lib/cn";
@@ -12,9 +13,10 @@ import type { CoordinatePair } from "@/lib/coordinates";
 import {
   EMPTY_DRAW,
   MIN_ZONE_VERTICES,
+  drawRefusal,
+  formatAreaKm2,
   removeVertex,
   zoneAreaKm2,
-  zoneSelfCrosses,
   type DrawState,
 } from "@/lib/siteZone";
 import type { Zone } from "@/lib/sites";
@@ -55,7 +57,9 @@ function hint(state: DrawState): string {
 
 /**
  * The contour field of a site form: the draw canvas with its toolbar and the go-to-coordinates
- * field above and the contour's size below, one module like the event page's Location block. **Start over** clears the ring;
+ * field above and the contour's size below, one module like the event page's Location block. A
+ * ring the API would refuse (`drawRefusal`) turns the frame red and says why under the size, while
+ * the analyst draws. **Start over** clears the ring;
  * with a `reference` (the contour being redrawn), **Back to the current contour** restores it.
  */
 export function ZoneEditor({
@@ -81,7 +85,7 @@ export function ZoneEditor({
   const { state, change, undo, canUndo } = history;
   const [goTo, setGoTo] = useState<CoordinatePair | null>(null);
   const { vertices, closed, selected } = state;
-  const crosses = closed && zoneSelfCrosses(vertices);
+  const refusal = drawRefusal(state);
   const canRemove = selected !== null && (!closed || vertices.length > MIN_ZONE_VERTICES);
 
   return (
@@ -89,7 +93,7 @@ export function ZoneEditor({
       aria-label={label}
       className={cn(
         "rounded-lg border",
-        invalid || crosses ? "border-red-500/60" : "border-neutral-700",
+        invalid || refusal ? "border-red-500/60" : "border-neutral-700",
       )}
     >
       <div
@@ -154,21 +158,23 @@ export function ZoneEditor({
         label="Contour"
         concept="site_zone"
         align="center"
-        className="rounded-b-lg border-t border-neutral-800 bg-neutral-900"
+        className={cn("border-t border-neutral-800 bg-neutral-900", !refusal && "rounded-b-lg")}
       >
         <span
-          className={cn("text-right text-sm", crosses || invalid ? "text-red-400" : "text-neutral-200")}
-          role={crosses ? "alert" : undefined}
+          className={cn("text-right text-sm", refusal || invalid ? "text-red-400" : "text-neutral-200")}
         >
-          {crosses
-            ? "Two edges cross. Move a corner."
-            : closed
-              ? `${zoneAreaKm2(vertices).toFixed(2)} km² · ${vertices.length} corners`
-              : vertices.length === 0
-                ? "Not drawn yet"
-                : `${vertices.length} corners, not closed`}
+          {closed
+            ? `${formatAreaKm2(zoneAreaKm2(vertices))} · ${vertices.length} corners`
+            : vertices.length === 0
+              ? "Not drawn yet"
+              : `${vertices.length} corners, not closed`}
         </span>
       </DetailRow>
+      {refusal && (
+        <div className="rounded-b-lg bg-neutral-900 px-4 pb-2">
+          <FieldError alert>{refusal}</FieldError>
+        </div>
+      )}
     </section>
   );
 }

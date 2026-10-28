@@ -28,6 +28,7 @@ export const SOURCE_FIELDS = {
   level: { label: "Level", concept: "source_level" },
   kind: { label: "Kind", concept: "source_kind" },
   links: { label: "Links", concept: "source_links" },
+  posted: { label: "Posted" },
   captured_at: { label: "Captured", concept: "captured_at" },
   capture_position: { label: "Capture position", concept: "capture_position" },
   tags: { label: "Tags" },

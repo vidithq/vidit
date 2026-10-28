@@ -26,9 +26,12 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - A pulsing dot above the basemap control shows while the daily satellite imagery or the fire detections are still loading, including after you move the map ([#758](https://github.com/vidithq/vidit/pull/761)).
 - In the basemap control, a `?` beside each basemap, label setting, layer and overlay says what it shows and links to the source of its data or tiles ([#757](https://github.com/vidithq/vidit/pull/757)).
 - When the basemap's tile server does not respond, offline or with one provider down, a line over the map says so instead of leaving it blank ([#792](https://github.com/vidithq/vidit/pull/792)).
+- Saving a site edit asks for an optional version note, like an event edit, and the site's history shows it ([#800](https://github.com/vidithq/vidit/pull/800)).
 
 ### Changed
 
+- A site zone covers at most 1,000 km², down from 10,000 km²: the contour editor says so while you draw, and areas read with thousands separators ([#800](https://github.com/vidithq/vidit/pull/800)).
+- Filing a source on a site opens the site page, like the other submit forms, in place of a separate confirmation page ([#800](https://github.com/vidithq/vidit/pull/800)).
 - The event forms' Location block shows the event page's map under the coordinates: click the map or drag the pin to set the coordinates, and typed coordinates move the pin ([#801](https://github.com/vidithq/vidit/pull/801)).
 - Site suggestions reach 10 km from the event instead of 2 km, and sites found by a name search show under their own Search results heading ([#801](https://github.com/vidithq/vidit/pull/801)).
 - The edit form of an open request no longer offers Linked sites, since only a published event links to a site ([#801](https://github.com/vidithq/vidit/pull/801)).
@@ -79,6 +82,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A source shows when it was posted on its own Posted row, so an unknown post date no longer reads as an unknown capture date ([#800](https://github.com/vidithq/vidit/pull/800)).
+- The site edit form no longer shows a missing count on Save before you change anything ([#800](https://github.com/vidithq/vidit/pull/800)).
 - A latitude or longitude out of bounds or not a number says why under the coordinate fields, and the greyed map link names the real reason ([#801](https://github.com/vidithq/vidit/pull/801)).
 - The map credits on small maps fit on one line in smaller type instead of wrapping over what the map shows ([#801](https://github.com/vidithq/vidit/pull/801)).
 - The File a source page of a site has the Go to coordinates field above its zone map, like the site forms ([#801](https://github.com/vidithq/vidit/pull/801)).
