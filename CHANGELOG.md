@@ -29,6 +29,9 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The event forms' Location block shows the event page's map under the coordinates: click the map or drag the pin to set the coordinates, and typed coordinates move the pin ([#801](https://github.com/vidithq/vidit/pull/801)).
+- Site suggestions reach 10 km from the event instead of 2 km, and sites found by a name search show under their own Search results heading ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The edit form of an open request no longer offers Linked sites, since only a published event links to a site ([#801](https://github.com/vidithq/vidit/pull/801)).
 - Errors read in plain words in one shared notice: when Vidit does not respond, the map, search, lists and pages say so with a Retry, a refused field shows its reason under it, and upload limits read in MB ([#795](https://github.com/vidithq/vidit/pull/795)).
 - Every button with a text label shows the icon of its action, and the same action shows the same icon everywhere, the event forms' publish and save buttons on a phone included ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a request page, the asker sees Edit, which opens the request's form, and every other reader sees Geolocate; the asker no longer gets both for the same page ([#794](https://github.com/vidithq/vidit/pull/794)).
@@ -75,6 +78,9 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A latitude or longitude out of bounds or not a number says why under the coordinate fields, and the greyed map link names the real reason ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The map credits on small maps fit on one line in smaller type instead of wrapping over what the map shows ([#801](https://github.com/vidithq/vidit/pull/801)).
+- The File a source page of a site has the Go to coordinates field above its zone map, like the site forms ([#801](https://github.com/vidithq/vidit/pull/801)).
 - A collection's owner no longer sees Report on their own collection ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a phone, the pinned actions and the menu button sit on one full-width bar once the page scrolls, so fields and lists no longer show between them ([#794](https://github.com/vidithq/vidit/pull/794)).
 - On a wide screen, the pinned actions stay on one line, such as Approve, Accept and Decline on an invitation ([#794](https://github.com/vidithq/vidit/pull/794)).
