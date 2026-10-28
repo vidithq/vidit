@@ -1976,7 +1976,7 @@ Full-text discovery across five result groups: `geolocations` (located view: `ge
 - An empty `q` with no active filter returns empty groups.
 - An empty `q` with an active filter enters **browse mode**: the filtered view, newest first, with plain titles as their own highlight.
 - Any active filter empties the users and organizations groups.
-- The collections group reads one filter, `author`, which narrows it to that analyst's collections. Any other active filter empties it. With an empty `q`, `author` lists the analyst's collections newest first.
+- The collections group reads two filters. `author` narrows it to that analyst's collections, and `tag` to the collections whose [`tags`](#get-collectionsid) hold one of the values. Any other active filter empties it. With an empty `q`, `author` or `tag` lists the matching collections newest first.
 - An event hit matches on its title, on a source's title, or on a source URL that contains `q` as a case-insensitive substring, so a pasted link finds the events that cite it. The title highlight and the rank read the event title only.
 - A collection hit matches on its title and `description_text` together. It is the full [`CollectionRead`](#get-collectionsid) and carries no `*_highlight` field. A withheld collection, one [pending erasure](#delete-collectionsid), one whose owner is soft-deleted, and one holding nothing showable are absent.
 - An organization hit matches on its name, slug and bio together. It carries the public fields of the [organization page](#get-organizationsslug) header: no approval request audience and no creator. `member_count` counts live members.

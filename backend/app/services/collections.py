@@ -190,17 +190,19 @@ def visible_collections() -> tuple[ColumnElement[bool], ...]:
     )
 
 
-def has_showable_item() -> ColumnElement[bool]:
-    """Correlated EXISTS: this collection holds at least one showable event.
+def has_showable_item(*criteria: ColumnElement[bool]) -> ColumnElement[bool]:
+    """Correlated EXISTS: this collection holds at least one showable event, matching
+    ``criteria`` when given.
 
     Applied to rows and ``total`` alike so a pager never counts a dropped
-    collection. ``services/search.search_collections`` reads it too.
+    collection. ``services/search.search_collections`` reads it too, with the
+    tag predicate, so a tag matches the collections whose :func:`tags_for` holds it.
     """
     return (
         select(1)
         .select_from(CollectionEvent)
         .join(Event, Event.id == CollectionEvent.event_id)
-        .where(CollectionEvent.collection_id == Collection.id, collectable_events())
+        .where(CollectionEvent.collection_id == Collection.id, collectable_events(), *criteria)
         .correlate(Collection)
         .exists()
     )
