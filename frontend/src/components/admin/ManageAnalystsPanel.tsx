@@ -5,7 +5,9 @@ import { useRef, useState } from "react";
 import { searchUsers, type AdminUser } from "@/lib/admin";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
-import { AccountPicker, analystAccount } from "@/components/ui/AccountPicker";
+import { ItemSearch } from "@/components/ui/ItemSearch";
+import { accountKey, analystAccount } from "@/lib/accounts";
+import { accountItem } from "@/lib/items";
 import { Card } from "@/components/ui/Card";
 import { UserOutcomeReceipt, type UserOutcome } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
@@ -44,12 +46,13 @@ export function ManageAnalystsPanel() {
           Find an analyst (username or email)
         </label>
         <div className="mt-1">
-          <AccountPicker
+          <ItemSearch
             id="user-search"
             search={search}
-            minQueryLength={1}
+            toItem={accountItem}
+            rowKey={accountKey}
             selected={picked ? analystAccount(picked) : null}
-            onSelect={(account) => {
+            onPick={(account) => {
               if (account.kind !== "analyst") return;
               setPicked(found.current.get(account.username) ?? null);
               setOutcome(null);

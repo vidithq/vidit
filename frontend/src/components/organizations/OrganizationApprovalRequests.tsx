@@ -1,10 +1,9 @@
 "use client";
 
-import { ClipboardCheck } from "lucide-react";
-
 import { useApiResource } from "@/hooks/useApiResource";
 import { useMutation } from "@/hooks/useMutation";
 import { formatDate } from "@/lib/format";
+import { eventItem } from "@/lib/items";
 import { updateOrganization, type Organization } from "@/lib/organizations";
 import {
   ORGANIZATION_AUDIENCE_OPTIONS,
@@ -14,17 +13,15 @@ import {
   type OrganizationApprovalRequest,
   type ApprovalRequestAudience,
 } from "@/lib/approvalRequests";
-import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
-import { LinkRow } from "@/components/ui/LinkRow";
+import { Item } from "@/components/ui/Item";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { eventHref } from "@/lib/routes";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
-/** One open request as a row to its event: the requester's picture, the event title, who asked
- *  and when, and Decline. Approving happens on the event page, after reading it. */
+/** One open request as an item to its event: when it was asked, by whom, the version, and
+ *  Decline. Approving happens on the event page, after reading it. */
 function RequestRow({
   item: { event, request },
   onAnswered,
@@ -36,27 +33,17 @@ function RequestRow({
     fallback: "Failed to decline the approval request",
     onSuccess: onAnswered,
   });
-  const requester = request.requester;
   return (
     <li className="space-y-2">
-      <LinkRow
-        variant="arrow"
-        icon={ClipboardCheck}
-        leading={
-          <Avatar src={requester.avatar_url} username={requester.username} size="size-7" decorative />
-        }
-        value={event.title}
-        meta={
-          <span>
-            v{request.version_no} · asked by {requester.username} on{" "}
-            {formatDate(request.created_at)}
-          </span>
-        }
-        href={eventHref(event.id)}
-        external={false}
-        action={
+      <Item
+        variant="list"
+        {...eventItem(event)}
+        date={formatDate(request.created_at)}
+        analyst={{ author: request.requester }}
+        extra={[`v${request.version_no}`]}
+        actions={
           <Button
-            action="decline"
+            action="remove"
             variant="ghost"
             onClick={() => void decline.run()}
             disabled={decline.loading}

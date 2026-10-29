@@ -203,7 +203,7 @@ export const SUBMIT_PATHS = [
     icon: <MapPinPlus {...GLYPH} />,
     title: "Site",
     note: "You watch a place change over time.",
-    needs: ["Name", "Dated capture", "Outline"],
+    needs: ["Name", "Dated capture", "Contour"],
     preview: SITE_PREVIEW,
   },
   {

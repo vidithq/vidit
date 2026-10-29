@@ -70,7 +70,8 @@ test.describe("site page", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("heading", { name: "Link one of my events" })).toBeVisible();
     await expectNarrowViewportLayout(page, dialog.getByRole("button", { name: "Link", exact: true }));
-    await expectControlInsideViewport(page, dialog.getByRole("button", { name: "Destruction" }));
+    await dialog.getByRole("combobox", { name: "Effect on the site" }).click();
+    await expectControlInsideViewport(page, page.getByRole("option", { name: "Destruction" }));
   });
 
   test("lays the source form out inside the column", async ({ page }) => {

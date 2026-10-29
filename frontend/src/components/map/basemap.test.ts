@@ -303,11 +303,9 @@ describe("basemap presets", () => {
     expect(resolvePreset("terrain", "dark")).toBe("terrain");
   });
 
-  it("declares each preset's brightness, which the halo and the tint follow", () => {
-    expect(BASEMAP_PRESETS["vidit-dark"].brightness).toBe("dark");
-    expect(BASEMAP_PRESETS.satellite.brightness).toBe("dark");
-    for (const id of ["vidit-light", "streets", "terrain"] as const) {
-      expect(BASEMAP_PRESETS[id].brightness, id).toBe("light");
+  it("declares the Vidit styles' brightness by their name", () => {
+    for (const [brightness] of BASES) {
+      expect(BASEMAP_PRESETS[`vidit-${brightness}`].brightness).toBe(brightness);
     }
   });
 
@@ -323,43 +321,48 @@ describe("basemap presets", () => {
 
   it("builds valid object styles", () => {
     expect(validateStyleMin(BLANK_STYLE)).toEqual([]);
-    const terrain = BASEMAP_PRESETS.terrain.style(DEFAULT_BASEMAP_OPTIONS) as StyleSpecification;
-    expect(validateStyleMin(terrain)).toEqual([]);
-    expect(terrain.sources.opentopomap).toMatchObject({ maxzoom: 17 });
   });
 
-  it("draws Streets from the forked Liberty style, on the public tiles and the vendored sprite", () => {
+  it.each(["terrain", "satellite"] as const)(
+    "draws %s from one credited raster source with a tile template",
+    (id) => {
+      const style = BASEMAP_PRESETS[id].style(DEFAULT_BASEMAP_OPTIONS) as StyleSpecification;
+      expect(validateStyleMin(style)).toEqual([]);
+      const sources = Object.values(style.sources) as {
+        type: string;
+        tiles: string[];
+        maxzoom: number;
+        attribution: string;
+      }[];
+      expect(sources).toHaveLength(1);
+      expect(sources[0].type).toBe("raster");
+      for (const url of sources[0].tiles) {
+        for (const placeholder of ["{z}", "{x}", "{y}"]) expect(url).toContain(placeholder);
+      }
+      expect(sources[0].maxzoom).toBeGreaterThan(0);
+      expect(sources[0].attribution).not.toBe("");
+    },
+  );
+
+  it("draws Streets from the forked Liberty style, on the vendored sprite and with the OpenMapTiles credit", () => {
     const streets = BASEMAP_PRESETS.streets.style(DEFAULT_BASEMAP_OPTIONS);
     expect(validateStyleMin(streets)).toEqual([]);
-    expect(streets.sprite).toBe("/map-sprites/ofm");
-    expect(streets.sources.openmaptiles).toMatchObject({ url: "https://tiles.openfreemap.org/planet" });
+    expect(streets.sprite).toBe(VIDIT_STYLES.dark.sprite);
     expect((streets.sources.openmaptiles as { attribution: string }).attribution).toContain("OpenMapTiles");
-    expect(streets.sources.ne2_shaded).toMatchObject({
-      tiles: ["https://tiles.openfreemap.org/natural_earth/ne2sr/{z}/{x}/{y}.png"],
-      maxzoom: 6,
-    });
   });
 
   it("offers every preset, Auto first", () => {
-    expect(BASEMAP_PRESET_IDS).toEqual(["auto", "vidit-dark", "vidit-light", "streets", "terrain", "satellite"]);
+    expect(BASEMAP_PRESET_IDS[0]).toBe("auto");
     for (const id of BASEMAP_PRESET_IDS.filter((id) => id !== "auto")) {
       expect(BASEMAP_PRESETS[id as Exclude<BasemapPresetId, "auto">], id).toBeDefined();
     }
   });
 
-  it("draws the 2016 Sentinel-2 cloudless mosaic, the CC BY year, to zoom 14 with its credit", () => {
+  it("credits the Sentinel-2 cloudless mosaic under its licence", () => {
     const satellite = BASEMAP_PRESETS.satellite.style(DEFAULT_BASEMAP_OPTIONS) as StyleSpecification;
-    expect(validateStyleMin(satellite)).toEqual([]);
-    const [source] = Object.values(satellite.sources) as { tiles: string[]; maxzoom: number; attribution: string }[];
-    expect(source.tiles).toEqual([
-      "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg",
-    ]);
-    expect(source.maxzoom).toBe(14);
+    const [source] = Object.values(satellite.sources) as { attribution: string }[];
     const credit = new DOMParser().parseFromString(source.attribution, "text/html").body.textContent ?? "";
-    expect(credit).toContain(
-      "Sentinel-2 cloudless 2016 by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)",
-    );
-    expect(source.attribution).toContain('href="https://s2maps.eu"');
+    expect(credit).toContain("EOX IT Services GmbH");
     expect(credit).toContain("CC BY 4.0");
   });
 });

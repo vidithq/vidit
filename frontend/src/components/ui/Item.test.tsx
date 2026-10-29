@@ -47,7 +47,7 @@ const KINDS: { name: string; bare: ItemData; pictured: ItemData; href: string; d
     bare: eventItem(EVENT),
     pictured: eventItem({ ...EVENT, media: MEDIA }),
     href: "/events/e1",
-    detail: /Event·6 Jun 2026·A?ana/,
+    detail: /Event ?· ?6 Jun 2026 ?· ?A?ana/,
     badge: "Geolocated",
   },
   {
@@ -55,7 +55,7 @@ const KINDS: { name: string; bare: ItemData; pictured: ItemData; href: string; d
     bare: eventItem({ ...EVENT, status: "detected" }),
     pictured: eventItem({ ...EVENT, status: "detected", media: MEDIA }),
     href: "/events/e1",
-    detail: /Event·6 Jun 2026·A?ana/,
+    detail: /Event ?· ?6 Jun 2026 ?· ?A?ana/,
     badge: "Detected",
   },
   {
@@ -63,7 +63,7 @@ const KINDS: { name: string; bare: ItemData; pictured: ItemData; href: string; d
     bare: eventItem({ ...EVENT, status: "requested", occurred_date: null }),
     pictured: eventItem({ ...EVENT, status: "requested", occurred_date: null, media: MEDIA }),
     href: "/requests/e1",
-    detail: /Request·A?ana/,
+    detail: /Request ?· ?A?ana/,
     badge: "Requested",
   },
   {
@@ -71,7 +71,7 @@ const KINDS: { name: string; bare: ItemData; pictured: ItemData; href: string; d
     bare: siteItem(SITE),
     pictured: siteItem({ ...SITE, media: MEDIA }),
     href: "/sites/s1",
-    detail: /Site·8 Jun 2026·A?ana/,
+    detail: /Site ?· ?8 Jun 2026 ?· ?A?ana/,
     badge: "Airbase",
   },
   {
@@ -79,7 +79,7 @@ const KINDS: { name: string; bare: ItemData; pictured: ItemData; href: string; d
     bare: collectionItem({ ...COLLECTION, cover: [] }),
     pictured: collectionItem({ ...COLLECTION, cover: [TILE, TILE, TILE] }),
     href: "/collections/c1",
-    detail: /Collection·14 Mar 2026 to 16 Mar 2026·A?ana/,
+    detail: /Collection ?· ?14 Mar 2026 to 16 Mar 2026 ?· ?A?ana/,
     badge: "5 events",
   },
 ];
@@ -169,7 +169,7 @@ describe("Item", () => {
   it("stays static without href or onSelect, the analyst unlinked", () => {
     render(<Item variant="compact" {...eventItem(EVENT)} href={undefined} />);
     expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.getByText("ana")).toBeInTheDocument();
+    expect(screen.getByText(/· ana$/)).toBeInTheDocument();
   });
 
   it("puts actions after the badge, outside the item's link", () => {
@@ -186,5 +186,33 @@ describe("Item", () => {
       "target",
       "_blank",
     );
+  });
+});
+
+describe("<Item variant=\"compact\">, a long title and a long analyst", () => {
+  const long = {
+    kind: "event" as const,
+    title: "Ceremony of the anniversary of the regiment at the northern training ground near the river",
+    analyst: { author: { username: "Stinky915846091_with_a_very_long_handle" } },
+    date: "7 Jan 2025",
+    badge: <span>Detected</span>,
+  };
+
+  it("keeps the badge out of the text column, so no text runs under it", () => {
+    render(<Item variant="compact" {...long} />);
+    const badge = screen.getByText("Detected");
+    const title = screen.getByText(long.title);
+    const column = title.parentElement!;
+    expect(column).not.toContainElement(badge);
+    expect(column.parentElement).toContainElement(badge);
+  });
+
+  it("gives the title two lines and ends the detail line in an ellipsis", () => {
+    render(<Item variant="compact" {...long} />);
+    expect(screen.getByText(long.title)).toHaveClass("line-clamp-2");
+    const detail = screen.getByText(/Stinky915846091/);
+    expect(detail.tagName).toBe("P");
+    expect(detail).toHaveClass("truncate");
+    expect(detail).toHaveTextContent("Event · 7 Jan 2025 · Stinky915846091_with_a_very_long_handle");
   });
 });

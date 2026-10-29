@@ -129,9 +129,7 @@ describe("TagPicker conflicts", () => {
     render(<Host />);
     fireEvent.change(conflictField(), { target: { value: "falklands" } });
     expect(optionNames()).toEqual([]);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "No conflicts match; try including ended conflicts."
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("No match.");
 
     fireEvent.click(endedSwitch());
     fireEvent.focus(conflictField());
@@ -209,6 +207,8 @@ describe("TagPicker tags", () => {
 
     expect(screen.getByRole("button", { name: "Remove Artillery" })).toBeInTheDocument();
     expect(tagField()).toHaveValue("");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    fireEvent.click(tagField());
     expect(optionNames()).toEqual(["armor", "drone"]);
   });
 
@@ -218,6 +218,7 @@ describe("TagPicker tags", () => {
     fireEvent.click(screen.getByRole("option", { name: "drone" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove drone" }));
     expect(screen.queryByRole("button", { name: "Remove drone" })).not.toBeInTheDocument();
+    fireEvent.click(tagField());
     expect(optionNames()).toContain("drone");
   });
 
@@ -249,14 +250,13 @@ describe("TagPicker tags", () => {
     expect(tagField()).toHaveValue("");
   });
 
-  it("keeps the typed text and says so when the tag already exists", async () => {
+  it("says so when the tag already exists, until the text changes", async () => {
     (apiFetch as unknown as Mock).mockRejectedValueOnce(new ApiError("Conflict", 409));
     render(<Host initialTags={TAGS} />);
     fireEvent.change(tagField(), { target: { value: "hidden" } });
     fireEvent.keyDown(tagField(), { key: "Enter" });
 
     expect(await screen.findByText("That tag already exists.")).toBeInTheDocument();
-    expect(tagField()).toHaveValue("hidden");
     fireEvent.change(tagField(), { target: { value: "hidde" } });
     await waitFor(() =>
       expect(screen.queryByText("That tag already exists.")).not.toBeInTheDocument()
@@ -291,19 +291,10 @@ describe("TagPicker suggested tags", () => {
     expect(screen.getByRole("button", { name: "Remove convoy" })).toBeInTheDocument();
   });
 
-  it("wraps six suggestions, then shows the rest behind one Show more", () => {
+  it("renders every suggestion with no Show more, the layout keeping two lines", () => {
     const many = Array.from({ length: 12 }, (_, i) => ({ id: `s${i}`, name: `tag${i}` }));
     render(<Host initialTags={many} suggestedTags={many} />);
-    expect(suggestions()).toHaveClass("flex-wrap");
-    expect(screen.getAllByRole("button", { name: /^Add tag/ })).toHaveLength(6);
-
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(screen.getAllByRole("button", { name: /^Add tag/ })).toHaveLength(12);
-    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
-  });
-
-  it("offers no Show more while every suggestion shows", () => {
-    render(<Host initialTags={TAGS} suggestedTags={TAGS} />);
     expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
   });
 

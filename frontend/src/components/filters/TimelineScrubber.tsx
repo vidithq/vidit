@@ -4,10 +4,9 @@ import { useEffect, useMemo, useRef } from "react";
 import { Pause, Play, RotateCcw } from "lucide-react";
 
 import type { DayCount } from "@/types";
-import { cn } from "@/lib/cn";
 import { DAY_MS } from "@/lib/format";
 import { ICON_TAP_STEP } from "@/components/ui/Button";
-import { FIELD_TEXT } from "@/components/ui/Input";
+import { DateTimeInput } from "@/components/ui/DateTimeInput";
 
 interface TimelineScrubberProps {
   /** The rows per ISO day under every filter but this window, ascending: the histogram and the
@@ -191,15 +190,9 @@ export function TimelineScrubber({
     </>
   );
 
-  // `FIELD_TEXT` first, then the denser desktop size: `cn` resolves the two `sm:` sizes caller-last,
-  // so 16px below `sm` (the editable-field floor, `Input.tsx`) and 11px above, where two dates
-  // share a 240px row.
-  const inputClass = cn(
-    "flex-1 min-w-0 px-1 py-1 bg-neutral-800 border border-neutral-700 rounded-sm",
-    "text-neutral-300 focus:outline-hidden focus:border-orange-500",
-    FIELD_TEXT,
-    "sm:text-[11px]",
-  );
+  // The field keeps 16px below `sm` (the editable-field floor) and takes 11px above, where two
+  // dates share a 240px row.
+  const inputClass = "flex-1 min-w-0 px-1 py-1 rounded-sm sm:text-[11px]";
 
   return (
     <div className="select-none">
@@ -278,8 +271,10 @@ export function TimelineScrubber({
         )}
         {hasAxis ? (
           <>
-            <input
+            <DateTimeInput
               type="date"
+              picker={false}
+              variant="compact"
               value={winStart}
               min={dataMin || undefined}
               max={winEnd || undefined}
@@ -288,8 +283,10 @@ export function TimelineScrubber({
               className={inputClass}
             />
             <span className="text-neutral-600 text-[11px] shrink-0">to</span>
-            <input
+            <DateTimeInput
               type="date"
+              picker={false}
+              variant="compact"
               value={winEnd}
               min={winStart || undefined}
               max={dataMax || undefined}

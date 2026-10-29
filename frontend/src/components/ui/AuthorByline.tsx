@@ -117,7 +117,6 @@ export function AuthorByline({
               label="Co-geolocators"
               spacing="gap"
               size={size}
-              max={Infinity}
             />
           </>
         ) : (

@@ -32,7 +32,7 @@ export function formatAreaKm2(km2: number, decimals = 2): string {
 }
 
 /** What a site form lacks while no drawn ring makes a zone. */
-export const CONTOUR_REQUIREMENT = `A closed contour of at most ${formatAreaKm2(MAX_ZONE_AREA_KM2, 0)} whose edges do not cross`;
+export const CONTOUR_REQUIREMENT = `A closed contour of at most ${formatAreaKm2(MAX_ZONE_AREA_KM2, 0)} whose edges do not cross or touch`;
 
 // Local equirectangular metres around `origin`: exact enough for a site-sized shape.
 function toMetres([lng, lat]: Position, origin: Position): [number, number] {
@@ -59,36 +59,59 @@ export function zoneAreaKm2(vertices: Position[]): number {
   return Math.abs(twice) / 2 / 1_000_000;
 }
 
-function orientation(a: [number, number], b: [number, number], c: [number, number]): number {
-  return Math.sign((b[1] - a[1]) * (c[0] - b[0]) - (b[0] - a[0]) * (c[1] - b[1]));
+function orientation(a: Position, b: Position, c: Position): number {
+  return Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
 }
 
-function segmentsCross(
-  p1: [number, number],
-  p2: [number, number],
-  q1: [number, number],
-  q2: [number, number],
-): boolean {
+// `p` is collinear with `a`-`b` here; true when it lies within the segment's box.
+function onSegment(p: Position, a: Position, b: Position): boolean {
+  return (
+    Math.min(a[0], b[0]) <= p[0] &&
+    p[0] <= Math.max(a[0], b[0]) &&
+    Math.min(a[1], b[1]) <= p[1] &&
+    p[1] <= Math.max(a[1], b[1])
+  );
+}
+
+// Any shared point counts: a crossing, an endpoint on the other segment, or a collinear overlap.
+function segmentsTouch(p1: Position, p2: Position, q1: Position, q2: Position): boolean {
   const o1 = orientation(p1, p2, q1);
   const o2 = orientation(p1, p2, q2);
   const o3 = orientation(q1, q2, p1);
   const o4 = orientation(q1, q2, p2);
-  return o1 !== o2 && o3 !== o4 && o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0;
+  if (o1 !== o2 && o3 !== o4) return true;
+  return (
+    (o1 === 0 && onSegment(q1, p1, p2)) ||
+    (o2 === 0 && onSegment(q2, p1, p2)) ||
+    (o3 === 0 && onSegment(p1, q1, q2)) ||
+    (o4 === 0 && onSegment(p2, q1, q2))
+  );
 }
 
-/** True when two edges of the closed ring cross, the shape the API refuses as `invalid_zone`. */
-export function zoneSelfCrosses(vertices: Position[]): boolean {
-  const n = vertices.length;
-  if (n < 4) return false;
+// The edges `a`-`b` and `b`-`c` overlap past `b`: the ring doubles back on itself.
+function foldsBack(a: Position, b: Position, c: Position): boolean {
+  if (orientation(a, b, c) !== 0) return false;
+  return (a[0] - b[0]) * (c[0] - b[0]) + (a[1] - b[1]) * (c[1] - b[1]) > 0;
+}
+
+/** True when the closed ring is not a simple polygon, the shape the API refuses as `invalid_zone`:
+ *  two edges that do not follow each other share a point (a crossing, a corner on another edge,
+ *  or a collinear overlap), or two that do follow each other fold back. A corner repeated in a row
+ *  counts once. Mirrors backend shapely `is_valid` in `services/sites.zone_shape`; change both. */
+export function zoneSelfIntersects(vertices: Position[]): boolean {
+  const ring = vertices.filter((v, i) => {
+    const previous = vertices[(i + vertices.length - 1) % vertices.length];
+    return vertices.length === 1 || v[0] !== previous[0] || v[1] !== previous[1];
+  });
+  const n = ring.length;
+  if (n < MIN_ZONE_VERTICES) return vertices.length >= MIN_ZONE_VERTICES;
   for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const adjacent = j === i + 1 || (i === 0 && j === n - 1);
-      if (adjacent) continue;
-      if (
-        segmentsCross(vertices[i], vertices[(i + 1) % n], vertices[j], vertices[(j + 1) % n])
-      ) {
-        return true;
-      }
+    if (foldsBack(ring[(i + n - 1) % n], ring[i], ring[(i + 1) % n])) return true;
+  }
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      if (segmentsTouch(ring[i], ring[(i + 1) % n], ring[j], ring[(j + 1) % n])) return true;
     }
   }
   return false;
@@ -150,10 +173,11 @@ export function drawFromZone(zone: Zone): DrawState {
   return { vertices: zoneVertices(zone), closed: true, selected: null };
 }
 
-/** Why the API would refuse the ring drawn so far: two edges of the closed ring cross, or the
- *  corners enclose more than `MAX_ZONE_AREA_KM2`, checked before the ring closes. Null otherwise. */
+/** Why the API would refuse the ring drawn so far: two edges of the closed ring cross or touch,
+ *  or the corners enclose more than `MAX_ZONE_AREA_KM2`, checked before the ring closes. Null
+ *  otherwise. */
 export function drawRefusal({ vertices, closed }: DrawState): string | null {
-  if (closed && zoneSelfCrosses(vertices)) return "Two edges cross. Move a corner.";
+  if (closed && zoneSelfIntersects(vertices)) return "Two edges cross or touch. Move a corner.";
   if (zoneAreaKm2(vertices) > MAX_ZONE_AREA_KM2) {
     return `A site covers at most ${formatAreaKm2(MAX_ZONE_AREA_KM2, 0)}. Move the corners closer.`;
   }

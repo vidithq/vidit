@@ -368,13 +368,13 @@ def _event_candidates(db: Session, terms: _EventTerms, filters: EventFilters) ->
 
 def search_dates(
     db: Session, *, query: str, types: frozenset[str], filters: EventFilters
-) -> dict[str, list[dict[str, Any]]]:
+) -> dict[str, Any]:
     """The events :func:`search` lists for ``query`` and ``filters`` (:func:`_event_candidates`),
     counted per day by ``services/event_filters.date_histogram``. Unlike :func:`search`, an empty
     ``query`` with no active filter counts every searchable event; ``types`` without ``event``
     counts nothing."""
     if "event" not in types:
-        return {"occurred_date": [], "submitted": []}
+        return {"occurred_date": [], "submitted": [], "total": 0}
     terms = _event_terms(db, query.strip())
     return date_histogram(
         lambda window: _matching(

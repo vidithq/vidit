@@ -29,13 +29,12 @@ describe("LinkListInput", () => {
     );
   });
 
-  it("heads the list with one Links label, red while flagged, and removes in red", () => {
+  it("heads the list with one Links label, red while flagged", () => {
     const { rerender } = render(
       <LinkListInput {...props} rows={["https://a.example/1"]} onChange={() => {}} heading="Links" />
     );
     expect(screen.getAllByText("Links")).toHaveLength(1);
     expect(screen.getByText("Links").className).not.toContain("text-red-400");
-    expect(screen.getByRole("button", { name: "Remove link 1" }).className).toContain("text-red-400");
     rerender(
       <LinkListInput {...props} rows={["https://a.example/1"]} onChange={() => {}} invalid />
     );

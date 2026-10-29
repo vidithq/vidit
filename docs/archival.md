@@ -148,7 +148,7 @@ archive.today serves one set of snapshots under six interchangeable domains, so 
 
 Every rejection is a 400 carrying the code the diagram names for the failed check.
 
-**Read surface.** Each link of a [`SourceRead`](api.md#get-eventsid) carries `archived`: `{url, provider, archived_at}` once a copy is recorded, `null` before. The event detail surfaces render it through [`ArchivedCopies`](../frontend/src/components/ui/ArchivedCopies.tsx) beside each link of each source block, read-only for every reader including the owner ([`design.md`](design.md#source-blocks)).
+**Read surface.** Each link of a [`SourceRead`](api.md#get-eventsid) carries `archived`: `{url, provider, archived_at}` once a copy is recorded, `null` before. The event detail surfaces render it through [`ArchivedCopies`](../frontend/src/components/sources/ArchivedCopies.tsx) beside each link of each source block, read-only for every reader including the owner ([`design.md`](design.md#source-blocks)).
 
 ## See also
 

@@ -35,6 +35,16 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- `/palette` shows High level and Low level primitives from the import graph, the filter panel as one demo, and its check fails on a missing entry, a wrong tier or a primitive only one component uses ([#814](https://github.com/vidithq/vidit/pull/814)).
+- `docs/design.md` names one primitive per job (show an item, pick from a vocabulary, enter a date, remove, delete, show an error...), and lint fails on a raw `<select>`, `<textarea>` or date input, `confirm()` or a retired primitive ([#814](https://github.com/vidithq/vidit/pull/814)).
+- `/palette` lists the shared components by category, one file each, with a table of contents and a filter by name; each entry shows its live demos only, and `docs/design.md` holds the details ([#814](https://github.com/vidithq/vidit/pull/814)).
+- On the event and site forms, the coordinates field sits under the map, the title fields drop their character counter, and the suggested tags show as many as fit on two lines with no Show more ([#814](https://github.com/vidithq/vidit/pull/814)).
+- The Filters header and the phone's filter bar show how many results match, such as *284 results*, on the map, search, the feed and the Requests board; `GET /search/dates` and `GET /feed/dates` return that `total` ([#814](https://github.com/vidithq/vidit/pull/814)).
+- A removal uses the cross and acts at once; a deletion or a revocation uses the trash and confirms in place: revoking an invite code shows the trash instead of a ban sign ([#814](https://github.com/vidithq/vidit/pull/814)).
+- `GET /feed` and `GET /feed/dates` take the Show filter as `status` (`geolocated`, `requested`, `detected`), the same parameter and values as `GET /search` and `GET /events`, and no longer accept `kind` ([#814](https://github.com/vidithq/vidit/pull/814)).
+- The Requests board keeps its filters in the page URL, like the map, search and the feed ([#814](https://github.com/vidithq/vidit/pull/814)).
+- Every field that picks from a list, in the filter panel and on the forms (kinds, levels, reasons, effects, conflicts, tags), lists its options on focus, closes after a pick and shows the picks as removable pills ([#814](https://github.com/vidithq/vidit/pull/814)).
+- Every field that finds an event, a site, a collection, an analyst or an organization lists its matches the same way, and Find a collection now runs the collection's own action on a pick ([#814](https://github.com/vidithq/vidit/pull/814)).
 - One filter panel serves the map, search, the feed and the Requests board: collapsible groups What, When (the Event date and Added timelines), Source, Where and Who; Conflict, Tags and accounts search in their line; a phone opens it in a sheet ([#813](https://github.com/vidithq/vidit/pull/813)).
 - Search, the feed and the Requests board show the filter panel under the map's Filters header, open by default and closed on the map; each surface remembers your choice, and the map header drops its point count ([#813](https://github.com/vidithq/vidit/pull/813)).
 - The feed keeps its filters in the URL, and its Following choice is a switch in the filter panel; search lists an analyst or an organization the query names once, first in its section ([#813](https://github.com/vidithq/vidit/pull/813)).
@@ -94,10 +104,13 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Removed
 
+- The shared components drop the variants only `/palette` used: the avatar row's `+N` overflow and the bare combobox demo ([#814](https://github.com/vidithq/vidit/pull/814)).
 - The landing page no longer shows a roadmap; the open epics on GitHub list what is planned ([#767](https://github.com/vidithq/vidit/pull/770)).
 
 ### Fixed
 
+- A compact item (the map's pin preview, the pickers, the link dialogs) gives its title two lines and ends its detail line in an ellipsis, so the status badge never covers the analyst's name; a list item's long analyst name wraps on a phone ([#814](https://github.com/vidithq/vidit/pull/814)).
+- The site forms refuse a contour whose corner touches another edge or whose edges overlap, which the server refused after the submit ([#814](https://github.com/vidithq/vidit/pull/814)).
 - On the map, no Show chip selected shows every event and every site, and selected chips show only what they name: Sites alone hides the events, and Clear all brings the sites back. No zones date sits under the chips ([#808](https://github.com/vidithq/vidit/pull/808)).
 - A GIF inserted into a proof shows one image per frame, and one past 6 frames is refused under the editor with the reason ([#804](https://github.com/vidithq/vidit/pull/804)).
 - The submit form keeps its draft across a reload, files and proof images included, until you publish ([#804](https://github.com/vidithq/vidit/pull/804)).

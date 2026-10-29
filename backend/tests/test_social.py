@@ -548,8 +548,8 @@ def test_feed_cursor_walks_mixed_kinds_without_gaps_or_repeats(db, cleanup):
     }
 
 
-def test_feed_carries_detections_by_default_and_kind_narrows_them(db, cleanup):
-    """A detection is in the feed unless ``kind`` leaves it out. ``following`` keeps the
+def test_feed_carries_detections_by_default_and_status_narrows_them(db, cleanup):
+    """A detection is in the feed unless ``status`` leaves it out. ``following`` keeps the
     detections a followed analyst owns, ``all`` every live one, each keyed on ``detected_at``."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
@@ -575,18 +575,18 @@ def test_feed_carries_detections_by_default_and_kind_narrows_them(db, cleanup):
         return {item["title"] for item in _walk(headers, f"/api/v1/feed?limit=2&{query}")}
 
     assert titles("") == {"Geo", "Ask", "Detection"}
-    assert titles("kind=detected") == {"Detection"}
-    assert titles("kind=geolocation&kind=request") == {"Geo", "Ask"}
-    assert titles("kind=request&kind=detected") == {"Ask", "Detection"}
+    assert titles("status=detected") == {"Detection"}
+    assert titles("status=geolocated&status=requested") == {"Geo", "Ask"}
+    assert titles("status=requested&status=detected") == {"Ask", "Detection"}
 
-    first = client.get("/api/v1/feed?kind=detected", headers=headers).json()
+    first = client.get("/api/v1/feed?status=detected", headers=headers).json()
     assert first[0]["status"] == STATUS_DETECTED
     assert first[0]["owner"]["username"] == analyst.username
     assert first[0]["feed_at"].startswith("2997-01-01T00:00:01")
 
     above_band = encode_cursor(datetime(2997, 1, 1, 0, 1, tzinfo=UTC), uuid.UUID(int=2**128 - 1))
     page = client.get(
-        f"/api/v1/feed?scope=all&kind=detected&limit=2&cursor={above_band}", headers=headers
+        f"/api/v1/feed?scope=all&status=detected&limit=2&cursor={above_band}", headers=headers
     ).json()
     assert [item["title"] for item in page] == ["Stranger detection", "Detection"]
 
@@ -674,8 +674,8 @@ def tags(db):
     db.commit()
 
 
-def test_feed_filters_by_kind_conflict_source_kind_level_and_tag(db, conflict, tags, cleanup):
-    """``kind`` keeps one kind of row; the taxonomy filters match as on ``GET /events``, in both
+def test_feed_filters_by_status_conflict_source_kind_level_and_tag(db, conflict, tags, cleanup):
+    """``status`` keeps one kind of row; the taxonomy filters match as on ``GET /events``, in both
     scopes, and the next-page link carries them. ``tag`` matches a tag on a source too."""
     record_user, record_geo = cleanup
     source_tag, free = tags
@@ -704,9 +704,9 @@ def test_feed_filters_by_kind_conflict_source_kind_level_and_tag(db, conflict, t
     def titles(query: str) -> set[str]:
         return {item["title"] for item in _walk(headers, f"/api/v1/feed?limit=1&{query}")}
 
-    assert titles("kind=geolocation") == {"Tagged geo", "Plain geo"}
-    assert titles("kind=request") == {"Tagged ask", "Plain ask"}
-    assert titles("kind=geolocation&kind=request") == {
+    assert titles("status=geolocated") == {"Tagged geo", "Plain geo"}
+    assert titles("status=requested") == {"Tagged ask", "Plain ask"}
+    assert titles("status=geolocated&status=requested") == {
         "Tagged geo",
         "Plain geo",
         "Tagged ask",
@@ -717,15 +717,17 @@ def test_feed_filters_by_kind_conflict_source_kind_level_and_tag(db, conflict, t
     assert titles("source_kind=drone&source_kind=smartphone") == {"Tagged geo", "Plain geo"}
     assert titles("level=indirect") == {"Tagged ask"}
     assert titles(f"tag={source_tag.name}") == {"Tagged geo"}
-    assert titles(f"tag={free.name}&kind=request") == {"Tagged ask"}
+    assert titles(f"tag={free.name}&status=requested") == {"Tagged ask"}
 
     all_scope = client.get(
-        f"/api/v1/feed?scope=all&limit=100&kind=request&conflict={conflict.name}",
+        f"/api/v1/feed?scope=all&limit=100&status=requested&conflict={conflict.name}",
         headers=headers,
     )
     assert [item["title"] for item in all_scope.json()] == ["Tagged ask"]
 
-    assert client.get("/api/v1/feed?kind=detection", headers=headers).status_code == 422
+    assert client.get("/api/v1/feed?status=detection", headers=headers).status_code == 422
+    closed = client.get("/api/v1/feed?scope=all&status=closed", headers=headers)
+    assert closed.status_code == 200 and closed.json() == []
     assert client.get("/api/v1/feed?source_kind=tripod", headers=headers).status_code == 422
     assert client.get("/api/v1/feed?level=primary", headers=headers).status_code == 422
 
@@ -805,7 +807,8 @@ def _days(*pairs: tuple[str, int]) -> list[dict]:
 
 def test_feed_dates_count_the_walked_rows_per_day(db, cleanup):
     """Each axis counts the rows ``GET /feed`` walks per day, ignores its own window and keeps
-    every other filter, the other window too. The submitted day is the UTC day."""
+    every other filter, the other window too. The submitted day is the UTC day. ``total``
+    counts the rows under every filter."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     analyst = _make_user(db, suffix="analyst")
@@ -834,27 +837,33 @@ def test_feed_dates_count_the_walked_rows_per_day(db, cleanup):
     assert everything == {
         "occurred_date": _days(("2024-01-10", 2), ("2024-03-05", 1)),
         "submitted": _days(("2024-01-11", 1), ("2024-02-01", 2), ("2024-03-06", 1)),
+        "total": 4,
     }
 
     by_occurrence = _feed_dates(headers, occurred_date_from="2024-03-01")
     assert by_occurrence["occurred_date"] == everything["occurred_date"]
     assert by_occurrence["submitted"] == _days(("2024-03-06", 1))
+    assert by_occurrence["total"] == 1
 
     by_submission = _feed_dates(headers, submitted_from="2024-02-01")
     assert by_submission["submitted"] == everything["submitted"]
     assert by_submission["occurred_date"] == _days(("2024-01-10", 1), ("2024-03-05", 1))
+    assert by_submission["total"] == 3
 
     assert _feed_dates(headers, source_kind="drone") == {
         "occurred_date": _days(("2024-01-10", 1)),
         "submitted": _days(("2024-01-11", 1)),
+        "total": 1,
     }
-    assert _feed_dates(headers, kind="request") == {
+    assert _feed_dates(headers, status="requested") == {
         "occurred_date": _days(("2024-03-05", 1)),
         "submitted": _days(("2024-03-06", 1)),
+        "total": 1,
     }
     assert _feed_dates(headers, scope="all", author=stranger.username) == {
         "occurred_date": _days(("2024-01-10", 1)),
         "submitted": _days(("2024-01-11", 1)),
+        "total": 1,
     }
 
 

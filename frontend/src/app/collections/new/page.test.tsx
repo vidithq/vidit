@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { signedInAs, signedOut } from "@/test/auth";
 import { textHtml } from "@/test/proofEditorStub";
 
 const push = vi.fn();
@@ -38,6 +39,13 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   addEventsToCollection: (id: string, target: unknown) => addEventsToCollection(id, target),
   searchPickableEvents: (username: string, q: string) =>
     searchPickableEvents(username, q),
+}));
+
+// The add block's first page of the analyst's events.
+const apiFetchPage = vi.fn();
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetchPage: () => apiFetchPage(),
 }));
 
 // The add block's list and a match's pages only have to render without the network (the walk is
@@ -96,7 +104,8 @@ const walkOf = (items: unknown[], more: Partial<{ hasMore: boolean; loadMore: ()
 
 /** What the add block lists. */
 function mockBrowse(items: unknown[]) {
-  useCursorList.mockReturnValue(walkOf(items));
+  useCursorList.mockReturnValue(walkOf([]));
+  apiFetchPage.mockResolvedValue({ items, nextCursor: null });
 }
 
 /** The pages of a search match so far, beside an empty add block. */
@@ -144,7 +153,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   addEventsToCollection.mockReset();
 
-  useAuth.mockReturnValue({ user: USER, loading: false });
+  useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
   // The hook reads nothing while the path is null (every render without `?event=`).
   useApiResource.mockImplementation((path: string | null) => ({
     data: path === null ? null : EVENT_DETAIL,
@@ -159,7 +168,7 @@ beforeEach(() => {
 
 describe("NewCollectionPage", () => {
   it("bounces a signed-out visitor to the login form", () => {
-    useAuth.mockReturnValue({ user: null, loading: false });
+    useAuth.mockReturnValue(signedOut());
     window.history.replaceState(null, "", "/collections/new");
 
     render(<NewCollectionPage />);
@@ -170,7 +179,7 @@ describe("NewCollectionPage", () => {
   });
 
   it("waits on the session rather than bouncing while it resolves", () => {
-    useAuth.mockReturnValue({ user: null, loading: true });
+    useAuth.mockReturnValue({ ...signedOut(), loading: true });
 
     render(<NewCollectionPage />);
 
@@ -247,7 +256,7 @@ describe("NewCollectionPage", () => {
 
     fireEvent.focus(screen.getByRole("combobox", { name: "Add events" }));
     fireEvent.click(
-      screen.getByRole("option", { name: /^Strike on the rail junction/ }),
+      await screen.findByRole("option", { name: /^Strike on the rail junction/ }),
     );
     // The row moved onto the block above, which is what the create writes.
     expect(
@@ -332,7 +341,6 @@ describe("NewCollectionPage with a search selection", () => {
     expect(useApiResource).not.toHaveBeenCalledWith(expect.stringMatching(/^\/events\//));
     expect(screen.getByText("Depot fire")).toBeInTheDocument();
     expect(screen.getByText("Bridge strike")).toBeInTheDocument();
-    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
     expect(await screen.findByText("2 events")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Depot fire from this collection" }));
@@ -374,7 +382,6 @@ describe("NewCollectionPage with a search selection", () => {
       "/collections/collectable-events?limit=20",
       JSON.stringify({ q: "dam", filters: { tag: ["flood"] } }),
     );
-    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
     expect(screen.getByText("Dam breach")).toBeInTheDocument();
     expect(screen.getByText("44 events, ordered by event date, earliest first.")).toBeInTheDocument();
     expect(screen.getByText("44 events")).toBeInTheDocument();
@@ -429,7 +436,6 @@ describe("NewCollectionPage with a search selection", () => {
     searchParams.set("selection", "gone");
     render(<NewCollectionPage />);
 
-    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create collection" })).toBeInTheDocument();
   });
 });

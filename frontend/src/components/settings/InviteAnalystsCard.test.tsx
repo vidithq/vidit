@@ -93,7 +93,6 @@ describe("InviteAnalystsCard", () => {
     ).toBeInTheDocument();
     expect(await screen.findAllByText("Link copied")).toHaveLength(2);
     expect(writeText).toHaveBeenCalledWith(MINTED.link);
-    expect(screen.queryByText(/copied to your clipboard|Copy its link below/)).toBeNull();
     const post = api.apiFetch.mock.calls.find(([, init]) => init?.method === "POST");
     expect(JSON.parse(post![1].body)).toEqual({ x_handle: "@new_hawk" });
   });

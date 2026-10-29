@@ -16,7 +16,7 @@ import {
   positionsBounds,
   zoneAreaKm2,
   zoneFromVertices,
-  zoneSelfCrosses,
+  zoneSelfIntersects,
   zoneVertices,
   type Position,
 } from "./siteZone";
@@ -47,13 +47,52 @@ describe("zoneAreaKm2", () => {
   });
 });
 
-describe("zoneSelfCrosses", () => {
+describe("zoneSelfIntersects", () => {
   it("accepts a simple ring", () => {
-    expect(zoneSelfCrosses(SQUARE)).toBe(false);
+    expect(zoneSelfIntersects(SQUARE)).toBe(false);
+  });
+
+  it("accepts a concave ring", () => {
+    const arrow: Position[] = [
+      [0, 0],
+      [4, 0],
+      [4, 4],
+      [2, 1],
+      [0, 4],
+    ];
+    expect(zoneSelfIntersects(arrow)).toBe(false);
+  });
+
+  it("accepts a straight corner and a corner repeated in a row", () => {
+    expect(zoneSelfIntersects([[0, 0], [1, 0], [2, 0], [2, 2], [0, 2]])).toBe(false);
+    expect(zoneSelfIntersects([[0, 0], [2, 0], [2, 0], [2, 2], [0, 2]])).toBe(false);
   });
 
   it("flags a bow tie", () => {
-    expect(zoneSelfCrosses([SQUARE[0], SQUARE[2], SQUARE[1], SQUARE[3]])).toBe(true);
+    expect(zoneSelfIntersects([SQUARE[0], SQUARE[2], SQUARE[1], SQUARE[3]])).toBe(true);
+  });
+
+  it("flags a corner lying on an edge that does not end at it", () => {
+    expect(zoneSelfIntersects([[0, 0], [4, 0], [4, 4], [2, 0], [0, 4]])).toBe(true);
+  });
+
+  it("flags a corner the ring passes through twice", () => {
+    expect(
+      zoneSelfIntersects([[0, 0], [2, 2], [4, 0], [4, 4], [2, 2], [0, 4]]),
+    ).toBe(true);
+  });
+
+  it("flags two edges that overlap on one line", () => {
+    expect(zoneSelfIntersects([[0, 0], [4, 0], [4, 2], [3, 0], [1, 0], [0, 2]])).toBe(true);
+  });
+
+  it("flags an edge that folds back on the one before it", () => {
+    expect(zoneSelfIntersects([[0, 0], [4, 0], [2, 0], [2, 2]])).toBe(true);
+  });
+
+  it("flags a ring without area", () => {
+    expect(zoneSelfIntersects([[0, 0], [1, 0], [2, 0]])).toBe(true);
+    expect(zoneSelfIntersects([[0, 0], [1, 1], [1, 1]])).toBe(true);
   });
 });
 
@@ -117,10 +156,10 @@ describe("contour editing", () => {
     expect(removeVertex(four, 0)).toBe(four);
   });
 
-  it("refuses a closed ring whose edges cross", () => {
+  it("refuses a closed ring whose edges cross or touch", () => {
     const bowtie = { vertices: [SQUARE[0], SQUARE[2], SQUARE[1], SQUARE[3]], closed: true, selected: null };
     expect(drawReady(bowtie)).toBe(false);
-    expect(drawRefusal(bowtie)).toBe("Two edges cross. Move a corner.");
+    expect(drawRefusal(bowtie)).toBe("Two edges cross or touch. Move a corner.");
   });
 });
 
@@ -151,6 +190,6 @@ describe("zone size cap", () => {
   it("groups thousands in an area and names the cap in the form's requirement", () => {
     expect(formatAreaKm2(230643.891)).toBe("230,643.89 km²");
     expect(formatAreaKm2(0.8)).toBe("0.80 km²");
-    expect(CONTOUR_REQUIREMENT).toBe("A closed contour of at most 1,000 km² whose edges do not cross");
+    expect(CONTOUR_REQUIREMENT).toBe("A closed contour of at most 1,000 km² whose edges do not cross or touch");
   });
 });

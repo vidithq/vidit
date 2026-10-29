@@ -39,7 +39,7 @@ describe("<ManageAnalystsPanel>", () => {
     const field = screen.getByLabelText("Find an analyst (username or email)");
     fireEvent.focus(field);
     fireEvent.change(field, { target: { value: "ana@" } });
-    fireEvent.click(await screen.findByRole("option", { name: "ana" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^ana/ }));
     expect(screen.getByText("ana@example.org")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for ana" }));

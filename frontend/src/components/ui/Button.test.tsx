@@ -9,8 +9,7 @@ import { ACTION_ICONS, Button } from "./Button";
 
 const SRC = path.resolve(__dirname, "../..");
 
-// A disclosure's chevron turns with its state, so it carries no action icon.
-const EXEMPT = new Set(["components/ui/Disclosure.tsx"]);
+const EXEMPT = new Set<string>();
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

@@ -40,7 +40,7 @@ export function OpenRequests({
             a removable chip and the link stays honest whatever the search group serves. Same builder as
             the Insights tiles. */}
         <SeeAllLink
-          href={profileSearchHref(profile.username, { status: "requested" })}
+          href={profileSearchHref(profile.username, { show: ["requested"] })}
           className="shrink-0"
         />
       </div>

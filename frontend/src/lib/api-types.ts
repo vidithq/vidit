@@ -1773,9 +1773,8 @@ export interface paths {
          *
          *     ``scope=following`` (default) keeps the geolocations credited to analysts
          *     the current user follows and the requests and detections they own, and is
-         *     empty when they follow nobody; ``scope=all`` keeps every row. ``kind``
-         *     (``geolocation``, ``request``, ``detected``; all three when omitted) keeps those kinds,
-         *     and the filter set narrows the rows as on ``GET /events``. Cursor-paged, capped at 100
+         *     empty when they follow nobody; ``scope=all`` keeps every row. ``status`` and the filter set
+         *     narrow the rows as on ``GET /events``. Cursor-paged, capped at 100
          *     rows; the ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
         get: operations["get_feed_api_v1_feed_get"];
@@ -1798,9 +1797,9 @@ export interface paths {
          * Get Feed Dates
          * @description The rows ``GET /feed`` walks for the request, counted per day on each date axis.
          *
-         *     Takes the ``scope``, ``kind`` and filters of ``GET /feed``. ``occurred_date`` ignores the
+         *     Takes the ``scope``, ``status`` and filters of ``GET /feed``. ``occurred_date`` ignores the
          *     request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
-         *     ``submitted_from`` / ``submitted_to``.
+         *     ``submitted_from`` / ``submitted_to``. ``total`` counts the rows under every filter.
          */
         get: operations["get_feed_dates_api_v1_feed_dates_get"];
         put?: never;
@@ -2225,8 +2224,8 @@ export interface paths {
          *
          *     Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
          *     own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
-         *     / ``submitted_to``. An empty ``q`` with no active filter counts every searchable event; a
-         *     ``type`` without ``event`` counts nothing.
+         *     / ``submitted_to``. ``total`` counts the events under every filter. An empty ``q`` with no
+         *     active filter counts every searchable event; a ``type`` without ``event`` counts nothing.
          */
         get: operations["search_dates_api_v1_search_dates_get"];
         put?: never;
@@ -4116,14 +4115,16 @@ export interface components {
         };
         /**
          * DateHistogram
-         * @description Events per day on each date axis, ascending, days without a row left out
-         *     (``services.event_filters.date_histogram``).
+         * @description Events per day on each date axis, ascending, days without a row left out, and the events
+         *     in all (``services.event_filters.date_histogram``).
          */
         DateHistogram: {
             /** Occurred Date */
             occurred_date: components["schemas"]["DayCount"][];
             /** Submitted */
             submitted: components["schemas"]["DayCount"][];
+            /** Total */
+            total: number;
         };
         /** DayCount */
         DayCount: {
@@ -9289,7 +9290,7 @@ export interface operations {
                 limit?: number;
                 /** @description Opaque cursor from a Link: rel=next header */
                 cursor?: string | null;
-                kind?: ("geolocation" | "request" | "detected")[] | null;
+                status?: string[] | null;
                 conflict?: string[] | null;
                 source_kind?: string[] | null;
                 level?: string[] | null;
@@ -9342,7 +9343,7 @@ export interface operations {
         parameters: {
             query?: {
                 scope?: "following" | "all";
-                kind?: ("geolocation" | "request" | "detected")[] | null;
+                status?: string[] | null;
                 conflict?: string[] | null;
                 source_kind?: string[] | null;
                 level?: string[] | null;

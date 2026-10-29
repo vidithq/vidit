@@ -81,10 +81,10 @@ describe("BulkAddToCollectionPanel", () => {
     expect(row("Dam breach")).toBeEnabled();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     // Two collections need no finder.
-    expect(screen.queryByRole("searchbox", { name: "Find a collection" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Find a collection" })).not.toBeInTheDocument();
   });
 
-  it("narrows a long list by title", () => {
+  it("finds a collection by title", () => {
     const titles = ["Avdiivka", "Bakhmut", "Chasiv Yar", "Dam breach", "Kupiansk", "Pokrovsk"];
     useApiResource.mockReturnValue({
       data: page(titles.map((t, i) => shelf(`c${i}`, t, i))),
@@ -92,14 +92,14 @@ describe("BulkAddToCollectionPanel", () => {
     });
     render(<BulkAddToCollectionPanel username="ana" target={ids} rows={ROWS} count={2} />);
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "Find a collection" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Find a collection" }), {
       target: { value: "  ba" },
     });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      expect.stringMatching(/^Bakhmut/),
+    ]);
 
-    expect(row("Bakhmut")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^Add to / })).toHaveLength(1);
-
-    fireEvent.change(screen.getByRole("searchbox", { name: "Find a collection" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Find a collection" }), {
       target: { value: "zzz" },
     });
     expect(screen.getByText("No collection matches.")).toBeInTheDocument();

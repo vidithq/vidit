@@ -66,14 +66,14 @@ export function ProfileInsights({ username }: { username: string }) {
           icon={MapPin}
           label="Geolocated"
           value={stats.geolocated_count}
-          href={profileSearchHref(username, { status: "geolocated" })}
+          href={profileSearchHref(username, { show: ["geolocated"] })}
         />
         {/* Bot, the one detected marker across the app (StatusBadge, DetectionsEntry). */}
         <StatTile
           icon={Bot}
           label="Detected"
           value={stats.detected_count}
-          href={profileSearchHref(username, { status: "detected" })}
+          href={profileSearchHref(username, { show: ["detected"] })}
         />
         {/* `small`: a conflict name is a title ("Russo-Ukrainian War"), and the tile must hold it at 375 px. */}
         <StatTile
@@ -83,7 +83,7 @@ export function ProfileInsights({ username }: { username: string }) {
           value={topConflict ? topConflict.name : "None"}
           href={
             topConflict
-              ? profileSearchHref(username, { conflict: topConflict.name })
+              ? profileSearchHref(username, { conflicts: [topConflict.name] })
               : undefined
           }
         />
@@ -92,7 +92,7 @@ export function ProfileInsights({ username }: { username: string }) {
           label="Top source kind"
           small
           value={topKind ? (SOURCE_KIND_LABELS[topKind.name as SourceKind] ?? topKind.name) : "None"}
-          href={topKind ? profileSearchHref(username, { source_kind: topKind.name }) : undefined}
+          href={topKind ? profileSearchHref(username, { sourceKinds: [topKind.name] }) : undefined}
         />
       </StatGrid>
 

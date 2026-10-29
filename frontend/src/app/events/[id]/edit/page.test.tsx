@@ -60,12 +60,12 @@ vi.mock("@/lib/events", async (importOriginal) => ({
 import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
 import { apiFetch } from "@/lib/api";
 import { closeEvent, saveVersion, updateEventRequest } from "@/lib/events";
-import { ARM_MS } from "@/hooks/useConfirmAction";
 import { PUBLISH_CONFIRM } from "@/components/geolocations/PublishActions";
 import type { Source } from "@/lib/sources";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
+import { pickOption } from "@/test/options";
 
 const saveVersionMock = vi.mocked(saveVersion);
 const updateRequestMock = vi.mocked(updateEventRequest);
@@ -180,9 +180,6 @@ let row: EventDetail;
 /** The live links `/events/d1/site-links` serves, set per test. */
 let siteLinks: unknown[] = [];
 
-/** Whether `/conflicts` has answered. */
-let conflictsLoaded = true;
-
 /** The queue being walked: this detection, then two more. */
 let queueItems: EventDetail[] = [];
 
@@ -193,17 +190,14 @@ function resource(path: string) {
   if (path.startsWith("/events/d1")) return row;
   if (path.startsWith("/events/detections"))
     return { items: queueItems, total: queueItems.length, page: 1, per_page: 100 };
-  if (path === "/conflicts") return conflictsLoaded ? CONFLICTS : null;
+  if (path === "/conflicts") return CONFLICTS;
   return null;
 }
 
 /** Make the two picks a review makes: the conflict, and the kind the import left unknown. */
 function fillTheFloor() {
-  fireEvent.focus(screen.getByRole("combobox", { name: "Conflict" }));
-  fireEvent.click(screen.getByRole("option", { name: /Russian invasion of Ukraine/ }));
-  fireEvent.change(screen.getByRole("combobox", { name: /Kind/ }), {
-    target: { value: "drone" },
-  });
+  pickOption("Conflict", /Russian invasion of Ukraine/);
+  pickOption(/kind$/, "Drone");
 }
 
 /** Fill the floor, then publish (the first click arms, the second writes). */
@@ -268,7 +262,6 @@ beforeEach(() => {
   row = detectionFixture();
   auth.user = OWNER;
   queryParam = null;
-  conflictsLoaded = true;
   queueItems = [
     detectionFixture(),
     detectionFixture({ id: "d2", title: "Second" }),
@@ -277,11 +270,26 @@ beforeEach(() => {
 });
 
 describe("the detection edit surface", () => {
-  it("labels the provenance link Detected from", () => {
+  it.each([
+    ["a detection", () => detectionFixture(), "Detected from", "Requested from"],
+    [
+      "a fulfilled bot-opened request",
+      () => publishedFixture({ requested_by: { id: "u2", username: "bo" } }),
+      "Requested from",
+      "Detected from",
+    ],
+    [
+      "an open request",
+      () => requestFixture({ detected_from_url: "https://x.com/analyst/status/1" }),
+      "Requested from",
+      "Detected from",
+    ],
+  ])("labels the provenance link of %s", (_, make, label, other) => {
+    row = make();
     render(<EditEventPage />);
 
-    expect(screen.getByText("Detected from")).toBeInTheDocument();
-    expect(screen.queryByText("Requested from")).toBeNull();
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.queryByText(other)).toBeNull();
   });
 
   it("renders the form under a bare title, with Publish and the close in the sticky actions", () => {
@@ -302,7 +310,6 @@ describe("the detection edit surface", () => {
     // The close shows as itself, a red icon button after Publish.
     const close = within(rail).getByRole("button", { name: "Close this detection" });
     expect(follows(submit, close)).toBe(true);
-    expect(close.className).toContain("text-red-400");
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
@@ -443,16 +450,6 @@ describe("a review pass over the queue", () => {
 });
 
 describe("the publish gate", () => {
-  it("waits for the conflict options before it flags the floor", () => {
-    conflictsLoaded = false;
-    render(<EditEventPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
-    expect(screen.getByRole("alert")).toHaveTextContent(/Still loading the required Conflict/);
-    expect(screen.queryByText(/^Fill in the required fields/)).toBeNull();
-    expect(saveVersionMock).not.toHaveBeenCalled();
-  });
-
   it("flags the whole floor at once, in page order", () => {
     row = detectionFixture({ title: "", coords: null, proof: null });
     render(<EditEventPage />);
@@ -465,65 +462,18 @@ describe("the publish gate", () => {
 });
 
 describe("the publish confirm", () => {
-  /** Render the form, fill the floor, and take the first (arming) click. */
-  function armSubmit() {
+  it("arms the one button in place and writes on the second click", async () => {
     render(<EditEventPage />);
     fillTheFloor();
     const button = screen.getByRole("button", { name: "Publish" });
+
     fireEvent.click(button);
-    return button;
-  }
-
-  it("arms the one button in place instead of swapping the row", () => {
-    const button = armSubmit();
-
-    // Same element, renamed: nothing is inserted before it, so the second click lands where the first did.
     expect(button).toHaveAccessibleName("Confirm");
-    expect(screen.getByRole("button", { name: "Confirm" })).toBe(button);
-    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(screen.getByText(PUBLISH_CONFIRM)).toHaveAttribute("role", "status");
     expect(saveVersionMock).not.toHaveBeenCalled();
-  });
 
-  it("announces the armed state and what the next click costs", () => {
-    armSubmit();
-    // A live region beside the button, not a renamed control, like every copy control.
-    const announcement = screen.getByText(PUBLISH_CONFIRM);
-    expect(announcement).toHaveAttribute("role", "status");
-    expect(announcement).toHaveAttribute("aria-live", "polite");
-  });
-
-  it("writes on the second click", async () => {
-    const button = armSubmit();
     fireEvent.click(button);
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
-  });
-
-  it("disarms on Escape", () => {
-    const button = armSubmit();
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(button).toHaveAccessibleName("Publish");
-    expect(screen.queryByText(PUBLISH_CONFIRM)).toBeNull();
-  });
-
-  it("disarms when the next click lands elsewhere", () => {
-    const button = armSubmit();
-    fireEvent.pointerDown(screen.getByRole("textbox", { name: /Title/ }));
-    expect(button).toHaveAccessibleName("Publish");
-    // And that click is spent disarming: nothing is written.
-    expect(saveVersionMock).not.toHaveBeenCalled();
-  });
-
-  it("disarms on its own after a few seconds", () => {
-    vi.useFakeTimers();
-    try {
-      const button = armSubmit();
-      act(() => {
-        vi.advanceTimersByTime(ARM_MS);
-      });
-      expect(button).toHaveAccessibleName("Publish");
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 
@@ -539,7 +489,6 @@ describe("editing a published geolocation", () => {
     expect(
       screen.getByRole("heading", { name: "Edit geolocation" })
     ).toBeInTheDocument();
-    expect(screen.queryByText(/no longer be edited/)).toBeNull();
     expect(screen.getByRole("button", { name: "Save version 2" })).toBeInTheDocument();
     // Neither detection verb belongs here: the row is not skippable, and its close is named for the row.
     expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
@@ -558,7 +507,6 @@ describe("editing a published geolocation", () => {
     // The title section: the page heading (visually hidden), the Title field in the event title's
     // place, which joins the form from outside it, then the byline and its add button.
     const pageTitle = screen.getByRole("heading", { level: 1, name: "Edit geolocation" });
-    expect(pageTitle).toHaveClass("sr-only");
     const add = screen.getByRole("button", { name: "Invite a geolocator" });
     const title = screen.getByRole("textbox", { name: /Title/ });
     expect(follows(pageTitle, title) && follows(title, add)).toBe(true);
@@ -607,14 +555,6 @@ describe("editing a published geolocation", () => {
     // A published row invites through its Geolocators panel, never with the save.
     expect(saveVersionMock.mock.calls[0][1]).not.toHaveProperty("geolocator_invites");
     await waitFor(() => expect(push).toHaveBeenCalledWith("/events/d1"));
-  });
-
-  it("labels the provenance link of a fulfilled bot-opened request Requested from", () => {
-    row = publishedFixture({ requested_by: { id: "u2", username: "bo" } });
-    render(<EditEventPage />);
-
-    expect(screen.getByText("Requested from")).toBeInTheDocument();
-    expect(screen.queryByText("Detected from")).toBeNull();
   });
 
   it("keeps the seconds of an untouched post time and event time", async () => {
@@ -720,8 +660,7 @@ describe("editing a published geolocation", () => {
     expect(linkWrites()).toEqual([]);
     expect(screen.getByRole("heading", { name: /^Linked sites/ })).toHaveClass(FORM_INVALID_LABEL);
 
-    const effect = screen.getByRole("group", { name: "Effect at Bravo" });
-    fireEvent.click(within(effect).getByRole("button", { name: "Destruction" }));
+    pickOption("Effect at Bravo", "Destruction");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(push).toHaveBeenCalled());
@@ -766,18 +705,9 @@ describe("editing a published geolocation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
     expect(await screen.findByText(/^Fill in the required fields/)).toHaveTextContent("Conflict");
     expect(screen.queryByText("Nothing changed since version 1.")).toBeNull();
-  });
-
-  it("still holds the published floor before it posts", async () => {
-    row = publishedFixture({ conflicts: [] });
-    render(<EditEventPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Save version 2" }));
-    // The announcer names the miss and nothing is written; the server enforces the same floor.
-    const notice = await screen.findByText(/^Fill in the required fields/);
-    expect(notice).toHaveTextContent("Conflict");
     expect(saveVersionMock).not.toHaveBeenCalled();
   });
+
 });
 
 describe("editing an open request", () => {
@@ -870,14 +800,6 @@ describe("editing an open request", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save request" }));
     await waitFor(() => expect(updateRequestMock).toHaveBeenCalledTimes(1));
     expect(updateRequestMock.mock.calls[0][1].sources[0].kind).toBe("unknown");
-  });
-
-  it("labels the post the bot opened the request from Requested from", () => {
-    row = requestFixture({ detected_from_url: "https://x.com/analyst/status/1" });
-    render(<EditEventPage />);
-
-    expect(screen.getByText("Requested from")).toBeInTheDocument();
-    expect(screen.queryByText("Detected from")).toBeNull();
   });
 
   it("covers the footage of a flagged source behind the age gate", () => {

@@ -37,6 +37,7 @@ function waitText(retryAfter: number | null): string {
   return minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
 }
 
+// Mirrors backend main.READ_QUOTA_EXCEEDED_CODE; change both.
 function rateLimited(code: string | null, retryAfter: number | null): ReadableError {
   const lead =
     code === "read_quota_exceeded" ? "You reached the hourly reading limit." : "Too many attempts.";

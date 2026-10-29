@@ -1,30 +1,36 @@
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import { CircleAlert } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import type { ReadableError } from "@/lib/errors";
-import { Button } from "./Button";
+import { ActionIcon, Button } from "./Button";
 
 /**
  * The one error display above a form's actions or in place of a section. A fault the reader did
  * not cause (an error with a `title`: no answer, a server fault) leads with the title, explains
  * under it, and offers **Retry** when `onRetry` is set. Anything else, a string included, is one
- * line with no Retry, since running the same request again meets the same refusal. Renders
- * nothing for `null`.
+ * line with no Retry, since running the same request again meets the same refusal. A message can
+ * carry a link (the session-ended notice's way back), and `onDismiss` adds a cross that closes it.
+ * Renders nothing for `null`.
  */
 export function ErrorNotice({
   error,
   onRetry,
+  onDismiss,
   className,
 }: {
-  error: ReadableError | string | null;
+  error: ReadableError | ReactNode;
   onRetry?: () => void;
+  onDismiss?: () => void;
   className?: string;
 }) {
-  if (error === null || error === "") return null;
-  const readable = typeof error === "string" ? null : error;
+  if (error === null || error === undefined || error === "" || error === false) return null;
+  const readable =
+    typeof error === "object" && !isValidElement(error) && "message" in error
+      ? (error as ReadableError)
+      : null;
   const title = readable?.title ?? null;
-  const message = readable ? readable.message : (error as string);
+  const message: ReactNode = readable ? readable.message : (error as ReactNode);
   return (
     <div
       role="alert"
@@ -49,6 +55,11 @@ export function ErrorNotice({
           </Button>
         )}
       </div>
+      {onDismiss && (
+        <Button icon variant="ghost" aria-label="Dismiss" onClick={onDismiss} className="-my-1.5 -mr-2">
+          <ActionIcon action="remove" />
+        </Button>
+      )}
     </div>
   );
 }

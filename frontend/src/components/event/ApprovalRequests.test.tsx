@@ -111,7 +111,7 @@ describe("<RequestApprovalAction>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Request approval" }));
     expect(await within(dialog()).findByText(/asked by ana/)).toBeInTheDocument();
     fireEvent.focus(within(dialog()).getByLabelText(/Ask an analyst or an organization/));
-    fireEvent.click(await screen.findByRole("option", { name: "cy" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^cy/ }));
     fireEvent.click(within(dialog()).getByRole("button", { name: "Ask cy" }));
 
     await waitFor(() =>
@@ -199,11 +199,11 @@ describe("<RequestApprovalAction>", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Request approval" }));
     fireEvent.focus(within(dialog()).getByLabelText(/Ask an analyst or an organization/));
-    fireEvent.click(await screen.findByRole("option", { name: "cy" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^cy/ }));
     fireEvent.click(screen.getByRole("button", { name: "Ask cy" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Failed to send the approval request");
 
-    fireEvent.click(screen.getByRole("button", { name: "cy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove cy" }));
     const field = screen.getByLabelText(/Ask an analyst or an organization/);
     fireEvent.change(field, { target: { value: "bo" } });
     expect(screen.queryByRole("alert")).toBeNull();

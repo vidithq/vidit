@@ -14,7 +14,7 @@ export const ACCENT_SURFACE = "bg-orange-500/15 text-orange-400";
 //
 // The ramp is the one sanctioned inert accent (elsewhere accent means
 // clickable): a mark whose step encodes magnitude carries it, and so does its
-// legend. What stands outside the ranking takes CHART_TAIL or CHART_NEUTRAL.
+// legend. Absence takes CHART_NEUTRAL.
 export const ACCENT_RAMP = [
   "bg-orange-500",
   "bg-orange-500/75",
@@ -23,11 +23,8 @@ export const ACCENT_RAMP = [
   "bg-orange-500/15",
 ] as const;
 
-// Counterparts to the ramp. `CHART_TAIL` is a bucket holding real work under no
-// printed name (<SourceHostBar>'s "Other"). `CHART_NEUTRAL` is absence (a month
-// with no event, events naming no source). Both read against the
-// `bg-neutral-900` <Card>.
-export const CHART_TAIL = "bg-neutral-500";
+// The counterpart to the ramp: absence (a month with no event, events naming no source), read
+// against the `bg-neutral-900` <Card>.
 export const CHART_NEUTRAL = "bg-neutral-800";
 
 // Tappable card / row: orange border on hover. Pair with the card's own bg and

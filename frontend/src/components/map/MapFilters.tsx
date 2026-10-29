@@ -5,8 +5,8 @@ import { useCallback, useMemo } from "react";
 import type { MapPoint } from "@/types";
 import { CARD_FRAME } from "@/components/ui/Card";
 import { FilterCard, FilterSheetBar, type FilterPanelProps } from "@/components/filters/FilterPanel";
-import { EMPTY_FILTERS, dayCounts, inWindow, type FilterPatch } from "@/components/filters/model";
-import type { Vocabulary } from "@/components/filters/labels";
+import { dayCounts, inWindow, type FilterPatch } from "@/components/filters/model";
+import { useFilterSurface } from "@/components/filters/useFilterSurface";
 import { useMapState } from "@/contexts/MapStateContext";
 import { cn } from "@/lib/cn";
 
@@ -17,13 +17,14 @@ import { cn } from "@/lib/cn";
  * the points in memory, so a scrub or playback never refetches.
  */
 export function MapFilters({
-  vocabulary,
   points,
+  count,
   loading,
 }: {
-  vocabulary: Vocabulary;
   /** The points the Show field leaves, before the date windows. */
   points: MapPoint[];
+  /** The points and sites the map draws under every filter. */
+  count: number;
   loading: boolean;
 }) {
   const {
@@ -35,16 +36,18 @@ export function MapFilters({
     setAddedPlaying,
   } = useMapState();
 
+  const { panel } = useFilterSurface("map", { store: [filters, setFilters] });
+  const { onPatch: patchFilters, onClear: clearFilters } = panel;
   const onPatch: FilterPatch = useCallback(
     (patch) => {
-      setFilters((f) => ({ ...f, ...patch }));
+      patchFilters(patch);
       if (patch.eventFrom === "" && patch.eventTo === "") setEventPlaying(false);
       if (patch.addedFrom === "" && patch.addedTo === "") setAddedPlaying(false);
     },
-    [setFilters, setEventPlaying, setAddedPlaying],
+    [patchFilters, setEventPlaying, setAddedPlaying],
   );
   const onClear = () => {
-    setFilters(EMPTY_FILTERS);
+    clearFilters();
     setEventPlaying(false);
     setAddedPlaying(false);
   };
@@ -59,11 +62,9 @@ export function MapFilters({
   );
 
   const props: FilterPanelProps = {
-    surface: "map",
-    state: filters,
+    ...panel,
     onPatch,
     onClear,
-    vocabulary,
     timelines,
     playback: {
       eventDate: { playing: eventPlaying, setPlaying: setEventPlaying },
@@ -75,6 +76,7 @@ export function MapFilters({
     <>
       <FilterCard
         {...props}
+        count={count}
         loading={loading}
         className="absolute top-4 left-[72px] z-1000 w-72 safe-mt safe-ml max-lg:hidden"
         // Stops above the map's bottom-left controls (zoom, locate, basemap) and scrolls the rest.
@@ -86,7 +88,7 @@ export function MapFilters({
           "absolute top-4 right-4 left-16 z-1000 w-fit p-2 safe-mt safe-mr sm:left-[72px] lg:hidden",
         )}
       >
-        <FilterSheetBar {...props} />
+        <FilterSheetBar {...props} count={count} loading={loading} />
       </div>
     </>
   );

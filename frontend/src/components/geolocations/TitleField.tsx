@@ -1,6 +1,5 @@
 "use client";
 
-import { CharCounter } from "@/components/ui/CharCounter";
 import { Textarea } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import type { Concept } from "@/lib/fieldHelp";
@@ -29,8 +28,8 @@ interface TitleFieldProps {
  *  and padding (13px) and up and down by the same 5px, so the text sits on the title's line and
  *  the header keeps the title's height. It is a one-row textarea that grows a row per wrapped
  *  line (`field-sizing: content`), so a long title wraps on a phone like the event title. A title
- *  is one line: Enter adds none and submits the form the field joins, as a text input does. The
- *  counter beside the `?` reads the title against `maxLength`. */
+ *  is one line: Enter adds none and submits the form the field joins, as a text input does.
+ *  `maxLength` caps it, with no counter. */
 export function TitleField({
   value,
   onChange,
@@ -69,7 +68,6 @@ export function TitleField({
           "-my-[5px] -ml-[13px] min-w-0 flex-1 resize-none py-1 field-sizing-content sm:text-xl",
         )}
       />
-      <CharCounter length={value.length} max={maxLength} />
       <FieldHelp concept={concept} />
     </div>
   );

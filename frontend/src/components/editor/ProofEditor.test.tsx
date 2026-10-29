@@ -95,14 +95,6 @@ describe("ProofEditor", () => {
     expect(box().className).toContain(FORM_INVALID_FIELD);
   });
 
-  it("draws no frame when bare, its text with no inline padding of BlockNote's", () => {
-    const { container } = render(<ProofEditor onChange={() => {}} bare invalid />);
-    const box = container.firstElementChild as HTMLElement;
-    expect(box.className).not.toContain("border");
-    expect(box.className).not.toContain("rounded");
-    expect(box.className).toContain("[&_.bn-editor]:px-0");
-  });
-
   it("emits the typed text as HTML and stages only the images the body still shows", async () => {
     const onChange = vi.fn();
     const onProofFilesChange = vi.fn();

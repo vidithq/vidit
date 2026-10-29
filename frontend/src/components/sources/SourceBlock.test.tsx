@@ -193,7 +193,6 @@ describe("SourceBlocks", () => {
     expect(screen.getByRole("region", { name: "Sources" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Next source" })).toBeNull();
     const block = screen.getByRole("region", { name: "Source 1" });
-    expect(block).toHaveClass("@container");
     expect(within(block).getByRole("img", { name: ALT })).toBeInTheDocument();
   });
 
@@ -205,6 +204,5 @@ describe("SourceBlocks", () => {
     const row = screen.getByRole("region", { name: "Sources" });
     expect(within(row).getAllByRole("region", { name: /^Source \d$/ })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Next source" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Source 1" })).not.toHaveClass("@container");
   });
 });

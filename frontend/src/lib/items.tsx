@@ -2,6 +2,7 @@ import { StatusBadge } from "@/components/event/StatusBadge";
 import { SiteKindPill } from "@/components/sites/SiteBadges";
 import { Highlighted, ITEM_KINDS, type ItemData, type ItemKind } from "@/components/ui/Item";
 import { Pill } from "@/components/ui/Pill";
+import { accountName, type Account } from "@/lib/accounts";
 import {
   collectionHref,
   collectionSpanLabel,
@@ -140,4 +141,18 @@ export function searchHitItem(hit: SearchHit): ItemData {
         href: organizationPath(hit.slug),
       };
   }
+}
+
+/** An analyst or an organization a picker offers: the picture, the name and, for an
+ *  organization, its slug. */
+export function accountItem(account: Account): ItemData {
+  const name = accountName(account);
+  return {
+    kind: account.kind,
+    title: name,
+    media: {
+      avatar: { src: account.avatar_url, name, square: account.kind === "organization" },
+    },
+    extra: account.kind === "organization" ? [account.slug] : [],
+  };
 }

@@ -162,12 +162,11 @@ describe("NotificationsPage", () => {
     expect(screen.queryByRole("button", { name: /Accept|Decline|Approve/ })).toBeNull();
   });
 
-  it("reads the sentence in the neutral colour, with the arrow and the dismiss cross inside the block", async () => {
+  it("keeps the arrow and the dismiss cross inside the block", async () => {
     serve([follower]);
     render(<NotificationsPage />);
 
     const link = await screen.findByRole("link", { name: /cy followed you/ });
-    expect(screen.getByText("cy followed you")).toHaveClass("text-neutral-200");
     const block = link.parentElement!;
     const remove = screen.getByRole("button", { name: "Dismiss notification" });
     const arrow = block.querySelector("svg.lucide-arrow-right")!;
@@ -276,11 +275,9 @@ describe("NotificationsPage", () => {
 
     const analyst = await screen.findByRole("link", { name: /cy followed you/ });
     expect(analyst.querySelector("img")).toHaveAttribute("src", "https://cdn.test/cy.png");
-    expect(analyst.querySelector("img")!.parentElement).toHaveClass("rounded-full");
 
     const organization = screen.getByRole("link", { name: /bo approved your geolocation for Open Source Watch/ });
     expect(organization.querySelector("img")).toHaveAttribute("src", "https://cdn.test/osw.png");
-    expect(organization.querySelector("img")!.parentElement).toHaveClass("rounded-md");
 
     const fallback = screen.getByRole("link", { name: /Sahel Desk was removed from Vidit/ });
     expect(fallback.querySelector("img")).toBeNull();

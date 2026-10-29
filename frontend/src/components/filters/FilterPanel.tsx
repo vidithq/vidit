@@ -4,20 +4,24 @@ import { useCallback, useId, useState } from "react";
 import { ChevronDown, Filter } from "lucide-react";
 
 import type { DayCount } from "@/types";
-import { AccountPicker, analystAccount } from "@/components/ui/AccountPicker";
-import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
+import { ActiveFilterPills } from "./ActiveFilterPills";
 import { Button } from "@/components/ui/Button";
 import { CARD_FRAME } from "@/components/ui/Card";
 import { Dot } from "@/components/ui/Dot";
+import { ItemSearch } from "@/components/ui/ItemSearch";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
-import { OptionPicker, OptionSearch } from "@/components/ui/OptionPicker";
-import { PropertyName, PropertyRow, PropertySearchRow } from "@/components/ui/PropertyRow";
+import { OptionSearch } from "@/components/ui/OptionSearch";
+import { PropertyRow } from "./PropertyRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { ToggleRow } from "@/components/ui/ToggleRow";
+import { PropertyName, ToggleRow } from "@/components/ui/ToggleRow";
+import { META_LINE } from "@/components/ui/styles";
+import { accountKey, analystAccount } from "@/lib/accounts";
 import { cn } from "@/lib/cn";
+import { countLabel } from "@/lib/format";
+import { accountItem } from "@/lib/items";
 import { AUTHOR_FILTER_RE, suggestApprovers, suggestAuthors } from "@/lib/search";
 import { TimelineScrubber } from "./TimelineScrubber";
-import { useOpenGroups, usePanelOpen } from "./panelState";
+import { useOpenGroups, usePanelOpen } from "@/hooks/useFilterPanelState";
 import {
   DATE_DIMENSIONS,
   DATE_KEYS,
@@ -106,7 +110,7 @@ function DimensionLine({
   if (control.kind === "switch") {
     return (
       <ToggleRow
-        label={control.label}
+        label={name}
         concept={concept}
         on={state[control.field]}
         onToggle={() => onPatch({ [control.field]: !state[control.field] })}
@@ -118,30 +122,21 @@ function DimensionLine({
     const options = dimensionOptions(dimension, surface, vocabulary);
     const selected = state[control.field];
     if (options.length === 0 && selected.length === 0) return null;
-    const toggle = (value: string) =>
-      onPatch({
-        [control.field]: selected.includes(value)
-          ? selected.filter((v) => v !== value)
-          : [...selected, value],
-      });
-    if (control.search) {
-      return (
-        <PropertySearchRow
-          name={name}
-          concept={concept}
-          values={values}
-          field={<OptionSearch label={name} options={options} selected={selected} onToggle={toggle} />}
-        />
-      );
-    }
     return (
       <PropertyRow
         name={name}
         concept={concept}
         values={values}
-        editor={() => (
-          <OptionPicker label={name} options={options} selected={selected} onToggle={toggle} />
-        )}
+        field={
+          <OptionSearch
+            aria-label={name}
+            placeholder={control.placeholder}
+            options={options}
+            selected={selected}
+            onChange={(next) => onPatch({ [control.field]: next })}
+            picks={false}
+          />
+        }
       />
     );
   }
@@ -154,22 +149,24 @@ function DimensionLine({
     else onPatch({ approvedBy: analystAccount({ username: typed }) });
   };
   return (
-    <PropertySearchRow
+    <PropertyRow
       name={name}
       concept={concept}
       values={values}
       field={
-        <AccountPicker
+        <ItemSearch
           search={author ? suggestAuthors : suggestApprovers}
-          minQueryLength={2}
-          onSelect={(account) => {
+          minChars={2}
+          toItem={accountItem}
+          rowKey={accountKey}
+          onPick={(account) => {
             if (account.kind === "analyst" && author) onPatch({ author: account.username });
             else if (!author) onPatch({ approvedBy: account });
           }}
           onSubmitText={commit}
           placeholder="Search"
           aria-label={name}
-          emptyText={author ? "No analyst matches" : "No analyst or organization matches"}
+          emptyText={author ? "No analyst matches." : "No analyst or organization matches."}
         />
       }
     />
@@ -258,7 +255,7 @@ export function FilterPanel(props: FilterPanelProps) {
       ))}
       {anyActive(surface, state) && (
         <div className="flex justify-end">
-          <Button action="clear" variant="ghost" onClick={onClear}>
+          <Button action="remove" variant="ghost" onClick={onClear}>
             Clear all
           </Button>
         </div>
@@ -267,25 +264,56 @@ export function FilterPanel(props: FilterPanelProps) {
   );
 }
 
+/** What the surface lists under the current filters, shown next to the **Filters** control. */
+export interface FilterTally {
+  /** The objects matching the filters; unset while the surface has no count yet. */
+  count?: number;
+  /** A pulsing dot while the surface fetches. */
+  loading?: boolean;
+}
+
+/** The count with its noun (*284 results*) and the loading dot, in the muted meta text, and the
+ *  attributes that make it the **Filters** control's description and busy state, so the control
+ *  keeps its name and the count reads as no filter. */
+function useResultCount({ count, loading = false }: FilterTally) {
+  const id = useId();
+  const shown = count !== undefined || loading;
+  return {
+    control: {
+      "aria-describedby": count !== undefined ? id : undefined,
+      "aria-busy": loading,
+    },
+    text: shown && (
+      <span id={id} className={META_LINE}>
+        {count !== undefined && countLabel(count, "result")}
+        {loading && <Dot className="animate-pulse" />}
+      </span>
+    ),
+  };
+}
+
 /**
  * The panel under its **Filters** header, from `lg` up: in a list page's right rail and floating
- * over the map. The header opens and closes the panel; closed, the active filters show under it
- * as removable pills. The viewer's choice holds per surface (`usePanelOpen`).
+ * over the map. The header opens and closes the panel and shows the result count on its right;
+ * closed, the active filters show under it as removable pills. The viewer's choice holds per
+ * surface (`usePanelOpen`).
  */
 export function FilterCard({
+  count,
   loading = false,
   className,
   bodyClassName,
   ...props
-}: FilterPanelProps & {
-  /** A pulsing dot in the header while the surface fetches. */
-  loading?: boolean;
-  className?: string;
-  /** The open panel's own height cap and scroll. */
-  bodyClassName?: string;
-}) {
+}: FilterPanelProps &
+  FilterTally & {
+    className?: string;
+    /** The open panel's own height cap and scroll. */
+    bodyClassName?: string;
+  }) {
   const [open, toggle] = usePanelOpen(props.surface);
   const bodyId = useId();
+  const labelId = useId();
+  const tally = useResultCount({ count, loading });
   const pills = activePills(props.surface, props.state, props.vocabulary, props.onPatch);
   return (
     <div className={className}>
@@ -294,14 +322,18 @@ export function FilterCard({
         onClick={toggle}
         aria-expanded={open}
         aria-controls={open ? bodyId : undefined}
+        aria-labelledby={labelId}
+        {...tally.control}
         className="flex w-full items-center justify-between rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm transition-colors hover:bg-neutral-800/80"
       >
         <span className="flex items-center gap-2">
           <Filter size={14} className={pills.length > 0 ? "text-orange-400" : "text-neutral-400"} />
-          <span className="font-medium text-neutral-300">Filters</span>
+          <span id={labelId} className="font-medium text-neutral-300">
+            Filters
+          </span>
         </span>
         <span className="flex items-center gap-2">
-          {loading && <Dot className="animate-pulse" />}
+          {tally.text}
           <ChevronDown
             size={14}
             aria-hidden
@@ -325,12 +357,18 @@ export function FilterCard({
 }
 
 /**
- * The phone's entry to the panel: a **Filters** button and every active filter as a removable
- * pill. The button opens the panel in a sheet from the bottom edge; each change applies at once,
- * and **Done**, Escape or the backdrop closes it.
+ * The phone's entry to the panel: a **Filters** button, the result count and every active filter
+ * as a removable pill. The button opens the panel in a sheet from the bottom edge; each change
+ * applies at once, and **Done**, Escape or the backdrop closes it.
  */
-export function FilterSheetBar({ className, ...props }: FilterPanelProps & { className?: string }) {
+export function FilterSheetBar({
+  count,
+  loading = false,
+  className,
+  ...props
+}: FilterPanelProps & FilterTally & { className?: string }) {
   const [open, setOpen] = useState(false);
+  const tally = useResultCount({ count, loading });
   const pills = activePills(props.surface, props.state, props.vocabulary, props.onPatch);
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
@@ -338,10 +376,12 @@ export function FilterSheetBar({ className, ...props }: FilterPanelProps & { cla
         action="filter"
         variant="secondary"
         aria-haspopup="dialog"
+        {...tally.control}
         onClick={() => setOpen(true)}
       >
         Filters
       </Button>
+      {tally.text}
       <ActiveFilterPills filters={pills} onClearAll={props.onClear} />
       {open && (
         <MediaOverlay variant="sheet" label="Filters" onClose={() => setOpen(false)}>

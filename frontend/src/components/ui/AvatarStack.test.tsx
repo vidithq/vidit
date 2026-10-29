@@ -38,28 +38,6 @@ describe("<AvatarStack>", () => {
     expect(bubble("maya")).toBeDefined();
   });
 
-  it("prints a static bubble past max when nothing opens the rest", () => {
-    render(<AvatarStack items={["a", "b", "c"].map(item)} label="Approved by" max={2} />);
-    expect(screen.getAllByRole("link")).toHaveLength(2);
-    expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByText("+1")).toBeInTheDocument();
-  });
-
-  it("makes the bubble a button when the rest can be shown", () => {
-    const onOverflow = vi.fn();
-    render(
-      <AvatarStack
-        items={["a", "b", "c"].map(item)}
-        label="Approved by"
-        max={2}
-        onOverflow={onOverflow}
-        overflowLabel={(n) => `Show ${n} more`}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Show 1 more" }));
-    expect(onOverflow).toHaveBeenCalled();
-  });
-
   it("puts a remove control on a picture's corner, beside its link", () => {
     const onClick = vi.fn();
     render(

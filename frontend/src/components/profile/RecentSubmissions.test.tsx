@@ -83,7 +83,7 @@ describe("RecentSubmissions", () => {
     expect(screen.getByText("ana's latest geolocations, newest first.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See all" })).toHaveAttribute(
       "href",
-      "/search?type=event&author=ana&status=geolocated"
+      "/search?type=event&status=geolocated&author=ana"
     );
   });
 });

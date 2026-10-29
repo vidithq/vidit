@@ -1,31 +1,28 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+
+import { useAnchoredPosition } from "./useAnchoredPosition";
+import { useDismiss } from "./useDismiss";
+
+// Fixed before it is measured, so it measures at the size it shows at.
+const UNPLACED: CSSProperties = { position: "fixed", visibility: "hidden" };
 
 /** Pin, dismiss and placement for an anchored popover (`FieldHelp`): shown from JS hover state
  * (not CSS `group-hover`, which a surrounding `.group` could trigger), pinned on click (touch
  * doesn't hover), closed by outside-click, Escape, scroll, resize or pointer-leave.
  *
- * Renders in a portal with `position: fixed` (`popoverStyle`) so an `overflow` ancestor can't
- * clip it: the placement effect measures it, places it under the anchor, flips above on bottom
- * overflow, clamps left/right, and keeps it hidden until measured. Callers spread
- * `wrapperProps` / `anchorProps` / `popoverProps` on their own markup.
+ * Renders in a portal placed by `useAnchoredPosition` (`popoverStyle`), so an `overflow` ancestor
+ * can't clip it. Callers spread `wrapperProps` / `anchorProps` / `popoverProps` on their own
+ * markup.
  *
- * `shown` holds it open whatever the pointer does (a copy's confirmation); `content` names what
- * it holds, so a change of text re-places it at its new width. */
+ * `shown` holds it open whatever the pointer does (a copy's confirmation). */
 export function usePinnedPopover<
   Popover extends HTMLElement = HTMLSpanElement,
   Anchor extends HTMLElement = HTMLButtonElement,
->({ shown = false, content }: { shown?: boolean; content?: string } = {}) {
+>({ shown = false }: { shown?: boolean } = {}) {
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const anchorRef = useRef<Anchor>(null);
   const popoverRef = useRef<Popover>(null);
@@ -52,56 +49,21 @@ export function usePinnedPopover<
     closeTimer.current = setTimeout(() => setHovered(false), 80);
   };
 
-  // Place the popover, clamped into the viewport. `useEffect` keeps it SSR-safe.
-  useEffect(() => {
-    if (!open) {
-      setCoords(null);
-      return;
-    }
-    const b = anchorRef.current?.getBoundingClientRect();
-    const tip = popoverRef.current?.getBoundingClientRect();
-    if (!b || !tip) return;
-    const margin = 8;
-    const left = Math.max(margin, Math.min(b.left, window.innerWidth - tip.width - margin));
-    let top = b.bottom + 6;
-    if (top + tip.height > window.innerHeight - margin) {
-      const above = b.top - tip.height - 6;
-      top = above >= margin ? above : Math.max(margin, window.innerHeight - tip.height - margin);
-    }
-    setCoords({ top, left });
-  }, [open, content]);
+  const position = useAnchoredPosition({ open, anchorRef, floatingRef: popoverRef });
+  useDismiss({ open, anchorRef: wrapperRef, floatingRef: popoverRef, onDismiss: close });
 
-  // While open: dismiss on outside click (the popover counts as inside), Escape, scroll or
-  // resize. Keyed on `open` so a hover-only popover dismisses too.
+  // Keyed on `open` so a hover-only popover closes too.
   useEffect(() => {
     if (!open) return;
-    const onPointer = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (!wrapperRef.current?.contains(t) && !popoverRef.current?.contains(t)) close();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
     return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("resize", close);
     };
   }, [open, close]);
 
   useEffect(() => () => cancelClose(), []);
-
-  const popoverStyle: CSSProperties = {
-    position: "fixed",
-    top: coords?.top ?? 0,
-    left: coords?.left ?? 0,
-    visibility: coords ? "visible" : "hidden",
-  };
 
   return {
     open,
@@ -133,7 +95,7 @@ export function usePinnedPopover<
     },
     popoverProps: {
       ref: popoverRef,
-      style: popoverStyle,
+      style: position ?? UNPLACED,
       onMouseEnter: cancelClose,
       onMouseLeave: () => setHovered(false),
     },

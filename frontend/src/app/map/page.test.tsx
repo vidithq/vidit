@@ -62,6 +62,9 @@ vi.mock("next/dynamic", () => ({
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: null }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+}));
 
 // Each read waits for the test to settle it; the filter taxonomies stay pending (the panel is what is measured).
 interface Read {
@@ -82,6 +85,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 import HomePage from "./page";
 import { openFilterGroups } from "@/test/filters";
+import { pickOption } from "@/test/options";
 
 function readOf(id: string): Read {
   const read = reads.findLast((r) => r.path === `/events/${id}`);
@@ -212,12 +216,12 @@ describe("map sites layer", () => {
   const lineValues = () =>
     within(desktop())
       .queryAllByRole("button", { name: /^Remove / })
-      .map((p) => p.querySelector("[aria-hidden]")?.textContent);
-  /** Toggles a Show option through the Show line's popover. */
+      .map((p) => p.textContent);
+  /** Toggles a Show option: a pick through the Show line's search, a removal from its pill. */
   const show = (option: string) => {
-    fireEvent.click(within(desktop()).getByRole("button", { name: "Show" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Show" })).getByRole("button", { name: option }));
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "Show" }), { key: "Escape" });
+    const pill = within(desktop()).queryByRole("button", { name: `Remove ${option}` });
+    if (pill) fireEvent.click(pill);
+    else pickOption(within(desktop()).getByRole("combobox", { name: "Show" }), option);
   };
 
   const SITE_NAME = "Rail depot";
@@ -269,9 +273,7 @@ describe("map sites layer", () => {
     await loadMap();
     const preview = screen.getByTestId("site preview");
     expect(preview).toHaveTextContent(SITE_NAME);
-    expect(preview).toHaveTextContent("Depot");
     expect(preview).toHaveTextContent("Damage");
-    expect(preview).toHaveTextContent("Site·7 Sept 2026·Damage");
   });
 
   it("opens a site in the event's side panel slot, one record at a time", async () => {
@@ -292,6 +294,31 @@ describe("map sites layer", () => {
     expect(screen.getAllByRole("button", { name: "Close detail panel" })).toHaveLength(1);
   });
 
+  it("counts the points and sites the map draws beside the Filters header and the phone button", async () => {
+    const phone = () => screen.getAllByRole("button", { name: "Filters" }).at(-1)!;
+    renderMap();
+    fireEvent.click(screen.getByRole("button", { name: "report viewport" }));
+    expect(header()).toHaveAttribute("aria-busy", "true");
+    expect(phone()).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => reads.find((r) => r.path.startsWith("/events/points?"))!.resolve(POINTS));
+    expect(header()).toHaveAttribute("aria-busy", "false");
+    expect(header()).toHaveAccessibleDescription("2 results");
+    const list = await waitFor(() => {
+      const read = reads.find((r) => r.path.startsWith("/sites?"));
+      if (!read) throw new Error("no sites read yet");
+      return read;
+    });
+    await act(async () => list.resolve([ROW]));
+    expect(header()).toHaveAccessibleDescription("3 results");
+    expect(phone()).toHaveAccessibleDescription("3 results");
+
+    fireEvent.click(header());
+    show("Geolocated");
+    expect(header()).toHaveAccessibleDescription("1 result");
+    expect(phone()).toHaveAccessibleDescription("1 result");
+  });
+
   it("shows every event and every site while no Show option is selected", async () => {
     await loadMap();
     expect(drawn()).toEqual({ events: 2, sites: 1 });
@@ -301,13 +328,13 @@ describe("map sites layer", () => {
   it("offers Show the kinds the map draws, no request", async () => {
     await loadMap();
     fireEvent.click(header());
-    fireEvent.click(within(desktop()).getByRole("button", { name: "Show" }));
-    expect(
-      within(screen.getByRole("dialog", { name: "Show" }))
-        .getAllByRole("button")
-        .map((b) => b.textContent),
-    ).toEqual(["Detected", "Geolocated", "Sites"]);
-    expect(within(desktop()).queryByRole("button", { name: "Location guess" })).toBeNull();
+    fireEvent.focus(within(desktop()).getByRole("combobox", { name: "Show" }));
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Detected",
+      "Geolocated",
+      "Sites",
+    ]);
+    expect(within(desktop()).queryByRole("combobox", { name: "Location guess" })).toBeNull();
   });
 
   it("hides the sites when Geolocated alone is selected", async () => {
@@ -373,8 +400,7 @@ describe("map sites layer", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Filters" }).at(-1)!);
     const sheet = screen.getByRole("dialog", { name: "Filters" });
     expect(within(sheet).getAllByRole("button", { name: "Play timeline" })).toHaveLength(2);
-    fireEvent.click(within(sheet).getByRole("button", { name: "Show" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Show" })).getByRole("button", { name: "Sites" }));
+    pickOption(within(sheet).getByRole("combobox", { name: "Show" }), "Sites");
     expect(drawn()).toEqual({ events: 0, sites: 1 });
   });
 });

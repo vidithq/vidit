@@ -1,5 +1,6 @@
 "use client";
 
+import { storedJson } from "@/hooks/storedJson";
 import { useClientPreference } from "@/hooks/useClientPreference";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -7,12 +8,12 @@ import {
   BASEMAP_PRESETS,
   BASEMAP_PRESET_IDS,
   DEFAULT_BASEMAP_OPTIONS,
+  LABEL_DENSITIES,
+  LABEL_LANGUAGES,
   resolvePreset,
   type BasemapOptions,
   type BasemapPresetId,
   type Brightness,
-  type LabelDensity,
-  type LabelLanguage,
 } from "./basemap";
 
 /** What the map draws over any preset, each from a source of its own. */
@@ -35,7 +36,6 @@ const DEFAULT_BASEMAP_SETTINGS: BasemapSettings = {
 };
 
 const KEY = "vidit:basemap";
-const EVENT = "vidit:basemap-changed";
 
 const BOOLEAN: readonly boolean[] = [true, false];
 
@@ -43,8 +43,8 @@ const BOOLEAN: readonly boolean[] = [true, false];
  *  value stored before it existed. */
 const FIELDS: { [K in keyof BasemapSettings]: readonly BasemapSettings[K][] } = {
   preset: BASEMAP_PRESET_IDS,
-  language: ["latin", "local", "both"] satisfies LabelLanguage[],
-  density: ["sparse", "normal"] satisfies LabelDensity[],
+  language: LABEL_LANGUAGES,
+  density: LABEL_DENSITIES,
   regionBorders: BOOLEAN,
   roads: BOOLEAN,
   buildings: BOOLEAN,
@@ -57,14 +57,8 @@ const FIELDS: { [K in keyof BasemapSettings]: readonly BasemapSettings[K][] } = 
 };
 
 /** The fields a stored value sets to a valid value: the reader's own choices. */
-function storedChoices(raw: string | null): Partial<BasemapSettings> {
-  let stored: Record<string, unknown> = {};
-  try {
-    const value: unknown = raw === null ? null : JSON.parse(raw);
-    if (value && typeof value === "object") stored = value as Record<string, unknown>;
-  } catch {
-    // An unreadable value reads as no value.
-  }
+function storedChoices(value: unknown): Partial<BasemapSettings> {
+  const stored = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const keys = Object.keys(FIELDS) as (keyof BasemapSettings)[];
   return Object.fromEntries(
     keys.flatMap((key) => {
@@ -74,48 +68,32 @@ function storedChoices(raw: string | null): Partial<BasemapSettings> {
   ) as Partial<BasemapSettings>;
 }
 
-// `localStorage` can be absent or throw (a private window, blocked site data). The settings then
-// live in memory for the session. The snapshot keeps one object per stored string, as
-// `useSyncExternalStore` requires.
-let current = DEFAULT_BASEMAP_SETTINGS;
-let currentRaw: string | null = null;
-let currentChoices: Partial<BasemapSettings> = {};
-let storageWorks = true;
+const choices = storedJson<Partial<BasemapSettings>>(KEY, {}, storedChoices);
+// One settings object per stored choices, as `useSyncExternalStore` requires.
+let merged = { choices: {} as Partial<BasemapSettings>, settings: DEFAULT_BASEMAP_SETTINGS };
 
 /** The stored choices over the defaults: a field the reader never set follows the default. */
 export function getBasemapSettings(): BasemapSettings {
-  if (!storageWorks) return current;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (raw !== currentRaw) {
-      currentRaw = raw;
-      currentChoices = storedChoices(raw);
-      current = { ...DEFAULT_BASEMAP_SETTINGS, ...currentChoices };
-    }
-  } catch {
-    storageWorks = false;
+  const read = choices.read();
+  if (read !== merged.choices) {
+    merged = { choices: read, settings: { ...DEFAULT_BASEMAP_SETTINGS, ...read } };
   }
-  return current;
+  return merged.settings;
 }
 
 /** Stores the patch with the earlier choices, and only those, so a changed default reaches every
  *  field the reader never set. */
 export function saveBasemapSettings(patch: Partial<BasemapSettings>): void {
-  getBasemapSettings();
-  currentChoices = { ...currentChoices, ...patch };
-  current = { ...DEFAULT_BASEMAP_SETTINGS, ...currentChoices };
-  currentRaw = JSON.stringify(currentChoices);
-  try {
-    window.localStorage.setItem(KEY, currentRaw);
-  } catch {
-    storageWorks = false;
-  }
-  window.dispatchEvent(new Event(EVENT));
+  choices.write({ ...choices.read(), ...patch });
 }
 
 /** The reader's basemap preset and options, kept in this browser. */
 export function useBasemapSettings(): [BasemapSettings, (patch: Partial<BasemapSettings>) => void] {
-  const settings = useClientPreference(getBasemapSettings, EVENT, () => DEFAULT_BASEMAP_SETTINGS);
+  const settings = useClientPreference(
+    getBasemapSettings,
+    choices.event,
+    () => DEFAULT_BASEMAP_SETTINGS,
+  );
   return [settings, saveBasemapSettings];
 }
 

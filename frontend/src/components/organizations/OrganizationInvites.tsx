@@ -14,11 +14,13 @@ import {
 } from "@/lib/organizations";
 import { formatDate } from "@/lib/format";
 import {
-  AccountPicker,
+  accountKey,
   accountName,
   analystAccount,
   type Account,
-} from "@/components/ui/AccountPicker";
+} from "@/lib/accounts";
+import { ItemSearch } from "@/components/ui/ItemSearch";
+import { accountItem } from "@/lib/items";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -82,17 +84,19 @@ export function OrganizationInvites({ slug }: { slug: string }) {
             Analyst
           </label>
           <div className="mt-1">
-            <AccountPicker
+            <ItemSearch
               id="invite-candidate"
               options={options}
+              toItem={accountItem}
+              rowKey={accountKey}
               selected={picked}
-              onSelect={setPicked}
+              onPick={setPicked}
               onClear={() => setPicked(null)}
               placeholder="Pick an analyst"
               emptyText={
                 candidates.data?.length === 0
-                  ? "No mutual follow to invite"
-                  : "No mutual follow matches"
+                  ? "No mutual follow to invite."
+                  : "No mutual follow matches."
               }
             />
           </div>
@@ -137,7 +141,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
                 external={false}
                 action={
                   <Button
-                    action="withdraw"
+                    action="remove"
                     variant="ghost"
                     onClick={() => void cancel.run(invite.user.username)}
                     disabled={cancel.loading}

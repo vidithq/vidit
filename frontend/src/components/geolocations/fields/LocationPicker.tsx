@@ -48,7 +48,7 @@ export function LocationPicker({ lat, setLat, lng, setLng, invalid = false }: Lo
 
   return (
     <EventLocation
-      header={
+      field={
         <>
           <FieldLabel {...EVENT_FIELDS.coordinates} invalid={invalid} />
           <CoordinateInputs lat={lat} setLat={setLat} lng={lng} setLng={setLng} invalid={invalid} />

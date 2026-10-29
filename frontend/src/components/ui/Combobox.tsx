@@ -2,18 +2,15 @@
 
 import {
   useId,
-  useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
-  type Dispatch,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
-  type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
 
+import { useAnchoredPosition } from "@/hooks/useAnchoredPosition";
 import { cn } from "@/lib/cn";
 import { Input } from "./Input";
 import { Pill } from "./Pill";
@@ -24,37 +21,6 @@ const ROW =
 const STATUS_ROW = "px-2.5 py-1.5 text-xs text-neutral-500";
 
 const LIST_MAX_HEIGHT = 240;
-const LIST_GAP = 4;
-const VIEWPORT_MARGIN = 8;
-
-// Fixed to the viewport from a portal, so an `overflow` ancestor (a card, a scrolling rail) cannot
-// clip the list. It opens above the field when the room below is short and the room above larger,
-// and its edges stay inside the viewport even while the field is partly out of it.
-function placeList(field: DOMRect): CSSProperties {
-  const height = window.innerHeight;
-  const topEdge = Math.max(field.bottom + LIST_GAP, VIEWPORT_MARGIN);
-  const bottomEdge = Math.min(field.top - LIST_GAP, height - VIEWPORT_MARGIN);
-  const below = height - VIEWPORT_MARGIN - topEdge;
-  const above = bottomEdge - VIEWPORT_MARGIN;
-  const up = below < LIST_MAX_HEIGHT && above > below;
-  return {
-    position: "fixed",
-    left: field.left,
-    width: field.width,
-    maxHeight: Math.max(0, Math.min(LIST_MAX_HEIGHT, up ? above : below)),
-    ...(up ? { bottom: height - bottomEdge } : { top: topEdge }),
-  };
-}
-
-// Keeps the previous object for the same box, so a render that re-measures does not start another.
-function placeAgainst(
-  field: HTMLElement | null,
-  setPlacement: Dispatch<SetStateAction<CSSProperties | null>>,
-) {
-  if (!field) return;
-  const next = placeList(field.getBoundingClientRect());
-  setPlacement((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
-}
 
 interface ComboboxProps<T> {
   /** The rows on show, already filtered by the caller. */
@@ -122,21 +88,13 @@ export function Combobox<T>({
   const activeIndex = Math.min(active.query === query ? active.index : 0, options.length - 1);
   const optionId = (index: number) => `${listId}-${index}`;
 
-  // Null until measured on the client, which also keeps the portal out of the server render.
-  const [placement, setPlacement] = useState<CSSProperties | null>(null);
-  // Measured on every frame while open: the field moves without a scroll or a resize event when
-  // the page shifts around it (an image above it loading, a chip row growing after a pick), and a
-  // list placed from a stale box can open off screen.
-  useLayoutEffect(() => {
-    if (!open) return;
-    let frame = 0;
-    const follow = () => {
-      placeAgainst(fieldRef.current, setPlacement);
-      frame = requestAnimationFrame(follow);
-    };
-    follow();
-    return () => cancelAnimationFrame(frame);
-  }, [open, fieldRef]);
+  // In a portal, so an `overflow` ancestor (a card, a scrolling rail) cannot clip the list.
+  const placement = useAnchoredPosition({
+    open,
+    anchorRef: fieldRef,
+    matchWidth: true,
+    maxHeight: LIST_MAX_HEIGHT,
+  });
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     switch (e.key) {

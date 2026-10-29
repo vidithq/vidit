@@ -29,12 +29,7 @@ export const FORM_INVALID_LABEL = "!text-red-400";
 // the panel. Spacing between its lines stays at the call site.
 export const LIST_TILE = "border border-neutral-800 rounded-md p-3";
 
-// The one error banner, used by every form, auth card and admin panel.
-export const FORM_ERROR_BANNER =
-  "bg-red-900/40 border border-red-700/60 text-red-300 px-4 py-3 rounded-md text-sm";
-
 // Positive confirmation (success and info notices). Orange, not green: a green
-// next to red destructive actions reads wrong (see design.md's palette). Same
-// shape as FORM_ERROR_BANNER, so the box doesn't shrink on success.
+// next to red destructive actions reads wrong (see design.md's palette).
 export const FORM_SUCCESS_BANNER =
   "bg-orange-500/15 border border-orange-500/30 text-orange-200 px-4 py-3 rounded-md text-sm";

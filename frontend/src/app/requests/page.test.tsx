@@ -1,9 +1,12 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The page's URL: what it reads on load and what it writes back on each change.
+const nav = vi.hoisted(() => ({ query: "", replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/requests",
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: nav.replace, back: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(nav.query),
 }));
 
 const useApiResource = vi.fn();
@@ -20,7 +23,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 import type { Conflict, EventListItem, Tag } from "@/types";
 
 import RequestsPage from "./page";
-import { openFilterGroups, sheetButton } from "@/test/filters";
+import { histogram, openFilterGroups, sheetButton } from "@/test/filters";
+import { pickOption } from "@/test/options";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
 
@@ -59,6 +63,8 @@ const lastQuery = () => new URLSearchParams(lastPath().split("?")[1]);
 beforeEach(openFilterGroups);
 
 beforeEach(() => {
+  nav.query = "";
+  nav.replace.mockReset();
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   useApiResource.mockImplementation((path: string | null) => ({
     data: path === "/tags" ? TAGS : path?.startsWith("/conflicts") ? CONFLICTS : null,
@@ -72,28 +78,45 @@ afterEach(() => {
 });
 
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
-// A list line is a button that opens its editor; a searched one is its search field.
-const line = (name: string) =>
-  within(rail()).queryByRole("combobox", { name }) ?? within(rail()).getByRole("button", { name });
-const editor = (name: string) => screen.getByRole("dialog", { name });
+const line = (name: string) => within(rail()).queryByRole("combobox", { name });
 
 describe("RequestsPage", () => {
   it("mounts the filter panel with the status locked to requested", async () => {
     render(<RequestsPage />);
 
     expect(await screen.findByText(REQUEST.title)).toBeInTheDocument();
-    expect(within(rail()).queryByRole("button", { name: "Show" })).not.toBeInTheDocument();
+    expect(line("Show")).not.toBeInTheDocument();
     expect(within(rail()).queryByRole("switch", { name: "Approved only" })).not.toBeInTheDocument();
     for (const name of ["Conflict", "Tags", "Source kind", "Level", "Media", "Location guess", "Author"]) {
       expect(line(name)).toBeInTheDocument();
     }
 
-    fireEvent.click(line("Source kind"));
-    fireEvent.click(within(editor("Source kind")).getByRole("button", { name: "Drone" }));
+    pickOption(line("Source kind")!, "Drone");
 
     await waitFor(() => expect(lastQuery().getAll("source_kind")).toEqual(["drone"]));
     expect(lastQuery().get("view")).toBe("requested");
     expect(lastQuery().getAll("status")).toEqual(["requested"]);
+  });
+
+  it("writes each filter change to the URL and reads its filters off it", async () => {
+    render(<RequestsPage />);
+    await screen.findByText(REQUEST.title);
+    expect(nav.replace).not.toHaveBeenCalled();
+
+    pickOption(line("Media")!, "Video");
+    await waitFor(() =>
+      expect(nav.replace).toHaveBeenLastCalledWith("/requests?media=video", { scroll: false }),
+    );
+    cleanup();
+
+    nav.query = "tag=Drone&author=ana";
+    nav.replace.mockReset();
+    render(<RequestsPage />);
+    await screen.findByText(REQUEST.title);
+    expect(lastQuery().getAll("tag")).toEqual(["Drone"]);
+    expect(lastQuery().get("author")).toBe("ana");
+    expect(within(rail()).getByRole("button", { name: "Remove ana" })).toBeInTheDocument();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
   it("sends the location guess as has_coords and the media as media", async () => {
@@ -101,16 +124,14 @@ describe("RequestsPage", () => {
     await screen.findByText(REQUEST.title);
     expect(lastQuery().has("has_coords")).toBe(false);
 
-    fireEvent.click(line("Location guess"));
-    fireEvent.click(within(editor("Location guess")).getByRole("button", { name: "No guess" }));
+    pickOption(line("Location guess")!, "No guess");
     await waitFor(() => expect(lastQuery().get("has_coords")).toBe("false"));
 
     // Both options match every row, so the filter drops off the query.
-    fireEvent.click(within(editor("Location guess")).getByRole("button", { name: "With a guess" }));
+    pickOption(line("Location guess")!, "With a guess");
     await waitFor(() => expect(lastQuery().has("has_coords")).toBe(false));
 
-    fireEvent.click(line("Media"));
-    fireEvent.click(within(editor("Media")).getByRole("button", { name: "Video" }));
+    pickOption(line("Media")!, "Video");
     await waitFor(() => expect(lastQuery().getAll("media")).toEqual(["video"]));
   });
 
@@ -124,6 +145,33 @@ describe("RequestsPage", () => {
     const query = new URLSearchParams(datesPath?.split("?")[1]);
     expect(query.getAll("type")).toEqual(["event"]);
     expect(query.getAll("status")).toEqual(["requested"]);
+  });
+
+  it("counts the requests the filters match beside the Filters header and the phone button", async () => {
+    const header = () => within(rail()).getByRole("button", { name: "Filters" });
+    const base = useApiResource.getMockImplementation()!;
+    useApiResource.mockImplementation((path: string | null) => {
+      if (!path?.startsWith("/search/dates")) return base(path);
+      if (path.includes("media=image")) return { data: null, loading: true };
+      return { data: histogram(path, path.includes("media=video") ? 1 : 284), loading: false };
+    });
+    render(<RequestsPage />);
+    await screen.findByText(REQUEST.title);
+
+    expect(header()).toHaveAccessibleDescription("284 results");
+    expect(sheetButton()).toHaveAccessibleDescription("284 results");
+
+    pickOption(line("Media")!, "Video");
+    await waitFor(() => expect(header()).toHaveAccessibleDescription("1 result"));
+    expect(sheetButton()).toHaveAccessibleDescription("1 result");
+    expect(header()).toHaveAttribute("aria-busy", "false");
+
+    // While the next count loads, the last one stays under the loading dot.
+    pickOption(line("Media")!, "Image");
+    await waitFor(() =>
+      expect(header()).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(header()).toHaveAccessibleDescription("1 result");
   });
 
   it("changes the sort through the query", async () => {

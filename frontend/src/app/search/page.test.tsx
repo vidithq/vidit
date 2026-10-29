@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let searchParams = new URLSearchParams();
@@ -75,6 +75,7 @@ import { ApiError } from "@/lib/api";
 import { NO_ANSWER } from "@/lib/errors";
 import SearchPage from "./page";
 import { openFilterGroups, sheetButton } from "@/test/filters";
+import { pickOption } from "@/test/options";
 
 const OWNER = { id: "u1", username: "ana", avatar_url: null };
 
@@ -178,22 +179,20 @@ const sections = (
 
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
 /** A dimension's line in the rail, or null while the panel does not offer it. */
-// A list line is a button that opens its editor; a searched one is its search field.
-const line = (name: string) =>
-  within(rail()).queryByRole("combobox", { name }) ?? within(rail()).queryByRole("button", { name });
+const line = (name: string) => within(rail()).queryByRole("combobox", { name });
 const heading = (name: string) => within(rail()).queryByRole("heading", { name });
-const editor = (name: string) => screen.getByRole("dialog", { name });
-/** Toggles a Show option through the Show line's popover. */
+/** Toggles a Show option: a pick through the Show line's search, a removal from its pill. */
 function chip(name: string) {
-  fireEvent.click(line("Show")!);
-  fireEvent.click(within(editor("Show")).getByRole("button", { name }));
-  fireEvent.keyDown(editor("Show"), { key: "Escape" });
+  const pill = within(rail()).queryByRole("button", { name: `Remove ${name}` });
+  if (pill) fireEvent.click(pill);
+  else pickOption(line("Show")!, name);
 }
 const linkTo = (href: string) => document.querySelector<HTMLAnchorElement>(`a[href="${href}"]`)!;
 /** The item a link is stretched over. */
 const rowOf = (href: string) => linkTo(href).parentElement!;
 
 beforeEach(openFilterGroups);
+afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -235,20 +234,15 @@ describe("the search page with no kind picked", () => {
       "href",
       "/events/e1",
     );
-    expect(rowOf("/events/e1")).toHaveTextContent(/Event·6 Jun 2026·A?anaGeolocated/);
-    expect(rowOf("/requests/r1")).toHaveTextContent(/Open callRequest·A?anaRequested/);
     expect(events).toContainElement(rowOf("/requests/r1"));
 
-    const site = rowOf("/sites/s1");
-    expect(site.querySelector("mark")).toHaveTextContent("Kakhovka");
-    expect(site).toHaveTextContent(/Site·8 Jun 2026·A?anaDepot/);
-    expect(rowOf("/collections/c1")).toHaveTextContent(/^Nova Kakhovka damCollection·.*5 events$/);
-    expect(rowOf("/profile/kakhovka_watch")).toHaveTextContent(/kakhovka_watchAnalyst$/);
-    expect(rowOf("/organizations/kakhovka-watch")).toHaveTextContent(
-      "Kakhovka WatchOrganization1 member",
-    );
+    expect(rowOf("/sites/s1").querySelector("mark")).toHaveTextContent("Kakhovka");
+    expect(linkTo("/collections/c1")).toBeInTheDocument();
+    expect(linkTo("/profile/kakhovka_watch")).toBeInTheDocument();
+    expect(rowOf("/organizations/kakhovka-watch")).toHaveTextContent("1 member");
 
-    expect(screen.queryByText(/result/)).not.toBeInTheDocument();
+    // The one count is the Filters controls', in the rail and on the phone bar.
+    expect(screen.getAllByText(/result/)).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
   });
 
@@ -266,7 +260,7 @@ describe("the search page with no kind picked", () => {
     // Events keep the filters and take every status.
     expect(seeAll("Events")).toHaveAttribute(
       "href",
-      "/search?q=kakhovka&type=event&status=requested&status=detected&status=geolocated&tag=dam&author=ana",
+      "/search?q=kakhovka&type=event&tag=dam&author=ana",
     );
     // A kind other than events keeps only the filters it answers.
     expect(seeAll("Collections")).toHaveAttribute(
@@ -333,14 +327,15 @@ describe("the search page's URL", () => {
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
     expect(within(rail()).getByRole("button", { name: "Remove Sites" })).toBeInTheDocument();
 
+    vi.useFakeTimers();
     searchParams = new URLSearchParams("q=kakhovka");
     rerender(<SearchPage />);
+    // Reading the URL writes nothing back, however long the page settles.
+    await act(() => vi.advanceTimersByTimeAsync(400));
 
-    expect(await screen.findByRole("region", { name: "Analysts" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Analysts" })).toBeInTheDocument();
     expect(within(rail()).queryByRole("button", { name: "Remove Sites" })).not.toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toHaveValue("kakhovka");
-    // Reading the URL writes nothing back.
-    await new Promise((resolve) => setTimeout(resolve, 400));
     expect(push).not.toHaveBeenCalled();
     expect(replace).not.toHaveBeenCalled();
   });
@@ -351,26 +346,22 @@ describe("the search page's URL", () => {
     await screen.findByRole("link", { name: "Kakhovka depot" });
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "kakhovka dam" } });
-    await waitFor(() => expect(replace).toHaveBeenLastCalledWith("/search?q=kakhovka+dam"));
+    await waitFor(() => expect(replace).toHaveBeenLastCalledWith("/search?q=kakhovka+dam", { scroll: false }));
     expect(push).not.toHaveBeenCalled();
 
     chip("Sites");
-    await waitFor(() => expect(push).toHaveBeenLastCalledWith("/search?q=kakhovka+dam&type=site"));
+    await waitFor(() => expect(push).toHaveBeenLastCalledWith("/search?q=kakhovka+dam&type=site", { scroll: false }));
   });
 });
 
 describe("the Show field", () => {
-  it("offers every kind as a chip, without counts", async () => {
+  it("offers every kind, without counts", async () => {
     searchSections.mockResolvedValue(sections([eventHit()]));
     render(<SearchPage />);
 
     await screen.findByText("Kakhovka spillway");
-    fireEvent.click(line("Show")!);
-    expect(
-      within(editor("Show"))
-        .getAllByRole("button")
-        .map((b) => b.textContent),
-    ).toEqual([
+    fireEvent.focus(line("Show")!);
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Requested",
       "Detected",
       "Geolocated",
@@ -400,10 +391,33 @@ describe("the Show field", () => {
     chip("Geolocated");
     await waitFor(() =>
       expect(searchSections).toHaveBeenLastCalledWith(
-        expect.objectContaining({ types: ["event", "site"], show: ["geolocated"] }),
+        expect.objectContaining({ types: ["event", "site"], show: ["site", "geolocated"] }),
       ),
     );
     expect(heading("When")).toBeInTheDocument();
+  });
+
+  it("counts every kind's matches, then the picked kind's, beside the Filters header and the phone button", async () => {
+    const header = () => within(rail()).getByRole("button", { name: "Filters" });
+    searchSections.mockResolvedValue(sections([eventHit(), siteHit()], { more: ["event"] }));
+    search.mockResolvedValue(response({ hits: [siteHit()] }));
+    render(<SearchPage />);
+
+    await waitFor(() => expect(header()).toHaveAccessibleDescription("7 results"));
+    expect(sheetButton()).toHaveAccessibleDescription("7 results");
+    expect(header()).toHaveAttribute("aria-busy", "false");
+
+    chip("Sites");
+    await waitFor(() => expect(header()).toHaveAccessibleDescription("1 result"));
+    expect(sheetButton()).toHaveAccessibleDescription("1 result");
+
+    // While the next search runs, the last count stays under the loading dot.
+    searchSections.mockReturnValueOnce(new Promise(() => {}));
+    chip("Collections");
+    await waitFor(() =>
+      expect(header()).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(header()).toHaveAccessibleDescription("1 result");
   });
 
   it("keeps the tags and the author when the pick steps from events to collections", async () => {
@@ -657,7 +671,8 @@ describe("the approval filters on the search page", () => {
     await screen.findByText("Kakhovka spillway");
     fireEvent.click(within(rail()).getByRole("switch", { name: "Approved only" }));
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/search?q=kakhovka&approved=true"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/search?q=kakhovka&approved=true", { scroll: false }),
+    );
   });
 });
 

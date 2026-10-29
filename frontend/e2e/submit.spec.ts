@@ -1,10 +1,30 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { API_BASE_URL } from "./support/environment";
 import { CONFLICTS, EVENT_ID, ONE_PIXEL_PNG } from "./support/fixtures";
 import { answerWith, grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
 import { swipeLeft } from "./support/touch";
+
+/** The boxes of the controls `labels` name inside `scope`, read in one frame, so a layout that
+ *  settles between two reads (a row of suggestions measuring its lines) cannot move one box
+ *  against another. */
+async function boxesInOneFrame(scope: Locator, labels: string[]) {
+  return scope.evaluate(
+    (root, names) =>
+      names.map((name) => {
+        const r = root.querySelector(`[aria-label="${name}"]`)!.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      }),
+    labels,
+  );
+}
+
+/** Picks a kind in the source's kind field, whose list opens on the page body. */
+async function pickKind(page: Page, source: Locator, label: string) {
+  await source.getByRole("combobox", { name: /kind$/ }).click();
+  await page.getByRole("option", { name: label, exact: true }).click();
+}
 
 /**
  * Golden path 3: the submit page, its chooser and the paths it opens.
@@ -186,7 +206,7 @@ test.describe("submit", () => {
     });
     await expect(first.getByText(/^Uploading/)).toHaveCount(0);
     await expect(first.getByRole("button", { name: "View image" })).toBeVisible();
-    await expect(first.getByLabel("Kind", { exact: true })).toBeEnabled();
+    await expect(first.getByRole("combobox", { name: "Source 1 kind" })).toBeEnabled();
 
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
     await second.getByLabel("Source 2 link 1", { exact: true }).fill("https://x.com/user/status/1");
@@ -280,7 +300,7 @@ test.describe("submit", () => {
     await page.getByRole("button", { name: "Add a source" }).click();
     await page.getByRole("button", { name: "Previous source" }).click();
     const first = page.getByRole("region", { name: "Source 1" });
-    await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
+    await pickKind(page, first, "Smartphone");
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
     await first.getByRole("button", { name: "Capture details" }).click();
     await expect(first.getByLabel("Latitude", { exact: true })).toBeVisible();
@@ -301,10 +321,12 @@ test.describe("submit", () => {
     }
     // Each link is a card: the URL with its remove control at the card's top right, the post
     // time and the archive box under the URL.
-    const url = (await first.getByLabel("Source 1 link 1", { exact: true }).boundingBox())!;
-    const removeLink = (await first.getByRole("button", { name: "Remove source 1 link 1" }).boundingBox())!;
-    const posted = (await first.getByLabel("Posted (UTC), source 1, t.me").boundingBox())!;
-    const archive = (await first.getByRole("button", { name: "Archive source 1, t.me" }).boundingBox())!;
+    const [url, removeLink, posted, archive] = await boxesInOneFrame(first, [
+      "Source 1 link 1",
+      "Remove source 1 link 1",
+      "Posted (UTC), source 1, t.me",
+      "Archive source 1, t.me",
+    ]);
     expect(url.width).toBeGreaterThan(tile.width * 0.5);
     expect(removeLink.x).toBeGreaterThanOrEqual(url.x + url.width);
     expect(Math.abs(removeLink.y + removeLink.height / 2 - (url.y + url.height / 2))).toBeLessThanOrEqual(1);
@@ -314,19 +336,11 @@ test.describe("submit", () => {
     // The post time needs the card's whole width at 320px to show its value; on a wider
     // phone the archive box sits beside it.
     await page.setViewportSize({ width: 480, height: 800 });
-    const wider = [
-      (await first.getByLabel("Posted (UTC), source 1, t.me").boundingBox())!,
-      (await first.getByRole("button", { name: "Archive source 1, t.me" }).boundingBox())!,
-    ];
+    const wider = await boxesInOneFrame(first, ["Posted (UTC), source 1, t.me", "Archive source 1, t.me"]);
     expect(wider[1].x).toBeGreaterThanOrEqual(wider[0].x + wider[0].width);
     expect(Math.abs(wider[1].y + wider[1].height / 2 - (wider[0].y + wider[0].height / 2))).toBeLessThanOrEqual(1);
     await page.setViewportSize({ width: 320, height: 568 });
 
-    // The level options keep their whole labels and the phone tap height.
-    for (const option of await first.getByRole("group", { name: "Source 1 level" }).getByRole("button").all()) {
-      const fits = await option.evaluate((el) => el.scrollWidth <= el.clientWidth);
-      expect(fits, `${await option.textContent()} is cut`).toBe(true);
-    }
     for (const name of ["Remove source 1", "Remove source 1 link 1", "Add a link to source 1"]) {
       const box = (await first.getByRole("button", { name, exact: true }).boundingBox())!;
       expect(box.height, name).toBeGreaterThanOrEqual(36);
@@ -345,7 +359,7 @@ test.describe("submit", () => {
       if (width) await page.setViewportSize({ width, height: 900 });
       await page.goto("/submit?mode=single");
       const source = page.getByRole("region", { name: "Source 1" });
-      await source.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
+      await pickKind(page, source, "Smartphone");
       // The capture position sits under the source's folded Capture details.
       await source.getByRole("button", { name: "Capture details" }).click();
       const location = page.getByRole("heading", { name: /^Location/ }).locator("xpath=ancestor::section[1]");
@@ -490,6 +504,7 @@ test.describe("submit", () => {
     await field.fill("falk");
     await expect(list.getByRole("option")).toHaveText(["Falklands War (1982)"]);
     await field.press("Enter");
+    await expect(list).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Remove Falklands War (1982)" })).toBeVisible();
 
     // The chips remove the picks, and the conflict is missing again.

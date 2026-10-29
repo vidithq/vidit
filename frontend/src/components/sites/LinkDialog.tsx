@@ -3,15 +3,14 @@
 import { useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 
-import { Combobox } from "@/components/ui/Combobox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Item, type ItemData } from "@/components/ui/Item";
+import { ItemSearch } from "@/components/ui/ItemSearch";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Pill } from "@/components/ui/Pill";
 import { RemoveButton } from "@/components/ui/RemoveButton";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
+import { OptionSearch } from "@/components/ui/OptionSearch";
 import { useMutation } from "@/hooks/useMutation";
 import { siteItem } from "@/lib/items";
 import {
@@ -22,8 +21,6 @@ import {
   type LinkEffect,
   type SiteSuggestion,
 } from "@/lib/sites";
-
-const SEARCH_DEBOUNCE_MS = 250;
 
 /** How many suggestions show before **Show more**. */
 const SUGGESTIONS_SHOWN = 4;
@@ -106,12 +103,8 @@ export function LinkSuggestionPills({
   );
 }
 
-/** The heading of a name search's rows, apart from the suggestions' own. */
-const SEARCH_RESULTS = "Search results";
-
-/** The name search of a link picker, on `Combobox`: `search` runs once typing rests, and a pick
- *  empties the field. Its rows sit under their own heading, since a site found by name may lie
- *  past the suggestions' distance. */
+/** The name search of a link picker. Its rows sit under their own heading, since a site found
+ *  by name may lie past the suggestions' distance. */
 export function LinkSearch({
   label,
   placeholder,
@@ -123,86 +116,41 @@ export function LinkSearch({
   search: (q: string, signal: AbortSignal) => Promise<LinkCandidate[]>;
   onPick: (picked: LinkCandidate) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const [result, setResult] = useState<{ query: string; rows: LinkCandidate[] | null } | null>(null);
-
-  const q = query.trim();
-  useDebouncedEffect(
-    () => {
-      if (!q) return;
-      const controller = new AbortController();
-      search(q, controller.signal)
-        .then((rows) => setResult({ query: q, rows }))
-        .catch(() => {
-          if (!controller.signal.aborted) setResult({ query: q, rows: null });
-        });
-      return () => controller.abort();
-    },
-    [q],
-    SEARCH_DEBOUNCE_MS,
-  );
-  const current = result?.query === q ? result : null;
-  const rows = q && current?.rows ? current.rows : [];
-  const status = !q
-    ? null
-    : !current
-      ? "Searching…"
-      : current.rows === null
-        ? "The search failed."
-        : current.rows.length === 0
-          ? "No match."
-          : null;
-
   return (
-    <Combobox
+    <ItemSearch
       aria-label={label}
       placeholder={placeholder}
-      options={rows}
-      optionKey={(row) => row.id}
-      renderOption={(row) => (
-        <div className="min-w-0 flex-1">
-          <Item variant="compact" {...row.item} />
-        </div>
-      )}
-      onPick={(row) => {
-        onPick(row);
-        setQuery("");
-        setOpen(false);
-      }}
-      query={query}
-      onQueryChange={setQuery}
-      open={open && q !== ""}
-      onOpenChange={setOpen}
-      status={status}
-      heading={SEARCH_RESULTS}
+      search={search}
+      toItem={(row) => row.item}
+      rowKey={(row) => row.id}
+      onPick={onPick}
+      heading="Search results"
+      emptyText="No match."
     />
   );
 }
 
-/** The effect of one link, unpicked until the analyst says what the event shows. `fullWidth`
- *  shares the width out equally; off, each option keeps its label's width from `sm` up, for a
- *  column narrower than the dialog. */
+/** The effect of one link, unpicked until the analyst says what the event shows. */
 export function EffectControl({
   value,
   onChange,
-  fullWidth = true,
   "aria-label": ariaLabel,
 }: {
   value: LinkEffect | "";
   onChange: (effect: LinkEffect) => void;
-  fullWidth?: boolean;
   "aria-label": string;
 }) {
   return (
-    <SegmentedControl<LinkEffect | "">
+    <OptionSearch
+      single
+      required
       aria-label={ariaLabel}
+      placeholder="Search effects"
       options={EFFECT_OPTIONS}
-      value={value}
+      selected={value ? [value] : []}
       onChange={(next) => {
-        if (next) onChange(next);
+        if (next[0]) onChange(next[0] as LinkEffect);
       }}
-      fullWidth={fullWidth}
     />
   );
 }

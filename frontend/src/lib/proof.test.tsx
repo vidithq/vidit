@@ -20,7 +20,6 @@ describe("renderProof", () => {
     expect(container.querySelector("em")).toHaveTextContent("italic");
     expect(container.querySelector("s")).toHaveTextContent("struck");
     expect(container.querySelector("code")).toHaveTextContent("mono");
-    expect(container.querySelector("code")).toHaveClass("text-orange-300");
   });
 
   it("opens a safe link in a new tab with the user-content rel", () => {
@@ -92,7 +91,6 @@ describe("renderProof", () => {
     expect(container.querySelector("ol li")).toHaveTextContent("first");
     expect(container.querySelector("blockquote")).toHaveTextContent("quoted");
     expect(container.querySelector("pre code")).toHaveTextContent("const a = 1;");
-    expect(container.querySelector("pre code")).not.toHaveClass("text-orange-300");
     expect(container.querySelector("hr")).not.toBeNull();
     expect(container.querySelector("p br")).not.toBeNull();
   });

@@ -129,7 +129,6 @@ export function LinkedSitesField({
                       />
                       <EffectControl
                         aria-label={`Effect at ${link.site.name}`}
-                        fullWidth={false}
                         value={link.effect}
                         onChange={(effect) =>
                           setLinks(links.map((l) => (l.site.id === link.site.id ? { ...l, effect } : l)))

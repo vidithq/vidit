@@ -10,18 +10,17 @@ import {
   ArchiveBox,
   ArchiveSnapshotField,
   linkDescription,
-} from "@/components/ui/ArchivedCopies";
+} from "@/components/sources/ArchivedCopies";
 import { Button } from "@/components/ui/Button";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
-import { Disclosure } from "@/components/ui/Disclosure";
-import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Card } from "@/components/ui/Card";
 import { LEAD_BESIDE_SPLIT } from "@/components/ui/DetailRow";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { OptionSearch } from "@/components/ui/OptionSearch";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Switch } from "@/components/ui/Switch";
 import { TagsField } from "@/components/ui/TagPicker";
 import { cn } from "@/lib/cn";
@@ -53,6 +52,7 @@ import { SourceImageryCheck } from "./SourceImageryCheck";
 import { FieldError } from "@/components/ui/ErrorNotice";
 
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
+const KIND_OPTIONS = SOURCE_KINDS.map((value) => ({ value, label: SOURCE_KIND_LABELS[value] }));
 
 /** Which of the editor's fields a publish attempt flagged. */
 export interface SourceEditorInvalid {
@@ -252,31 +252,32 @@ export function SourceEditor({
     <>
       <div className="space-y-1.5">
         <FieldLabel {...SOURCE_FIELDS.level} />
-        <SegmentedControl<SourceLevel>
+        <OptionSearch
+          single
+          required
           aria-label={`${name} level`}
+          placeholder="Search levels"
           options={LEVEL_OPTIONS}
-          value={draft.level}
-          onChange={(level) => update({ level })}
-          fullWidth
+          selected={[draft.level]}
+          onChange={(next) => {
+            if (next[0]) update({ level: next[0] as SourceLevel });
+          }}
         />
       </div>
 
       <div className="space-y-1.5">
         <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} invalid={invalid.kind} />
-        <Select
-          id={id("kind")}
-          value={draft.kind}
+        <OptionSearch
+          single
           required
+          id={id("kind")}
+          aria-label={`${name} kind`}
+          placeholder="Search source kinds"
+          options={KIND_OPTIONS}
+          selected={draft.kind ? [draft.kind] : []}
           invalid={invalid.kind}
-          onChange={(e) => update({ kind: e.target.value as SourceKind | "" })}
-        >
-          <option value="">Pick a kind</option>
-          {SOURCE_KINDS.map((kind) => (
-            <option key={kind} value={kind}>
-              {SOURCE_KIND_LABELS[kind]}
-            </option>
-          ))}
-        </Select>
+          onChange={(next) => update({ kind: (next[0] ?? "") as SourceKind | "" })}
+        />
       </div>
     </>
   );
@@ -287,7 +288,6 @@ export function SourceEditor({
         <FieldLabel
           {...SOURCE_FIELDS.title}
           htmlFor={id("title")}
-          trailing={<CharCounter length={draft.title.length} max={SOURCE_TITLE_MAX_LEN} />}
         />
         <Input
           id={id("title")}
@@ -307,53 +307,62 @@ export function SourceEditor({
   );
 
   const details = (
-    <Disclosure
-      label="Capture details"
-      open={detailsOpen}
-      onToggle={() => setDetailsOpen((open) => !open)}
-    >
-      {captured}
+    <div className="space-y-4">
+      <SectionEyebrow
+        as="h3"
+        margin="none"
+        title="Capture details"
+        toggle={{
+          open: detailsOpen,
+          onToggle: () => setDetailsOpen((open) => !open),
+          controls: id("details"),
+        }}
+      />
+      {/* Hidden rather than unmounted, so a field inside keeps what it holds. */}
+      <div id={id("details")} hidden={!detailsOpen} className="space-y-4">
+        {captured}
 
-      {hasCapturePosition(draft.kind) && (
-        <div className="space-y-1.5">
-          <FieldLabel {...SOURCE_FIELDS.capture_position} />
-          <CoordinateInputs
-            idPrefix={id("capture_")}
-            required={false}
-            lat={draft.captureLat}
-            setLat={(captureLat) => update({ captureLat })}
-            lng={draft.captureLng}
-            setLng={(captureLng) => update({ captureLng })}
-            invalid={positionInvalid}
+        {hasCapturePosition(draft.kind) && (
+          <div className="space-y-1.5">
+            <FieldLabel {...SOURCE_FIELDS.capture_position} />
+            <CoordinateInputs
+              idPrefix={id("capture_")}
+              required={false}
+              lat={draft.captureLat}
+              setLat={(captureLat) => update({ captureLat })}
+              lng={draft.captureLng}
+              setLng={(captureLng) => update({ captureLng })}
+              invalid={positionInvalid}
+            />
+          </div>
+        )}
+
+        {tags && setTags && (
+          <TagsField
+            tags={tags}
+            setTags={setTags}
+            suggested={suggestedTags}
+            selected={draft.tagIds}
+            setSelected={(tagIds) => update({ tagIds })}
+            owner={name}
+          />
+        )}
+
+        {/* A `span` label plus the switch's own name: not a labelable field. */}
+        <div className="flex items-center justify-between gap-4">
+          <FieldLabel
+            {...SOURCE_FIELDS.is_graphic}
+            trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
+          />
+          <Switch
+            on={draft.isGraphic}
+            onToggle={() => update({ isGraphic: !draft.isGraphic })}
+            disabled={draft.graphicLocked}
+            aria-label={`${name} graphic content`}
           />
         </div>
-      )}
-
-      {tags && setTags && (
-        <TagsField
-          tags={tags}
-          setTags={setTags}
-          suggested={suggestedTags}
-          selected={draft.tagIds}
-          setSelected={(tagIds) => update({ tagIds })}
-          owner={name}
-        />
-      )}
-
-      {/* A `span` label plus the switch's own name: not a labelable field. */}
-      <div className="flex items-center justify-between gap-4">
-        <FieldLabel
-          {...SOURCE_FIELDS.is_graphic}
-          trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
-        />
-        <Switch
-          on={draft.isGraphic}
-          onToggle={() => update({ isGraphic: !draft.isGraphic })}
-          disabled={draft.graphicLocked}
-          aria-label={`${name} graphic content`}
-        />
       </div>
-    </Disclosure>
+    </div>
   );
 
   const rest = (

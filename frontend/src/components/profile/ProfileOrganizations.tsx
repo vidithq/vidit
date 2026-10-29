@@ -11,7 +11,6 @@ export function ProfileOrganizations({ memberships }: { memberships: Organizatio
   return (
     <AvatarStack
       label="Organizations"
-      max={memberships.length}
       items={memberships.map(({ organization, role }) => ({
         key: organization.slug,
         name: organization.name,

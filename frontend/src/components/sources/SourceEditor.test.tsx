@@ -14,6 +14,8 @@ import { source } from "@/test/eventDetail";
 import type { Tag } from "@/types";
 
 import { SourceEditor, type SourceEditorInvalid } from "./SourceEditor";
+import { pickOption } from "@/test/options";
+import { SOURCE_KIND_LABELS, type SourceKind } from "@/lib/sources";
 
 vi.mock("@/lib/api", async (original) => ({
   ...(await original<typeof import("@/lib/api")>()),
@@ -62,7 +64,9 @@ function Host({
   );
 }
 
-const kindField = () => screen.getByRole("combobox", { name: /^Kind/ });
+const kindField = () => screen.getByRole("combobox", { name: "Source 1 kind" });
+/** Picks a kind by its value. */
+const pickKind = (kind: SourceKind) => pickOption(kindField(), SOURCE_KIND_LABELS[kind]);
 
 const details = () => screen.getByRole("button", { name: "Capture details" });
 const openDetails = () => fireEvent.click(details());
@@ -74,24 +78,16 @@ describe("SourceEditor", () => {
   it("starts a new source as a direct one with one blank link and no file", () => {
     render(<Host initial={newSourceDraft()} />);
     expect(screen.getByRole("region", { name: "Source 1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Direct" })).toHaveAttribute("aria-pressed", "true");
+    expect(draftNow().level).toBe("direct");
+    expect(screen.getByText("Direct")).toBeInTheDocument();
     expect(screen.getByLabelText("Source 1 link 1")).toHaveValue("");
     // Every source names its kind, with or without a file: none is picked yet.
-    expect(kindField()).toHaveValue("");
-    expect(kindField()).toBeEnabled();
-  });
-
-  it("greys the kind's prompt like a placeholder until a kind is picked", () => {
-    render(<Host initial={newSourceDraft()} />);
-    const grey = () => kindField().classList.contains("text-neutral-600");
-    expect(grey()).toBe(true);
-    fireEvent.change(kindField(), { target: { value: "drone" } });
-    expect(grey()).toBe(false);
+    expect(draftNow().kind).toBe("");
   });
 
   it("names the kind of a source without a file", () => {
     render(<Host initial={newSourceDraft()} />);
-    fireEvent.change(kindField(), { target: { value: "article" } });
+    pickKind("article");
     expect(draftNow().kind).toBe("article");
   });
 
@@ -115,7 +111,7 @@ describe("SourceEditor", () => {
     });
     try {
       render(<Host initial={newSourceDraft()} />);
-      fireEvent.change(kindField(), { target: { value: "satellite" } });
+      pickKind("satellite");
       fireEvent.change(screen.getByLabelText("Source 1 link 1"), { target: { value: earth } });
       await act(async () => {
         vi.advanceTimersByTime(500);
@@ -123,7 +119,6 @@ describe("SourceEditor", () => {
       expect(apiFetch).toHaveBeenCalledTimes(1);
       expect(screen.getByText("Step to the capture day and copy the link.")).toBeInTheDocument();
       expect(screen.getByText("Credit: Google")).toBeInTheDocument();
-      expect(screen.queryByText("No imagery date.")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -133,10 +128,10 @@ describe("SourceEditor", () => {
     render(<Host initial={newSourceDraft()} />);
     expect(screen.getByText("Capture position")).toBeInTheDocument();
     for (const kind of ["article", "official_statement", "other"]) {
-      fireEvent.change(kindField(), { target: { value: kind } });
+      pickKind(kind as SourceKind);
       expect(screen.queryByText("Capture position")).toBeNull();
     }
-    fireEvent.change(kindField(), { target: { value: "drone" } });
+    pickKind("drone");
     expect(screen.getByText("Capture position")).toBeInTheDocument();
   });
 
@@ -305,7 +300,7 @@ describe("SourceEditor", () => {
       />
     );
     expect(screen.getByText("Links (0)").parentElement!.className).toContain("text-red-400");
-    expect(kindField().className).toContain("border-red-500");
+    expect(kindField()).toHaveAttribute("aria-invalid", "true");
   });
 
   it("picks a tag of the shared catalogue for this source and removes it", () => {

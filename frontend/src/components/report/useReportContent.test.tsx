@@ -4,6 +4,7 @@ import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 import { useReportContent } from "./useReportContent";
 import { reportCollection } from "@/lib/collections";
 import { reportEvent } from "@/lib/events";
+import { pickOption } from "@/test/options";
 
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
@@ -68,9 +69,7 @@ describe("useReportContent state per target", () => {
   it("resets an open, half-filled form when the event changes", () => {
     const { rerender } = render(<ReportHarness eventId="e1" />);
     fireEvent.click(screen.getByRole("button", { name: "Report" }));
-    fireEvent.change(screen.getByLabelText("Reason"), {
-      target: { value: "copyright" },
-    });
+    pickOption("Reason", "Copyright");
     fireEvent.change(screen.getByLabelText("Details"), {
       target: { value: "half a sentence" },
     });
@@ -81,7 +80,7 @@ describe("useReportContent state per target", () => {
     expect(screen.queryByLabelText("Details")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Report" }));
     expect(screen.getByLabelText("Details")).toHaveValue("");
-    expect(screen.getByLabelText("Reason")).toHaveValue("illegal_content");
+    expect(screen.getByText("Illegal content")).toBeInTheDocument();
   });
 
   it("does not carry one event's receipt onto the next", async () => {

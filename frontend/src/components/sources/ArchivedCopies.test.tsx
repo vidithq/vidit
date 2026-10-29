@@ -93,34 +93,11 @@ describe("ArchivedCopies", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  // Colour says a mark is clickable, so the states cannot share a paint (grey is
-  // the disabled button's).
-  it("paints the stored copy accent and the missing one grey", () => {
-    const { unmount } = render(
-      <ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T12:00:00Z" }} />
-    );
-    expect(
-      screen.getByRole("link", { name: "Wayback Machine copy of the source" })
-    ).toHaveClass("text-orange-400");
-    unmount();
-
-    render(<ArchivedCopies {...props} copy={null} />);
-    expect(
-      screen.getByRole("button", { name: "No archived copy of the source" })
-    ).toHaveClass("disabled:text-neutral-600");
-  });
-
   // The row explains the mark, so no `?` beside it.
   it("carries no help affordance of its own", () => {
     render(<ArchivedCopies {...props} copy={{ url: WAYBACK, provider: "wayback", archived_at: "2026-06-01T12:00:00Z" }} />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getAllByRole("link")).toHaveLength(1);
-  });
-
-  // The row aligns text on the baseline, so the square would hang low without `self-center`.
-  it("centres its box on the line rather than hanging it off the baseline", () => {
-    const { container } = render(<ArchivedCopies {...props} copy={null} />);
-    expect(container.firstElementChild).toHaveClass("self-center");
   });
 });
 

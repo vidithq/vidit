@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useCursorList } from "@/hooks/useCursorList";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { eventListPath, type EventListSort } from "@/lib/events";
@@ -15,20 +16,20 @@ import {
 import {
   EMPTY_FILTERS,
   anyActive,
-  type FilterPatch,
+  scopeState,
   type FilterState,
 } from "@/components/filters/model";
+import { useFilterSurface, type PageUrl } from "@/components/filters/useFilterSurface";
 import { useTimelines } from "@/components/filters/useTimelines";
-import { searchDatesPath } from "@/lib/search";
+import { appendEventFilterParams, readEventFilterParams, searchDatesPath } from "@/lib/search";
 import { Item } from "@/components/ui/Item";
 import { eventItem } from "@/lib/items";
-import { PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { submitHref } from "@/lib/routes";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 const SORT_OPTIONS: { value: EventListSort; label: string }[] = [
@@ -36,25 +37,40 @@ const SORT_OPTIONS: { value: EventListSort; label: string }[] = [
   { value: "oldest", label: "Oldest" },
 ];
 
+/** The board's URL: the `GET /events` filter vocabulary. */
+const REQUESTS_PAGE: PageUrl<FilterState> = {
+  path: "/requests",
+  read: (params) => scopeState("requests", { ...EMPTY_FILTERS, ...readEventFilterParams(params) }),
+  write: (state) => {
+    const params = new URLSearchParams();
+    appendEventFilterParams(params, state);
+    return params;
+  },
+};
+
 export default function RequestsPage() {
+  // `useSearchParams` opts out of static prerender, so the body sits under Suspense.
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <RequestsPageBody />
+    </Suspense>
+  );
+}
+
+function RequestsPageBody() {
   // Public read; "Post request" routes through /submit, which bounces signed-out visitors to login.
   // Cursor-paged: the endpoint caps a response at 100 rows, so follow the `Link: rel="next"` cursor.
-  const [values, setValues] = useState<FilterState>(EMPTY_FILTERS);
+  const query = useSearchParams().toString();
+  const { filters: values, panel: filterPanel } = useFilterSurface("requests", {
+    url: { format: REQUESTS_PAGE, query },
+  });
   const [sort, setSort] = useState<EventListSort>("newest");
 
-  const vocabulary = useFilterVocabulary();
-  const onPatch: FilterPatch = useCallback((patch) => setValues((v) => ({ ...v, ...patch })), []);
   // The board lists the open requests, the set search lists for that one status.
   const request = { ...values, show: ["requested"] };
-  const timelines = useTimelines(searchDatesPath({ q: "", types: ["event"], ...request }));
-  const panel: FilterPanelProps = {
-    surface: "requests",
-    state: values,
-    onPatch,
-    onClear: () => setValues(EMPTY_FILTERS),
-    vocabulary,
-    timelines,
-  };
+  const histogram = useTimelines(searchDatesPath({ q: "", types: ["event"], ...request }));
+  const panel: FilterPanelProps = { ...filterPanel, timelines: histogram.timelines };
+  const tally = { count: histogram.total, loading: histogram.loading };
   const filtered = anyActive("requests", values);
 
   const buildPath = useCallback(
@@ -74,7 +90,7 @@ export default function RequestsPage() {
   return (
     <PageShell
       title="Requests"
-      rail={<FilterCard {...panel} />}
+      rail={<FilterCard {...panel} {...tally} />}
       railLabel="Filters"
       narrowRail="hidden"
       actions={
@@ -95,7 +111,7 @@ export default function RequestsPage() {
         />
       }
     >
-      <FilterSheetBar {...panel} className="lg:hidden" />
+      <FilterSheetBar {...panel} {...tally} className="lg:hidden" />
 
       {error && requests.length === 0 && (
         <ErrorNotice error={error} />

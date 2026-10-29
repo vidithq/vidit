@@ -52,7 +52,7 @@ export function RecentSubmissions({
           // same work as the block above (search's located group otherwise widens to machine detections). In the
           // panel's own vocabulary, so it lands as a removable chip. Same builder as the Insights tiles.
           <SeeAllLink
-            href={profileSearchHref(profile.username, { status: "geolocated" })}
+            href={profileSearchHref(profile.username, { show: ["geolocated"] })}
             className="shrink-0"
           />
         )}

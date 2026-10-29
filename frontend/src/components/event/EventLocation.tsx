@@ -36,12 +36,13 @@ export function eventLocation(geo: EventDetail): EventSlot | null {
  * The Location module: a map with its coordinates row fused to its foot. The event page passes
  * its single pin; the site page passes its zone map, more `rows` under the coordinates and its
  * map legend as `footer` lines. A collection passes its coverage map, with the coordinates of the
- * event it stands on, if any, and no foot at all on its forms. A `header` sits above the map: the
- * event forms' coordinate inputs, the go-to-coordinates field of a site source form.
+ * event it stands on, if any, and no foot at all on its forms. A `field` sits first under the
+ * map, in the same place on every form: the event forms' coordinate inputs, the go-to-coordinates
+ * field of a site form.
  */
 export function EventLocation({
   map,
-  header,
+  field,
   coords,
   coordinatesConcept = EVENT_FIELDS.coordinates.concept,
   rows,
@@ -49,7 +50,8 @@ export function EventLocation({
   ref,
 }: {
   map: ReactNode;
-  header?: ReactNode;
+  /** The location's input, first under the map: a form's coordinates, a site form's go-to. */
+  field?: ReactNode;
   coords?: { lat: number; lng: number } | null;
   /** The coordinates row's `?`, when the pair is not an event's subject (a site's centroid). */
   coordinatesConcept?: Concept;
@@ -57,23 +59,17 @@ export function EventLocation({
   footer?: string[];
   ref?: Ref<HTMLDivElement>;
 }) {
-  const foot = !!coords || !!rows || footer.length > 0;
+  const foot = !!field || !!coords || !!rows || footer.length > 0;
   return (
     // `overflow-hidden` sits on the map alone, to clip its rounded corners, since the whole module
     // would clip the rows' `?` tooltips.
     <div ref={ref} className="scroll-mt-20 rounded-lg border border-neutral-700">
-      {header && (
-        <div className="space-y-1.5 rounded-t-lg border-b border-neutral-800 bg-neutral-900 p-4">
-          {header}
-        </div>
-      )}
-      <div
-        className={cn("h-56 overflow-hidden", !header && "rounded-t-lg", !foot && "rounded-b-lg")}
-      >
+      <div className={cn("h-56 overflow-hidden rounded-t-lg", !foot && "rounded-b-lg")}>
         {map}
       </div>
       {foot && (
         <div className="divide-y divide-neutral-800 rounded-b-lg border-t border-neutral-800 bg-neutral-900">
+          {field && <div className="space-y-1.5 p-4">{field}</div>}
           {coords && (
             <DetailRow
               label={EVENT_FIELDS.coordinates.label}

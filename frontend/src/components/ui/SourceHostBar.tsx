@@ -1,6 +1,9 @@
 import type { components } from "@/lib/api-types";
 import { Pill } from "./Pill";
-import { ACCENT_RAMP, CHART_NEUTRAL, CHART_TAIL } from "./styles";
+import { ACCENT_RAMP, CHART_NEUTRAL } from "./styles";
+
+// The bucket that holds real work under no printed name, beside the ramp.
+const CHART_TAIL = "bg-neutral-500";
 
 /** One (host, count) entry of `source_hosts`; `name` is the host, lower-cased, with
  *  any leading `www.` removed and a platform's aliases merged server side. */

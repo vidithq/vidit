@@ -66,6 +66,7 @@ import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { newSourceDraft } from "@/lib/sources";
 import { newCollectionHref } from "@/lib/collections";
 import { createEvent, createEventRequest } from "@/lib/events";
+import { submitHref } from "@/lib/routes";
 import { NEW_SITE_HREF } from "@/lib/sites";
 
 import SubmitPage from "./page";
@@ -206,7 +207,7 @@ describe("the submit form's Linked sites", () => {
 
     expect(screen.getByRole("link", { name: "Bravo depot" })).toHaveAttribute("href", "/sites/s2");
     expect(screen.getByRole("button", { name: "Remove Bravo depot" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Effect at Bravo depot" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Effect at Bravo depot" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Publish geolocation" }));
     expect(announced()).toHaveTextContent(/Effect at a linked site\.$/);
   });
@@ -219,10 +220,10 @@ describe("the submit chooser", () => {
 
     const tiles = within(screen.getByRole("group", { name: "Submission mode" })).getAllByRole("link");
     expect(tiles.map((tile) => [tile.querySelector("h3")?.textContent, tile.getAttribute("href")])).toEqual([
-      ["Geolocation", "/submit?mode=single"],
-      ["Request", "/submit?mode=single"],
-      ["From an X post", "/submit?mode=xpost"],
-      ["Bulk import", "/submit?mode=bulk"],
+      ["Geolocation", submitHref("single")],
+      ["Request", submitHref("single")],
+      ["From an X post", submitHref("xpost")],
+      ["Bulk import", submitHref("bulk")],
       ["Site", NEW_SITE_HREF],
       ["Collection", newCollectionHref()],
     ]);

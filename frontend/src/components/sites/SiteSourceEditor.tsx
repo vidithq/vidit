@@ -4,13 +4,12 @@ import { useState, type ReactNode } from "react";
 
 import { SourceEditor } from "@/components/sources/SourceEditor";
 import { sourceDraftUpdaters, sourcesBlockWrite } from "@/components/sources/SourcesField";
-import { Button, type ButtonAction } from "@/components/ui/Button";
+import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
+import type { ButtonAction } from "@/components/ui/Button";
 import { CharCounter } from "@/components/ui/CharCounter";
-import { CountBadge } from "@/components/ui/CountBadge";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Textarea } from "@/components/ui/Input";
-import { missingSummary } from "@/lib/events";
 import {
   SITE_SOURCE_NOTE_MAX_LEN,
   newSiteSourceDraft,
@@ -19,7 +18,6 @@ import {
   todayUtc,
 } from "@/lib/sites";
 import type { SourceDraft } from "@/lib/sources";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** A site source form's state: the one source draft and the note. */
 export function useSiteSourceDraft() {
@@ -100,8 +98,8 @@ export function SiteSourceEditor({
 }
 
 /**
- * The pinned write of a site form, like an event form's: the button with a `CountBadge` of what
- * the write still lacks, a hidden announcer, and the error banner under it.
+ * The pinned write of a site form, the event forms' `PublishActions` with one button, and the
+ * hidden announcer under it.
  */
 export function SiteWriteActions({
   label,
@@ -122,25 +120,25 @@ export function SiteWriteActions({
   error: string | null;
   onWrite: () => void;
 }) {
+  const write = usePublishAction({ check: () => true, write: onWrite });
   return (
-    <div className="flex max-w-sm flex-col items-end gap-2">
-      <CountBadge count={missing.length} label={missingSummary(missing.map((m) => ({ label: m })))}>
-        {(describedBy) => (
-          <Button
-            action={action}
-            variant="primary"
-            disabled={busy}
-            aria-describedby={describedBy}
-            onClick={onWrite}
-          >
-            {busy ? busyLabel : label}
-          </Button>
-        )}
-      </CountBadge>
+    <div className="max-w-sm">
+      <PublishActions
+        disabled={busy}
+        error={error}
+        buttons={[
+          {
+            action: write,
+            label,
+            busyLabel,
+            busy,
+            variant: "primary",
+            icon: action,
+            missing: missing.map((m) => ({ label: m })),
+          },
+        ]}
+      />
       <IncompleteFormAnnouncer attempt={attempt} missing={attempt > 0 ? missing : []} />
-      {error && (
-        <ErrorNotice error={error} />
-      )}
     </div>
   );
 }

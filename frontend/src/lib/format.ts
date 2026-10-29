@@ -107,6 +107,7 @@ export function pluralNoun(count: number, noun: string): string {
   return count === 1 ? noun : `${noun}s`;
 }
 
+/** `count` with thousands grouped and its noun: *1 result*, *1,284 results*. */
 export function countLabel(count: number, noun: string): string {
-  return `${count} ${pluralNoun(count, noun)}`;
+  return `${count.toLocaleString("en-US")} ${pluralNoun(count, noun)}`;
 }

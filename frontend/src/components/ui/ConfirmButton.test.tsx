@@ -17,10 +17,8 @@ describe("<ConfirmButton>", () => {
     fireEvent.click(button);
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
-    const armed = screen.getByRole("button", { name: "Confirm remove bo" });
-    expect(armed.className).toContain("!bg-red-500");
 
-    fireEvent.click(armed);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm remove bo" }));
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(screen.getByRole("button", { name: "Remove bo" })).toBeInTheDocument();
   });
@@ -51,13 +49,17 @@ describe("<ConfirmButton>", () => {
     );
   });
 
-  it("disarms on Escape and after the timeout, sending nothing", () => {
+  it("disarms on Escape, on a click elsewhere and after the timeout, sending nothing", () => {
     vi.useFakeTimers();
     const onConfirm = vi.fn();
     render(<ConfirmButton icon label="Remove bo" onConfirm={onConfirm} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Remove bo" }));
     fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("button", { name: "Remove bo" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove bo" }));
+    fireEvent.pointerDown(document.body);
     expect(screen.getByRole("button", { name: "Remove bo" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove bo" }));

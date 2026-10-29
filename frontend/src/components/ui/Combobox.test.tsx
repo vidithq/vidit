@@ -5,6 +5,7 @@ import { Combobox } from "./Combobox";
 
 /** Puts the field at `top` (36px tall, 200px wide) in a 568px-high viewport. */
 function placeField(top: number) {
+  vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(568);
   vi.spyOn(HTMLInputElement.prototype, "getBoundingClientRect").mockReturnValue(
     DOMRect.fromRect({ x: 20, y: top, width: 200, height: 36 }),
   );
@@ -31,7 +32,7 @@ function renderOpen() {
 function extent(list: HTMLElement) {
   const max = parseFloat(list.style.maxHeight);
   if (list.style.top) return { top: parseFloat(list.style.top), bottom: parseFloat(list.style.top) + max };
-  const bottom = window.innerHeight - parseFloat(list.style.bottom);
+  const bottom = 568 - parseFloat(list.style.bottom);
   return { top: bottom - max, bottom };
 }
 
@@ -42,7 +43,6 @@ describe("Combobox list placement", () => {
   });
 
   it("opens below the field when the room allows", () => {
-    window.innerHeight = 568;
     placeField(100);
     const list = renderOpen();
     expect(list.style.top).toBe("140px");
@@ -50,7 +50,6 @@ describe("Combobox list placement", () => {
   });
 
   it("opens above a field near the bottom, inside the viewport", () => {
-    window.innerHeight = 568;
     placeField(500);
     const { top, bottom } = extent(renderOpen());
     expect(bottom).toBe(496);
@@ -58,7 +57,6 @@ describe("Combobox list placement", () => {
   });
 
   it("stays inside the viewport while the field is below it", () => {
-    window.innerHeight = 568;
     placeField(800);
     const { top, bottom } = extent(renderOpen());
     expect(top).toBeGreaterThanOrEqual(8);
@@ -67,7 +65,6 @@ describe("Combobox list placement", () => {
 
   it("follows the field when the page shifts without a scroll", () => {
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
-    window.innerHeight = 568;
     placeField(100);
     const list = renderOpen();
     expect(list.style.top).toBe("140px");

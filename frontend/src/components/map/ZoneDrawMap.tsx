@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { Layer, Source, useMap } from "react-map-gl/maplibre";
-import type { MapLayerMouseEvent, MapLayerTouchEvent, MapMouseEvent, MapTouchEvent } from "maplibre-gl";
+import type { MapMouseEvent } from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
 
 import { usePalette } from "@/hooks/usePalette";
@@ -19,6 +19,7 @@ import type { CoordinatePair } from "@/lib/coordinates";
 import type { Zone } from "@/lib/sites";
 import type { MapBounds } from "@/lib/viewport";
 import Map from "./Map";
+import { useLayerDrag } from "./useLayerDrag";
 
 const SHAPE_FILL = "draw-fill";
 const SHAPE_LINE = "draw-line";
@@ -34,6 +35,9 @@ const DRAW_FIT_MAX_ZOOM = 15;
 /** `transient` marks a drag step, which the editor's undo folds into the step that started it. */
 export type DrawChange = (next: DrawState, transient?: boolean) => void;
 
+// One list for both, so a press on a corner over an edge's dot grabs the corner alone.
+const DRAG_LAYERS = [VERTICES, MIDPOINTS];
+
 function DrawInteractions({ state, onChange }: { state: DrawState; onChange: DrawChange }) {
   const { current: map } = useMap();
   // The handlers read the latest state through a ref, so a drag keeps one set of listeners.
@@ -43,15 +47,39 @@ function DrawInteractions({ state, onChange }: { state: DrawState; onChange: Dra
     stateRef.current = state;
   }, [state]);
 
+  // Only a closed ring's corners drag: an open ring's first corner closes it on click.
+  useLayerDrag(DRAG_LAYERS, {
+    grab: (e) => {
+      const current = stateRef.current;
+      const properties = e.features?.[0]?.properties;
+      if (!current.closed) return false;
+      if (typeof properties?.index === "number") {
+        onChange({ ...current, selected: properties.index });
+        dragRef.current = properties.index;
+        return true;
+      }
+      if (typeof properties?.edge === "number") {
+        onChange(insertVertex(current, properties.edge, [e.lngLat.lng, e.lngLat.lat]));
+        dragRef.current = properties.edge + 1;
+        return true;
+      }
+      return false;
+    },
+    drag: (e) => {
+      const index = dragRef.current;
+      if (index === null) return;
+      onChange(moveVertex(stateRef.current, index, [e.lngLat.lng, e.lngLat.lat]), true);
+    },
+    canGrab: () => stateRef.current.closed,
+  });
+
   useEffect(() => {
     if (!map) return;
-    const canvas = map.getCanvas();
-
     const click = (e: MapMouseEvent) => {
       const current = stateRef.current;
       const { vertices, closed } = current;
       if (closed) {
-        const hit = map.queryRenderedFeatures(e.point, { layers: [VERTICES, MIDPOINTS] });
+        const hit = map.queryRenderedFeatures(e.point, { layers: DRAG_LAYERS });
         if (hit.length === 0 && current.selected !== null) onChange({ ...current, selected: null });
         return;
       }
@@ -64,73 +92,9 @@ function DrawInteractions({ state, onChange }: { state: DrawState; onChange: Dra
       }
       onChange({ ...current, vertices: [...vertices, [e.lngLat.lng, e.lngLat.lat]] });
     };
-
-    const startDrag = (index: number) => {
-      dragRef.current = index;
-      canvas.style.cursor = "grabbing";
-    };
-    // Only a closed ring's corners drag: an open ring's first corner closes it on click.
-    const grabVertex = (e: MapLayerMouseEvent | MapLayerTouchEvent) => {
-      const index = e.features?.[0]?.properties?.index;
-      const current = stateRef.current;
-      if (typeof index !== "number" || !current.closed) return;
-      e.preventDefault();
-      onChange({ ...current, selected: index });
-      startDrag(index);
-    };
-    const grabMidpoint = (e: MapLayerMouseEvent | MapLayerTouchEvent) => {
-      const edge = e.features?.[0]?.properties?.edge;
-      const current = stateRef.current;
-      if (typeof edge !== "number" || !current.closed) return;
-      e.preventDefault();
-      const next = insertVertex(current, edge, [e.lngLat.lng, e.lngLat.lat]);
-      onChange(next);
-      startDrag(edge + 1);
-    };
-    const move = (e: MapMouseEvent | MapTouchEvent) => {
-      const index = dragRef.current;
-      if (index === null) return;
-      onChange(moveVertex(stateRef.current, index, [e.lngLat.lng, e.lngLat.lat]), true);
-    };
-    const release = () => {
-      if (dragRef.current === null) return;
-      dragRef.current = null;
-      canvas.style.cursor = "";
-    };
-    const hoverOn = () => {
-      if (stateRef.current.closed) canvas.style.cursor = "grab";
-    };
-    const hoverOff = () => {
-      if (dragRef.current === null) canvas.style.cursor = "";
-    };
-
     map.on("click", click);
-    map.on("mousedown", VERTICES, grabVertex);
-    map.on("touchstart", VERTICES, grabVertex);
-    map.on("mousedown", MIDPOINTS, grabMidpoint);
-    map.on("touchstart", MIDPOINTS, grabMidpoint);
-    map.on("mousemove", move);
-    map.on("touchmove", move);
-    map.on("mouseup", release);
-    map.on("touchend", release);
-    for (const layer of [VERTICES, MIDPOINTS]) {
-      map.on("mouseenter", layer, hoverOn);
-      map.on("mouseleave", layer, hoverOff);
-    }
     return () => {
       map.off("click", click);
-      map.off("mousedown", VERTICES, grabVertex);
-      map.off("touchstart", VERTICES, grabVertex);
-      map.off("mousedown", MIDPOINTS, grabMidpoint);
-      map.off("touchstart", MIDPOINTS, grabMidpoint);
-      map.off("mousemove", move);
-      map.off("touchmove", move);
-      map.off("mouseup", release);
-      map.off("touchend", release);
-      for (const layer of [VERTICES, MIDPOINTS]) {
-        map.off("mouseenter", layer, hoverOn);
-        map.off("mouseleave", layer, hoverOff);
-      }
     };
   }, [map, onChange]);
 

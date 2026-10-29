@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { MapPin, X } from "lucide-react";
+import { useState } from "react";
+import { MapPin } from "lucide-react";
 
 import {
   deleteEvent,
@@ -11,16 +11,14 @@ import {
 } from "@/lib/admin";
 import { countLabel, formatDate, formatInstant, formatInstantDate } from "@/lib/format";
 import { hitsOf, search } from "@/lib/search";
-import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Combobox } from "@/components/ui/Combobox";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { Item, type ItemData } from "@/components/ui/Item";
-import { Pill } from "@/components/ui/Pill";
+import type { ItemData } from "@/components/ui/Item";
+import { ItemSearch } from "@/components/ui/ItemSearch";
 import { eventItem } from "@/lib/items";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ActionReceipt } from "@/components/admin/ActionReceipt";
@@ -65,17 +63,14 @@ type Receipt =
   | { kind: "moderation"; action: string; title: string | null; data: AdminEventModeration }
   | { kind: "delete"; data: AdminEventDeleteResponse };
 
-/** An event the panel acts on. A pasted ID carries no title. `meta` is its date and author, which
- *  tell apart two events with the same title. */
-type Target = { id: string; title: string | null; meta: string | null };
-type Hit = { id: string; title: string; meta: string; item: ItemData };
+/** An event the panel acts on. A pasted ID carries no title, and its item shows the ID. */
+type Target = { id: string; title: string | null; item: ItemData };
 
 // An event ID alone or inside an event link (`/events/{id}`, `/events/{id}/v2`).
 const EVENT_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_LIMIT = 10;
 
-async function searchEvents(q: string): Promise<Hit[]> {
+async function searchEvents(q: string): Promise<Target[]> {
   const found = await search({ q, types: ["event"], limit: SEARCH_LIMIT });
   return hitsOf(found.hits, "event").map((e) => {
     const date =
@@ -84,110 +79,13 @@ async function searchEvents(q: string): Promise<Hit[]> {
         : e.occurred_date
           ? formatDate(e.occurred_date)
           : "Undated";
-    return {
-      id: e.id,
-      title: e.title,
-      meta: `${date} · ${e.owner.username}`,
-      item: { ...eventItem({ ...e, media: e.media[0] }), date, href: undefined },
-    };
+    return { id: e.id, title: e.title, item: { ...eventItem({ ...e, media: e.media[0] }), date } };
   });
 }
 
-/** The event field: a title search over the public events, or a pasted ID or event link, which
- *  the search cannot reach for a hidden event. The pick shows as a chip that removes on click. */
-function EventField({
-  target,
-  onChange,
-}: {
-  target: Target | null;
-  onChange: (target: Target | null) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  // Keyed by its query, so rows never belong to an older one. `hits` is null when the request failed.
-  const [result, setResult] = useState<{ query: string; hits: Hit[] | null } | null>(null);
-
-  const q = query.trim();
-  useDebouncedEffect(
-    () => {
-      if (!open || !q) return;
-      let cancelled = false;
-      searchEvents(q).then(
-        (hits) => !cancelled && setResult({ query: q, hits }),
-        () => !cancelled && setResult({ query: q, hits: null }),
-      );
-      return () => {
-        cancelled = true;
-      };
-    },
-    [q, open],
-    SEARCH_DEBOUNCE_MS,
-  );
-
-  const pick = (next: Target) => {
-    onChange(next);
-    setQuery("");
-    setOpen(false);
-  };
-
-  if (target) {
-    const name = target.title ?? target.id;
-    return (
-      <div>
-        <Pill
-          tone="accent"
-          title={`Remove ${name}`}
-          icon={<MapPin size={12} aria-hidden />}
-          onClick={() => {
-            onChange(null);
-            requestAnimationFrame(() => inputRef.current?.focus());
-          }}
-        >
-          <span className={target.title ? undefined : "font-mono"}>{name}</span>
-          {target.meta && <span className="font-normal opacity-70">{target.meta}</span>}
-          <X size={12} aria-hidden />
-        </Pill>
-      </div>
-    );
-  }
-
-  const current = result?.query === q ? result : null;
-  const rows = current?.hits ?? [];
-  const pasted = (text: string) => text.match(EVENT_ID)?.[0].toLowerCase();
-
-  return (
-    <Combobox
-      inputRef={inputRef}
-      id="event-actions-id"
-      placeholder="Title, event ID or link"
-      query={query}
-      onQueryChange={(next) => {
-        const id = pasted(next);
-        if (id) pick({ id, title: null, meta: null });
-        else setQuery(next);
-      }}
-      open={open && q.length > 0}
-      onOpenChange={setOpen}
-      options={current ? rows : []}
-      optionKey={(hit) => hit.id}
-      renderOption={(hit) => (
-        <div className="min-w-0 flex-1">
-          <Item variant="compact" {...hit.item} />
-        </div>
-      )}
-      onPick={(hit) => pick(hit)}
-      status={
-        !current
-          ? "Searching…"
-          : current.hits === null
-            ? "Could not load suggestions"
-            : rows.length === 0
-              ? "No public event matches. Paste the ID or link of a hidden one."
-              : null
-      }
-    />
-  );
+function pastedEvent(text: string): Target | null {
+  const id = text.match(EVENT_ID)?.[0].toLowerCase();
+  return id ? { id, title: null, item: { kind: "event", title: id } } : null;
 }
 
 export function EventActionsPanel() {
@@ -217,6 +115,12 @@ export function EventActionsPanel() {
     }
   );
 
+  const retarget = (next: Target | null) => {
+    setTarget(next);
+    moderateMutation.reset();
+    deleteMutation.reset();
+  };
+
   const moderate = (body: ModerationBody, done: string) => {
     deleteMutation.reset();
     void moderateMutation.run({ body, done });
@@ -245,13 +149,17 @@ export function EventActionsPanel() {
         <label className={FORM_LABEL} htmlFor="event-actions-id">
           Event (title, ID or link)
         </label>
-        <EventField
-          target={target}
-          onChange={(next) => {
-            setTarget(next);
-            moderateMutation.reset();
-            deleteMutation.reset();
-          }}
+        <ItemSearch
+          id="event-actions-id"
+          placeholder="Title, event ID or link"
+          search={searchEvents}
+          pasteId={pastedEvent}
+          toItem={(t) => t.item}
+          rowKey={(t) => t.id}
+          selected={target}
+          onPick={retarget}
+          onClear={() => retarget(null)}
+          emptyText="No public event matches. Paste the ID or link of a hidden one."
         />
       </div>
 

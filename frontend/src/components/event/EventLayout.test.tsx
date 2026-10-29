@@ -33,18 +33,8 @@ describe("EventLayout", () => {
     expect(heading("Proof").textContent).toBe("Proof");
   });
 
-  it("levels the side column's first eyebrow with the sources row's header", () => {
-    const { rerender } = render(<EventLayout {...slots} location={{ content: <div>map</div> }} />);
-    expect(heading("Location")).toHaveClass("h-8");
-    expect(heading("Details")).not.toHaveClass("h-8");
-    rerender(<EventLayout {...slots} />);
-    expect(heading("Details")).toHaveClass("h-8");
-  });
-
   it("renders the columns inside the form it is given", () => {
     const { container } = render(<EventLayout {...slots} form={{ id: "f" }} />);
-    const form = container.querySelector("form#f");
-    expect(form).toHaveClass("contents");
-    expect(form?.textContent).toContain("details card");
+    expect(container.querySelector("form#f")).toHaveTextContent("details card");
   });
 });

@@ -2,92 +2,45 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useMap } from "react-map-gl/maplibre";
-import type {
-  MapLayerMouseEvent,
-  MapLayerTouchEvent,
-  MapMouseEvent,
-  MapTouchEvent,
-} from "maplibre-gl";
+import type { MapMouseEvent, MapTouchEvent } from "maplibre-gl";
 
 import type { CoordinatePair } from "@/lib/coordinates";
 import type { MapPoint } from "@/types";
 import { POINT_LAYERS } from "./layers";
 import Map from "./Map";
+import { useLayerDrag } from "./useLayerDrag";
 
 /** The camera a point opens at: a town and its roads. */
 const POINT_ZOOM = 12;
+
+function pairOf(e: MapMouseEvent | MapTouchEvent): CoordinatePair {
+  const { lat, lng } = e.lngLat.wrap();
+  return { lat, lng };
+}
 
 /** A click on the map moves the pin there, and the pin drags. Each step hands the point, its
  *  longitude wrapped into -180 to 180, to `onPick`. */
 function PickInteractions({ onPick }: { onPick: (pair: CoordinatePair) => void }) {
   const { current: map } = useMap();
-  // Read through a ref: every step re-renders the caller with a new `onPick`, and new listeners
-  // would drop the drag under way.
+  useLayerDrag(POINT_LAYERS, { grab: () => true, drag: (e) => onPick(pairOf(e)) });
+
+  // Read through a ref: every step re-renders the caller with a new `onPick`.
   const pickRef = useRef(onPick);
   useEffect(() => {
     pickRef.current = onPick;
   }, [onPick]);
-
   useEffect(() => {
     if (!map) return;
-    const canvas = map.getCanvas();
-    let dragging = false;
-
-    const pick = (e: MapMouseEvent | MapTouchEvent) => {
-      const { lat, lng } = e.lngLat.wrap();
-      pickRef.current({ lat, lng });
-    };
     // A click on the pin is no move. Filtered because `queryRenderedFeatures` throws on a layer
     // the style does not hold yet.
     const click = (e: MapMouseEvent) => {
       const layers = POINT_LAYERS.filter((layer) => map.getLayer(layer));
       if (layers.length > 0 && map.queryRenderedFeatures(e.point, { layers }).length > 0) return;
-      pick(e);
+      pickRef.current(pairOf(e));
     };
-    const grab = (e: MapLayerMouseEvent | MapLayerTouchEvent) => {
-      if ("points" in e && e.points.length > 1) return;
-      // Holds the map's own pan for this gesture.
-      e.preventDefault();
-      dragging = true;
-      canvas.style.cursor = "grabbing";
-    };
-    const move = (e: MapMouseEvent | MapTouchEvent) => {
-      if (!dragging) return;
-      // A finger dragging the pin must not scroll the page under it.
-      if (e.type === "touchmove") e.originalEvent.preventDefault();
-      pick(e);
-    };
-    const release = () => {
-      if (!dragging) return;
-      dragging = false;
-      canvas.style.cursor = "";
-    };
-    const hoverOn = () => {
-      if (!dragging) canvas.style.cursor = "grab";
-    };
-    const hoverOff = () => {
-      if (!dragging) canvas.style.cursor = "";
-    };
-
     map.on("click", click);
-    map.on("mousedown", POINT_LAYERS, grab);
-    map.on("touchstart", POINT_LAYERS, grab);
-    map.on("mousemove", move);
-    map.on("touchmove", move);
-    map.on("mouseup", release);
-    map.on("touchend", release);
-    map.on("mouseenter", POINT_LAYERS, hoverOn);
-    map.on("mouseleave", POINT_LAYERS, hoverOff);
     return () => {
       map.off("click", click);
-      map.off("mousedown", POINT_LAYERS, grab);
-      map.off("touchstart", POINT_LAYERS, grab);
-      map.off("mousemove", move);
-      map.off("touchmove", move);
-      map.off("mouseup", release);
-      map.off("touchend", release);
-      map.off("mouseenter", POINT_LAYERS, hoverOn);
-      map.off("mouseleave", POINT_LAYERS, hoverOff);
     };
   }, [map]);
 

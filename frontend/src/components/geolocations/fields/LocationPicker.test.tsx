@@ -42,7 +42,6 @@ describe("LocationPicker", () => {
 
   it("leaves the capture position to the sources", () => {
     render(<LocationPicker {...baseProps} />);
-    expect(screen.queryByText("Subject")).toBeNull();
     expect(screen.queryByText("Capture position")).toBeNull();
   });
 

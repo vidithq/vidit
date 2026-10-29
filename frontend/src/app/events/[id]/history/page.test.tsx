@@ -118,9 +118,6 @@ describe("EventHistoryPage", () => {
   it("starts every title on one line: one name column for every row, and Current after the title", () => {
     render(<EventHistoryPage />);
     const numbers = screen.getAllByText(/^v[0-9]+$/).map((el) => el.parentElement!);
-    // Each row is a subgrid of the list's two columns, so the names share the widest one.
-    for (const column of numbers) expect(column.parentElement).toHaveClass("sm:grid-cols-subgrid");
-    expect(numbers[0].parentElement!.parentElement).toHaveClass("sm:grid-cols-[auto_1fr]");
     const current = within(row(3)).getByText("Current");
     expect(numbers[0]).not.toContainElement(current);
     expect(current.parentElement).toHaveTextContent("Title");

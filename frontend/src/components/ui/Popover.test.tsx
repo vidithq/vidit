@@ -89,23 +89,24 @@ describe("<Popover>", () => {
         </>
       );
     }
-    const placeAt = (top: number) => {
+    const placeAt = (anchorTop: number) => {
       vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-        top,
-        bottom: top + 30,
+        top: anchorTop,
+        bottom: anchorTop + 30,
         left: 10,
         right: 39,
       } as DOMRect);
       const { unmount } = render(<Anchored />);
-      const placed = screen.getByRole("dialog", { name: "Basemap" }).style.top;
+      const { top, bottom } = screen.getByRole("dialog", { name: "Basemap" }).style;
       unmount();
-      return placed;
+      return { top, bottom };
     };
     vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(768);
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(200);
     try {
-      expect(placeAt(20)).toBe("54px");
-      expect(placeAt(728)).toBe(`${728 - 4 - 200}px`);
+      expect(placeAt(20).top).toBe("54px");
+      // Its bottom edge 4px over the anchor's top.
+      expect(placeAt(728).bottom).toBe(`${768 - (728 - 4)}px`);
     } finally {
       vi.restoreAllMocks();
     }

@@ -23,9 +23,9 @@ const PICKER: Record<DateTimeType, { icon: typeof Calendar; label: string }> = {
  *
  * `.picker-glyph` hides the browser's own picker button (`globals.css`) and this
  * puts a ghost icon button in the trailing slot, opening the native picker via
- * `showPicker()`. A browser without it focuses the field. A date field too
- * narrow for an adornment (search filters, the map scrubber) stays a bare
- * `<Input type="date">`.
+ * `showPicker()`. A browser without it focuses the field. `picker={false}` keeps
+ * the browser's own button, for a field too narrow for the mark (the timeline
+ * scrubber's dates).
  *
  * The mark stands down below `sm` (see `trailingFromSm` below). It also owns
  * `has-value`, the class `globals.css` mutes an empty field's `dd/mm/yyyy`
@@ -34,11 +34,13 @@ const PICKER: Record<DateTimeType, { icon: typeof Calendar; label: string }> = {
 export function DateTimeInput({
   type,
   value,
+  picker = true,
   className = "",
   ...props
 }: {
   type: DateTimeType;
   value: string;
+  picker?: boolean;
 } & Omit<ComponentProps<typeof Input>, "type" | "value" | "trailing" | "ref">) {
   const ref = useRef<HTMLInputElement>(null);
   const { icon: Icon, label } = PICKER[type];
@@ -55,6 +57,12 @@ export function DateTimeInput({
       // The field is focused: typing is the way in.
     }
   };
+
+  if (!picker) {
+    return (
+      <Input type={type} value={value} className={cn(value ? "has-value" : "", className)} {...props} />
+    );
+  }
 
   return (
     <Input

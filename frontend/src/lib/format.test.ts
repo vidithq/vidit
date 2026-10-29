@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatInstantOrDate, safeHostname } from "@/lib/format";
+import { countLabel, formatInstantOrDate, safeHostname } from "@/lib/format";
 
 describe("formatInstantOrDate", () => {
   it("shows the time when the instant is not midnight UTC", () => {
@@ -33,5 +33,13 @@ describe("safeHostname", () => {
 
   it("returns a malformed value as-is", () => {
     expect(safeHostname("not a url")).toBe("not a url");
+  });
+});
+
+describe("countLabel", () => {
+  it("takes the singular for one and groups the thousands", () => {
+    expect(countLabel(1, "result")).toBe("1 result");
+    expect(countLabel(0, "result")).toBe("0 results");
+    expect(countLabel(1284, "result")).toBe("1,284 results");
   });
 });

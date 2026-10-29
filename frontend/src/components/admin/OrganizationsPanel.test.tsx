@@ -58,7 +58,7 @@ describe("<OrganizationsPanel>", () => {
     const field = await screen.findByLabelText("New org manager of orphan (username)");
     expect(screen.queryByLabelText("New org manager of osw (username)")).toBeNull();
     fireEvent.change(field, { target: { value: "ana" } });
-    fireEvent.click(await screen.findByRole("option", { name: "ana" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^ana/ }));
     fireEvent.click(screen.getByRole("button", { name: "Name org manager" }));
 
     await waitFor(() =>

@@ -11,6 +11,7 @@ import { setSiteModeration } from "@/lib/admin";
 import { apiFetch } from "@/lib/api";
 import {
   contourOfSource,
+  isSiteLinkable,
   linkEventToSite,
   ownsSite,
   removeSiteSource,
@@ -42,7 +43,7 @@ import { useApiResource } from "@/hooks/useApiResource";
 async function searchOwnEvents(username: string, q: string, exclude: ReadonlySet<string>) {
   const { items } = await searchPickableEvents(username, q);
   return items
-    .filter((e) => e.status === "geolocated" && !exclude.has(e.id))
+    .filter((e) => isSiteLinkable(e) && !exclude.has(e.id))
     .map((e) => ({
       id: e.id,
       item: { ...eventItem(e), href: undefined },

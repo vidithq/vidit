@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { signedInAs, signedOut } from "@/test/auth";
 import { textHtml } from "@/test/proofEditorStub";
 
 const push = vi.fn();
@@ -41,6 +42,13 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     searchPickableEvents(username, q),
 }));
 
+// The add block's first page of the analyst's events.
+const apiFetchPage = vi.fn();
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetchPage: () => apiFetchPage(),
+}));
+
 // The add block's list is held empty: these specs lock in the diff the save writes.
 const useCursorList = vi.fn();
 vi.mock("@/hooks/useCursorList", () => ({
@@ -68,10 +76,10 @@ const event = (id: string, title: string) => ({
   before_closed_status: null,
 });
 
-/** What the add block lists (`useCursorList`'s shape). */
+/** What the add block lists. */
 function mockBrowse(items: unknown[]) {
   useCursorList.mockReturnValue({
-    items,
+    items: [],
     error: null,
     loading: false,
     loadingMore: false,
@@ -79,6 +87,7 @@ function mockBrowse(items: unknown[]) {
     loadMore: vi.fn(),
     reload: vi.fn(),
   });
+  apiFetchPage.mockResolvedValue({ items, nextCursor: null });
 }
 
 const collection = (over: Partial<Collection> = {}): Collection => ({
@@ -128,7 +137,7 @@ beforeEach(() => {
   removeEventFromCollection.mockReset();
   searchPickableEvents.mockReset();
   useCursorList.mockReset();
-  useAuth.mockReturnValue({ user: USER, loading: false });
+  useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
   mockRead(collection());
   updateCollection.mockResolvedValue(collection());
   fetchCollectionSequence.mockResolvedValue(sequenceOf("e1", "e2"));
@@ -140,7 +149,7 @@ beforeEach(() => {
 
 describe("EditCollectionPage", () => {
   it("bounces a signed-out visitor to the login form", () => {
-    useAuth.mockReturnValue({ user: null, loading: false });
+    useAuth.mockReturnValue(signedOut());
     window.history.replaceState(null, "", "/collections/c1/edit");
 
     render(<EditCollectionPage />);
@@ -235,7 +244,7 @@ describe("EditCollectionPage", () => {
       }),
     );
     fireEvent.focus(screen.getByRole("combobox", { name: "Add events" }));
-    fireEvent.click(screen.getByRole("option", { name: /^Strike on the depot/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Strike on the depot/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/collections/c1"));
@@ -285,7 +294,7 @@ describe("EditCollectionPage", () => {
   });
 
   it("refuses an analyst who does not own the collection", () => {
-    useAuth.mockReturnValue({ user: { id: "u2", username: "bo" } });
+    useAuth.mockReturnValue(signedInAs("bo", { id: "u2" }));
 
     render(<EditCollectionPage />);
 

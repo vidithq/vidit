@@ -1,8 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { LOCKED_FIELD } from "@/components/ui/Input";
-
 import { DetailsFields } from "./DetailsFields";
 
 const baseProps = {
@@ -24,9 +22,6 @@ const baseProps = {
   selectedConflictIds: [],
   setSelectedConflictIds: () => {},
 };
-
-// The locked box's muted text colour, the one token the link overrides.
-const MUTED = "text-neutral-400";
 
 describe("DetailsFields", () => {
   it("renders the two dates and their ? help", () => {
@@ -63,12 +58,6 @@ describe("DetailsFields", () => {
     expect(screen.queryByDisplayValue("https://x.com/analyst/status/1")).toBeNull();
     expect(screen.getByText(/provenance, can't change/)).toBeInTheDocument();
     expect(screen.getByText("Detected from")).toBeInTheDocument();
-    // Same box recipe as the locked input, minus the forbidden cursor; clickable is accent.
-    for (const token of LOCKED_FIELD.split(" ").filter((t) => t !== MUTED)) {
-      expect(link.className).toContain(token);
-    }
-    expect(link.className).toContain("text-orange-400");
-    expect(link.className).not.toContain("cursor-not-allowed");
   });
 
   it("labels a bot-opened request's provenance as where it was requested from", () => {

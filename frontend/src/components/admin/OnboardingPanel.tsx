@@ -3,14 +3,12 @@
 import { useCallback, useState } from "react";
 import {
   AtSign,
-  Ban,
   Bot,
   ChevronDown,
   ChevronRight,
   Ellipsis,
   FileArchive,
   MapPin,
-  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -31,7 +29,7 @@ import {
   LABEL_TEXT,
 } from "@/components/ui/form-styles";
 import { ActionMenu } from "@/components/ui/ActionMenu";
-import { Button, type ButtonAction } from "@/components/ui/Button";
+import { ActionIcon, Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
@@ -68,7 +66,6 @@ const INVITE_ACTIONS: Record<
   InviteAction,
   {
     label: string;
-    action: ButtonAction;
     title: string;
     body: string;
     busy: string;
@@ -77,7 +74,6 @@ const INVITE_ACTIONS: Record<
 > = {
   revoke: {
     label: "Revoke",
-    action: "revoke",
     title: "Revoke this invite code?",
     body: "The code stops working at once and cannot be turned back on. Its row stays in the table.",
     busy: "Revoking…",
@@ -85,7 +81,6 @@ const INVITE_ACTIONS: Record<
   },
   delete: {
     label: "Delete",
-    action: "delete",
     title: "Delete this invite code?",
     body: "Drops the row for good. The code was never used, so no account depends on it.",
     busy: "Deleting…",
@@ -231,7 +226,7 @@ function InviteCodeRow({
                       {
                         key: "revoke",
                         label: INVITE_ACTIONS.revoke.label,
-                        icon: <Ban size={14} aria-hidden />,
+                        icon: <ActionIcon action="delete" />,
                         onSelect: () => setConfirming("revoke"),
                       },
                     ]
@@ -241,7 +236,7 @@ function InviteCodeRow({
                       {
                         key: "delete",
                         label: INVITE_ACTIONS.delete.label,
-                        icon: <Trash2 size={14} aria-hidden />,
+                        icon: <ActionIcon action="delete" />,
                         onSelect: () => setConfirming("delete"),
                       },
                     ]
@@ -254,7 +249,7 @@ function InviteCodeRow({
           <ConfirmDialog
             title={INVITE_ACTIONS[confirming].title}
             confirmLabel={INVITE_ACTIONS[confirming].label}
-            confirmAction={INVITE_ACTIONS[confirming].action}
+            confirmAction="delete"
             busyLabel={INVITE_ACTIONS[confirming].busy}
             busy={action.loading}
             error={action.error}

@@ -17,7 +17,7 @@ import {
   WAYBACK_HOST,
 } from "@/lib/snapshots";
 import { SOURCE_URL_MAX_LEN, sourceName } from "@/lib/sources";
-import { FieldError } from "./ErrorNotice";
+import { FieldError } from "@/components/ui/ErrorNotice";
 
 interface ArchivedCopiesProps {
   copy: ArchivedLink | null;

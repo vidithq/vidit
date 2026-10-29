@@ -252,6 +252,7 @@ def zone_shape(db: Session, zone: ZonePolygon) -> Any:
     except InvalidCoordinatesError as exc:
         raise InvalidZoneError(str(exc)) from exc
     polygon = Polygon(zone.coordinates[0], zone.coordinates[1:])
+    # Mirrored by the frontend's lib/siteZone.zoneSelfIntersects; change both.
     if not polygon.is_valid:
         raise InvalidZoneError(f"The zone is not a valid polygon: {explain_validity(polygon)}")
     if polygon.area == 0:

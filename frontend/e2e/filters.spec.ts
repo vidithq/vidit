@@ -37,7 +37,6 @@ async function pickLongTag(page: Page, panel: Locator) {
   const option = page.getByRole("option", { name: LONG_TAG_NAME });
   await expect(option).toBeInViewport({ ratio: 1 });
   await option.click();
-  await field.press("Escape");
   await expect(page.getByRole("listbox", { name: "Tags" })).toBeHidden();
   await expect(panel.getByRole("button", { name: `Remove ${LONG_TAG_NAME}` })).toBeVisible();
 }
@@ -93,7 +92,7 @@ for (const target of PAGES) {
       );
 
       // The matches float over the page: nothing in the rail moves when they open.
-      const media = rail.getByRole("button", { name: "Media", exact: true });
+      const media = rail.getByRole("combobox", { name: "Media", exact: true });
       const before = (await media.boundingBox())!;
       await rail.getByRole("combobox", { name: "Tags" }).fill("counter");
       await expect(page.getByRole("listbox", { name: "Tags" })).toBeVisible();

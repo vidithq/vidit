@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { MapPin, Search as SearchIcon } from "lucide-react";
 import {
   SearchSelectionActions,
@@ -43,13 +43,12 @@ import {
   datesOffered,
   scopeState,
   splitShow,
-  type FilterPatch,
   type FilterState,
 } from "@/components/filters/model";
+import { useFilterSurface, usePageUrl, type PageUrl } from "@/components/filters/useFilterSurface";
 import { useTimelines } from "@/components/filters/useTimelines";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { readError, type ReadableError } from "@/lib/errors";
 
@@ -66,24 +65,31 @@ function seeAllFilters(filters: FilterState, type: SearchHitType): FilterState {
   return scoped({ ...filters, show: [type] });
 }
 
-/** The query and the filters a URL names. */
-function readPage(params: URLSearchParams): { q: string; filters: FilterState } {
-  return {
-    q: params.get("q") ?? "",
-    filters: scoped({ ...EMPTY_FILTERS, ...readEventFilterParams(params), show: readShowPick(params) }),
-  };
-}
-
-/** The page's query string for a query and its filters. */
-const pageQuery = (q: string, filters: FilterState): string =>
-  searchPageParams(q, filters).toString();
-
-const pageHref = (query: string) => (query ? `/search?${query}` : "/search");
+type PageState = { q: string; filters: FilterState };
 
 /** The Show pick of a query string: what a history entry stands for. */
 function shownKinds(query: string): string {
   const params = new URLSearchParams(query);
   return [...params.getAll("type"), ...params.getAll("status")].join(",");
+}
+
+/** The page's URL: the query and the filters in the `GET /search` vocabulary. A new Show pick is
+ *  a history entry; typing and the other filters replace the current one, so Back doesn't fill
+ *  with intermediate states. */
+const SEARCH_PAGE: PageUrl<PageState> = {
+  path: "/search",
+  read: (params) => ({
+    q: params.get("q") ?? "",
+    filters: scoped({ ...EMPTY_FILTERS, ...readEventFilterParams(params), show: readShowPick(params) }),
+  }),
+  write: ({ q, filters }) => searchPageParams(q, filters),
+  pushes: (from, to) => shownKinds(from) !== shownKinds(to),
+};
+
+/** The page's href for a query and its filters. */
+function pageHref(q: string, filters: FilterState): string {
+  const query = searchPageParams(q, filters).toString();
+  return query ? `/search?${query}` : "/search";
 }
 
 /** Whether the filters alone make a search: a picked kind other than a status narrows nothing
@@ -119,32 +125,30 @@ export default function SearchPage() {
 }
 
 function SearchPageBody() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
   // The URL is the source of truth, so shared links and Back land in the same view; inputs bind
   // to local state so typing isn't gated on URL round-trips.
-  const initial = readPage(searchParams);
+  const query = useSearchParams().toString();
+  const initial = SEARCH_PAGE.read(new URLSearchParams(query));
 
   const [queryInput, setQueryInput] = useState(initial.q);
-  const [filters, setFilters] = useState<FilterState>(initial.filters);
+  const filterStore = useState<FilterState>(initial.filters);
+  const { filters, setFilters, panel: filterPanel } = useFilterSurface("search", {
+    store: filterStore,
+  });
 
   // The debounced snapshot the fetch and URL run on, so typing doesn't fire a request per keystroke.
   const [committed, setCommitted] = useState(initial);
 
-  // The query string the page last wrote or read, so its own write is not read back as a move.
-  const written = useRef(pageQuery(initial.q, initial.filters));
-  const urlQuery = searchParams.toString();
   // Back, Forward and a See all link move the URL: the page takes the view it names at once.
-  useEffect(() => {
-    const read = readPage(new URLSearchParams(urlQuery));
-    const query = pageQuery(read.q, read.filters);
-    if (query === written.current) return;
-    written.current = query;
-    setQueryInput(read.q);
-    setFilters(read.filters);
-    setCommitted(read);
-  }, [urlQuery]);
+  const onReadPage = useCallback(
+    (read: PageState) => {
+      setQueryInput(read.q);
+      setFilters(read.filters);
+      setCommitted(read);
+    },
+    [setFilters],
+  );
+  usePageUrl(SEARCH_PAGE, query, committed, onReadPage);
 
   const [results, setResults] = useState<Results | null>(null);
   const [loading, setLoading] = useState(false);
@@ -154,47 +158,27 @@ function SearchPageBody() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<ReadableError | null>(null);
 
-  const vocabulary = useFilterVocabulary();
-  const onPatch: FilterPatch = useCallback(
-    (patch) => setFilters((f) => scoped({ ...f, ...patch })),
-    [],
-  );
-  const timelines = useTimelines(
+  const { timelines } = useTimelines(
     datesOffered("search", committed.filters.show)
       ? searchDatesPath({ q: committed.q.trim(), types: ["event"], ...committed.filters })
       : null,
   );
-  const panel: FilterPanelProps = {
-    surface: "search",
-    state: filters,
-    onPatch,
-    onClear: () => setFilters(EMPTY_FILTERS),
-    vocabulary,
-    timelines,
-  };
+  const panel: FilterPanelProps = { ...filterPanel, timelines };
 
   // Monotonic request token: late responses apply only if still latest.
   const latestRequestId = useRef<number>(0);
 
-  // Debounced commit of inputs to the snapshot and the URL. A new Show pick is a history entry;
-  // typing and the other filters replace the current one, so Back doesn't fill with
-  // intermediate states.
+  // Debounced commit of inputs to the snapshot.
   useDebouncedEffect(
     () => {
-      // Identity-preserving: if nothing changed, keep the previous object so the fetch doesn't
-      // refire.
+      // Identity-preserving: if nothing changed, keep the previous object so the fetch and the URL
+      // don't refire.
       setCommitted((prev) => {
         const next = { q: queryInput, filters };
         return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       });
-      const query = pageQuery(queryInput, filters);
-      if (query === written.current) return;
-      const moved = shownKinds(query) !== shownKinds(written.current);
-      written.current = query;
-      if (moved) router.push(pageHref(query));
-      else router.replace(pageHref(query));
     },
-    [queryInput, filters, router],
+    [queryInput, filters],
     DEBOUNCE_MS,
   );
 
@@ -218,7 +202,6 @@ function SearchPageBody() {
       q,
       types: searchTypes(committed.filters.show),
       ...committed.filters,
-      show: splitShow(committed.filters.show).statuses,
     };
     const read: Promise<Results> =
       request.types?.length === 1
@@ -253,11 +236,7 @@ function SearchPageBody() {
   const point = parsePastedCoordinates(queryInput);
   // The bulk add serves the list of events alone, where Select all reads as every match.
   const selection = useSearchSelection(
-    {
-      q: committed.q,
-      ...committed.filters,
-      show: splitShow(committed.filters.show).statuses,
-    },
+    { q: committed.q, ...committed.filters },
     results?.mode === "list" ? hitsOf(results.page.hits, "event") : [],
   );
 
@@ -299,6 +278,14 @@ function SearchPageBody() {
   // Emptiness gates read the LIVE inputs, so clearing the field doesn't flash stale results
   // under the empty state for a debounce window.
   const searching = !!(queryInput.trim() || filtersSearch(filters));
+  const tally = {
+    count: !searching || !results
+      ? undefined
+      : results.mode === "list"
+        ? results.page.total
+        : results.sections.reduce((sum, s) => sum + s.total, 0),
+    loading: searching && loading,
+  };
   const empty =
     !!results &&
     (results.mode === "list" ? results.page.hits.length === 0 : results.sections.length === 0);
@@ -317,7 +304,7 @@ function SearchPageBody() {
           autoFocus
         />
       }
-      rail={<FilterCard {...panel} />}
+      rail={<FilterCard {...panel} {...tally} />}
       railLabel="Filters"
       narrowRail="hidden"
       stickyActions={
@@ -341,7 +328,7 @@ function SearchPageBody() {
         />
       )}
 
-      <FilterSheetBar {...panel} className="lg:hidden" />
+      <FilterSheetBar {...panel} {...tally} className="lg:hidden" />
 
       {searching && results?.mode === "list" && <SelectAllRow selection={selection} />}
 
@@ -374,9 +361,7 @@ function SearchPageBody() {
             <ResultSection
               key={section.type}
               section={{ ...section, hits: leadWithNamed(results.request.q, section.hits) }}
-              seeAllHref={pageHref(
-                pageQuery(results.request.q, seeAllFilters(committed.filters, section.type)),
-              )}
+              seeAllHref={pageHref(results.request.q, seeAllFilters(committed.filters, section.type))}
             />
           ))}
         </div>

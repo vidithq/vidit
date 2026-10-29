@@ -1,51 +1,20 @@
 "use client";
 
 import { useCallback } from "react";
-import { BadgeCheck } from "lucide-react";
 
 import { useCursorList } from "@/hooks/useCursorList";
 import { formatDate } from "@/lib/format";
+import { eventItem } from "@/lib/items";
 import {
   organizationApprovalsPath,
   type OrganizationApproval,
 } from "@/lib/approvals";
 import { ApprovalState } from "@/components/event/Approvals";
-import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
-import { LinkRow } from "@/components/ui/LinkRow";
+import { Item } from "@/components/ui/Item";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { eventHref } from "@/lib/routes";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-
-/** One approval as a row to its event: the acting org manager's picture, the event title, then the
- *  version, who placed it and when, and its state. */
-function ApprovalLinkRow({ event, approval }: OrganizationApproval) {
-  const reviewer = approval.reviewer;
-  return (
-    <LinkRow
-      variant="arrow"
-      icon={BadgeCheck}
-      leading={
-        reviewer && (
-          <Avatar src={reviewer.avatar_url} username={reviewer.username} size="size-7" decorative />
-        )
-      }
-      value={event.title}
-      meta={
-        <>
-          <span>
-            v{approval.version_no}
-            {reviewer ? ` · by ${reviewer.username}` : ""} on {formatDate(approval.created_at)}
-          </span>
-          <ApprovalState approval={approval} />
-        </>
-      }
-      href={eventHref(event.id)}
-      external={false}
-    />
-  );
-}
 
 /** The approvals org managers placed in the organization's name, newest first. */
 export function OrganizationApprovals({ slug }: { slug: string }) {
@@ -65,9 +34,16 @@ export function OrganizationApprovals({ slug }: { slug: string }) {
       )}
       {items.length > 0 && (
         <ul className="space-y-2">
-          {items.map((item) => (
-            <li key={item.approval.id}>
-              <ApprovalLinkRow {...item} />
+          {items.map(({ event, approval }) => (
+            <li key={approval.id}>
+              <Item
+                variant="list"
+                {...eventItem(event)}
+                date={formatDate(approval.created_at)}
+                analyst={approval.reviewer ? { author: approval.reviewer } : null}
+                extra={[`v${approval.version_no}`]}
+                badge={<ApprovalState approval={approval} />}
+              />
             </li>
           ))}
         </ul>

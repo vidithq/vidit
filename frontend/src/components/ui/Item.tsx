@@ -127,7 +127,7 @@ function Mosaic({ cover }: { cover: CollectionCoverTile[] }) {
  * `GraphicContentGate`, except in the compact variant, whose slot is too small for the gate's
  * control and shows the kind's tile instead.
  */
-export function ItemMedia({
+function ItemMedia({
   kind,
   media,
   variant,
@@ -204,14 +204,17 @@ function DetailLine({
   place,
   extra = [],
   linked,
-  className,
+  oneLine,
 }: Pick<ItemData, "kind" | "date" | "analyst" | "place" | "extra"> & {
   linked: boolean;
-  className?: string;
+  /** One line that ends in an ellipsis, the analysts as plain names. */
+  oneLine: boolean;
 }) {
   const parts: ReactNode[] = [ITEM_KINDS[kind].label];
   if (date) parts.push(date);
-  if (analyst) {
+  if (analyst && oneLine) {
+    parts.push([analyst.author, ...(analyst.coAuthors ?? [])].map((a) => a.username).join(", "));
+  } else if (analyst) {
     parts.push(
       <AuthorByline
         author={analyst.author}
@@ -227,12 +230,24 @@ function DetailLine({
   }
   if (place) parts.push(place);
   parts.push(...extra.filter((part) => part !== null && part !== undefined && part !== false && part !== ""));
+  if (oneLine) {
+    return (
+      <p className={cn(META_LINE, "block truncate")}>
+        {parts.map((part, i) => (
+          <Fragment key={i}>
+            {i > 0 && " · "}
+            {part}
+          </Fragment>
+        ))}
+      </p>
+    );
+  }
   return (
-    <p className={cn(META_LINE, "flex-wrap gap-x-1.5 gap-y-0.5", className)}>
+    <p className={cn(META_LINE, "flex-wrap gap-x-1.5 gap-y-0.5 [overflow-wrap:anywhere]")}>
       {parts.map((part, i) => (
         <Fragment key={i}>
           {i > 0 && <span aria-hidden="true">·</span>}
-          <span className="inline-flex min-w-0 items-center">{part}</span>
+          <span className="inline-flex min-w-0 max-w-full items-center">{part}</span>
         </Fragment>
       ))}
     </p>
@@ -300,7 +315,7 @@ export function Item({
       place={place}
       extra={extra}
       linked={interactive && variant !== "compact"}
-      className={variant === "compact" ? "flex-nowrap overflow-hidden whitespace-nowrap" : undefined}
+      oneLine={variant === "compact"}
     />
   );
   const trailing = (badge || actions) && (
@@ -323,7 +338,7 @@ export function Item({
         {cover}
         {slot}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-neutral-100">{name}</p>
+          <p className="line-clamp-2 text-sm text-neutral-100 [overflow-wrap:anywhere]">{name}</p>
           {detail}
         </div>
         {trailing}

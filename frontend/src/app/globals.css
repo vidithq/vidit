@@ -135,7 +135,7 @@
   --color-neutral-900: #f7f5f1;
   --color-neutral-950: #eae8e4;
 
-  /* The semantic red / amber scales (danger + warning surfaces: FORM_ERROR_BANNER,
+  /* The semantic red / amber scales (danger + warning surfaces: ErrorNotice,
      WARNING_CALLOUT, danger pills / buttons) are tuned light-on-dark, so on a
      light surface the pale text stops wash out. Mirror each scale about its 500
      midpoint: the hue stays, only lightness flips, giving dark saturated text on
@@ -239,8 +239,8 @@ input[type='datetime-local']:not(.has-value)::-webkit-datetime-edit {
    dark field reads as a foreign mark beside the accent marks every other field
    wears. `<DateTimeInput>` sets `.picker-glyph`, puts a ghost icon button in the
    field's trailing slot and opens the same native picker through
-   `showPicker()`; a bare date input elsewhere (the search filters, the map
-   scrubber, both too narrow for an adornment) keeps the native button. Only
+   `showPicker()`; the timeline scrubber's bare date inputs, too narrow for an
+   adornment, keep the native button. Only
    Webkit/Chromium expose the button as a pseudo-element; Gecko draws it inside
    the widget with no selector reaching it, so there the two marks sit side by
    side. The hiding holds at every width, below `sm` included, where the site's

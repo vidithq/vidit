@@ -1,24 +1,17 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
-import { Plus } from "lucide-react";
+import type { Dispatch, SetStateAction } from "react";
 import type { Conflict, Tag } from "@/types";
 import { CONFLICT_OTHER_NAME, conflictLabel, sortConflicts } from "@/lib/conflicts";
 import { useMutation } from "@/hooks/useMutation";
 import { ApiError, apiFetch } from "@/lib/api";
-import { Combobox } from "@/components/ui/Combobox";
-import { Pill } from "@/components/ui/Pill";
-import { Switch } from "@/components/ui/Switch";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
-import { PickedPills } from "@/components/ui/OptionPicker";
 import { EVENT_FIELDS } from "@/lib/events";
 import { FieldError } from "./ErrorNotice";
+import { OptionSearch } from "./OptionSearch";
 
 // Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
 const TAG_NAME_MAX_LEN = 100;
-// How many suggested tags show before **Show more**.
-const SUGGESTED_TAGS_SHOWN = 6;
 
 interface TagPickerProps {
   /** Live tags (referenced by at least one event or source) plus the ones created here: the
@@ -39,7 +32,7 @@ interface TagPickerProps {
 
 /**
  * The classification fields of the event forms, for the Details card: the conflicts, then the
- * tags as `<TagChips>`.
+ * tags.
  */
 export function TagPicker({
   tags,
@@ -55,7 +48,7 @@ export function TagPicker({
   return (
     <>
       {conflicts.length > 0 && (
-        <ConflictChips
+        <ConflictsField
           conflicts={conflicts}
           selected={selectedConflictIds}
           setSelected={setSelectedConflictIds}
@@ -74,12 +67,14 @@ export function TagPicker({
   );
 }
 
-/** A form's **Tags** field: its label over `<TagChips>`. The Details card and each source editor
- *  carry it. */
+/** A form's **Tags** field: its label over an `<OptionSearch>` of the one tag catalogue that serves
+ *  events and sources, which offers to create a tag no tag names exactly (case-sensitive, like
+ *  the backend uniqueness rule) and suggests tags in one click. The Details card and each source
+ *  editor carry it; `owner` names the source ("Source 2") so several fields read apart. */
 export function TagsField({
   tags,
   setTags,
-  suggested,
+  suggested = [],
   selected,
   setSelected,
   owner,
@@ -91,266 +86,85 @@ export function TagsField({
   setSelected: (next: string[]) => void;
   owner?: string;
 }) {
-  return (
-    <div className="space-y-1.5">
-      <FieldLabel {...EVENT_FIELDS.tags} />
-      <TagChips
-        tags={tags}
-        setTags={setTags}
-        suggested={suggested}
-        selected={selected}
-        setSelected={setSelected}
-        owner={owner}
-      />
-    </div>
-  );
-}
-
-type TagOption = { tag: Tag } | { create: string };
-
-const tagOptionKey = (option: TagOption) =>
-  "tag" in option ? option.tag.id : `create:${option.create}`;
-
-type TagChipsProps = {
-  tags: Tag[];
-  /** Tag ids. */
-  selected: string[];
-  setSelected: (next: string[]) => void;
-  /** Names whose tags these are ("Source 2"), so several pickers on one page read apart. */
-  owner?: string;
-  setTags: Dispatch<SetStateAction<Tag[]>>;
-  /** Offered as one-click chips under the search, the picked ones left out. */
-  suggested?: Tag[];
-};
-
-/**
- * The tags picked from the one catalogue that serves events and sources: the picks as removable
- * chips over a combobox that suggests the other tags matching the typed text and, on a form, when
- * no tag bears that exact name, offers to create it. On a form, the suggested tags follow the
- * search: the first few, then one **Show more**. The event's Details card and each source editor
- * render it.
- */
-export function TagChips({
-  tags,
-  selected,
-  setSelected,
-  owner,
-  setTags,
-  suggested = [],
-}: TagChipsProps) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const [allSuggested, setAllSuggested] = useState(false);
-  const name = query.trim();
-  const select = (tag: Tag) => {
-    if (!selected.includes(tag.id)) setSelected([...selected, tag.id]);
-    setQuery("");
-  };
-
   // A suggestion may not be in the catalogue yet: `/tags` and `/tags/suggested` load apart.
-  const adopt = (tag: Tag) => {
-    setTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
-    select(tag);
+  const pick = (next: string[]) => {
+    const added = suggested.filter((t) => next.includes(t.id) && !tags.some((x) => x.id === t.id));
+    if (added.length > 0) setTags((prev) => [...prev, ...added]);
+    setSelected(next);
   };
-
   // A 409 (name exists, case-sensitive) shows a non-blocking message; the existing tag may be
   // hidden from /tags by the orphan filter.
   const create = useMutation(
     (tagName: string) =>
-      apiFetch<Tag>("/tags", {
-        method: "POST",
-        body: JSON.stringify({ name: tagName }),
-      }),
+      apiFetch<Tag>("/tags", { method: "POST", body: JSON.stringify({ name: tagName }) }),
     {
       fallback: "Could not create tag.",
       onError: (e) =>
         e instanceof ApiError && e.status === 409 ? "That tag already exists." : undefined,
-      onSuccess: adopt,
-    }
+      onSuccess: (tag) => {
+        setTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
+        setSelected([...selected, tag.id]);
+      },
+    },
   );
-
-  const picked = tags
-    .filter((t) => selected.includes(t.id))
-    .map((t) => ({ id: t.id, label: t.name }));
-  const needle = name.toLowerCase();
-  const matches = tags.filter(
-    (t) => !selected.includes(t.id) && t.name.toLowerCase().includes(needle)
-  );
-  // Exact and case-sensitive, like the backend uniqueness rule.
-  const canCreate = name !== "" && !tags.some((t) => t.name === name);
-  const options: TagOption[] = [
-    ...matches.map((tag) => ({ tag })),
-    ...(canCreate ? [{ create: name }] : []),
-  ];
-  const label = owner ? `${owner} tags` : "Tags";
-  const unpicked = suggested.filter((t) => !selected.includes(t.id));
-  const offered = allSuggested ? unpicked : unpicked.slice(0, SUGGESTED_TAGS_SHOWN);
-
   return (
-    <div className="space-y-2">
-      <PickedPills
-        picked={picked}
-        onRemove={(removed) => setSelected(selected.filter((k) => k !== removed))}
-      />
-      <Combobox
-        aria-label={label}
-        placeholder="Search or create a tag"
-        maxLength={TAG_NAME_MAX_LEN}
-        query={query}
-        onQueryChange={(next) => {
-          setQuery(next);
+    <div className="space-y-1.5">
+      <FieldLabel {...EVENT_FIELDS.tags} />
+      <OptionSearch
+        aria-label={owner ? `${owner} tags` : "Tags"}
+        placeholder="Search tags"
+        options={tags.map(tagOption)}
+        selected={selected}
+        onChange={pick}
+        creatable={{
+          maxLength: TAG_NAME_MAX_LEN,
+          onCreate: (name) => {
+            if (!create.loading) void create.run(name);
+          },
+        }}
+        suggestions={suggested.map(tagOption)}
+        onQueryChange={() => {
           if (create.error) create.setError(null);
         }}
-        open={open}
-        onOpenChange={setOpen}
-        options={options}
-        optionKey={tagOptionKey}
-        pillOption={(option) => "tag" in option}
-        renderOption={(option) =>
-          "tag" in option ? (
-            option.tag.name
-          ) : (
-            <>
-              <Plus size={14} aria-hidden className="shrink-0 text-neutral-500" />
-              <span className="min-w-0 truncate">Create &quot;{option.create}&quot;</span>
-            </>
-          )
-        }
-        onPick={(option) => {
-          if ("tag" in option) select(option.tag);
-          else if (!create.loading) void create.run(option.create);
-        }}
-        status={
-          options.length > 0
-            ? null
-            : name === ""
-                ? "Type a name to create a tag."
-                : "Already selected."
-        }
       />
       <FieldError alert>{create.error}</FieldError>
-      {offered.length > 0 && (
-        <>
-          <div
-            role="group"
-            aria-label={owner ? `Suggested tags for ${owner}` : "Suggested tags"}
-            className="flex flex-wrap gap-2"
-          >
-            {offered.map((tag) => (
-              <Pill key={tag.id} onClick={() => adopt(tag)} icon={<Plus size={12} aria-hidden />}>
-                <span className="sr-only">Add {tag.name}</span>
-                <span aria-hidden>{tag.name}</span>
-              </Pill>
-            ))}
-          </div>
-          <LoadMoreRow
-            walk={{
-              hasMore: offered.length < unpicked.length,
-              loadingMore: false,
-              loadMore: () => setAllSuggested(true),
-              error: null,
-            }}
-          />
-        </>
-      )}
     </div>
   );
 }
 
+const tagOption = (t: Tag) => ({ value: t.id, label: t.name });
+
 /**
- * The conflicts picked from a catalogue filtered client-side: the picks as removable chips over a
- * combobox that lists the conflicts matching the typed text, by tier then name
- * (`sortConflicts`), with "Other" pinned last.
- *
- * On a form the catalogue is the referential and the field draws its own label. The list holds
- * the ongoing conflicts and "Other" whatever its state; the "Include ended conflicts" switch adds
- * the ended ones. A pick stays on show when the switch drops its state. The switch sits on the
- * label row, out of the way of a list that opens below the field.
+ * The conflicts picked from the referential, filtered client-side, by tier then name
+ * (`sortConflicts`), with "Other" pinned last. The list holds the ongoing conflicts and "Other"
+ * whatever its state; the Include ended conflicts switch adds the ended ones.
  */
-export function ConflictChips({
+function ConflictsField({
   conflicts,
   selected,
   setSelected,
-  invalid = false,
+  invalid,
 }: {
   conflicts: Conflict[];
-  /** Conflict ids. */
   selected: string[];
   setSelected: (next: string[]) => void;
-  /** Flags the conflict blocking publish (red label and outline). */
-  invalid?: boolean;
+  invalid: boolean;
 }) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const [includeEnded, setIncludeEnded] = useState(false);
-
-  // An event rarely takes a second conflict, so a pick closes the list rather than leave it over
-  // the next field.
-  const select = (c: Conflict) => {
-    if (!selected.includes(c.id)) setSelected([...selected, c.id]);
-    setQuery("");
-    setOpen(false);
-  };
-
-  const picked = conflicts
-    .filter((c) => selected.includes(c.id))
-    .map((c) => ({ id: c.id, label: conflictLabel(c) }));
-  const needle = query.trim().toLowerCase();
-  const options = sortConflicts(
-    conflicts.filter(
-      (c) =>
-        !selected.includes(c.id) &&
-        (includeEnded || c.is_ongoing || c.name === CONFLICT_OTHER_NAME) &&
-        c.name.toLowerCase().includes(needle)
-    )
+  const ended = new Set(
+    conflicts.filter((c) => !c.is_ongoing && c.name !== CONFLICT_OTHER_NAME).map((c) => c.id),
   );
-
-  const field = (
-    <div className="space-y-2">
-      <PickedPills
-        picked={picked}
-        onRemove={(removed) => setSelected(selected.filter((k) => k !== removed))}
-      />
-      <Combobox
-        aria-label={EVENT_FIELDS.conflicts.label}
-        placeholder="Search conflicts"
-        invalid={invalid}
-        query={query}
-        onQueryChange={setQuery}
-        open={open}
-        onOpenChange={setOpen}
-        options={options}
-        optionKey={(c) => c.id}
-        renderOption={conflictLabel}
-        pillOption={() => true}
-        onPick={select}
-        status={
-          options.length > 0
-            ? null
-            : includeEnded
-              ? "No conflicts match."
-              : "No conflicts match; try including ended conflicts."
-        }
-      />
-    </div>
-  );
-
   return (
     <div className="space-y-1.5">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <FieldLabel {...EVENT_FIELDS.conflicts} invalid={invalid} />
-        <button
-          type="button"
-          role="switch"
-          aria-checked={includeEnded}
-          onClick={() => setIncludeEnded((v) => !v)}
-          className="flex items-center gap-2 text-xs text-neutral-400 hover:text-neutral-300 transition-colors"
-        >
-          <Switch as="span" size="sm" on={includeEnded} />
-          Include ended conflicts
-        </button>
-      </div>
-      {field}
+      <FieldLabel {...EVENT_FIELDS.conflicts} invalid={invalid} />
+      <OptionSearch
+        aria-label={EVENT_FIELDS.conflicts.label}
+        placeholder="Search conflicts"
+        options={sortConflicts(conflicts).map((c) => ({ value: c.id, label: conflictLabel(c) }))}
+        selected={selected}
+        onChange={setSelected}
+        includeEnded={{ isEnded: (id) => ended.has(id), label: "Include ended conflicts" }}
+        invalid={invalid}
+      />
     </div>
   );
 }

@@ -23,7 +23,6 @@ describe("ProofEditorPanel", () => {
   it("frames the editor in the event page's proof card, unmarked", () => {
     render(<ProofEditorPanel {...base} />);
     expect(card().className).not.toContain(FORM_INVALID_FIELD);
-    expect(card()).toHaveClass("p-4");
   });
 
   it("outlines the card red when the proof is missing", () => {

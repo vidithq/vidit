@@ -1,7 +1,7 @@
 import type { ComponentPropsWithRef, ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
-import { ACCENT_SURFACE } from "./styles";
+import { ACCENT_SURFACE } from "@/components/ui/styles";
 
 /**
  * A square icon button drawn like the MapLibre controls beside it (the zoom buttons): the same

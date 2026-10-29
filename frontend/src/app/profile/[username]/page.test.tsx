@@ -41,10 +41,10 @@ vi.mock("@/lib/users", async (importOriginal) => ({
 
 import { ApiError } from "@/lib/api";
 import { readResponse } from "@/lib/errors";
-import { buttonClasses } from "@/components/ui/Button";
 import type { CollectionPage } from "@/lib/collections";
 import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile, UserStats } from "@/lib/users";
+import { signedInAs, signedOut } from "@/test/auth";
 import type { EventListItem, MapPoint } from "@/types";
 
 import ProfilePage from "./page";
@@ -160,15 +160,6 @@ function blockOrder(container: HTMLElement): string[] {
   return seen;
 }
 
-function signInAs(username: string) {
-  useAuth.mockReturnValue({
-    user: { id: `id-${username}`, username, email: `${username}@example.test` },
-    loading: false,
-    logout: vi.fn(),
-    refresh: vi.fn(),
-  });
-}
-
 function mountProfile() {
   return render(<ProfilePage />);
 }
@@ -193,12 +184,7 @@ describe("public profile order", () => {
       }
       return { data: PROFILE, error: null, loading: false, refetch: vi.fn() };
     });
-    useAuth.mockReturnValue({
-      user: null,
-      loading: false,
-      logout: vi.fn(),
-      refresh: vi.fn(),
-    });
+    useAuth.mockReturnValue(signedOut());
   });
 
   it("shows a visitor the work, then the explanation", async () => {
@@ -245,37 +231,11 @@ describe("public profile order", () => {
 
     // Follow sits at the far right of the header cluster; the edit pair is the owner's; sharing has no control here.
     expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /copy profile link/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit profile" })).toBeNull();
   });
 
-  it("draws the whole header row as marks, the owner's edit control included", async () => {
-    useAuth.mockReturnValue({
-      user: { id: "u1", username: "ana", email: "ana@example.test" },
-      loading: false,
-      logout: vi.fn(),
-      refresh: vi.fn(),
-    });
-    mountProfile();
-    await screen.findByText("Insights");
-
-    // One kind of control in the row: the owner's Edit uses the same ghost square as the accounts.
-    const marks = [
-      screen.getByRole("link", { name: "X / Twitter: @ana_osint" }),
-      screen.getByRole("link", { name: "Website: ana.example" }),
-      screen.getByRole("button", { name: "Edit profile" }),
-    ];
-    const shape = buttonClasses("ghost", { icon: true });
-    for (const mark of marks) expect(mark.className).toBe(shape);
-  });
-
   it("keeps the owner's email off their own profile", async () => {
-    useAuth.mockReturnValue({
-      user: { id: "u1", username: "ana", email: "ana@example.test" },
-      loading: false,
-      logout: vi.fn(),
-      refresh: vi.fn(),
-    });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
     mountProfile();
     await screen.findByText("Insights");
 
@@ -289,15 +249,12 @@ describe("public profile order", () => {
 
     expect(screen.getByText("Event dates")).toBeInTheDocument();
     expect(screen.getByText("Source origin")).toBeInTheDocument();
-    expect(screen.queryByText(/The tiles below read/)).toBeNull();
-    expect(screen.queryByText(/The host of each event/)).toBeNull();
-    expect(screen.queryByText(/The month each event took place/)).toBeNull();
     // The Insights tiles hold the geolocated and detected counts; the map header does not repeat them.
     expect(screen.queryByText(/on the map/)).toBeNull();
   });
 
   it("moves the follower count with Follow and Unfollow before the answer lands", async () => {
-    signInAs("bob");
+    useAuth.mockReturnValue(signedInAs("bob"));
     let answer: () => void = () => {};
     apiFetch.mockImplementation(
       () => new Promise<void>((resolve) => (answer = resolve)),
@@ -320,7 +277,7 @@ describe("public profile order", () => {
   });
 
   it("puts the follower count back when Follow fails", async () => {
-    signInAs("bob");
+    useAuth.mockReturnValue(signedInAs("bob"));
     apiFetch.mockRejectedValue(new ApiError("Server error", 500));
     vi.spyOn(console, "error").mockImplementation(() => {});
     mountProfile();
@@ -334,12 +291,7 @@ describe("public profile order", () => {
   });
 
   it("keeps the owner's queue above the work", async () => {
-    useAuth.mockReturnValue({
-      user: { id: "u1", username: "ana", email: "ana@example.test" },
-      loading: false,
-      logout: vi.fn(),
-      refresh: vi.fn(),
-    });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
     useDetectionsCount.mockReturnValue({ count: 1, refresh: vi.fn() });
 
     const { container } = mountProfile();
@@ -357,12 +309,7 @@ describe("public profile order", () => {
 
   it("puts New collection and Sign out in the owner's header row, after Edit profile", async () => {
     const logout = vi.fn();
-    useAuth.mockReturnValue({
-      user: { id: "u1", username: "ana", email: "ana@example.test" },
-      loading: false,
-      logout,
-      refresh: vi.fn(),
-    });
+    useAuth.mockReturnValue({ ...signedInAs("ana", { id: "u1" }), logout });
     mountProfile();
     await screen.findByText("Insights");
 
@@ -402,12 +349,7 @@ describe("public profile identity", () => {
   beforeEach(() => {
     useDetectionsCount.mockReturnValue({ count: 0, refresh: vi.fn() });
     getUserStats.mockRejectedValue(new Error("no stats"));
-    useAuth.mockReturnValue({
-      user: null,
-      loading: false,
-      logout: vi.fn(),
-      refresh: vi.fn(),
-    });
+    useAuth.mockReturnValue(signedOut());
   });
 
   function withProfile(
@@ -575,12 +517,7 @@ describe("public profile edit mode", () => {
       }
       return { data: PROFILE, error: null, loading: false, refetch: vi.fn() };
     });
-    useAuth.mockReturnValue({
-      user: { id: "u1", username: "ana", email: "ana@example.test" },
-      loading: false,
-      logout: vi.fn(),
-      refresh: vi.fn(),
-    });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
   });
 
   it("collapses the page to the fields: the bio, then the linked-account inputs", async () => {

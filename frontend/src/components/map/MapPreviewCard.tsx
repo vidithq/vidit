@@ -46,7 +46,7 @@ export function MapPreviewCard({
     // Above the detail and filter overlays (z-1000) so a preview near a panel edge stays readable.
     <div
       ref={ref}
-      className="absolute z-[1100] w-72 pointer-events-none"
+      className="absolute z-[1100] w-max min-w-64 max-w-sm pointer-events-none"
       style={{
         left: pos?.left ?? x + ANCHOR_GAP_PX,
         top: pos?.top ?? y - 10,
