@@ -154,7 +154,6 @@ export function ApprovalStamps({
       <AvatarStack
         items={items}
         label="Approved by"
-        max={items.length}
         spacing="gap"
         checked
         trailing={trailing}

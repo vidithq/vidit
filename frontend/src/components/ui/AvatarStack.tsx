@@ -65,49 +65,35 @@ const CHECK =
  * logos on a profile. `spacing="gap"` sets the pictures apart instead of overlapping them.
  * `checked` puts an accent check badge on each picture's corner. Each picture links to its page
  * and shows its label in a `<Tooltip>` on hover or keyboard focus, or on a first tap on a touch
- * screen, where the second tap follows the link. At most `max` show; the rest
- * collapse into a `+N` bubble, a button when `onOverflow` is set.
+ * screen, where the second tap follows the link. Every item shows.
  */
 export function AvatarStack({
   items,
   label,
-  max = 5,
   spacing = "overlap",
   checked = false,
   size = "md",
-  onOverflow,
-  overflowLabel = (hidden) => `${hidden} more`,
   trailing,
   className,
 }: {
   items: AvatarStackItem[];
   /** The list's accessible name. */
   label: string;
-  max?: number;
   spacing?: keyof typeof SPACING;
   /** An accent check badge on every picture (the approval stamps). */
   checked?: boolean;
   size?: keyof typeof SIZES;
-  onOverflow?: () => void;
-  overflowLabel?: (hidden: number) => string;
   /** After the last picture, on its line (the approvals' `?`). Use it with `spacing="gap"`. */
   trailing?: ReactNode;
   className?: string;
 }) {
   if (items.length === 0) return null;
-  const shown = items.slice(0, max);
-  const hidden = items.length - shown.length;
   const dims = SIZES[size];
   const ring = cn(FOCUS_RING, spacing === "overlap" && OVERLAP_RING);
-  const bubble = cn(
-    dims.picture,
-    "flex items-center justify-center rounded-full bg-neutral-800 text-neutral-300 font-medium",
-    ring,
-  );
   const row = cn("flex flex-wrap items-center", SPACING[spacing], className);
   const list = (
     <ul aria-label={label} className={trailing ? "contents" : row}>
-      {shown.map((item) => {
+      {items.map((item) => {
         const boxClass = cn(
           "relative flex hover:z-20 focus-visible:z-20",
           item.variant === "organization" ? "rounded-md" : "rounded-full",
@@ -164,22 +150,6 @@ export function AvatarStack({
           </li>
         );
       })}
-      {hidden > 0 && (
-        <li className="relative flex shrink-0">
-          {onOverflow ? (
-            <button
-              type="button"
-              onClick={onOverflow}
-              aria-label={overflowLabel(hidden)}
-              className={cn(bubble, "hover:bg-neutral-700 transition-colors")}
-            >
-              +{hidden}
-            </button>
-          ) : (
-            <span className={bubble}>+{hidden}</span>
-          )}
-        </li>
-      )}
     </ul>
   );
   if (!trailing) return list;

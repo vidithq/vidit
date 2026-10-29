@@ -84,7 +84,7 @@ function BylineRow({
     <span className={cn("inline-flex flex-wrap items-center", BYLINE_GAP)}>
       <AuthorByline author={owner} avatar />
       {/* Every picture shows: the server caps the geolocators and invitations. */}
-      <AvatarStack items={pictures} label="Co-geolocators" spacing="gap" size="sm" max={Infinity} />
+      <AvatarStack items={pictures} label="Co-geolocators" spacing="gap" size="sm" />
       {add}
     </span>
   );

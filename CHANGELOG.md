@@ -96,6 +96,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Removed
 
+- The shared components drop the variants only `/palette` used: the avatar row's `+N` overflow and the bare combobox demo ([#814](https://github.com/vidithq/vidit/pull/814)).
 - The landing page no longer shows a roadmap; the open epics on GitHub list what is planned ([#767](https://github.com/vidithq/vidit/pull/770)).
 
 ### Fixed

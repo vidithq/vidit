@@ -1155,10 +1155,6 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short, following the field on every frame and kept inside the viewport. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row under the options, and a heading as a muted row over them, naming what they are (Search results in the site and event link pickers). ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <ItemSearch> and <OptionSearch> build on it.">
-            <PaletteCombobox />
-          </Entry>
-
           <Entry name="<ItemSearch>" usage="The one field that finds an item: an event, a site, a collection, an analyst or an organization. A Combobox whose rows are compact <Item>s, fed by search (debounced by useItemSearch, from minChars characters, aborting the request a newer query replaces), by browse for the empty field, or by a loaded options list filtered by title. The status line says Searching, The search failed, the caller's emptyText, the search's note, or hiddenText when every row found is hidden. pasteId picks the row a pasted ID or link names; keepOpen keeps the text and the list after a pick. With selected, the pick shows as a compact Item that its remove button clears; without it, the field empties after each pick and the caller keeps its own list. Consumers: the filter panel's Author and Approved by, the approval request, the co-geolocator invite, the organization invite, the admin analyst, org manager and event fields, the link pickers, the collection form's Add events and the Add to collection Find a collection.">
             <PaletteItemSearch />
           </Entry>
@@ -1202,13 +1198,10 @@ export default function PalettePage() {
             </Variant>
           </Entry>
 
-          <Entry name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps under the event page's actions and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the approval stamps). checked puts a 14px check badge in the reader's accent on each picture's bottom-right corner, ringed in the page colour (the approval stamps). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip tapToShow> shows on hover or keyboard focus, or on a first tap on a touch screen, where the second tap follows the link (who approved which version when, on a stamp; the role on a logo). An item's remove puts a 20px remove disc on the picture's top-right corner, revealed by HOVER_REVEAL on hover or keyboard focus and pinned visible on a touch screen, where its hit area is a 36px square up and right of the disc and the picture takes room for it (a site admin's delete of a stamp, a co-geolocator taken off the edit form's byline). muted fades a picture to half opacity, for an account not credited yet (a pending co-geolocator invitation). size=sm takes the 20px picture of a page byline with a 16px remove disc: the event page's co-geolocators (through AuthorByline) and an event form's managed ones are the same pictures at the same gap, so the two bylines line up; size=xs is the 16px picture of a card's byline. Only overlapping pictures take the page-colour ring; set apart, a picture takes the focus ring alone. trailing follows the last picture on its line, out of the list's items (the approvals' ?). At most max (5 by default) show; the rest fold into a +N bubble, a button when onOverflow is set and plain text otherwise; the approval stamps pass every item, so no count shows. Renders nothing for an empty list.">
-            <Variant label="analysts and an organization, max=3 with onOverflow (+N opens the panel)">
+          <Entry name="<AvatarStack>" usage="A row of 28px pictures: the approval stamps under the event page's actions and the organization logos in a profile header, oldest first, overlapping by default; spacing=gap sets them apart and wraps them onto further lines (the approval stamps). checked puts a 14px check badge in the reader's accent on each picture's bottom-right corner, ringed in the page colour (the approval stamps). An organization (variant=organization) takes the rounded square, an analyst the circle. Each picture is a link to its href (the profile or the organization's page) named by its label, which a <Tooltip tapToShow> shows on hover or keyboard focus, or on a first tap on a touch screen, where the second tap follows the link (who approved which version when, on a stamp; the role on a logo). An item's remove puts a 20px remove disc on the picture's top-right corner, revealed by HOVER_REVEAL on hover or keyboard focus and pinned visible on a touch screen, where its hit area is a 36px square up and right of the disc and the picture takes room for it (a site admin's delete of a stamp, a co-geolocator taken off the edit form's byline). muted fades a picture to half opacity, for an account not credited yet (a pending co-geolocator invitation). size=sm takes the 20px picture of a page byline with a 16px remove disc: the event page's co-geolocators (through AuthorByline) and an event form's managed ones are the same pictures at the same gap, so the two bylines line up; size=xs is the 16px picture of a card's byline. Only overlapping pictures take the page-colour ring; set apart, a picture takes the focus ring alone. trailing follows the last picture on its line, out of the list's items (the approvals' ?). Every item shows. Renders nothing for an empty list.">
+            <Variant label="analysts and an organization, overlapping">
               <AvatarStack
                 label="Approved by"
-                max={3}
-                onOverflow={() => {}}
-                overflowLabel={(hidden) => `Show ${hidden} more approvals`}
                 items={paletteApprovalStamps(PALETTE_APPROVERS.slice(0, 5))}
               />
             </Variant>
@@ -1216,7 +1209,6 @@ export default function PalettePage() {
               <div className="w-56">
                 <AvatarStack
                   label="Approved by"
-                  max={PALETTE_APPROVERS.length}
                   spacing="gap"
                   checked
                   items={paletteApprovalStamps(PALETTE_APPROVERS)}
@@ -1238,7 +1230,6 @@ export default function PalettePage() {
               <AvatarStack
                 label="Co-geolocators"
                 spacing="gap"
-                max={Infinity}
                 items={["bo", "cy"].map((name) => ({
                   key: name,
                   name,
@@ -2218,37 +2209,6 @@ const PALETTE_ACCOUNTS: Account[] = [
   { kind: "organization", slug: "open-source-watch", name: "Open Source Watch" },
 ];
 
-const PALETTE_CITIES = ["Kharkiv", "Kherson", "Kyiv", "Lviv", "Odesa"];
-
-function PaletteCombobox() {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<string | null>(null);
-  const needle = query.trim().toLowerCase();
-  const options = PALETTE_CITIES.filter((city) => city.toLowerCase().includes(needle));
-  return (
-    <div className="w-full max-w-xs space-y-2">
-      <Combobox
-        aria-label="Pick a city"
-        placeholder="Search cities"
-        query={query}
-        onQueryChange={setQuery}
-        open={open}
-        onOpenChange={setOpen}
-        options={options}
-        optionKey={(city) => city}
-        renderOption={(city) => city}
-        onPick={(city) => {
-          setPicked(city);
-          setQuery("");
-          setOpen(false);
-        }}
-        status={options.length === 0 ? "No city matches" : null}
-      />
-      <p className="text-xs text-neutral-500">Picked: {picked ?? "none"}</p>
-    </div>
-  );
-}
 
 function PaletteItemSearch() {
   const [picked, setPicked] = useState<Account | null>(null);
