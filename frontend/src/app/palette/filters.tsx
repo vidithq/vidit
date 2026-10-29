@@ -82,6 +82,6 @@ export const FILTERS: PaletteCategory = {
   title: "Filters",
   entries: [
     { entry: "FilterCard / FilterPanel", tier: "high", demo: <PaletteFilterCard /> },
-    { entry: "ToggleRow", tier: "low", demo: <PaletteToggleRow /> },
+    { entry: "ToggleRow", tier: "high", demo: <PaletteToggleRow /> },
   ],
 };
