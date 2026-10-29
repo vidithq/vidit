@@ -162,7 +162,6 @@ export default function AboutPage() {
   return (
     <PageShell
       title="About"
-      headerInColumn
       railLabel="Links"
       narrowRail="below"
       rail={
