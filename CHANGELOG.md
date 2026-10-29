@@ -37,6 +37,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The source editor of the event forms shows the file, the kind and the links; the title, the level, the capture time and position, the tags and the graphic flag sit under Capture details, which opens by itself when one of them holds a value ([#816](https://github.com/vidithq/vidit/pull/816)).
 - The Conflict field of the event forms searches every conflict, the ongoing ones first, with no Include ended conflicts switch ([#816](https://github.com/vidithq/vidit/pull/816)).
 - The source kind is optional on the event forms, so a source with no kind saves as Unknown, and `POST /events/batch-complete` takes a row without a kind, keeping the kinds its sources hold ([#816](https://github.com/vidithq/vidit/pull/816)).
 - `/palette` shows High level and Low level primitives from the import graph, the filter panel as one demo, and its check fails on a missing entry, a wrong tier or a primitive only one component uses ([#814](https://github.com/vidithq/vidit/pull/814)).

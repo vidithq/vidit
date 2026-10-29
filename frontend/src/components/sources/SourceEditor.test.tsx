@@ -227,14 +227,23 @@ describe("SourceEditor", () => {
     ).toHaveAttribute("href", "https://archive.ph/abcde");
   });
 
-  it("reads in the order of the event page's source block, the rest under Capture details", () => {
+  it("reads the file, the kind and the links, then Capture details with the rest", () => {
     render(<Host initial={newSourceDraft()} />);
-    // The table's order up to the links; the rest sits under Capture details.
-    const labels = Object.values(SOURCE_FIELDS).map(({ label }) => label);
-    const essentials = labels.slice(0, labels.indexOf(SOURCE_FIELDS.links.label) + 1);
-    const order = [...essentials, "Capture details"].map(
-      (text) => screen.getByText(text, { exact: false, selector: "span, label, button" })
-    );
+    openDetails();
+    const { file, kind, links, title, level, captured_at, capture_position, tags, is_graphic } =
+      SOURCE_FIELDS;
+    const order = [
+      file.label,
+      kind.label,
+      links.label,
+      "Capture details",
+      title.label,
+      level.label,
+      captured_at.label,
+      capture_position.label,
+      tags.label,
+      is_graphic.label,
+    ].map((text) => screen.getByText(text, { exact: false, selector: "span, label, button" }));
     for (let i = 1; i < order.length; i++) {
       expect(order[i - 1].compareDocumentPosition(order[i])).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING
@@ -242,20 +251,34 @@ describe("SourceEditor", () => {
     }
   });
 
-  it("keeps the secondary fields under a closed Capture details on a new source", () => {
+  it("keeps all but the file, the kind and the links under a closed Capture details on a new source", () => {
     render(<Host initial={newSourceDraft()} />);
     expect(details()).toHaveAttribute("aria-expanded", "false");
+    expect(kindField()).toBeVisible();
+    expect(screen.getByLabelText("Source 1 link 1")).toBeVisible();
+    for (const hidden of [
+      screen.getByRole("textbox", { name: "Source 1 title", hidden: true }),
+      screen.getByRole("combobox", { name: "Source 1 level", hidden: true }),
+    ]) {
+      expect(hidden).not.toBeVisible();
+    }
     expect(screen.queryByRole("switch", { name: "Source 1 graphic content" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Source 1 tags" })).toBeNull();
     openDetails();
+    expect(screen.getByRole("textbox", { name: "Source 1 title" })).toBeVisible();
     expect(screen.getByLabelText("Captured", { selector: "input" })).toBeVisible();
     expect(screen.getByRole("switch", { name: "Source 1 graphic content" })).toBeVisible();
   });
 
-  it("opens Capture details on a source that holds one of its fields", () => {
-    render(<Host initial={{ ...newSourceDraft(), capturedAt: "2026-01-01T10:00" }} />);
+  it.each([
+    ["a capture time", { capturedAt: "2026-01-01T10:00" }],
+    ["a title", { title: "Drone footage" }],
+    ["a level other than Direct", { level: "context" as const }],
+    ["a tag", { tagIds: ["t1"] }],
+    ["the graphic flag", { isGraphic: true }],
+  ])("opens Capture details on a source that holds %s", (_, patch) => {
+    render(<Host initial={{ ...newSourceDraft(), ...patch }} />);
     expect(details()).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByLabelText("Captured", { selector: "input" })).toHaveValue("2026-01-01T10:00");
   });
 
   it("opens the copy a stored link carries, and still offers to replace it", () => {

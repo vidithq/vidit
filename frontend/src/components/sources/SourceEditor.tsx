@@ -60,21 +60,29 @@ export interface SourceEditorInvalid {
   captured?: boolean;
 }
 
-/** Whether a field under **Capture details** holds a value. */
-function holdsDetails(draft: SourceDraft): boolean {
+/** Whether a field under **Capture details** holds a value, the level counting once it is not
+ *  Direct. */
+export function holdsCaptureDetails(draft: SourceDraft): boolean {
   const position =
     hasCapturePosition(draft.kind) && (draft.captureLat.trim() !== "" || draft.captureLng.trim() !== "");
-  return draft.capturedAt !== "" || position || draft.tagIds.length > 0 || draft.isGraphic;
+  return (
+    draft.title.trim() !== "" ||
+    draft.level !== "direct" ||
+    draft.capturedAt !== "" ||
+    position ||
+    draft.tagIds.length > 0 ||
+    draft.isGraphic
+  );
 }
 
 /**
- * One source block of an event form, in the order the event page's source block reads: the
- * file (uploaded on its own request as soon as it is picked), the title, the level and the
- * kind, then the links with their post time and archived copy (and the imagery provider check
- * on a satellite or aircraft source). **Capture details** holds the capture time, the capture
- * position (none on a document kind), the tags and the graphic flag. A `wide` editor (the lone
- * source) sets the file beside the title, level and kind once the card is wide enough, the rest
- * under both.
+ * One source block of an event form: the file (uploaded on its own request as soon as it is
+ * picked), the kind, then the links with their post time and archived copy (and the imagery
+ * provider check on a satellite or aircraft source). **Capture details**, at the foot, holds the
+ * title, the level, the capture time, the capture position (none on a document kind), the tags
+ * and the graphic flag; it opens by itself on a source where one of them holds a value or the
+ * level is not Direct. A `wide` editor (the lone source) sets the file beside the kind once the
+ * card is wide enough, the links and **Capture details** under both.
  *
  * The editor holds no draft state of its own: `update` patches the draft in the form's list,
  * `onPickFile` hands a picked file to the list, which uploads it, `onImportLink` hands it a
@@ -83,8 +91,8 @@ function holdsDetails(draft: SourceDraft): boolean {
  * (remove).
  *
  * `variant="site-source"` is a site's satellite source: its kind and level are fixed (satellite,
- * context), so neither shows, the capture time is required and sits under the title, and
- * `extra` (the source's note) closes the card in place of **Capture details**.
+ * context), so neither shows, the capture time is required and sits under the title beside the
+ * file, and `extra` (the source's note) closes the card in place of **Capture details**.
  */
 export function SourceEditor({
   draft,
@@ -134,7 +142,7 @@ export function SourceEditor({
   const hasFile = file !== null && file.state !== "failed";
   const positionInvalid = capturePositionInvalid(draft);
   // Opens on a source that already says more than the essentials; the analyst closes it.
-  const [detailsOpen, setDetailsOpen] = useState(() => holdsDetails(draft));
+  const [footOpen, setFootOpen] = useState(() => holdsCaptureDetails(draft));
 
   // A picked file previews from its object URL until the staged copy answers.
   const pending = file?.state === "uploading" ? file.file : null;
@@ -247,8 +255,129 @@ export function SourceEditor({
     </div>
   );
 
-  const classification = (
+  const titleField = (
+    <div className="space-y-1.5">
+      <FieldLabel {...SOURCE_FIELDS.title} htmlFor={id("title")} />
+      <Input
+        id={id("title")}
+        // Named apart from the event's Title field and the other editors' titles.
+        aria-label={`${name} title`}
+        value={draft.title}
+        maxLength={SOURCE_TITLE_MAX_LEN}
+        onChange={(e) => update({ title: e.target.value })}
+        placeholder={
+          siteSource ? "For example Sentinel-2 true colour" : "For example Drone footage of the strike"
+        }
+      />
+    </div>
+  );
+
+  const kindField = (
+    <div className="space-y-1.5">
+      <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} />
+      <OptionSearch
+        single
+        id={id("kind")}
+        aria-label={`${name} kind`}
+        placeholder="Search source kinds"
+        options={KIND_OPTIONS}
+        selected={draft.kind ? [draft.kind] : []}
+        onChange={(next) => update({ kind: (next[0] ?? "") as SourceKind | "" })}
+      />
+    </div>
+  );
+
+  const links = (
+    <div className="space-y-1.5">
+      <div className={invalid.link && draft.links.length === 0 ? FORM_INVALID_FIELD : undefined}>
+        <LinkListInput<LinkDraft>
+          rows={draft.links}
+          onChange={(links) => update({ links })}
+          urlOf={(link) => link.url}
+          withUrl={(link, url) => ({ ...link, url })}
+          blank={() => ({ url: "", postedAt: "", snapshotUrl: "", stored: null })}
+          max={MAX_LINKS_PER_SOURCE}
+          maxLength={SOURCE_URL_MAX_LEN}
+          itemLabel={`${name} link`}
+          addText="Add a link"
+          addName={`Add a link to ${name.toLowerCase()}`}
+          placeholder={
+            siteSource ? "https://browser.dataspace.copernicus.eu/?…" : "https://t.me/channel/12345"
+          }
+          invalid={invalid.link}
+          heading={
+            <FieldLabel
+              {...SOURCE_FIELDS.links}
+              label={`${SOURCE_FIELDS.links.label} (${draftUrls(draft).length})`}
+              invalid={invalid.link}
+            />
+          }
+          columns={[
+            {
+              header: `${SOURCE_FIELDS.posted.label} (UTC)`,
+              width: "13rem",
+              cell: ({ index: i, row, update: updateLink }) => (
+                <DateTimeInput
+                  type="datetime-local"
+                  variant="compact"
+                  aria-label={`${SOURCE_FIELDS.posted.label} (UTC), ${describe(i, row.url)}`}
+                  title="When the file was posted at this link (UTC)"
+                  value={row.postedAt}
+                  onChange={(e) => updateLink({ ...row, postedAt: e.target.value })}
+                />
+              ),
+            },
+            {
+              header: "Archive",
+              width: "auto",
+              cell: ({ index: i, row, expanded, toggle }) => (
+                <ArchiveBox
+                  describes={describe(i, row.url)}
+                  snapshot={row.snapshotUrl}
+                  expanded={expanded}
+                  onToggle={toggle}
+                />
+              ),
+            },
+            ...(hasFile || !draft.links.some((link) => isImportableLink(link.url))
+              ? []
+              : [
+                  {
+                    header: "Import",
+                    width: "auto",
+                    cell: ({ index: i, row }: { index: number; row: LinkDraft }) =>
+                      isImportableLink(row.url) && (
+                        <Button
+                          icon
+                          variant="ghost"
+                          onClick={() => onImportLink({ url: row.url.trim(), index: 0, kinds: [] })}
+                          aria-label={`Import the file of ${describe(i, row.url)}`}
+                          title="Import file from link"
+                        >
+                          <Download size={14} />
+                        </Button>
+                      ),
+                  },
+                ]),
+          ]}
+          expansion={({ index: i, row, update: updateLink }) => (
+            <ArchiveSnapshotField
+              link={row.url}
+              describes={describe(i, row.url)}
+              value={row.snapshotUrl}
+              onChange={(snapshotUrl) => updateLink({ ...row, snapshotUrl })}
+            />
+          )}
+        />
+      </div>
+      <SourceImageryCheck draft={draft} />
+    </div>
+  );
+
+  const captureDetails = (
     <>
+      {titleField}
+
       <div className="space-y-1.5">
         <FieldLabel {...SOURCE_FIELDS.level} />
         <OptionSearch
@@ -264,192 +393,69 @@ export function SourceEditor({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} />
-        <OptionSearch
-          single
-          id={id("kind")}
-          aria-label={`${name} kind`}
-          placeholder="Search source kinds"
-          options={KIND_OPTIONS}
-          selected={draft.kind ? [draft.kind] : []}
-          onChange={(next) => update({ kind: (next[0] ?? "") as SourceKind | "" })}
+      {captured}
+
+      {hasCapturePosition(draft.kind) && (
+        <div className="space-y-1.5">
+          <FieldLabel {...SOURCE_FIELDS.capture_position} />
+          <CoordinateInputs
+            idPrefix={id("capture_")}
+            required={false}
+            lat={draft.captureLat}
+            setLat={(captureLat) => update({ captureLat })}
+            lng={draft.captureLng}
+            setLng={(captureLng) => update({ captureLng })}
+            invalid={positionInvalid}
+          />
+        </div>
+      )}
+
+      {tags && setTags && (
+        <TagsField
+          tags={tags}
+          setTags={setTags}
+          suggested={suggestedTags}
+          selected={draft.tagIds}
+          setSelected={(tagIds) => update({ tagIds })}
+          owner={name}
+        />
+      )}
+
+      {/* A `span` label plus the switch's own name: not a labelable field. */}
+      <div className="flex items-center justify-between gap-4">
+        <FieldLabel
+          {...SOURCE_FIELDS.is_graphic}
+          trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
+        />
+        <Switch
+          on={draft.isGraphic}
+          onToggle={() => update({ isGraphic: !draft.isGraphic })}
+          disabled={draft.graphicLocked}
+          aria-label={`${name} graphic content`}
         />
       </div>
     </>
   );
 
-  const essentials = (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <FieldLabel
-          {...SOURCE_FIELDS.title}
-          htmlFor={id("title")}
-        />
-        <Input
-          id={id("title")}
-          // Named apart from the event's Title field and the other editors' titles.
-          aria-label={`${name} title`}
-          value={draft.title}
-          maxLength={SOURCE_TITLE_MAX_LEN}
-          onChange={(e) => update({ title: e.target.value })}
-          placeholder={
-            siteSource ? "For example Sentinel-2 true colour" : "For example Drone footage of the strike"
-          }
-        />
-      </div>
-
-      {siteSource ? captured : classification}
-    </div>
-  );
-
-  const details = (
+  // The disclosure at the foot of the card. Hidden rather than unmounted, so a field inside keeps
+  // what it holds.
+  const foot = siteSource ? (
+    extra
+  ) : (
     <div className="space-y-4">
       <SectionEyebrow
         as="h3"
         margin="none"
         title="Capture details"
         toggle={{
-          open: detailsOpen,
-          onToggle: () => setDetailsOpen((open) => !open),
+          open: footOpen,
+          onToggle: () => setFootOpen((open) => !open),
           controls: id("details"),
         }}
       />
-      {/* Hidden rather than unmounted, so a field inside keeps what it holds. */}
-      <div id={id("details")} hidden={!detailsOpen} className="space-y-4">
-        {captured}
-
-        {hasCapturePosition(draft.kind) && (
-          <div className="space-y-1.5">
-            <FieldLabel {...SOURCE_FIELDS.capture_position} />
-            <CoordinateInputs
-              idPrefix={id("capture_")}
-              required={false}
-              lat={draft.captureLat}
-              setLat={(captureLat) => update({ captureLat })}
-              lng={draft.captureLng}
-              setLng={(captureLng) => update({ captureLng })}
-              invalid={positionInvalid}
-            />
-          </div>
-        )}
-
-        {tags && setTags && (
-          <TagsField
-            tags={tags}
-            setTags={setTags}
-            suggested={suggestedTags}
-            selected={draft.tagIds}
-            setSelected={(tagIds) => update({ tagIds })}
-            owner={name}
-          />
-        )}
-
-        {/* A `span` label plus the switch's own name: not a labelable field. */}
-        <div className="flex items-center justify-between gap-4">
-          <FieldLabel
-            {...SOURCE_FIELDS.is_graphic}
-            trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
-          />
-          <Switch
-            on={draft.isGraphic}
-            onToggle={() => update({ isGraphic: !draft.isGraphic })}
-            disabled={draft.graphicLocked}
-            aria-label={`${name} graphic content`}
-          />
-        </div>
+      <div id={id("details")} hidden={!footOpen} className="space-y-4">
+        {captureDetails}
       </div>
-    </div>
-  );
-
-  const rest = (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <div className={invalid.link && draft.links.length === 0 ? FORM_INVALID_FIELD : undefined}>
-          <LinkListInput<LinkDraft>
-            rows={draft.links}
-            onChange={(links) => update({ links })}
-            urlOf={(link) => link.url}
-            withUrl={(link, url) => ({ ...link, url })}
-            blank={() => ({ url: "", postedAt: "", snapshotUrl: "", stored: null })}
-            max={MAX_LINKS_PER_SOURCE}
-            maxLength={SOURCE_URL_MAX_LEN}
-            itemLabel={`${name} link`}
-            addText="Add a link"
-            addName={`Add a link to ${name.toLowerCase()}`}
-            placeholder={
-              siteSource ? "https://browser.dataspace.copernicus.eu/?…" : "https://t.me/channel/12345"
-            }
-            invalid={invalid.link}
-            heading={
-              <FieldLabel
-                {...SOURCE_FIELDS.links}
-                label={`${SOURCE_FIELDS.links.label} (${draftUrls(draft).length})`}
-                invalid={invalid.link}
-              />
-            }
-            columns={[
-              {
-                header: `${SOURCE_FIELDS.posted.label} (UTC)`,
-                width: "13rem",
-                cell: ({ index: i, row, update: updateLink }) => (
-                  <DateTimeInput
-                    type="datetime-local"
-                    variant="compact"
-                    aria-label={`${SOURCE_FIELDS.posted.label} (UTC), ${describe(i, row.url)}`}
-                    title="When the file was posted at this link (UTC)"
-                    value={row.postedAt}
-                    onChange={(e) => updateLink({ ...row, postedAt: e.target.value })}
-                  />
-                ),
-              },
-              {
-                header: "Archive",
-                width: "auto",
-                cell: ({ index: i, row, expanded, toggle }) => (
-                  <ArchiveBox
-                    describes={describe(i, row.url)}
-                    snapshot={row.snapshotUrl}
-                    expanded={expanded}
-                    onToggle={toggle}
-                  />
-                ),
-              },
-              ...(hasFile || !draft.links.some((link) => isImportableLink(link.url))
-                ? []
-                : [
-                    {
-                      header: "Import",
-                      width: "auto",
-                      cell: ({ index: i, row }: { index: number; row: LinkDraft }) =>
-                        isImportableLink(row.url) && (
-                          <Button
-                            icon
-                            variant="ghost"
-                            onClick={() => onImportLink({ url: row.url.trim(), index: 0, kinds: [] })}
-                            aria-label={`Import the file of ${describe(i, row.url)}`}
-                            title="Import file from link"
-                          >
-                            <Download size={14} />
-                          </Button>
-                        ),
-                    },
-                  ]),
-            ]}
-            expansion={({ index: i, row, update: updateLink }) => (
-              <ArchiveSnapshotField
-                link={row.url}
-                describes={describe(i, row.url)}
-                value={row.snapshotUrl}
-                onChange={(snapshotUrl) => updateLink({ ...row, snapshotUrl })}
-              />
-            )}
-          />
-        </div>
-        <SourceImageryCheck draft={draft} />
-      </div>
-
-      {siteSource ? extra : details}
     </div>
   );
 
@@ -457,13 +463,25 @@ export function SourceEditor({
     <Card as="section" aria-label={name} dense className="@container">
       <SourceHeader name={name} actions={actions} />
       {/* A lone editor reads like the event page's lone source: once the card is 42rem wide the
-          file sits left of the title, level and kind, 3:2 (`DetailCard leadBeside`), and the links
-          and Capture details take the card's width under both, so a link keeps its one-row layout;
-          narrower, everything stacks. */}
+          file sits left of the kind (the title and the capture time on a site source), 3:2
+          (`DetailCard leadBeside`), and the links and the foot take the card's width under both,
+          so a link keeps its one-row layout; narrower, everything stacks. */}
       <div className={cn("grid gap-4", wide && cn(LEAD_BESIDE_SPLIT, "@2xl:gap-x-5"))}>
         {fileSlot}
-        {essentials}
-        <div className={cn(wide && "@2xl:col-span-2")}>{rest}</div>
+        <div className="space-y-4">
+          {siteSource ? (
+            <>
+              {titleField}
+              {captured}
+            </>
+          ) : (
+            kindField
+          )}
+        </div>
+        <div className={cn("space-y-4", wide && "@2xl:col-span-2")}>
+          {links}
+          {foot}
+        </div>
       </div>
     </Card>
   );

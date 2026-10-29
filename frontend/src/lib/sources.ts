@@ -21,7 +21,7 @@ export type ImageryProvider = components["schemas"]["ImageryProviderRead"];
 type ImageryKind = components["schemas"]["SourceCheck"]["kind"];
 
 /** Each source field's name and `?`, for the source block's rows and the editor's labels. The
- *  key order is the order both read in; the block has no file row and no graphic row. */
+ *  key order is the order the block reads in; it has no file row and no graphic row. */
 export const SOURCE_FIELDS = {
   file: { label: "File", concept: "source_file" },
   title: { label: "Title" },
