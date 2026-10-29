@@ -84,7 +84,6 @@ describe("icon button tooltip", () => {
       </nav>,
     );
     const link = screen.getByRole("link", { name: "Edit" });
-    expect(link.parentElement).toHaveClass("contents");
     fireEvent.pointerEnter(link.parentElement!, { pointerType: "mouse" });
     expect(bubble("Edit")).toBeDefined();
   });

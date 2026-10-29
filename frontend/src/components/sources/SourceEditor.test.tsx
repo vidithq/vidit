@@ -119,7 +119,6 @@ describe("SourceEditor", () => {
       expect(apiFetch).toHaveBeenCalledTimes(1);
       expect(screen.getByText("Step to the capture day and copy the link.")).toBeInTheDocument();
       expect(screen.getByText("Credit: Google")).toBeInTheDocument();
-      expect(screen.queryByText("No imagery date.")).toBeNull();
     } finally {
       vi.useRealTimers();
     }

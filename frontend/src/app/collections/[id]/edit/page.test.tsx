@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { signedInAs, signedOut } from "@/test/auth";
 import { textHtml } from "@/test/proofEditorStub";
 
 const push = vi.fn();
@@ -136,7 +137,7 @@ beforeEach(() => {
   removeEventFromCollection.mockReset();
   searchPickableEvents.mockReset();
   useCursorList.mockReset();
-  useAuth.mockReturnValue({ user: USER, loading: false });
+  useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
   mockRead(collection());
   updateCollection.mockResolvedValue(collection());
   fetchCollectionSequence.mockResolvedValue(sequenceOf("e1", "e2"));
@@ -148,7 +149,7 @@ beforeEach(() => {
 
 describe("EditCollectionPage", () => {
   it("bounces a signed-out visitor to the login form", () => {
-    useAuth.mockReturnValue({ user: null, loading: false });
+    useAuth.mockReturnValue(signedOut());
     window.history.replaceState(null, "", "/collections/c1/edit");
 
     render(<EditCollectionPage />);
@@ -293,7 +294,7 @@ describe("EditCollectionPage", () => {
   });
 
   it("refuses an analyst who does not own the collection", () => {
-    useAuth.mockReturnValue({ user: { id: "u2", username: "bo" } });
+    useAuth.mockReturnValue(signedInAs("bo", { id: "u2" }));
 
     render(<EditCollectionPage />);
 

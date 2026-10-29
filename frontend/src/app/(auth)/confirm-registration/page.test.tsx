@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiFetch = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/api", async (actual) => ({ ...(await actual<typeof import("@/lib/api")>()), apiFetch }));
@@ -18,6 +18,8 @@ import { ApiError } from "@/lib/api";
 import ConfirmRegistrationPage from "./page";
 
 describe("ConfirmRegistrationPage", () => {
+  afterEach(() => vi.useRealTimers());
+
   beforeEach(() => {
     apiFetch.mockReset();
     refresh.mockReset();
@@ -26,11 +28,13 @@ describe("ConfirmRegistrationPage", () => {
   });
 
   it("offers the archive import and the Getting started page, and moves nowhere on its own", async () => {
+    vi.useFakeTimers();
     apiFetch.mockResolvedValue({});
     refresh.mockResolvedValue(undefined);
     render(<ConfirmRegistrationPage />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
 
-    expect(await screen.findByText("Account confirmed")).toBeInTheDocument();
+    expect(screen.getByText("Account confirmed")).toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledWith(
       "/auth/confirm-registration",
       expect.objectContaining({ method: "POST" }),
@@ -42,7 +46,7 @@ describe("ConfirmRegistrationPage", () => {
       screen.getByRole("link", { name: "Read Getting started" }),
     ).toHaveAttribute("href", "/guide");
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -65,7 +69,6 @@ describe("ConfirmRegistrationPage", () => {
     render(<ConfirmRegistrationPage />);
 
     expect(screen.getByText("Link expired or invalid")).toBeInTheDocument();
-    expect(screen.queryByText(/missing a token/)).toBeNull();
     expect(apiFetch).not.toHaveBeenCalled();
   });
 

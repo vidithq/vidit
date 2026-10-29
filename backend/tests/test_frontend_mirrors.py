@@ -121,7 +121,12 @@ def test_coordinate_bounds_match() -> None:
 
 
 def test_status_filter_options_match() -> None:
-    offered = _strings("components/filters/model.ts", "FILTER_STATUSES")
+    meta = _block("components/event/StatusBadge.tsx", "EVENT_STATUS_META")
+    offered = [s for s in re.findall(r"^  (\w+): \{", meta, re.M) if s != STATUS_CLOSED]
+    assert re.search(
+        r"FILTER_STATUSES = \(Object\.keys\(EVENT_STATUS_META\)",
+        _source("components/filters/model.ts"),
+    )
     declared = [status for status in get_args(EventStatus) if status != STATUS_CLOSED]
     assert offered == declared
     assert set(offered) == STATUSES - {STATUS_CLOSED}

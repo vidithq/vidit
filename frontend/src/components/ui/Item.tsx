@@ -127,7 +127,7 @@ function Mosaic({ cover }: { cover: CollectionCoverTile[] }) {
  * `GraphicContentGate`, except in the compact variant, whose slot is too small for the gate's
  * control and shows the kind's tile instead.
  */
-export function ItemMedia({
+function ItemMedia({
   kind,
   media,
   variant,

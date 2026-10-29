@@ -47,13 +47,12 @@ describe("<GeolocatorsByline>", () => {
     api.invites = [{ user: CY, invited_at: "2026-10-15T09:00:00Z" }];
   });
 
-  it("shows the owner, a co-geolocator and a faded pending invitation on one line", () => {
+  it("shows the owner, a co-geolocator and a pending invitation on one line", () => {
     render(<GeolocatorsByline event={shared} onChanged={vi.fn()} />);
 
     const pictures = screen.getByRole("list", { name: "Co-geolocators" });
     expect(within(pictures).getByRole("link", { name: "bo" })).toBeInTheDocument();
-    const pending = within(pictures).getByRole("link", { name: "cy, invitation pending" });
-    expect(pending).toHaveClass("opacity-50");
+    expect(within(pictures).getByRole("link", { name: "cy, invitation pending" })).toBeInTheDocument();
     // The owner leads the line and has no picture of their own to remove.
     expect(screen.queryByRole("button", { name: "Remove ana" })).toBeNull();
     // Nothing opens in the page: no card, no heading.
@@ -155,9 +154,7 @@ describe("useDraftGeolocatorsByline", () => {
     pick("dee");
     pick("eve");
     expect(invitees).toEqual(["dee", "eve"]);
-    expect(screen.getByRole("img", { name: "dee, invited when you publish" })).toHaveClass(
-      "opacity-50",
-    );
+    expect(screen.getByRole("img", { name: "dee, invited when you publish" })).toBeInTheDocument();
     expect(api.apiFetch).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove eve" }));

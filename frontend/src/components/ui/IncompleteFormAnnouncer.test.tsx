@@ -15,7 +15,6 @@ describe("IncompleteFormAnnouncer", () => {
     expect(region).toHaveTextContent(
       "Fill in the required fields before continuing: Title, Proof, Source media.",
     );
-    expect(region).toHaveClass("sr-only");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Organization, OrganizationMember } from "@/lib/organizations";
+import { signedInAs, signedOut } from "@/test/auth";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ slug: "osw" }),
@@ -115,11 +116,7 @@ function serve(org: Organization, members: OrganizationMember[] = MEMBERS) {
 }
 
 function signIn(username: string | null) {
-  useAuth.mockReturnValue({
-    user: username ? { id: "x", username } : null,
-    loading: false,
-    refresh: vi.fn(),
-  });
+  useAuth.mockReturnValue(username ? signedInAs(username, { id: "x" }) : signedOut());
 }
 
 describe("OrganizationPage", () => {
@@ -250,7 +247,7 @@ describe("OrganizationPage", () => {
 
   it("saves the organization's profile without refreshing the reader's own account", async () => {
     const refreshAuth = vi.fn();
-    useAuth.mockReturnValue({ user: { id: "x", username: "lead" }, loading: false, refresh: refreshAuth });
+    useAuth.mockReturnValue({ ...signedInAs("lead", { id: "x" }), refresh: refreshAuth });
     const refetch = serve({ ...ORG, viewer_role: "manager", viewer_can_manage: true });
     render(<OrganizationPage />);
 

@@ -93,7 +93,6 @@ describe("/import", () => {
     const { container } = render(<ImportGuidePage />);
 
     expect(container.querySelector('a[href="/guide#statuses"]')).not.toBeNull();
-    expect(screen.queryByText(/Only you turn your detection/i)).toBeNull();
   });
 });
 

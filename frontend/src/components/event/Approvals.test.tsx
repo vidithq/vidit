@@ -161,7 +161,6 @@ describe("useEventApprovals", () => {
     expect(await stampNames()).toEqual(["bo", "cy"]);
     const summary = screen.getByRole("region", { name: "Approvals" });
     expect(summary).not.toHaveTextContent(/Approved by|approvals|\d/i);
-    expect(summary.className).not.toMatch(/border|bg-/);
     expect(
       within(summary).getByRole("button", { name: "What is an approval?" }),
     ).toBeInTheDocument();

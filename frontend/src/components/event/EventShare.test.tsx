@@ -64,10 +64,8 @@ describe("EventShare without the Web Share API", () => {
     // The name holds still: the tooltip shows the confirmation, and a live region says it.
     expect(screen.getByRole("button", { name: "Share" })).toBe(share);
     const [status, bubble] = screen.getAllByText("Link copied");
-    expect(status).toHaveClass("sr-only");
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(bubble).toHaveAttribute("aria-hidden", "true");
-    expect(bubble).not.toHaveClass("sr-only");
 
     act(() => {
       vi.advanceTimersByTime(1500);

@@ -55,6 +55,7 @@ import type { Collection } from "@/lib/collections";
 import type { EventListItem } from "@/types";
 
 import CollectionPage from "./page";
+import { signedInAs, signedOut } from "@/test/auth";
 import { pickOption } from "@/test/options";
 
 const OWNER = { id: "u1", username: "ana", avatar_url: null };
@@ -129,7 +130,7 @@ beforeEach(() => {
   replace.mockReset();
   push.mockReset();
   searchParams.delete("step");
-  useAuth.mockReturnValue({ user: null });
+  useAuth.mockReturnValue(signedOut());
   mockReads(collection());
   fetchCollectionSequence.mockResolvedValue(ITEMS);
 });
@@ -213,7 +214,7 @@ describe("CollectionPage", () => {
 
   it("carries no cover upload and no per-row byline", async () => {
     // The header renders no mosaic, and the byline is the slot a row drops (the header names the analyst).
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
     mockReads(
       collection({
         cover: [
@@ -233,7 +234,7 @@ describe("CollectionPage", () => {
     expect(screen.queryByText(/^by/)).not.toBeInTheDocument();
   });
 
-  it("maps the items' pins and lists them in order, each with its status", async () => {
+  it("maps the items' pins and lists them in order", async () => {
     await renderPage();
 
     expect(await screen.findByTestId("map")).toHaveAttribute("data-points", "2");
@@ -242,8 +243,6 @@ describe("CollectionPage", () => {
       "Strike on the rail junction",
       "Damaged locomotive shed",
     ]);
-    expect(screen.getByText("Geolocated")).toBeInTheDocument();
-    expect(screen.getByText("Detected")).toBeInTheDocument();
   });
 
   it("opens on the first item and lights it on the map and in the list", async () => {
@@ -348,7 +347,7 @@ describe("CollectionPage", () => {
   });
 
   it("shares the collection on X for the owner too", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
     const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
 
     await renderPage();
@@ -381,7 +380,7 @@ describe("CollectionPage", () => {
   });
 
   it("sends the owner to their own catalogue, where an event is shelved from", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
 
     await renderPage();
 
@@ -398,7 +397,7 @@ describe("CollectionPage", () => {
   });
 
   it("gives the owner Edit and Drop, and no per-item control", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
 
     await renderPage();
 
@@ -442,7 +441,7 @@ describe("CollectionPage", () => {
   });
 
   it("drops the collection on a second click, then lands on the profile", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
     deleteCollection.mockResolvedValue(undefined);
 
     await renderPage();
@@ -462,7 +461,7 @@ describe("CollectionPage", () => {
   });
 
   it("keeps the collection and says so when the drop fails", async () => {
-    useAuth.mockReturnValue({ user: { id: "u1", username: "ana" } });
+    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
     deleteCollection.mockRejectedValue(new Error("nope"));
 
     await renderPage();

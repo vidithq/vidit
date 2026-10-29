@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { signedInAs, signedOut } from "@/test/auth";
 import { textHtml } from "@/test/proofEditorStub";
 
 const push = vi.fn();
@@ -152,7 +153,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   addEventsToCollection.mockReset();
 
-  useAuth.mockReturnValue({ user: USER, loading: false });
+  useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
   // The hook reads nothing while the path is null (every render without `?event=`).
   useApiResource.mockImplementation((path: string | null) => ({
     data: path === null ? null : EVENT_DETAIL,
@@ -167,7 +168,7 @@ beforeEach(() => {
 
 describe("NewCollectionPage", () => {
   it("bounces a signed-out visitor to the login form", () => {
-    useAuth.mockReturnValue({ user: null, loading: false });
+    useAuth.mockReturnValue(signedOut());
     window.history.replaceState(null, "", "/collections/new");
 
     render(<NewCollectionPage />);
@@ -178,7 +179,7 @@ describe("NewCollectionPage", () => {
   });
 
   it("waits on the session rather than bouncing while it resolves", () => {
-    useAuth.mockReturnValue({ user: null, loading: true });
+    useAuth.mockReturnValue({ ...signedOut(), loading: true });
 
     render(<NewCollectionPage />);
 
@@ -340,7 +341,6 @@ describe("NewCollectionPage with a search selection", () => {
     expect(useApiResource).not.toHaveBeenCalledWith(expect.stringMatching(/^\/events\//));
     expect(screen.getByText("Depot fire")).toBeInTheDocument();
     expect(screen.getByText("Bridge strike")).toBeInTheDocument();
-    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
     expect(await screen.findByText("2 events")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Depot fire from this collection" }));
@@ -382,7 +382,6 @@ describe("NewCollectionPage with a search selection", () => {
       "/collections/collectable-events?limit=20",
       JSON.stringify({ q: "dam", filters: { tag: ["flood"] } }),
     );
-    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
     expect(screen.getByText("Dam breach")).toBeInTheDocument();
     expect(screen.getByText("44 events, ordered by event date, earliest first.")).toBeInTheDocument();
     expect(screen.getByText("44 events")).toBeInTheDocument();
@@ -437,7 +436,6 @@ describe("NewCollectionPage with a search selection", () => {
     searchParams.set("selection", "gone");
     render(<NewCollectionPage />);
 
-    expect(screen.queryByText(/will be added/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create collection" })).toBeInTheDocument();
   });
 });

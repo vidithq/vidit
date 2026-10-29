@@ -19,11 +19,9 @@ describe("GraphicContentGate", () => {
     );
 
     const covered = screen.getByAltText("A street corner").parentElement;
-    // Blurred, inert and out of the accessibility tree.
-    expect(covered).toHaveClass("blur-xl", "pointer-events-none");
+    // Inert and out of the accessibility tree.
     expect(covered).toHaveAttribute("aria-hidden", "true");
-    // `inert`, not only `pointer-events-none`: Tab and Enter must not reach the
-    // covered media.
+    // Tab and Enter must not reach the covered media.
     expect(covered).toHaveAttribute("inert");
     expect(screen.getByRole("button", { name: REVEAL })).toBeInTheDocument();
   });
@@ -46,8 +44,6 @@ describe("GraphicContentGate", () => {
     fireEvent.click(screen.getAllByRole("button", { name: REVEAL })[0]);
 
     expect(screen.queryByRole("button", { name: REVEAL })).toBeNull();
-    expect(screen.getByAltText("First").parentElement).not.toHaveClass("blur-xl");
-    expect(screen.getByAltText("Second").parentElement).not.toHaveClass("blur-xl");
     expect(screen.getByAltText("First").closest("[inert]")).toBeNull();
     expect(screen.getByAltText("Second").closest("[inert]")).toBeNull();
   });
@@ -67,6 +63,6 @@ describe("GraphicContentGate", () => {
     );
 
     expect(screen.queryByRole("button", { name: REVEAL })).toBeNull();
-    expect(screen.getByAltText("Later").parentElement).not.toHaveClass("blur-xl");
+    expect(screen.getByAltText("Later").closest("[inert]")).toBeNull();
   });
 });

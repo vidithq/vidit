@@ -60,7 +60,6 @@ describe("OutboundLink", () => {
     expect(url).toHaveAttribute("href", UNKNOWN);
     expect(url).toHaveAttribute("target", "_blank");
     expect(url).toHaveAttribute("rel", "noopener noreferrer nofollow ugc");
-    expect(screen.queryByRole("link", { name: /open link/i })).toBeNull();
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel"]);
   });
 

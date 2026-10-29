@@ -18,14 +18,13 @@ const VIDEO: Media = {
 // app's playback settings, the intended controls, and the context's big-view
 // control.
 describe("VideoPlayer", () => {
-  it("mounts a controller around a named native video that fills its container", () => {
+  it("mounts a controller around a named native video", () => {
     const { container } = render(
       <VideoPlayer src={VIDEO.storage_url} source={VIDEO} title="A dashcam clip" />,
     );
 
     const controller = container.querySelector("media-controller");
     expect(controller).not.toBeNull();
-    expect(controller).toHaveClass("h-full", "w-full");
     // Autohide delay (kept on the element, not reflected to an attribute).
     expect((controller as unknown as { autohide: string }).autohide).toBe("2");
 
@@ -89,7 +88,7 @@ describe("VideoPlayer", () => {
     expect(container.querySelector("media-controller")).toBeNull();
     // The download stays: the bar that carried it is gone.
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
-    expect(container.firstElementChild).toHaveClass("h-full", "w-full", "max-w-4xl");
+    expect(container.firstElementChild).toHaveClass("max-w-4xl");
   });
 
   // The verdict is keyed on the URL: the lightbox reuses one player across

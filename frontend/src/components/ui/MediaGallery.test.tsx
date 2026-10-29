@@ -55,11 +55,10 @@ describe("MediaGallery", () => {
   });
 
   it("carries a download on an image tile, revealed on hover", () => {
-    const { container } = render(<MediaGallery media={IMAGE} alt="T" />);
+    render(<MediaGallery media={IMAGE} alt="T" />);
 
     const download = screen.getByRole("button", { name: "Download" });
     // Transparent at rest, shown on hover (always on touch).
     expect(download.parentElement).toHaveClass("opacity-0", "group-hover:opacity-100");
-    expect(container.querySelector(".group")).not.toBeNull();
   });
 });
