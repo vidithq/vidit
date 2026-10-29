@@ -71,7 +71,7 @@ vi.mock("@/hooks/useCursorList", () => ({
 }));
 
 import FeedPage from "./page";
-import { openFilterGroups } from "@/test/filters";
+import { openFilterGroups, sheetButton } from "@/test/filters";
 
 const ANA = { id: "u1", username: "ana", avatar_url: null };
 const BOB = { id: "u2", username: "bob", avatar_url: null };
@@ -379,7 +379,7 @@ describe("FeedPage", () => {
     walk.items = [item({})];
     render(<FeedPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(sheetButton());
     const sheet = screen.getByRole("dialog", { name: "Filters" });
     fireEvent.click(within(sheet).getByRole("switch", { name: "Following" }));
     expect(lastPath()).toBe("/feed?scope=all");

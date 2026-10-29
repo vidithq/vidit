@@ -8,7 +8,7 @@ import { eventListPath, type EventListSort } from "@/lib/events";
 import { formatOpenAge } from "@/lib/format";
 import type { EventListItem } from "@/types";
 import {
-  FilterRailPanel,
+  FilterCard,
   FilterSheetBar,
   type FilterPanelProps,
 } from "@/components/filters/FilterPanel";
@@ -74,7 +74,7 @@ export default function RequestsPage() {
   return (
     <PageShell
       title="Requests"
-      rail={<FilterRailPanel {...panel} />}
+      rail={<FilterCard {...panel} />}
       railLabel="Filters"
       narrowRail="hidden"
       actions={

@@ -20,7 +20,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 import type { Conflict, EventListItem, Tag } from "@/types";
 
 import RequestsPage from "./page";
-import { openFilterGroups } from "@/test/filters";
+import { openFilterGroups, sheetButton } from "@/test/filters";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
 
@@ -161,7 +161,7 @@ describe("RequestsPage", () => {
     render(<RequestsPage />);
     await screen.findByText(REQUEST.title);
 
-    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(sheetButton());
     const sheet = screen.getByRole("dialog", { name: "Filters" });
     fireEvent.focus(within(sheet).getByRole("combobox", { name: "Conflict" }));
     fireEvent.click(screen.getByRole("option", { name: /^Russian invasion of Ukraine/ }));

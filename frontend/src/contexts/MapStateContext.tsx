@@ -46,8 +46,6 @@ interface MapState {
   addedPlaying: boolean;
   setAddedPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
 
-  filtersOpen: boolean;
-  setFiltersOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
 
   /** The site whose panel is open. */
   selectedSiteId: string | null;
@@ -62,9 +60,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [eventPlaying, setEventPlaying] = useState(false);
   const [addedPlaying, setAddedPlaying] = useState(false);
-  // Collapsed by default: the map leads with the catalogue; ActiveFilterPills still surfaces
-  // active filters.
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
   // Memoised so consumers re-render only when a slot they read changes.
@@ -80,8 +75,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       setEventPlaying,
       addedPlaying,
       setAddedPlaying,
-      filtersOpen,
-      setFiltersOpen,
       selectedSiteId,
       setSelectedSiteId,
     }),
@@ -91,7 +84,6 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       filters,
       eventPlaying,
       addedPlaying,
-      filtersOpen,
       selectedSiteId,
     ]
   );

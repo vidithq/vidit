@@ -74,7 +74,7 @@ import type {
 import { ApiError } from "@/lib/api";
 import { NO_ANSWER } from "@/lib/errors";
 import SearchPage from "./page";
-import { openFilterGroups } from "@/test/filters";
+import { openFilterGroups, sheetButton } from "@/test/filters";
 
 const OWNER = { id: "u1", username: "ana", avatar_url: null };
 
@@ -574,7 +574,7 @@ describe("the search page's filter panel", () => {
     expect(await screen.findByText("Kakhovka spillway")).toBeInTheDocument();
     expect(heading("When")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(sheetButton());
     const sheet = screen.getByRole("dialog", { name: "Filters" });
     fireEvent.change(within(sheet).getByLabelText("Event date window start date"), {
       target: { value: "2026-06-01" },

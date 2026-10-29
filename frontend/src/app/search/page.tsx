@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/Input";
 import { LoadMoreRow, SeeAllLink } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import {
-  FilterRailPanel,
+  FilterCard,
   FilterSheetBar,
   type FilterPanelProps,
 } from "@/components/filters/FilterPanel";
@@ -317,7 +317,7 @@ function SearchPageBody() {
           autoFocus
         />
       }
-      rail={<FilterRailPanel {...panel} />}
+      rail={<FilterCard {...panel} />}
       railLabel="Filters"
       narrowRail="hidden"
       stickyActions={

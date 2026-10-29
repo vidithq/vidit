@@ -727,7 +727,7 @@ flowchart TB
   layout["`**PageWithRail**
   53rem main column plus a 17.5rem rail`"]:::core
   pages["`**Feed, Requests board, Search**
-  rail: FilterRailPanel; narrowRail=hidden`"]:::page
+  rail: FilterCard; narrowRail=hidden`"]:::page
   wide["`**lg and up**
   rail sticks beside the list, scrolls on its own when taller`"]:::state
   narrow["`**below lg**
@@ -754,7 +754,7 @@ flowchart TB
 - **Without a `rail`** (`null`) the page takes the `reading` column, so a page can drop the rail on a view it does not apply to.
 - **With `headerInColumn`** `PageShell` passes its header to `PageWithRail` as `header`, which heads the main column (`lg:grid-rows-[auto_1fr]`, the rail spanning both rows). The rail's top is then level with the title.
 
-The event forms place their actions in [`EventShell`](#event-layout)'s sticky actions instead of a rail. The feed, the [Requests board](#requests-board) and search mount the [filter panel](#filter-panel) in the rail (`FilterRailPanel`, the panel in a `CARD_FRAME`) with `narrowRail="hidden"`, and below `lg` they show its phone bar above the list. The [About page](../frontend/src/app/about/page.tsx) mounts its links in the rail with `headerInColumn` and `narrowRail="below"`: three dense `Card`s (Guides, Stay in touch, Legal) of `LinkRow`s, while the main column keeps the prose (Commitments, Funding, Privacy, Behind Vidit), so the rail's links stay in view while the prose scrolls.
+The event forms place their actions in [`EventShell`](#event-layout)'s sticky actions instead of a rail. The feed, the [Requests board](#requests-board) and search mount the [filter panel](#filter-panel) in the rail (`FilterCard`, the panel under its **Filters** header) with `narrowRail="hidden"`, and below `lg` they show its phone bar above the list. The [About page](../frontend/src/app/about/page.tsx) mounts its links in the rail with `headerInColumn` and `narrowRail="below"`: three dense `Card`s (Guides, Stay in touch, Legal) of `LinkRow`s, while the main column keeps the prose (Commitments, Funding, Privacy, Behind Vidit), so the rail's links stay in view while the prose scrolls.
 
 #### Filter panel
 
@@ -794,9 +794,12 @@ flowchart TB
   OptionPicker`"]:::state
   matches["`**Combobox** list
   OptionSearch or AccountPicker matches`"]:::state
+  card["`**FilterCard**
+  Filters header; closed: the active pills
+  open by default in a rail, closed on the map`"]:::shared
   map["`**MapFilters**
-  floating panel under its header, from lg`"]:::page
-  rail["`**FilterRailPanel**
+  the card floating over the map, from lg`"]:::page
+  rail["`**right rail**
   search, feed, Requests board, from lg`"]:::page
   phone["`**FilterSheetBar**
   every surface below lg: pills, a sheet`"]:::page
@@ -807,8 +810,9 @@ flowchart TB
   panel --> line --> editor
   panel --> search --> matches
   panel --> toggle
-  panel --> map
-  panel --> rail
+  panel --> card
+  card --> map
+  card --> rail
   panel --> phone
 ```
 
@@ -864,10 +868,10 @@ On search, a Show pick that lists no event offers only the dimensions its kinds 
 
 On search, Show holds the kinds the page lists and drives its sections (see [Search](#search)). On the feed it holds the statuses `GET /feed` takes as `kind`.
 
-**Placement.** The panel's content is the same in every placement:
+**Placement.** The panel's content is the same in every placement. From `lg` up every surface shows it in one [`FilterCard`](../frontend/src/components/filters/FilterPanel.tsx): a **Filters** header button (the filter icon, accent while a filter is on, the label and a chevron) over the panel. The header opens and closes the panel. Closed, the card shows every active filter as a removable pill under the header, with **Clear all** once two or more are on. Open, the active filters show only in the panel: in their lines, or under the heading of a collapsed group. The card prints no count. The viewer's open or closed choice is kept per surface in `localStorage` (`usePanelOpen` in [`panelState.ts`](../frontend/src/components/filters/panelState.ts)):
 
-- **The map, from `lg` up**: [`MapFilters`](../frontend/src/components/map/MapFilters.tsx) floats the panel under its **Filters** header, which shows the point count and the loading `<Dot>`. Collapsed, the header heads the active pills alone. Open, the panel stops above the map's bottom-left controls and scrolls the rest. The state lives in `MapStateContext`: it survives a visit to another page and resets on reload.
-- **Search, the feed and the Requests board, from `lg` up**: the panel in the [right rail](#right-rail).
+- **The map**: [`MapFilters`](../frontend/src/components/map/MapFilters.tsx) floats the card over the map, closed by default, so the map leads with the catalogue. Its header shows the loading `<Dot>` while the points load. Open, the panel stops above the map's bottom-left controls and scrolls the rest. The filter values live in `MapStateContext`: they survive a visit to another page and reset on reload.
+- **Search, the feed and the Requests board**: the card in the [right rail](#right-rail), open by default.
 - **Every surface below `lg`**: [`FilterSheetBar`](../frontend/src/components/filters/FilterPanel.tsx), a **Filters** button and every active filter as a removable pill ([`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx)). The button opens the panel in `MediaOverlay`'s sheet variant, docked to the bottom edge. Each change applies at once. **Done**, Escape or a tap on the backdrop closes the sheet. On the map the bar floats over the canvas, right of the menu chip.
 
 A pill reads as **name:** *value*, for example **Show:** *Sites*, **Author:** *ana* or **Event date:** *Until 1 Jan 2025*; a switch's pill reads as its label alone (*Approved only*). A date window reads *From 1 Jan 2024*, *Until 1 Jan 2025* or *1 Jan 2024 to 1 Jan 2025* (`rangeSummary`).

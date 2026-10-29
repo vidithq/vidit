@@ -12,7 +12,7 @@ vi.mock("@/lib/search", async (importOriginal) => ({
   suggestAuthors: suggest.authors,
 }));
 
-import { FilterPanel, FilterSheetBar, type FilterPanelProps } from "./FilterPanel";
+import { FilterCard, FilterPanel, FilterSheetBar, type FilterPanelProps } from "./FilterPanel";
 import { EMPTY_FILTERS, type FilterState, type Surface } from "./model";
 import { openFilterGroups } from "@/test/filters";
 
@@ -43,12 +43,12 @@ const DAYS = {
 function Harness({
   surface,
   initial = EMPTY_FILTERS,
-  sheet = false,
+  shape = "panel",
   onChange,
 }: {
   surface: Surface;
   initial?: FilterState;
-  sheet?: boolean;
+  shape?: "panel" | "card" | "sheet";
   onChange?: (state: FilterState) => void;
 }) {
   const [state, setState] = useState(initial);
@@ -65,7 +65,8 @@ function Harness({
     vocabulary: { tags: TAGS, conflicts: CONFLICTS },
     timelines: DAYS,
   };
-  return sheet ? <FilterSheetBar {...props} /> : <FilterPanel {...props} />;
+  if (shape === "sheet") return <FilterSheetBar {...props} />;
+  return shape === "card" ? <FilterCard {...props} /> : <FilterPanel {...props} />;
 }
 
 const line = (name: string) => screen.getByRole("button", { name });
@@ -230,11 +231,51 @@ describe("<FilterPanel>", () => {
   });
 });
 
+describe("<FilterCard>", () => {
+  const header = () => screen.getByRole("button", { name: "Filters" });
+
+  it("opens in a list's rail and starts closed on the map", () => {
+    const { unmount } = render(<Harness surface="search" shape="card" />);
+    expect(header()).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("heading", { name: "What" })).toBeInTheDocument();
+    unmount();
+
+    render(<Harness surface="map" shape="card" />);
+    expect(header()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("heading", { name: "What" })).not.toBeInTheDocument();
+  });
+
+  it("remembers the viewer's choice per surface", () => {
+    const { unmount } = render(<Harness surface="feed" shape="card" />);
+    fireEvent.click(header());
+    expect(header()).toHaveAttribute("aria-expanded", "false");
+    unmount();
+
+    const again = render(<Harness surface="feed" shape="card" />);
+    expect(header()).toHaveAttribute("aria-expanded", "false");
+    again.unmount();
+    render(<Harness surface="search" shape="card" />);
+    expect(header()).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("shows the active filters once: under the header closed, in their groups open", () => {
+    render(<Harness surface="map" shape="card" initial={{ ...EMPTY_FILTERS, levels: ["direct"] }} />);
+    const pill = () => screen.queryAllByTitle("Remove filter Level: Direct");
+
+    expect(pill()).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "Source" })).not.toBeInTheDocument();
+
+    fireEvent.click(header());
+    expect(pill()).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Source" })).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
 describe("<FilterSheetBar>", () => {
   beforeEach(openFilterGroups);
 
   it("shows the active filters as pills and opens the panel in a sheet", () => {
-    render(<Harness surface="feed" sheet initial={{ ...EMPTY_FILTERS, following: true }} />);
+    render(<Harness surface="feed" shape="sheet" initial={{ ...EMPTY_FILTERS, following: true }} />);
 
     expect(screen.getByTitle("Remove filter Following")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));

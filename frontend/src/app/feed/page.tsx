@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import {
-  FilterRailPanel,
+  FilterCard,
   FilterSheetBar,
   type FilterPanelProps,
 } from "@/components/filters/FilterPanel";
@@ -179,7 +179,7 @@ function FeedPageBody() {
   return (
     <PageShell
       title="Feed"
-      rail={<FilterRailPanel {...panel} />}
+      rail={<FilterCard {...panel} />}
       railLabel="Filters"
       narrowRail="hidden"
     >

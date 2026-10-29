@@ -762,7 +762,7 @@ export default function PalettePage() {
             </Variant>
           </Entry>
 
-          <Entry name="<ActiveFilterPills>" usage="The one rendering of the applied filters outside the panel: a row of removable accent key/value chips (filter name, value, ×), on the phone filter bar of every surface and under the map's collapsed Filters header. Each pill names its filter as its line in the panel reads and its value as its option reads (Conflict: Russo-Ukrainian War, Event date: Until 1 Jan 2025); a switch's pill reads as its label alone (Approved only). Entries are {key, filter?, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty. No pill carries a count.">
+          <Entry name="<ActiveFilterPills>" usage="The one rendering of the applied filters outside the panel: a row of removable accent key/value chips (filter name, value, ×), on the phone filter bar of every surface, under the closed Filters header of the filter card (the map's and every list rail's), and under a collapsed group of the filter panel. Each pill names its filter as its line in the panel reads and its value as its option reads (Conflict: Russo-Ukrainian War, Event date: Until 1 Jan 2025); a switch's pill reads as its label alone (Approved only). Entries are {key, filter?, label, icon?, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty. No pill carries a count.">
             <PaletteActiveFilterPills />
           </Entry>
 
@@ -1450,7 +1450,7 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the map filter panel's in-flight pulse. Position / ring / size / colour via className.">
+          <Entry name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the filter card header's in-flight pulse on the map. Position / ring / size / colour via className.">
             <Variant label="bare">
               <Dot />
             </Variant>
@@ -1909,7 +1909,7 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter panel of the feed, the Requests board and search. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the organization page, whose rail opens top right with an invited viewer's answer), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, for a rail that acts on the column) or leaves the page (narrow=&quot;hidden&quot;, where the filter panel's phone bar opens the same panel in a sheet). No rail: one full-width column.">
+          <Entry name="<PageWithRail>" usage="A main column plus a sticky 17.5rem right rail from lg up. PageShell composes it from its rail prop and widens its column to max-w-6xl, so the main column keeps the 53rem reading width: the filter card (FilterCard, the panel under its Filters header) of the feed, the Requests board and search. `header` heads the main column beside the rail rather than above both (PageShell's headerInColumn: the organization page, whose rail opens top right with an invited viewer's answer), and comes first below lg, so a stacked rail lands under the title. The rail sticks at its resting top, so it never moves when the page scrolls, and scrolls on its own once taller than the viewport. Below lg it stacks above the column (narrow=&quot;stacked&quot;), below it (narrow=&quot;below&quot;, for a rail that acts on the column) or leaves the page (narrow=&quot;hidden&quot;, where the filter panel's phone bar opens the same panel in a sheet). No rail: one full-width column.">
             <div className="w-full space-y-4">
               <Variant label="rail beside the column">
                 <PageWithRail

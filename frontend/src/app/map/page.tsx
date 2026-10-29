@@ -240,7 +240,6 @@ export default function HomePage() {
       <MapFilters
         vocabulary={vocabulary}
         points={statusFiltered}
-        pointCount={visiblePoints.length}
         loading={loading}
       />
 

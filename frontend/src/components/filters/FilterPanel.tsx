@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useId, useState } from "react";
+import { ChevronDown, Filter } from "lucide-react";
 
 import type { DayCount } from "@/types";
 import { AccountPicker, analystAccount } from "@/components/ui/AccountPicker";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { Button } from "@/components/ui/Button";
 import { CARD_FRAME } from "@/components/ui/Card";
+import { Dot } from "@/components/ui/Dot";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
 import { OptionPicker, OptionSearch } from "@/components/ui/OptionPicker";
 import { PropertyName, PropertyRow, PropertySearchRow } from "@/components/ui/PropertyRow";
@@ -15,7 +17,7 @@ import { ToggleRow } from "@/components/ui/ToggleRow";
 import { cn } from "@/lib/cn";
 import { AUTHOR_FILTER_RE, suggestApprovers, suggestAuthors } from "@/lib/search";
 import { TimelineScrubber } from "./TimelineScrubber";
-import { useOpenGroups } from "./openGroups";
+import { useOpenGroups, usePanelOpen } from "./panelState";
 import {
   DATE_DIMENSIONS,
   DATE_KEYS,
@@ -265,11 +267,59 @@ export function FilterPanel(props: FilterPanelProps) {
   );
 }
 
-/** The panel in a list page's right rail, from `lg` up. */
-export function FilterRailPanel(props: FilterPanelProps) {
+/**
+ * The panel under its **Filters** header, from `lg` up: in a list page's right rail and floating
+ * over the map. The header opens and closes the panel; closed, the active filters show under it
+ * as removable pills. The viewer's choice holds per surface (`usePanelOpen`).
+ */
+export function FilterCard({
+  loading = false,
+  className,
+  bodyClassName,
+  ...props
+}: FilterPanelProps & {
+  /** A pulsing dot in the header while the surface fetches. */
+  loading?: boolean;
+  className?: string;
+  /** The open panel's own height cap and scroll. */
+  bodyClassName?: string;
+}) {
+  const [open, toggle] = usePanelOpen(props.surface);
+  const bodyId = useId();
+  const pills = activePills(props.surface, props.state, props.vocabulary, props.onPatch);
   return (
-    <div className={cn(CARD_FRAME, "p-3")}>
-      <FilterPanel {...props} />
+    <div className={className}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        aria-controls={open ? bodyId : undefined}
+        className="flex w-full items-center justify-between rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm transition-colors hover:bg-neutral-800/80"
+      >
+        <span className="flex items-center gap-2">
+          <Filter size={14} className={pills.length > 0 ? "text-orange-400" : "text-neutral-400"} />
+          <span className="font-medium text-neutral-300">Filters</span>
+        </span>
+        <span className="flex items-center gap-2">
+          {loading && <Dot className="animate-pulse" />}
+          <ChevronDown
+            size={14}
+            aria-hidden
+            className={cn("text-neutral-500 transition-transform", open && "rotate-180")}
+          />
+        </span>
+      </button>
+      {open ? (
+        <div id={bodyId} className={cn(CARD_FRAME, "mt-1 p-3", bodyClassName)}>
+          <FilterPanel {...props} />
+        </div>
+      ) : (
+        pills.length > 0 && (
+          <div className={cn(CARD_FRAME, "mt-1 px-2.5 py-2")}>
+            <ActiveFilterPills filters={pills} onClearAll={props.onClear} />
+          </div>
+        )
+      )}
     </div>
   );
 }

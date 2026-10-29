@@ -12,9 +12,10 @@ import {
 
 /**
  * The filter panel on the three lists that carry it. From `lg` up the panel is a sticky right
- * rail beside the list; below `lg` it leaves the page, and a bar of the Filters button and the
- * active filters opens it in a sheet from the bottom edge. Its groups start collapsed. A searched
- * line lists its matches under its field, over the sheet, and each pick applies at once.
+ * rail beside the list, open under its Filters header; below `lg` it leaves the page, and a bar
+ * of the Filters button and the active filters opens it in a sheet from the bottom edge. Its
+ * groups start collapsed. A searched line lists its matches under its field, over the sheet, and
+ * each pick applies at once.
  */
 const PAGES = [
   { name: "feed", path: "/feed", signedIn: true },
@@ -76,7 +77,12 @@ for (const target of PAGES) {
       await expect(rail.getByRole("heading", { name: "When" })).toBeVisible();
       await openFilterGroups(rail, ["What", "Source"]);
       await expect(rail.getByRole("combobox", { name: "Tags" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeHidden();
+      // The rail's header opens on a list; the phone bar's sheet button stands down.
+      await expect(rail.getByRole("button", { name: "Filters", exact: true })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      await expect(page.locator('button[aria-haspopup="dialog"]', { hasText: "Filters" })).toBeHidden();
       await expect(rail).toHaveCSS("position", "sticky");
 
       const column = page.getByRole("link", { name: REQUESTED_EVENT.title });
