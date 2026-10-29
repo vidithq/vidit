@@ -28,7 +28,7 @@ export function InviteAnswerButtons({
         Accept
       </Button>
       <Button
-        action="decline"
+        action="remove"
         variant="ghost"
         onClick={() => void answer.run("decline")}
         disabled={answer.loading}

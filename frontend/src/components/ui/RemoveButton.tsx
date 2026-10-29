@@ -1,7 +1,5 @@
 import type { ComponentPropsWithRef } from "react";
-import { Trash2, X } from "lucide-react";
-
-import { Button } from "./Button";
+import { ACTION_ICONS, Button } from "./Button";
 
 /**
  * The remove control of a minor removal: a red cross named by what it removes, the name showing
@@ -21,7 +19,7 @@ export function RemoveButton({
   confirms?: boolean;
   iconSize?: number;
 }) {
-  const Icon = confirms ? Trash2 : X;
+  const Icon = ACTION_ICONS[confirms ? "delete" : "remove"];
   return (
     <Button icon variant="dangerGhost" aria-label={label} {...props}>
       <Icon size={iconSize} />

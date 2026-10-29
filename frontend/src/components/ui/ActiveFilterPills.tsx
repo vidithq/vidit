@@ -39,7 +39,7 @@ export function ActiveFilterPills({
         </Pill>
       ))}
       {onClearAll && filters.length > 1 && (
-        <Button action="clear" variant="ghost" onClick={onClearAll}>
+        <Button action="remove" variant="ghost" onClick={onClearAll}>
           Clear all
         </Button>
       )}

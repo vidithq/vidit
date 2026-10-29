@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
-import { X } from "lucide-react";
 
 import { cn } from "@/lib/cn";
-import { TAP_STEP } from "./Button";
+import { ACTION_ICONS, TAP_STEP } from "./Button";
 import { ACCENT_SURFACE, WARNING_CALLOUT } from "./styles";
 
 // The one pill for the status / tag / chip family: one rounded-full shape, the
@@ -68,6 +67,7 @@ export function Pill({
   onRemove,
 }: PillProps) {
   const press = onClick ?? onRemove;
+  const RemoveIcon = ACTION_ICONS.remove;
   const content = label ? (
     <>
       <span className="font-normal opacity-70">{label}:</span>
@@ -95,7 +95,7 @@ export function Pill({
       >
         {icon}
         {content}
-        {onRemove && <X size={11} aria-hidden />}
+        {onRemove && <RemoveIcon size={11} aria-hidden />}
       </button>
     );
   }

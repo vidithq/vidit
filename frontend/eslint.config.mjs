@@ -8,6 +8,44 @@
 // legacy validator can't `JSON.stringify`).
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 
+// A removal draws one of two icons, both from `ACTION_ICONS` in components/ui/Button.tsx: `remove`
+// (a cross, minor, acts at once) or `delete` (a trash, important, behind <ConfirmButton>). Any
+// other file that imports a cross, a trash or a look-alike from lucide-react fails the lint.
+const REMOVAL_ICONS = [
+  "Ban",
+  "CircleMinus",
+  "CircleSlash",
+  "CircleSlash2",
+  "CircleX",
+  "Eraser",
+  "MinusCircle",
+  "SquareX",
+  "Trash",
+  "Trash2",
+  "UserX",
+  "X",
+  "XCircle",
+  "XSquare",
+];
+
+const restrictRemovalIcons = (names, message) => ({
+  "no-restricted-imports": [
+    "error",
+    {
+      paths: [
+        {
+          name: "lucide-react",
+          importNames: names.flatMap((n) => [n, `${n}Icon`, `Lucide${n}`]),
+          message,
+        },
+      ],
+    },
+  ],
+});
+
+const REMOVAL_MESSAGE =
+  "A removal takes ACTION_ICONS.remove (a cross that acts at once) or ACTION_ICONS.delete (a trash behind <ConfirmButton>). See docs/design.md, Destructive actions.";
+
 const config = [
   // Top-level ignores. Mirrors the implicit exclusions that
   // `next lint` used to apply (the script swapped to `eslint .` in
@@ -36,6 +74,27 @@ const config = [
     rules: {
       "react-hooks/set-state-in-effect": "warn",
     },
+  },
+  { rules: restrictRemovalIcons(REMOVAL_ICONS, REMOVAL_MESSAGE) },
+  {
+    // The cross where it closes or marks a state and removes nothing: the drawer's and the
+    // lightbox's close, the session notice's dismiss, a failed step, the closed status badge.
+    files: [
+      "src/components/Sidebar.tsx",
+      "src/components/SessionEndedNotice.tsx",
+      "src/components/ui/MediaLightbox.tsx",
+      "src/components/ui/ProgressSteps.tsx",
+      "src/components/event/StatusBadge.tsx",
+    ],
+    rules: restrictRemovalIcons(
+      REMOVAL_ICONS.filter((n) => n !== "X"),
+      REMOVAL_MESSAGE,
+    ),
+  },
+  {
+    // The one home of the removal icons.
+    files: ["src/components/ui/Button.tsx"],
+    rules: { "no-restricted-imports": "off" },
   },
 ];
 

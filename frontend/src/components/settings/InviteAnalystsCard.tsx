@@ -54,7 +54,6 @@ function RevokeCode({
   return (
     <ConfirmButton
       icon
-      action="revoke"
       label={`Revoke the invite code for @${code.x_handle}`}
       disabled={disabled}
       onConfirm={() => onRevoke(code.id)}

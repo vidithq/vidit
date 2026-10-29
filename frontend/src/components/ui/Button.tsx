@@ -3,7 +3,6 @@ import {
   Activity,
   Archive,
   ArrowRight,
-  Ban,
   BellOff,
   BookOpen,
   Bot,
@@ -13,10 +12,9 @@ import {
   ChevronRight,
   ChevronsRight,
   ChevronUp,
-  CircleX,
   ClipboardCheck,
   Copy,
-  Eraser,
+  CornerUpLeft,
   Eye,
   EyeOff,
   Flag,
@@ -31,12 +29,10 @@ import {
   LogIn,
   LogOut,
   MailPlus,
-  MailX,
   MapPin,
   MapPinned,
   MapPinPlus,
   Megaphone,
-  Minus,
   PenTool,
   Plus,
   RotateCcw,
@@ -52,7 +48,6 @@ import {
   Trash2,
   TriangleAlert,
   Undo2,
-  Unlink,
   Upload,
   UserCheck,
   UserCog,
@@ -148,7 +143,8 @@ export function buttonClasses(
 // names, one icon per action, so a reader learns an icon once. A text `<Button>` names it with
 // `action`; a link styled by `buttonClasses` puts `<ActionIcon>` before its text.
 // `Button.test.ts` fails on a text button that names none. docs/design.md, Action icons, lists
-// the labels of each.
+// the labels of each. A removal takes `remove` (a cross that acts at once) or `delete` (a trash
+// behind `<ConfirmButton>`); eslint.config.mjs keeps their lucide icons out of other files.
 export const ACTION_ICONS = {
   accept: Check,
   activity: Activity,
@@ -156,12 +152,10 @@ export const ACTION_ICONS = {
   approve: Stamp,
   archive: Archive,
   askApproval: ClipboardCheck,
-  cancel: X,
-  clear: Eraser,
+  cancel: CornerUpLeft,
   collect: Layers,
   continue: ArrowRight,
   copy: Copy,
-  decline: CircleX,
   delete: Trash2,
   dismiss: ShieldCheck,
   draw: PenTool,
@@ -187,13 +181,12 @@ export const ACTION_ICONS = {
   next: ChevronRight,
   password: KeyRound,
   previous: ChevronLeft,
-  removePoint: Minus,
+  remove: X,
   report: Flag,
   request: Megaphone,
   retry: RotateCw,
   revert: RotateCcw,
   review: Bot,
-  revoke: Ban,
   role: UserCog,
   save: Save,
   search: Search,
@@ -204,10 +197,8 @@ export const ACTION_ICONS = {
   site: MapPinned,
   skip: SkipForward,
   undo: Undo2,
-  unlink: Unlink,
   unsubscribe: BellOff,
   useProof: ImageUp,
-  withdraw: MailX,
 } satisfies Record<string, LucideIcon>;
 
 export type ButtonAction = keyof typeof ACTION_ICONS;

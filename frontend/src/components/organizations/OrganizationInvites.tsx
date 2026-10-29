@@ -141,7 +141,7 @@ export function OrganizationInvites({ slug }: { slug: string }) {
                 external={false}
                 action={
                   <Button
-                    action="withdraw"
+                    action="remove"
                     variant="ghost"
                     onClick={() => void cancel.run(invite.user.username)}
                     disabled={cancel.loading}

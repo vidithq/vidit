@@ -106,7 +106,7 @@ export function ZoneEditor({
         </Button>
         {closed ? (
           <Button
-            action="removePoint"
+            action="remove"
             variant="ghost"
             disabled={!canRemove}
             onClick={() => selected !== null && change(removeVertex(state, selected))}
@@ -124,7 +124,7 @@ export function ZoneEditor({
           </Button>
         )}
         <Button
-          action="clear"
+          action="remove"
           variant="ghost"
           disabled={vertices.length === 0}
           onClick={() => change(EMPTY_DRAW)}

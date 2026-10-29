@@ -171,7 +171,7 @@ export function DeclineRequests({
         }
       >
         <Button
-          action="decline"
+          action="remove"
           variant="ghost"
           onClick={() => void decline.run()}
           disabled={decline.loading}

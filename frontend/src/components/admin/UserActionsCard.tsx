@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AtSign, Bot, Ellipsis, EyeOff, RotateCcw, Trash2 } from "lucide-react";
+import { AtSign, Ellipsis, RotateCcw } from "lucide-react";
 
 import {
   deleteUser,
@@ -16,7 +16,7 @@ import { useMutation } from "@/hooks/useMutation";
 import type { UserOutcome } from "@/components/admin/ActionReceipt";
 import { FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
 import { ActionMenu } from "@/components/ui/ActionMenu";
-import { Button } from "@/components/ui/Button";
+import { ActionIcon, Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
@@ -213,20 +213,20 @@ export function UserActionsCard({
                   {
                     key: "purge",
                     label: `${DANGER_LABELS.purge}${detectedCount !== undefined ? ` (${detectedCount})` : ""}`,
-                    icon: <Bot size={14} aria-hidden />,
+                    icon: <ActionIcon action="delete" />,
                     onSelect: () => openDanger("purge"),
                   },
                   {
                     key: "soft",
                     label: DANGER_LABELS.soft,
-                    icon: <EyeOff size={14} aria-hidden />,
+                    icon: <ActionIcon action="delete" />,
                     onSelect: () => openDanger("soft"),
                   },
                 ]),
             {
               key: "hard",
               label: DANGER_LABELS.hard,
-              icon: <Trash2 size={14} aria-hidden />,
+              icon: <ActionIcon action="delete" />,
               onSelect: () => openDanger("hard"),
             },
           ]}
@@ -271,7 +271,7 @@ export function UserActionsCard({
             </Button>
             {user.x_handle && (
               <Button
-                action="unlink"
+                action="remove"
                 variant="danger"
                 onClick={submitXHandleClear}
                 disabled={linking}
