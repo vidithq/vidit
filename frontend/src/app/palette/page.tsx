@@ -25,7 +25,6 @@ import {
   SquarePen,
   Swords,
   Upload,
-  X,
 } from "lucide-react";
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
@@ -128,6 +127,7 @@ import {
 } from "@/components/ui/styles";
 import {
   ACTION_ICONS,
+  ActionIcon,
   Button,
   buttonClasses,
   DANGER_CONFIRM,
@@ -203,11 +203,9 @@ const ACTION_LABELS: Record<ButtonAction, string> = {
   archive: "Wayback Machine",
   askApproval: "Ask for approval",
   cancel: "Cancel",
-  clear: "Clear",
   collect: "Add to collection",
   continue: "Continue",
   copy: "Copy",
-  decline: "Decline",
   delete: "Delete",
   dismiss: "Dismiss",
   draw: "Draw a contour on this source",
@@ -233,13 +231,12 @@ const ACTION_LABELS: Record<ButtonAction, string> = {
   next: "Next",
   password: "Update password",
   previous: "Previous",
-  removePoint: "Remove corner",
+  remove: "Clear",
   report: "Send report",
   request: "Post request",
   retry: "Retry",
   revert: "Back to the current contour",
   review: "Start reviewing",
-  revoke: "Revoke",
   role: "Make org manager",
   save: "Save version 2",
   search: "Your geolocations",
@@ -250,10 +247,8 @@ const ACTION_LABELS: Record<ButtonAction, string> = {
   site: "Open the site page",
   skip: "Skip",
   undo: "Undo",
-  unlink: "Clear link",
   unsubscribe: "Turn off",
   useProof: "Use a proof image",
-  withdraw: "Withdraw",
 };
 
 const MOCK_TAGS = [
@@ -636,14 +631,14 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<RemoveButton>" usage="The minor destructive variant (components/ui/RemoveButton.tsx): a red dangerGhost cross (X) named by what it removes (label), the name showing as its tooltip, that acts at once with no confirmation. For a removal that is minor or easily undone: dismissing a notification, a link row, a FileManager tile (as a corner disc), a draft co-geolocator pick, a pending co-geolocator invitation, an event held on a collection form, a site source marked for removal on the edit form (Keep restores it). `confirms` shows a trash instead, only on the edit form's Close, whose CloseEventDialog collects the required reason.">
+          <Entry name="<RemoveButton>" usage="The minor destructive variant (components/ui/RemoveButton.tsx): a red dangerGhost cross (ACTION_ICONS.remove, the one icon of a minor removal, as the trash is of an important one) named by what it removes (label), the name showing as its tooltip, that acts at once with no confirmation. For a removal that is minor or easily undone: dismissing a notification, a link row, a FileManager tile (as a corner disc), a draft co-geolocator pick, a pending co-geolocator invitation, an event held on a collection form, a site source marked for removal on the edit form (Keep restores it). `confirms` shows a trash instead, only on the edit form's Close, whose CloseEventDialog collects the required reason.">
             <div className="flex items-center gap-2">
               <RemoveButton label="Dismiss notification" />
               <RemoveButton confirms label="Close this geolocation" />
             </div>
           </Entry>
 
-          <Entry name="<ConfirmButton>" usage="The important destructive variant (components/ui/ConfirmButton.tsx): red, it confirms in place, never in a dialog. The first click arms it (DANGER_CONFIRM, named Confirm …), a second click within ARM_MS acts; Escape, a click or focus elsewhere, or the timeout disarms it. `icon` is the square icon button named by label, with its action's icon from ACTION_ICONS (a trash for delete, EyeOff for hide, Ban for revoke); without it, a labelled danger button that keeps its label and icon, with `name` as the accessible name when the text alone is ambiguous. For an action that is important or hard to undo: removing a co-geolocator, deleting an approval, withholding a site, hiding a reported item or an event, removing a source, dropping a collection, revoking an invite code, leaving an event's credit or an organization, removing a member, soft or hard deleting an event. Click to arm.">
+          <Entry name="<ConfirmButton>" usage="The important destructive variant (components/ui/ConfirmButton.tsx): red, it confirms in place, never in a dialog. The first click arms it (DANGER_CONFIRM, named Confirm …), a second click within ARM_MS acts; Escape, a click or focus elsewhere, or the timeout disarms it. `icon` is the square icon button named by label, with its action's icon from ACTION_ICONS (a trash for delete, EyeOff for hide); without it, a labelled danger button that keeps its label and icon, with `name` as the accessible name when the text alone is ambiguous. For an action that is important or hard to undo: removing a co-geolocator, deleting an approval, withholding a site, hiding a reported item or an event, removing a source, dropping a collection, revoking an invite code, leaving an event's credit or an organization, removing a member, soft or hard deleting an event. Click to arm.">
             <div className="flex flex-wrap items-center gap-2">
               <ConfirmButton icon label="Remove bo" onConfirm={() => {}} />
               <ConfirmButton icon action="hide" label="Withhold the site" onConfirm={() => {}} />
@@ -865,7 +860,7 @@ export default function PalettePage() {
                   placeholder="https://t.me/channel/12345"
                   trailing={
                     <Button icon variant="ghost" aria-label="Clear the field">
-                      <X size={14} />
+                      <ActionIcon action="remove" />
                     </Button>
                   }
                 />
@@ -1310,7 +1305,7 @@ export default function PalettePage() {
             <SourceLabel url={null} variant="inline" />
           </Entry>
 
-          <Entry name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the filter card header's in-flight pulse on the map. Position / ring / size / colour via className.">
+          <Entry name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the filter card header's in-flight pulse after the result count. Position / ring / size / colour via className.">
             <Variant label="bare">
               <Dot />
             </Variant>

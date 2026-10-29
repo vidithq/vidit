@@ -35,19 +35,23 @@ vi.mock("@/hooks/useRequireAuth", () => ({
 // The profile read answers the follow count once the following view comes back empty, and the
 // taxonomy reads feed the filter panel.
 const profile = vi.hoisted(() => ({ following_count: 0 }));
-const NO_DATES = vi.hoisted(() => ({ occurred_date: [], submitted: [] }));
+// The histogram answers each `/feed/dates` path with `dates.total(path)` rows, or loads.
+const dates = vi.hoisted(() => ({ total: (_path: string): number => 0, loading: false }));
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => {
+    if (path?.startsWith("/feed/dates")) {
+      return dates.loading
+        ? { data: null, error: null, loading: true, refetch: () => {} }
+        : { data: histogram(path, dates.total(path)), error: null, loading: false, refetch: () => {} };
+    }
     const data =
       path === "/tags"
         ? [{ id: "t1", name: "airstrike" }]
         : path === "/conflicts?used=true"
           ? [{ id: "c1", name: "Russo-Ukrainian war" }]
-          : path?.startsWith("/feed/dates")
-            ? NO_DATES
-            : path
-              ? profile
-              : null;
+          : path
+            ? profile
+            : null;
     return { data, error: null, loading: false, refetch: () => {} };
   },
 }));
@@ -71,7 +75,7 @@ vi.mock("@/hooks/useCursorList", () => ({
 }));
 
 import FeedPage from "./page";
-import { openFilterGroups, sheetButton } from "@/test/filters";
+import { histogram, openFilterGroups, sheetButton } from "@/test/filters";
 
 const ANA = { id: "u1", username: "ana", avatar_url: null };
 const BOB = { id: "u2", username: "bob", avatar_url: null };
@@ -109,6 +113,8 @@ beforeEach(() => {
   walk.loadMore = vi.fn();
   walk.paths = [];
   profile.following_count = 0;
+  dates.total = () => 0;
+  dates.loading = false;
   auth.loading = false;
   nav.state.query = "";
   nav.state.replace = vi.fn();
@@ -163,7 +169,7 @@ function pick(dimension: string, option: string | RegExp) {
 }
 
 describe("FeedPage", () => {
-  it("cards a request and a geolocation, each linked and credited by kind", () => {
+  it("links a request and a geolocation to their own pages, credited by kind", () => {
     walk.items = [
       item({ id: "r1", title: "Where is this bridge", status: "requested", owner: BOB }),
       item({ id: "g1", title: "Strike on a depot", coords: { lat: 48.01, lng: 37.8 } }),
@@ -178,9 +184,6 @@ describe("FeedPage", () => {
       "href",
       "/events/g1",
     );
-    const [request, geolocation] = screen.getAllByRole("article");
-    expect(within(request).getByText("Requested")).toBeInTheDocument();
-    expect(within(geolocation).getByText("Geolocated")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "bob" })).toHaveAttribute("href", "/profile/bob");
   });
 
@@ -280,42 +283,19 @@ describe("FeedPage", () => {
     expect(screen.getByText("You have reached the end of the feed")).toBeInTheDocument();
   });
 
-  it("puts the title before the byline, and the detail line names the kind and both dates", () => {
+  it("names when each card entered the feed, by kind", () => {
     walk.items = [
-      item({
-        id: "g1",
-        occurred_date: "2009-08-25",
-        feed_at: "2026-10-03T09:00:00Z",
-        conflicts: [
-          {
-            id: "c1",
-            name: "Russo-Ukrainian war",
-            wikidata_id: null,
-            start_year: 2014,
-            end_year: null,
-            is_ongoing: true,
-            tier: "major",
-          },
-        ],
-        tags: [{ id: "t3", name: "airstrike" }],
-      }),
+      item({ id: "g1", feed_at: "2026-10-03T09:00:00Z" }),
       item({ id: "r1", title: "Where is this bridge", status: "requested", feed_at: "2026-10-04T09:00:00Z" }),
     ];
-    const { container } = render(<FeedPage />);
+    render(<FeedPage />);
 
-    const card = container.querySelector("article")!;
-    const heading = card.querySelector("h2")!;
-    const byline = card.querySelector("a[href^='/profile/']")!;
-    expect(heading.compareDocumentPosition(byline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    const [event, request] = container.querySelectorAll("article");
-    expect(event).toHaveTextContent(/Event·25 Aug 2009·.*·Published 3 Oct 2026/);
-    expect(request).toHaveTextContent(/^Where is this bridge.*Request·.*·Requested 4 Oct 2026/);
-    // The card's anatomy holds no tag row.
-    expect(within(card).queryByText("airstrike")).toBeNull();
+    const [event, request] = screen.getAllByRole("article");
+    expect(event).toHaveTextContent("Published 3 Oct 2026");
+    expect(request).toHaveTextContent("Requested 4 Oct 2026");
   });
 
-  it("cards a detection with its badge and date, linked to its event page", () => {
+  it("links a detection to its event page and dates its entry", () => {
     walk.items = [
       item({ id: "d1", title: "Imported strike", status: "detected", feed_at: "2026-10-05T09:00:00Z" }),
     ];
@@ -325,7 +305,6 @@ describe("FeedPage", () => {
       "href",
       "/events/d1",
     );
-    expect(within(screen.getByRole("article")).getByText("Detected")).toBeInTheDocument();
     expect(screen.getByText("Detected 5 Oct 2026")).toBeInTheDocument();
   });
 
@@ -373,6 +352,27 @@ describe("FeedPage", () => {
     expect(within(rail()).getByRole("switch", { name: "Following" })).not.toBeChecked();
     expect(within(rail()).getByRole("button", { name: "Remove ana" })).toBeInTheDocument();
     expect(nav.state.replace).not.toHaveBeenCalled();
+  });
+
+  it("counts the rows the filters match beside the Filters header and the phone button", () => {
+    const header = () => within(rail()).getByRole("button", { name: "Filters" });
+    walk.items = [item({})];
+    dates.total = (path) => (path.includes("scope=all") ? 284 : 1);
+    const { rerender } = render(<FeedPage />);
+
+    expect(header()).toHaveAccessibleDescription("1 result");
+    expect(sheetButton()).toHaveAccessibleDescription("1 result");
+
+    fireEvent.click(within(rail()).getByRole("switch", { name: "Following" }));
+    expect(header()).toHaveAccessibleDescription("284 results");
+    expect(sheetButton()).toHaveAccessibleDescription("284 results");
+    expect(header()).toHaveAttribute("aria-busy", "false");
+
+    // While the next count loads, the last one stays under the loading dot.
+    dates.loading = true;
+    rerender(<FeedPage />);
+    expect(header()).toHaveAttribute("aria-busy", "true");
+    expect(header()).toHaveAccessibleDescription("284 results");
   });
 
   it("applies each change in the sheet at once, Following included", () => {

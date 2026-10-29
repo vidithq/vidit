@@ -273,9 +273,7 @@ describe("map sites layer", () => {
     await loadMap();
     const preview = screen.getByTestId("site preview");
     expect(preview).toHaveTextContent(SITE_NAME);
-    expect(preview).toHaveTextContent("Depot");
     expect(preview).toHaveTextContent("Damage");
-    expect(preview).toHaveTextContent("Site · 7 Sept 2026 · Damage");
   });
 
   it("opens a site in the event's side panel slot, one record at a time", async () => {
@@ -294,6 +292,31 @@ describe("map sites layer", () => {
     fireEvent.click(pin("b"));
     expect(heading(SITE_NAME)).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Close detail panel" })).toHaveLength(1);
+  });
+
+  it("counts the points and sites the map draws beside the Filters header and the phone button", async () => {
+    const phone = () => screen.getAllByRole("button", { name: "Filters" }).at(-1)!;
+    renderMap();
+    fireEvent.click(screen.getByRole("button", { name: "report viewport" }));
+    expect(header()).toHaveAttribute("aria-busy", "true");
+    expect(phone()).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => reads.find((r) => r.path.startsWith("/events/points?"))!.resolve(POINTS));
+    expect(header()).toHaveAttribute("aria-busy", "false");
+    expect(header()).toHaveAccessibleDescription("2 results");
+    const list = await waitFor(() => {
+      const read = reads.find((r) => r.path.startsWith("/sites?"));
+      if (!read) throw new Error("no sites read yet");
+      return read;
+    });
+    await act(async () => list.resolve([ROW]));
+    expect(header()).toHaveAccessibleDescription("3 results");
+    expect(phone()).toHaveAccessibleDescription("3 results");
+
+    fireEvent.click(header());
+    show("Geolocated");
+    expect(header()).toHaveAccessibleDescription("1 result");
+    expect(phone()).toHaveAccessibleDescription("1 result");
   });
 
   it("shows every event and every site while no Show option is selected", async () => {

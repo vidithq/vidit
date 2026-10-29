@@ -718,4 +718,5 @@ export const DATE_HISTOGRAM: components["schemas"]["DateHistogram"] = {
     { date: "2025-01-02", count: 2 },
     { date: "2025-09-30", count: 4 },
   ],
+  total: 9,
 };

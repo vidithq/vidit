@@ -35,6 +35,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The Filters header and the phone's filter bar show how many results match, such as *284 results*, on the map, search, the feed and the Requests board; `GET /search/dates` and `GET /feed/dates` return that `total` ([#814](https://github.com/vidithq/vidit/pull/814)).
+- A removal uses the cross and acts at once; a deletion or a revocation uses the trash and confirms in place: revoking an invite code shows the trash instead of a ban sign ([#814](https://github.com/vidithq/vidit/pull/814)).
 - `GET /feed` and `GET /feed/dates` take the Show filter as `status` (`geolocated`, `requested`, `detected`), the same parameter and values as `GET /search` and `GET /events`, and no longer accept `kind` ([#814](https://github.com/vidithq/vidit/pull/814)).
 - The Requests board keeps its filters in the page URL, like the map, search and the feed ([#814](https://github.com/vidithq/vidit/pull/814)).
 - Every field that picks from a list, in the filter panel and on the forms (kinds, levels, reasons, effects, conflicts, tags), lists its options on focus, closes after a pick and shows the picks as removable pills ([#814](https://github.com/vidithq/vidit/pull/814)).

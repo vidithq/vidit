@@ -18,10 +18,13 @@ import { cn } from "@/lib/cn";
  */
 export function MapFilters({
   points,
+  count,
   loading,
 }: {
   /** The points the Show field leaves, before the date windows. */
   points: MapPoint[];
+  /** The points and sites the map draws under every filter. */
+  count: number;
   loading: boolean;
 }) {
   const {
@@ -73,6 +76,7 @@ export function MapFilters({
     <>
       <FilterCard
         {...props}
+        count={count}
         loading={loading}
         className="absolute top-4 left-[72px] z-1000 w-72 safe-mt safe-ml max-lg:hidden"
         // Stops above the map's bottom-left controls (zoom, locate, basemap) and scrolls the rest.
@@ -84,7 +88,7 @@ export function MapFilters({
           "absolute top-4 right-4 left-16 z-1000 w-fit p-2 safe-mt safe-mr sm:left-[72px] lg:hidden",
         )}
       >
-        <FilterSheetBar {...props} />
+        <FilterSheetBar {...props} count={count} loading={loading} />
       </div>
     </>
   );

@@ -655,14 +655,16 @@ def submitted_day() -> ColumnElement[date]:
 
 def date_histogram(
     rows: Callable[[EventFilters], SAQuery], filters: EventFilters
-) -> dict[str, list[dict[str, Any]]]:
-    """The events per day on each date axis, ascending, days without a row left out.
+) -> dict[str, Any]:
+    """The events per day on each date axis, ascending, days without a row left out, and the
+    events in all.
 
     ``rows`` builds the caller's event query for a filter set. ``occurred_date`` counts it per
     ``Event.occurred_date`` (rows without one skipped) under ``filters`` less its own
     ``occurred_date_from`` / ``occurred_date_to``; ``submitted`` counts it per
     :func:`submitted_day` under ``filters`` less ``submitted_from`` / ``submitted_to``. Each axis
-    shows the spread its own window cuts from, while every other filter still applies.
+    shows the spread its own window cuts from, while every other filter still applies. ``total``
+    counts it under every filter, both windows included.
     """
 
     def counts(day: Any, window: EventFilters) -> list[dict[str, Any]]:
@@ -683,4 +685,5 @@ def date_histogram(
         "submitted": counts(
             submitted_day(), replace(filters, submitted_from=None, submitted_to=None)
         ),
+        "total": rows(filters).count(),
     }

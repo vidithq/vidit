@@ -174,7 +174,7 @@ def get_feed_dates(
     user_id: uuid.UUID,
     scope: FeedScope,
     filters: EventFilters,
-) -> dict[str, list[dict[str, Any]]]:
+) -> dict[str, Any]:
     """The rows :func:`get_feed` walks for ``scope`` and ``filters``, counted per day by
     :func:`services.event_filters.date_histogram`."""
     return date_histogram(

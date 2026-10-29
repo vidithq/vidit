@@ -315,12 +315,14 @@ class DayCount(BaseModel):
 
 
 class DateHistogram(BaseModel):
-    """Events per day on each date axis, ascending, days without a row left out
-    (``services.event_filters.date_histogram``)."""
+    """Events per day on each date axis, ascending, days without a row left out, and the events
+    in all (``services.event_filters.date_histogram``)."""
 
     occurred_date: list[DayCount]
     # The UTC day of ``created_at``.
     submitted: list[DayCount]
+    # The events under every filter, both date windows included.
+    total: int
 
 
 class PaginatedEvents(BaseModel):

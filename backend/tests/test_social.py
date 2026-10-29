@@ -807,7 +807,8 @@ def _days(*pairs: tuple[str, int]) -> list[dict]:
 
 def test_feed_dates_count_the_walked_rows_per_day(db, cleanup):
     """Each axis counts the rows ``GET /feed`` walks per day, ignores its own window and keeps
-    every other filter, the other window too. The submitted day is the UTC day."""
+    every other filter, the other window too. The submitted day is the UTC day. ``total``
+    counts the rows under every filter."""
     record_user, record_geo = cleanup
     viewer = _make_user(db, suffix="viewer")
     analyst = _make_user(db, suffix="analyst")
@@ -836,27 +837,33 @@ def test_feed_dates_count_the_walked_rows_per_day(db, cleanup):
     assert everything == {
         "occurred_date": _days(("2024-01-10", 2), ("2024-03-05", 1)),
         "submitted": _days(("2024-01-11", 1), ("2024-02-01", 2), ("2024-03-06", 1)),
+        "total": 4,
     }
 
     by_occurrence = _feed_dates(headers, occurred_date_from="2024-03-01")
     assert by_occurrence["occurred_date"] == everything["occurred_date"]
     assert by_occurrence["submitted"] == _days(("2024-03-06", 1))
+    assert by_occurrence["total"] == 1
 
     by_submission = _feed_dates(headers, submitted_from="2024-02-01")
     assert by_submission["submitted"] == everything["submitted"]
     assert by_submission["occurred_date"] == _days(("2024-01-10", 1), ("2024-03-05", 1))
+    assert by_submission["total"] == 3
 
     assert _feed_dates(headers, source_kind="drone") == {
         "occurred_date": _days(("2024-01-10", 1)),
         "submitted": _days(("2024-01-11", 1)),
+        "total": 1,
     }
     assert _feed_dates(headers, status="requested") == {
         "occurred_date": _days(("2024-03-05", 1)),
         "submitted": _days(("2024-03-06", 1)),
+        "total": 1,
     }
     assert _feed_dates(headers, scope="all", author=stranger.username) == {
         "occurred_date": _days(("2024-01-10", 1)),
         "submitted": _days(("2024-01-11", 1)),
+        "total": 1,
     }
 
 

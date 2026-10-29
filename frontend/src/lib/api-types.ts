@@ -1799,7 +1799,7 @@ export interface paths {
          *
          *     Takes the ``scope``, ``status`` and filters of ``GET /feed``. ``occurred_date`` ignores the
          *     request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
-         *     ``submitted_from`` / ``submitted_to``.
+         *     ``submitted_from`` / ``submitted_to``. ``total`` counts the rows under every filter.
          */
         get: operations["get_feed_dates_api_v1_feed_dates_get"];
         put?: never;
@@ -2224,8 +2224,8 @@ export interface paths {
          *
          *     Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
          *     own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
-         *     / ``submitted_to``. An empty ``q`` with no active filter counts every searchable event; a
-         *     ``type`` without ``event`` counts nothing.
+         *     / ``submitted_to``. ``total`` counts the events under every filter. An empty ``q`` with no
+         *     active filter counts every searchable event; a ``type`` without ``event`` counts nothing.
          */
         get: operations["search_dates_api_v1_search_dates_get"];
         put?: never;
@@ -4115,14 +4115,16 @@ export interface components {
         };
         /**
          * DateHistogram
-         * @description Events per day on each date axis, ascending, days without a row left out
-         *     (``services.event_filters.date_histogram``).
+         * @description Events per day on each date axis, ascending, days without a row left out, and the events
+         *     in all (``services.event_filters.date_histogram``).
          */
         DateHistogram: {
             /** Occurred Date */
             occurred_date: components["schemas"]["DayCount"][];
             /** Submitted */
             submitted: components["schemas"]["DayCount"][];
+            /** Total */
+            total: number;
         };
         /** DayCount */
         DayCount: {

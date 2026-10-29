@@ -158,7 +158,7 @@ function SearchPageBody() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<ReadableError | null>(null);
 
-  const timelines = useTimelines(
+  const { timelines } = useTimelines(
     datesOffered("search", committed.filters.show)
       ? searchDatesPath({ q: committed.q.trim(), types: ["event"], ...committed.filters })
       : null,
@@ -278,6 +278,14 @@ function SearchPageBody() {
   // Emptiness gates read the LIVE inputs, so clearing the field doesn't flash stale results
   // under the empty state for a debounce window.
   const searching = !!(queryInput.trim() || filtersSearch(filters));
+  const tally = {
+    count: !searching || !results
+      ? undefined
+      : results.mode === "list"
+        ? results.page.total
+        : results.sections.reduce((sum, s) => sum + s.total, 0),
+    loading: searching && loading,
+  };
   const empty =
     !!results &&
     (results.mode === "list" ? results.page.hits.length === 0 : results.sections.length === 0);
@@ -296,7 +304,7 @@ function SearchPageBody() {
           autoFocus
         />
       }
-      rail={<FilterCard {...panel} />}
+      rail={<FilterCard {...panel} {...tally} />}
       railLabel="Filters"
       narrowRail="hidden"
       stickyActions={
@@ -320,7 +328,7 @@ function SearchPageBody() {
         />
       )}
 
-      <FilterSheetBar {...panel} className="lg:hidden" />
+      <FilterSheetBar {...panel} {...tally} className="lg:hidden" />
 
       {searching && results?.mode === "list" && <SelectAllRow selection={selection} />}
 

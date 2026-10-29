@@ -23,7 +23,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 import type { Conflict, EventListItem, Tag } from "@/types";
 
 import RequestsPage from "./page";
-import { openFilterGroups, sheetButton } from "@/test/filters";
+import { histogram, openFilterGroups, sheetButton } from "@/test/filters";
 import { pickOption } from "@/test/options";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
@@ -145,6 +145,33 @@ describe("RequestsPage", () => {
     const query = new URLSearchParams(datesPath?.split("?")[1]);
     expect(query.getAll("type")).toEqual(["event"]);
     expect(query.getAll("status")).toEqual(["requested"]);
+  });
+
+  it("counts the requests the filters match beside the Filters header and the phone button", async () => {
+    const header = () => within(rail()).getByRole("button", { name: "Filters" });
+    const base = useApiResource.getMockImplementation()!;
+    useApiResource.mockImplementation((path: string | null) => {
+      if (!path?.startsWith("/search/dates")) return base(path);
+      if (path.includes("media=image")) return { data: null, loading: true };
+      return { data: histogram(path, path.includes("media=video") ? 1 : 284), loading: false };
+    });
+    render(<RequestsPage />);
+    await screen.findByText(REQUEST.title);
+
+    expect(header()).toHaveAccessibleDescription("284 results");
+    expect(sheetButton()).toHaveAccessibleDescription("284 results");
+
+    pickOption(line("Media")!, "Video");
+    await waitFor(() => expect(header()).toHaveAccessibleDescription("1 result"));
+    expect(sheetButton()).toHaveAccessibleDescription("1 result");
+    expect(header()).toHaveAttribute("aria-busy", "false");
+
+    // While the next count loads, the last one stays under the loading dot.
+    pickOption(line("Media")!, "Image");
+    await waitFor(() =>
+      expect(header()).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(header()).toHaveAccessibleDescription("1 result");
   });
 
   it("changes the sort through the query", async () => {

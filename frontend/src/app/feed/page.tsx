@@ -59,8 +59,9 @@ function FeedPageBody() {
   const walk = useCursorList<FeedItem>(buildPath);
   const { items, error, loading } = walk;
 
-  const timelines = useTimelines(user ? feedDatesPath(filters) : null);
-  const panel: FilterPanelProps = { ...filterPanel, timelines };
+  const histogram = useTimelines(user ? feedDatesPath(filters) : null);
+  const panel: FilterPanelProps = { ...filterPanel, timelines: histogram.timelines };
+  const tally = { count: histogram.total, loading: histogram.loading };
   // Following is the feed's own scope: the follow prompts below answer it, not a filter.
   const narrowed = anyActive("feed", { ...filters, following: false });
 
@@ -149,11 +150,11 @@ function FeedPageBody() {
   return (
     <PageShell
       title="Feed"
-      rail={<FilterCard {...panel} />}
+      rail={<FilterCard {...panel} {...tally} />}
       railLabel="Filters"
       narrowRail="hidden"
     >
-      <FilterSheetBar {...panel} className="lg:hidden" />
+      <FilterSheetBar {...panel} {...tally} className="lg:hidden" />
       {body}
     </PageShell>
   );

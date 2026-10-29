@@ -68,8 +68,9 @@ function RequestsPageBody() {
 
   // The board lists the open requests, the set search lists for that one status.
   const request = { ...values, show: ["requested"] };
-  const timelines = useTimelines(searchDatesPath({ q: "", types: ["event"], ...request }));
-  const panel: FilterPanelProps = { ...filterPanel, timelines };
+  const histogram = useTimelines(searchDatesPath({ q: "", types: ["event"], ...request }));
+  const panel: FilterPanelProps = { ...filterPanel, timelines: histogram.timelines };
+  const tally = { count: histogram.total, loading: histogram.loading };
   const filtered = anyActive("requests", values);
 
   const buildPath = useCallback(
@@ -89,7 +90,7 @@ function RequestsPageBody() {
   return (
     <PageShell
       title="Requests"
-      rail={<FilterCard {...panel} />}
+      rail={<FilterCard {...panel} {...tally} />}
       railLabel="Filters"
       narrowRail="hidden"
       actions={
@@ -110,7 +111,7 @@ function RequestsPageBody() {
         />
       }
     >
-      <FilterSheetBar {...panel} className="lg:hidden" />
+      <FilterSheetBar {...panel} {...tally} className="lg:hidden" />
 
       {error && requests.length === 0 && (
         <ErrorNotice error={error} />

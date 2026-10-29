@@ -343,7 +343,7 @@ The vocabulary:
   - [`<CountBadge>`](../frontend/src/components/ui/CountBadge.tsx) puts a red count on a control's top-right corner, of what the control still lacks: the missing conditions of a publish button, or the fields a collection's submit still refuses. The count is a `danger` `<Pill>` on a button beside the control, never inside it, so a tap on the control still acts. The badge's accessible name lists what is missing (*2 missing: Title, Conflict*), and a `<Tooltip tapToShow underParent>` shows that list under the control on hover, on keyboard focus, or on a tap on a touch screen, where the badge's hit area grows to about 36px. The control's `aria-describedby` reads the same list. A count of 0 shows no badge.
   - [`<AuthorByline>`](../frontend/src/components/ui/AuthorByline.tsx) is "by user". `avatar` leads with the author's picture instead of the "by " prefix, on the detail pages and the map side-panel header. `coAuthors` credits more analysts after the lead, each as its picture and linked name, side by side with a small gap and no separator on screen; with more than one name every name shows its picture. A screen reader hears "ana, bo and cy" through visually hidden separators. `coAuthorsAs="avatars"` keeps the lead as picture and name and shows each co-author as a picture alone, linked, named by its handle and showing it in a `<Tooltip>`: a list or card [`<Item>`](#items) and the event page header. Everywhere else a person is a picture and a name. An event's credit line is its owner and then every other geolocator (`creditProps` in [`geolocatorCredit.ts`](../frontend/src/lib/geolocatorCredit.ts)). `link={false}` drops the profile anchor for a slot that is already one click, such as a version-history row under its stretched link. The detail body's Author and Requested by rows both render through it.
 - **Usernames.** A Vidit username prints bare, with no `@`: bylines, cards, admin panels, the search author filter, page titles, metadata, share text, and share cards. An `@` marks an external account only: a linked X or GitHub account (`displayLinkValue`), an X post author, the bot's replies on X, and `@viditbot`.
-  - [`<Dot>`](../frontend/src/components/ui/Dot.tsx) is the accent "new content awaits" dot: sidebar nav badges (through `notify`), the rail's identity row when detections are pending, the profile's detections entry, the map filter panel's in-flight pulse, and the same pulse above the basemap control while a satellite overlay loads. Position, ring, size and colour come through `className`.
+  - [`<Dot>`](../frontend/src/components/ui/Dot.tsx) is the accent "new content awaits" dot: sidebar nav badges (through `notify`), the rail's identity row when detections are pending, the profile's detections entry, the filter panel's in-flight pulse after the result count, and the same pulse above the basemap control while a satellite overlay loads. Position, ring, size and colour come through `className`.
   - [`<EmptyState>`](../frontend/src/components/ui/EmptyState.tsx) owns the empty-state grammar (`boxed` / `plain` / `invite`).
   - A list that has more ends on one of two secondary buttons from [`LoadMoreRow.tsx`](../frontend/src/components/ui/LoadMoreRow.tsx). **Show more** grows the list in place. **See all** ([`<SeeAllLink href>`](../frontend/src/components/ui/LoadMoreRow.tsx)) links a preview to its whole list: the profile's geolocations, open requests and collections, each opening its list in search, and each section of the [search page](#search), opening its kind.
   - [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) is the shape that grows a list in place, the foot of every [`useCursorList`](../frontend/src/hooks/useCursorList.ts) list: **Show more**, a spinner while the page loads, a failed page's [`<ErrorNotice>`](#errors), with **Retry** when the fault is not the reader's, and nothing once the walk ends. `infinite` loads the next page as the row nears the viewport (the feed). A failed first page leaves no rows and no row, so the list shows that error itself. The Requests board, the feed, the version history, the notifications page, an organization's Approvals card, the admin invite codes, the admin reports queue, the search page's list of one kind and the create page's matched geolocations end on it. The create page's walk posts the search match as `useCursorList`'s `body`, and a `null` path is no walk, so a page whose list comes and goes keeps one hook. The search page follows the `cursor` of [`GET /search`](api.md#get-search), which travels in the response body rather than a `Link` header, so the page drives the row without `useCursorList`. The reports queue is offset-paged, so it passes `useCursorList` a `next` reader that turns the payload's `page`, `per_page` and `total` into the next page number.
@@ -799,14 +799,14 @@ flowchart TB
   matches["`**Combobox** list
   OptionSearch or ItemSearch matches`"]:::state
   card["`**FilterCard**
-  Filters header; closed: the active pills
+  Filters header and result count; closed: the active pills
   open by default in a rail, closed on the map`"]:::shared
   map["`**MapFilters**
   the card floating over the map, from lg`"]:::page
   rail["`**right rail**
   search, feed, Requests board, from lg`"]:::page
   phone["`**FilterSheetBar**
-  every surface below lg: pills, a sheet`"]:::page
+  every surface below lg: result count, pills, a sheet`"]:::page
 
   model --> labels --> panel
   model --> panel
@@ -873,11 +873,22 @@ On search, a Show pick that lists no event offers only the dimensions its kinds 
 
 On search, Show holds the kinds the page lists and drives its sections (see [Search](#search)). On the feed it holds the statuses `GET /feed` takes as `status`.
 
-**Placement.** The panel's content is the same in every placement. From `lg` up every surface shows it in one [`FilterCard`](../frontend/src/components/filters/FilterPanel.tsx): a **Filters** header button (the filter icon, accent while a filter is on, the label and a chevron) over the panel. The header opens and closes the panel. Closed, the card shows every active filter as a removable pill under the header, with **Clear all** once two or more are on. Open, the active filters show only in the panel: in their lines, or under the heading of a collapsed group. The card prints no count. The viewer's open or closed choice is kept per surface in `localStorage` (`usePanelOpen` in [`useFilterPanelState.ts`](../frontend/src/hooks/useFilterPanelState.ts)):
+**Placement.** The panel's content is the same in every placement. From `lg` up every surface shows it in one [`FilterCard`](../frontend/src/components/filters/FilterPanel.tsx): a **Filters** header button (the filter icon, accent while a filter is on, the label, the result count and a chevron) over the panel. The header opens and closes the panel. Closed, the card shows every active filter as a removable pill under the header, with **Clear all** once two or more are on. Open, the active filters show only in the panel: in their lines, or under the heading of a collapsed group. The viewer's open or closed choice is kept per surface in `localStorage` (`usePanelOpen` in [`useFilterPanelState.ts`](../frontend/src/hooks/useFilterPanelState.ts)):
 
-- **The map**: [`MapFilters`](../frontend/src/components/map/MapFilters.tsx) floats the card over the map, closed by default, so the map leads with the catalogue. Its header shows the loading `<Dot>` while the points load. Open, the panel stops above the map's bottom-left controls and scrolls the rest. The filter values live in `MapStateContext`: they survive a visit to another page and reset on reload.
+- **The map**: [`MapFilters`](../frontend/src/components/map/MapFilters.tsx) floats the card over the map, closed by default, so the map leads with the catalogue. Open, the panel stops above the map's bottom-left controls and scrolls the rest. The filter values live in `MapStateContext`: they survive a visit to another page and reset on reload.
 - **Search, the feed and the Requests board**: the card in the [right rail](#right-rail), open by default.
-- **Every surface below `lg`**: [`FilterSheetBar`](../frontend/src/components/filters/FilterPanel.tsx), a **Filters** button and every active filter as a removable pill ([`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx)). The button opens the panel in `MediaOverlay`'s sheet variant, docked to the bottom edge. Each change applies at once. **Done**, Escape or a tap on the backdrop closes the sheet. On the map the bar floats over the canvas, right of the menu chip.
+- **Every surface below `lg`**: [`FilterSheetBar`](../frontend/src/components/filters/FilterPanel.tsx), a **Filters** button, the result count and every active filter as a removable pill ([`<ActiveFilterPills>`](../frontend/src/components/ui/ActiveFilterPills.tsx)). The button opens the panel in `MediaOverlay`'s sheet variant, docked to the bottom edge. Each change applies at once. **Done**, Escape or a tap on the backdrop closes the sheet. On the map the bar floats over the canvas, right of the menu chip.
+
+**Result count.** The `FilterCard` header and the `FilterSheetBar` show how many objects the surface lists under the current filters, in the muted meta text at the right of the **Filters** label: *284 results*, *1 result* (`countLabel` in [`lib/format.ts`](../frontend/src/lib/format.ts), thousands grouped). The noun keeps the count apart from the active filters, which the accent icon and the pills show. The count is the control's description (`aria-describedby`), so the control keeps the name **Filters**. It follows each filter change, and while the surface fetches the last count stays with the pulsing `<Dot>` after it and the control is `aria-busy`. Each surface passes `count` and `loading` to both placements:
+
+| Surface | Count | Loading while |
+|---|---|---|
+| Map | The event points and sites the map draws: the loaded points under the Show field and both date windows, plus the sites the Show field keeps | The points load |
+| Search | `total` of the list of the one kind picked, else the sum of the sections' `total` | The search runs |
+| Feed | `total` of [`GET /feed/dates`](api.md#get-feeddates) | The histogram loads |
+| Requests board | `total` of [`GET /search/dates`](api.md#get-searchdates) for the open requests | The histogram loads |
+
+`useTimelines` reads the histogram's `total` with its timelines, so the feed and the board count the whole filtered set, not the loaded pages.
 
 A pill reads as **name:** *value*, for example **Show:** *Sites*, **Author:** *ana* or **Event date:** *Until 1 Jan 2025*; a switch's pill reads as its label alone (*Approved only*). A date window reads *From 1 Jan 2024*, *Until 1 Jan 2025* or *1 Jan 2024 to 1 Jan 2025* (`rangeSummary`).
 
@@ -2142,8 +2153,10 @@ A destructive action takes one of two variants, each one shared primitive. The w
 
 | Variant | Primitive | Looks like | Confirms |
 |---|---|---|---|
-| Minor or easily undone | [`<RemoveButton>`](../frontend/src/components/ui/RemoveButton.tsx), or a labelled `<Button>` | a red cross (`X`), or the label and its action icon | No: the click acts |
-| Important or hard to undo | [`<ConfirmButton>`](../frontend/src/components/ui/ConfirmButton.tsx) | a red icon (a trash for a remove or a delete), or the labelled `danger` button with its action icon | In place: the first click arms it, filled red and named *Confirm …*; a second click within 3 seconds acts; Escape, a click or focus elsewhere, or the timeout disarms it |
+| Minor or easily undone | [`<RemoveButton>`](../frontend/src/components/ui/RemoveButton.tsx), or a labelled `<Button>` | a red cross (`remove`, lucide `X`), or the label and its action icon | No: the click acts |
+| Important or hard to undo | [`<ConfirmButton>`](../frontend/src/components/ui/ConfirmButton.tsx) | a red icon (a trash, `delete`, for a removal, a revocation or a deletion), or the labelled `danger` button with its action icon | In place: the first click arms it, filled red and named *Confirm …*; a second click within 3 seconds acts; Escape, a click or focus elsewhere, or the timeout disarms it |
+
+A removal, a revocation or a deletion draws one of these two icons and no other: the cross for a minor one, the trash for an important one. Both come from `ACTION_ICONS`, and the `no-restricted-imports` rule in [`eslint.config.mjs`](../frontend/eslint.config.mjs) fails any other file that imports a cross, a trash or a look-alike (`Ban`, `CircleX`, `Eraser`) from `lucide-react`. The rule lists the files whose cross closes or marks a state and removes nothing.
 
 An important action never confirms in a modal dialog. A [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx) stays only where the step needs input, or where an `<ActionMenu>` that closes on the pick leaves no control to arm. A refusal prints in an `<ErrorNotice>` next to the control.
 
@@ -2159,7 +2172,7 @@ Every destructive action in the app:
 | Event and submit forms | Remove a link row, a file | Minor | `RemoveButton` cross |
 | Event edit form | Close an event | Important | `RemoveButton confirms` trash that opens `CloseEventDialog`, which needs a reason |
 | Event page, Geolocators panel | Leave the credit | Important | `ConfirmButton` **Leave** |
-| Event page | Decline a geolocator invitation, decline approval requests | Minor | **Decline** button |
+| Event page | Decline a geolocator invitation, decline approval requests | Minor | **Decline** button with the cross |
 | Event page and version page | Delete an approval (site admin) | Important | `ConfirmButton` trash on the stamp |
 | Site page | Remove a source | Important | `ConfirmButton` trash |
 | Site page | Withhold the site (site admin) | Important | `ConfirmButton` `EyeOff` |
@@ -2169,16 +2182,16 @@ Every destructive action in the app:
 | Add to collection panel | Take the event out of a collection | Minor | the collection's toggle |
 | Organization page | Leave the organization | Important | `ConfirmButton` **Leave** |
 | Organization page | Remove a member | Important | `ConfirmButton` **Remove** |
-| Organization page | Withdraw a pending invite | Minor | **Withdraw** button |
-| Organization page | Decline an approval request | Minor | **Decline** button |
+| Organization page | Withdraw a pending invite | Minor | **Withdraw** button with the cross |
+| Organization page | Decline an approval request | Minor | **Decline** button with the cross |
 | Profile | Unfollow | Minor | **Following** toggle |
-| Settings | Revoke an invite code | Important | `ConfirmButton` `Ban` |
+| Settings | Revoke an invite code | Important | `ConfirmButton` trash |
 | Admin, Manage an event | Hide, soft delete, hard delete | Important | `ConfirmButton` **Hide**, **Soft delete**, **Hard delete** |
 | Admin, Reports | Hide the reported item | Important | `ConfirmButton` **Hide the …** |
 | Admin, Reports | Dismiss a report | Minor | **Dismiss** button |
-| Admin, Analysts | Clear the linked X handle | Minor | **Clear link** button |
-| Admin, Analysts | Purge detections, soft delete, hard delete | Important | `ConfirmDialog` from the card's `ActionMenu` |
-| Admin, Onboarding | Revoke, delete an invite code | Important | `ConfirmDialog` from the row's `ActionMenu` |
+| Admin, Analysts | Clear the linked X handle | Minor | **Clear link** button with the cross |
+| Admin, Analysts | Purge detections, soft delete, hard delete | Important | `ConfirmDialog` from a trash item of the card's `ActionMenu` |
+| Admin, Onboarding | Revoke, delete an invite code | Important | `ConfirmDialog` from a trash item of the row's `ActionMenu` |
 | Admin, Organizations | Delete an organization | Important | `ConfirmDialog` with the typed slug |
 
 #### Action icons
@@ -2193,13 +2206,11 @@ Every destructive action in the app:
 | Approve (`approve`) | Approve, Approve as *organization* | `Stamp` |
 | Archived copy (`archive`) | An archived copy's link (*Wayback Machine*, *archive.today*) | `Archive` |
 | Ask for approval (`askApproval`) | Ask for approval, Ask *account* | `ClipboardCheck` |
-| Cancel (`cancel`) | Cancel | `X` |
-| Clear (`clear`) | Clear (filters), Start over (a contour) | `Eraser` |
+| Cancel (`cancel`) | Cancel | `CornerUpLeft` |
 | Add to collection (`collect`) | Add to collection | `Layers` |
 | Continue (`continue`) | Continue | `ArrowRight` |
 | Copy (`copy`) | An invite code's copy (admin) | `Copy` |
-| Decline (`decline`) | Decline | `CircleX` |
-| Delete (`delete`) | Delete, Delete organization, Delete approval, Soft delete, Hard delete, Purge detected, Remove, Close this geolocation, Close this request, Close this detection | `Trash2` |
+| Delete (`delete`) | Delete, Delete organization, Delete approval, Revoke, Soft delete, Hard delete, Purge detected, Remove, Close this geolocation, Close this request, Close this detection | `Trash2` |
 | Dismiss (`dismiss`) | Dismiss (a report) | `ShieldCheck` |
 | Draw (`draw`) | Draw a contour on this source | `PenTool` |
 | File a source (`fileSource`) | File the source | `ImagePlus` |
@@ -2224,13 +2235,12 @@ Every destructive action in the app:
 | Next (`next`) | Next | `ChevronRight` |
 | Password (`password`) | Set new password, Update password | `KeyRound` |
 | Previous (`previous`) | Previous | `ChevronLeft` |
-| Remove a corner (`removePoint`) | Remove corner | `Minus` |
+| Remove (`remove`) | Clear (filters), Start over (a contour), Remove corner, Decline, Withdraw (an invitation), Clear link | `X` |
 | Report (`report`) | Send report | `Flag` |
 | Request (`request`) | Post request, Publish request, Save request | `Megaphone` |
 | Retry (`retry`) | Retry, Reload | `RotateCw` |
 | Revert (`revert`) | Back to the current contour | `RotateCcw` |
 | Review detections (`review`) | Start reviewing, Open the detections queue, Review your detections, Review the detection | `Bot` |
-| Revoke (`revoke`) | Revoke | `Ban` |
 | Role (`role`) | Name org manager, Make org manager, Make member | `UserCog` |
 | Save (`save`) | Save, Save version *N*, Save collection | `Save` |
 | Search (`search`) | Your geolocations | `Search` |
@@ -2241,10 +2251,8 @@ Every destructive action in the app:
 | Site (`site`) | Open the site page | `MapPinned` |
 | Skip (`skip`) | Skip | `SkipForward` |
 | Undo (`undo`) | Undo | `Undo2` |
-| Unlink (`unlink`) | Clear link | `Unlink` |
 | Unsubscribe (`unsubscribe`) | Turn off | `BellOff` |
 | Use a proof image (`useProof`) | Use a proof image | `ImageUp` |
-| Withdraw (`withdraw`) | Withdraw (an invitation) | `MailX` |
 
 ### Forms
 

@@ -163,8 +163,8 @@ def search_dates(
 
     Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
     own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
-    / ``submitted_to``. An empty ``q`` with no active filter counts every searchable event; a
-    ``type`` without ``event`` counts nothing.
+    / ``submitted_to``. ``total`` counts the events under every filter. An empty ``q`` with no
+    active filter counts every searchable event; a ``type`` without ``event`` counts nothing.
     """
     return DateHistogram.model_validate(
         search_service.search_dates(db, query=params.q, types=params.types, filters=params.filters)

@@ -242,6 +242,7 @@ export default function HomePage() {
 
       <MapFilters
         points={statusFiltered}
+        count={visiblePoints.length + mapSites.length}
         loading={loading}
       />
 

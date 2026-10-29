@@ -76,7 +76,7 @@ def get_feed_dates(
 
     Takes the ``scope``, ``status`` and filters of ``GET /feed``. ``occurred_date`` ignores the
     request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
-    ``submitted_from`` / ``submitted_to``.
+    ``submitted_from`` / ``submitted_to``. ``total`` counts the rows under every filter.
     """
     validate_status_filter(status)
     return DateHistogram.model_validate(

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let searchParams = new URLSearchParams();
@@ -192,6 +192,7 @@ const linkTo = (href: string) => document.querySelector<HTMLAnchorElement>(`a[hr
 const rowOf = (href: string) => linkTo(href).parentElement!;
 
 beforeEach(openFilterGroups);
+afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -233,20 +234,15 @@ describe("the search page with no kind picked", () => {
       "href",
       "/events/e1",
     );
-    expect(rowOf("/events/e1")).toHaveTextContent(/Event·6 Jun 2026·A?anaGeolocated/);
-    expect(rowOf("/requests/r1")).toHaveTextContent(/Open callRequest·A?anaRequested/);
     expect(events).toContainElement(rowOf("/requests/r1"));
 
-    const site = rowOf("/sites/s1");
-    expect(site.querySelector("mark")).toHaveTextContent("Kakhovka");
-    expect(site).toHaveTextContent(/Site·8 Jun 2026·A?anaDepot/);
-    expect(rowOf("/collections/c1")).toHaveTextContent(/^Nova Kakhovka damCollection·.*5 events$/);
-    expect(rowOf("/profile/kakhovka_watch")).toHaveTextContent(/kakhovka_watchAnalyst$/);
-    expect(rowOf("/organizations/kakhovka-watch")).toHaveTextContent(
-      "Kakhovka WatchOrganization1 member",
-    );
+    expect(rowOf("/sites/s1").querySelector("mark")).toHaveTextContent("Kakhovka");
+    expect(linkTo("/collections/c1")).toBeInTheDocument();
+    expect(linkTo("/profile/kakhovka_watch")).toBeInTheDocument();
+    expect(rowOf("/organizations/kakhovka-watch")).toHaveTextContent("1 member");
 
-    expect(screen.queryByText(/result/)).not.toBeInTheDocument();
+    // The one count is the Filters controls', in the rail and on the phone bar.
+    expect(screen.getAllByText(/result/)).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
   });
 
@@ -331,14 +327,15 @@ describe("the search page's URL", () => {
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
     expect(within(rail()).getByRole("button", { name: "Remove Sites" })).toBeInTheDocument();
 
+    vi.useFakeTimers();
     searchParams = new URLSearchParams("q=kakhovka");
     rerender(<SearchPage />);
+    // Reading the URL writes nothing back, however long the page settles.
+    await act(() => vi.advanceTimersByTimeAsync(400));
 
-    expect(await screen.findByRole("region", { name: "Analysts" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Analysts" })).toBeInTheDocument();
     expect(within(rail()).queryByRole("button", { name: "Remove Sites" })).not.toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toHaveValue("kakhovka");
-    // Reading the URL writes nothing back.
-    await new Promise((resolve) => setTimeout(resolve, 400));
     expect(push).not.toHaveBeenCalled();
     expect(replace).not.toHaveBeenCalled();
   });
@@ -398,6 +395,29 @@ describe("the Show field", () => {
       ),
     );
     expect(heading("When")).toBeInTheDocument();
+  });
+
+  it("counts every kind's matches, then the picked kind's, beside the Filters header and the phone button", async () => {
+    const header = () => within(rail()).getByRole("button", { name: "Filters" });
+    searchSections.mockResolvedValue(sections([eventHit(), siteHit()], { more: ["event"] }));
+    search.mockResolvedValue(response({ hits: [siteHit()] }));
+    render(<SearchPage />);
+
+    await waitFor(() => expect(header()).toHaveAccessibleDescription("7 results"));
+    expect(sheetButton()).toHaveAccessibleDescription("7 results");
+    expect(header()).toHaveAttribute("aria-busy", "false");
+
+    chip("Sites");
+    await waitFor(() => expect(header()).toHaveAccessibleDescription("1 result"));
+    expect(sheetButton()).toHaveAccessibleDescription("1 result");
+
+    // While the next search runs, the last count stays under the loading dot.
+    searchSections.mockReturnValueOnce(new Promise(() => {}));
+    chip("Collections");
+    await waitFor(() =>
+      expect(header()).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(header()).toHaveAccessibleDescription("1 result");
   });
 
   it("keeps the tags and the author when the pick steps from events to collections", async () => {

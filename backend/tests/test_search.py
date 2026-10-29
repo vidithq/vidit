@@ -2145,15 +2145,29 @@ def test_search_dates_count_the_listed_events_per_day(dated_events):
     assert _dates(q=token) == {
         "occurred_date": _days(("2024-01-10", 2), ("2024-03-05", 1)),
         "submitted": _days(("2024-01-11", 1), ("2024-02-01", 2), ("2024-03-06", 1)),
+        "total": 4,
     }
     assert _dates(q=other) == {
         "occurred_date": _days(("2024-01-10", 1)),
         "submitted": _days(("2024-01-11", 1)),
+        "total": 1,
     }
     assert _dates(q=token, status="requested") == {
         "occurred_date": _days(("2024-03-05", 1)),
         "submitted": _days(("2024-03-06", 1)),
+        "total": 1,
     }
+
+
+def test_search_dates_total_keeps_both_windows(dated_events):
+    """``total`` counts the listed events under every filter: unlike the axes, it keeps each
+    window, and an event without an occurred date falls out of an event date window."""
+    token, _ = dated_events
+    assert _dates(q=token, occurred_date_from="2024-01-01")["total"] == 3
+    assert _dates(q=token, submitted_from="2024-02-01")["total"] == 3
+    assert (
+        _dates(q=token, occurred_date_from="2024-01-01", submitted_from="2024-02-01")["total"] == 2
+    )
 
 
 def test_search_dates_drop_each_axis_own_window(dated_events):
@@ -2172,7 +2186,7 @@ def test_search_dates_drop_each_axis_own_window(dated_events):
 
 def test_search_dates_follow_the_types(dated_events):
     token, _ = dated_events
-    assert _dates(q=token, type="site") == {"occurred_date": [], "submitted": []}
+    assert _dates(q=token, type="site") == {"occurred_date": [], "submitted": [], "total": 0}
     assert _dates(q=token, type=["site", "event"]) == _dates(q=token)
     assert client.get("/api/v1/search/dates", params={"type": "bogus"}).status_code == 422
     assert client.get("/api/v1/search/dates", params={"status": "bogus"}).status_code == 422

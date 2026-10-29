@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Conflict, Tag } from "@/types";
 
@@ -12,8 +12,15 @@ vi.mock("@/lib/search", async (importOriginal) => ({
   suggestAuthors: suggest.authors,
 }));
 
-import { FilterCard, FilterPanel, FilterSheetBar, type FilterPanelProps } from "./FilterPanel";
+import {
+  FilterCard,
+  FilterPanel,
+  FilterSheetBar,
+  type FilterPanelProps,
+  type FilterTally,
+} from "./FilterPanel";
 import { EMPTY_FILTERS, type FilterState, type Surface } from "./model";
+import { SEARCH_DEBOUNCE_MS } from "@/hooks/useItemSearch";
 import { openFilterGroups } from "@/test/filters";
 
 const TAGS: Tag[] = Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, name: `tag-${i}` }));
@@ -45,11 +52,13 @@ function Harness({
   initial = EMPTY_FILTERS,
   shape = "panel",
   onChange,
+  tally,
 }: {
   surface: Surface;
   initial?: FilterState;
   shape?: "panel" | "card" | "sheet";
   onChange?: (state: FilterState) => void;
+  tally?: FilterTally;
 }) {
   const [state, setState] = useState(initial);
   const props: FilterPanelProps = {
@@ -65,13 +74,14 @@ function Harness({
     vocabulary: { tags: TAGS, conflicts: CONFLICTS },
     timelines: DAYS,
   };
-  if (shape === "sheet") return <FilterSheetBar {...props} />;
-  return shape === "card" ? <FilterCard {...props} /> : <FilterPanel {...props} />;
+  if (shape === "sheet") return <FilterSheetBar {...props} {...tally} />;
+  return shape === "card" ? <FilterCard {...props} {...tally} /> : <FilterPanel {...props} />;
 }
 
 const group = (name: string) => screen.getByRole("button", { name });
 
 beforeEach(() => localStorage.clear());
+afterEach(() => vi.useRealTimers());
 
 describe("<FilterPanel> groups", () => {
   it("starts with every group collapsed, What first, then When", () => {
@@ -197,15 +207,14 @@ describe("<FilterPanel>", () => {
   });
 
   it("picks an author from the search in its line", async () => {
+    vi.useFakeTimers();
     const onChange = vi.fn();
     render(<Harness surface="feed" onChange={onChange} />);
 
     const field = screen.getByRole("combobox", { name: "Author" });
     fireEvent.change(field, { target: { value: "an" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 400));
-    });
-    fireEvent.click(await screen.findByRole("option", { name: /ana/ }));
+    await act(() => vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS));
+    fireEvent.click(screen.getByRole("option", { name: /ana/ }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ author: "ana" }));
     expect(screen.getByRole("button", { name: "Remove ana" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Author" })).toHaveValue("");
@@ -252,6 +261,20 @@ describe("<FilterCard>", () => {
     expect(header()).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("names the result count beside the header, keeps the header's name, and marks a fetch", () => {
+    const { rerender } = render(<Harness surface="feed" shape="card" />);
+    expect(header()).not.toHaveAccessibleDescription();
+    expect(screen.queryByText(/result/)).not.toBeInTheDocument();
+
+    rerender(<Harness surface="feed" shape="card" tally={{ count: 1 }} />);
+    expect(header()).toHaveAccessibleDescription("1 result");
+    expect(header()).toHaveAttribute("aria-busy", "false");
+
+    rerender(<Harness surface="feed" shape="card" tally={{ count: 0, loading: true }} />);
+    expect(header()).toHaveAccessibleDescription("0 results");
+    expect(header()).toHaveAttribute("aria-busy", "true");
+  });
+
   it("shows the active filters once: under the header closed, in their groups open", () => {
     render(<Harness surface="map" shape="card" initial={{ ...EMPTY_FILTERS, levels: ["direct"] }} />);
     const pill = () => screen.queryAllByTitle("Remove filter Level: Direct");
@@ -281,5 +304,12 @@ describe("<FilterSheetBar>", () => {
 
     fireEvent.click(within(sheet).getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
+  });
+
+  it("names the result count beside the Filters button", () => {
+    render(<Harness surface="feed" shape="sheet" tally={{ count: 1284, loading: true }} />);
+    const button = screen.getByRole("button", { name: "Filters" });
+    expect(button).toHaveAccessibleDescription("1,284 results");
+    expect(button).toHaveAttribute("aria-busy", "true");
   });
 });
