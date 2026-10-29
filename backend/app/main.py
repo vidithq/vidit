@@ -88,6 +88,7 @@ app.state.limiter = limiter
 # fixed hour-long window. Each gets a distinct typed code so a caller can tell
 # them apart, and every 429 carries `Retry-After` in seconds.
 RATE_LIMITED_CODE = "rate_limited"
+# Mirrored by the frontend's lib/errors.rateLimited; change both.
 READ_QUOTA_EXCEEDED_CODE = "read_quota_exceeded"
 
 

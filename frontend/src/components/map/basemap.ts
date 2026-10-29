@@ -39,8 +39,10 @@ type LayerRole =
 
 const ROAD_ROLES: ReadonlySet<LayerRole> = new Set(["road", "minor-road", "road-label"]);
 
-export type LabelLanguage = "latin" | "local" | "both";
-export type LabelDensity = "sparse" | "normal";
+export const LABEL_LANGUAGES = ["latin", "local", "both"] as const;
+export type LabelLanguage = (typeof LABEL_LANGUAGES)[number];
+export const LABEL_DENSITIES = ["sparse", "normal"] as const;
+export type LabelDensity = (typeof LABEL_DENSITIES)[number];
 
 export interface BasemapOptions {
   language: LabelLanguage;

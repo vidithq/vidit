@@ -44,6 +44,7 @@ function approvalSigner(approval: Approval): string {
 
 function deleteErrorMessage(err: unknown): string | undefined {
   if (!(err instanceof ApiError)) return undefined;
+  // Mirrors backend approvals.ApprovalNotFoundError; change both.
   if (err.code === "approval_not_found") {
     return "This approval no longer exists. Reload the page to see the current list.";
   }

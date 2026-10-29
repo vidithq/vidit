@@ -27,7 +27,6 @@ function existingRow(row: { id: string; status: string } | "gone") {
   );
 }
 
-import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { ApiError } from "@/lib/api";
 import { importFromPost } from "@/lib/events";
 import type { TweetImportOutcome } from "@/types";
@@ -146,8 +145,7 @@ describe("ImportPostPanel", () => {
 
     paste();
 
-    const banner = await screen.findByText("No coordinate in the post");
-    expect(banner).toHaveClass(...FORM_ERROR_BANNER.split(" "));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No coordinate in the post");
     expect(screen.queryByRole("link", { name: "Review the detection" })).toBeNull();
   });
 
@@ -157,8 +155,7 @@ describe("ImportPostPanel", () => {
 
     paste();
 
-    const banner = await screen.findByText(/couldn't be stored/);
-    expect(banner).toHaveClass(...FORM_ERROR_BANNER.split(" "));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't be stored/);
   });
 
   it("says a post already imported is, and links its detection", async () => {
@@ -168,8 +165,8 @@ describe("ImportPostPanel", () => {
 
     paste();
 
-    const banner = await screen.findByText("Already imported");
-    expect(banner).toHaveClass(...FORM_SUCCESS_BANNER.split(" "));
+    await screen.findByText("Already imported");
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(useApiResource).toHaveBeenLastCalledWith("/events/d9");
     expect(screen.getByRole("link", { name: "Review the detection" })).toHaveAttribute(
       "href",

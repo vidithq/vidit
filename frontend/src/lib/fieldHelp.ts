@@ -234,7 +234,7 @@ export const FIELD_HELP = {
     label: "What goes in Details?",
   },
   site_zone: {
-    text: "The outline of the site, drawn over one dated source. A contour holds from that source's capture date, and each source carries at most one. Every earlier contour stays in the site's history. Only the site's owner draws it.",
+    text: "The boundary of the site, drawn over one dated source. A contour holds from that source's capture date, and each source carries at most one. Every earlier contour stays in the site's history. Only the site's owner draws it.",
     label: "What is the contour?",
   },
   site_source: {

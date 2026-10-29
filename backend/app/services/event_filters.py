@@ -191,6 +191,7 @@ def site_linkable_events() -> ColumnElement[bool]:
     effect), so an event that closes, is taken down or is soft-deleted drops out of all of them
     with no write to ``event_site_links``.
     """
+    # Mirrored by the frontend's lib/sites.isSiteLinkable; change both.
     return and_(*visible_events(), published_events())
 
 

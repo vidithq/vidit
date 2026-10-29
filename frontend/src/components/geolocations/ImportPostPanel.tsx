@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ActionIcon, Button, buttonClasses, type ButtonAction } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
+import { FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK, WARNING_CALLOUT } from "@/components/ui/styles";
 import { useDetectionsCount } from "@/contexts/DetectionsContext";
 import { useApiResource } from "@/hooks/useApiResource";
@@ -160,9 +160,11 @@ export function ImportPostPanel({ shell }: { shell: ImportShell }) {
         <div className="space-y-3">
           {/* A refusal or an unstorable post is a failure: a success banner
               would tell the analyst the paste worked. */}
-          <div className={wroteSomething(outcome) ? FORM_SUCCESS_BANNER : FORM_ERROR_BANNER}>
-            {outcomeLine(outcome)}
-          </div>
+          {wroteSomething(outcome) ? (
+            <div className={FORM_SUCCESS_BANNER}>{outcomeLine(outcome)}</div>
+          ) : (
+            <ErrorNotice error={outcomeLine(outcome)} />
+          )}
           {warnings.length > 0 && (
             <ul className={`space-y-1 rounded-md p-3 text-xs ${WARNING_CALLOUT}`}>
               {warnings.map((warning) => (

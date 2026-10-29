@@ -1,4 +1,4 @@
-import { ApiError, apiFetch } from "./api";
+import { ApiError, apiFetch, errorMessage } from "./api";
 import type { components } from "./api-types";
 import { coordinatePair, LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import type { SourceFloorState } from "./events";
@@ -515,5 +515,5 @@ export function uploadError(err: unknown): string {
   if (err instanceof ApiError && err.code === "too_many_uploads") {
     return SOURCE_ERROR_MESSAGES.too_many_uploads;
   }
-  return err instanceof Error ? err.message : "The upload failed. Try again.";
+  return errorMessage(err, "The upload failed. Try again.");
 }

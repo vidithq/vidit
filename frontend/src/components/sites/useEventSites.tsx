@@ -14,6 +14,7 @@ import { siteItem } from "@/lib/items";
 import {
   SITE_MARGIN_KM,
   eventSiteLinksPath,
+  isSiteLinkable,
   linkEventToSite,
   siteSuggestionsPath,
   type EventSiteLink,
@@ -59,8 +60,7 @@ export function useEventSites(event: EventDetail | null): {
 
   if (!event) return { block: null, linkAction: null };
 
-  // Mirrors backend `event_filters.site_linkable_events`: a published event only; change both.
-  const canLink = user?.id === event.owner.id && event.status === "geolocated";
+  const canLink = user?.id === event.owner.id && isSiteLinkable(event);
   const rows = links.data ?? [];
 
   const block = (rows.length > 0 || links.error) && (

@@ -70,6 +70,7 @@ class AlreadyApprovedError(ApprovalError):
 
 
 class ApprovalNotFoundError(ApprovalError):
+    # Mirrored by the frontend's components/event/Approvals.deleteErrorMessage; change both.
     code = "approval_not_found"
 
 

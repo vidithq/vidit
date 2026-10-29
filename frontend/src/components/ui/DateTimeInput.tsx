@@ -24,8 +24,7 @@ const PICKER: Record<DateTimeType, { icon: typeof Calendar; label: string }> = {
  * `.picker-glyph` hides the browser's own picker button (`globals.css`) and this
  * puts a ghost icon button in the trailing slot, opening the native picker via
  * `showPicker()`. A browser without it focuses the field. A date field too
- * narrow for an adornment (search filters, the map scrubber) stays a bare
- * `<Input type="date">`.
+ * narrow for an adornment (the timeline scrubber's) stays a bare date input.
  *
  * The mark stands down below `sm` (see `trailingFromSm` below). It also owns
  * `has-value`, the class `globals.css` mutes an empty field's `dd/mm/yyyy`

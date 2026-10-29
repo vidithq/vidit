@@ -150,10 +150,15 @@ describe("OrganizationPage", () => {
     serve(ORG);
     render(<OrganizationPage />);
 
-    const row = await screen.findByRole("link", { name: /^Bridge strike/ });
-    expect(row).toHaveAttribute("href", "/events/e1");
-    expect(within(row).getByText(/^v2 · by lead on/)).toBeInTheDocument();
-    expect(within(row).getByText("Current")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Bridge strike" })).toHaveAttribute(
+      "href",
+      "/events/e1",
+    );
+    const row = within(screen.getByRole("heading", { name: "Bridge strike" }).closest("li")!);
+    expect(row.getByRole("link", { name: "lead" })).toHaveAttribute("href", "/profile/lead");
+    expect(row.getByText("v2")).toBeInTheDocument();
+    expect(row.getByText("15 Oct 2026")).toBeInTheDocument();
+    expect(row.getByText("Current")).toBeInTheDocument();
     expect(screen.queryByText("Skyline matches")).toBeNull();
   });
 
@@ -262,9 +267,10 @@ describe("OrganizationPage", () => {
     render(<OrganizationPage />);
 
     expect(screen.getByText("Approval requests")).toBeInTheDocument();
-    const request = screen.getByRole("link", { name: /^Port fire/ });
-    expect(request).toHaveAttribute("href", "/events/e2");
-    expect(within(request).getByText(/asked by cy on/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Port fire" })).toHaveAttribute("href", "/events/e2");
+    const request = within(screen.getByRole("heading", { name: "Port fire" }).closest("li")!);
+    expect(request.getByRole("link", { name: "cy" })).toBeInTheDocument();
+    expect(request.getByText("v1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Decline" }).closest("a")).toBeNull();
     expect(screen.getByRole("button", { name: "People our org managers follow" })).toHaveAttribute(
       "aria-pressed",
@@ -286,7 +292,7 @@ describe("OrganizationPage", () => {
     serve({ ...ORG, viewer_role: "member" });
     render(<OrganizationPage />);
 
-    expect(screen.getByRole("link", { name: /^Port fire/ })).toHaveAttribute("href", "/events/e2");
+    expect(screen.getByRole("link", { name: "Port fire" })).toHaveAttribute("href", "/events/e2");
     expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Everyone" })).toBeNull();
   });

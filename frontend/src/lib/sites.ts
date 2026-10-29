@@ -3,6 +3,7 @@ import type { components } from "./api-types";
 import { withCursor } from "./pagination";
 import { sourceCreatePayload, draftUrls, newSourceDraft, type SourceDraft } from "./sources";
 import { sameSet, versionSteps, type VersionedRecord, type VersionEntry } from "./versions";
+import type { EventStatus } from "@/types";
 
 export type Site = components["schemas"]["SiteRead"];
 export type SiteCreated = components["schemas"]["SiteCreatedRead"];
@@ -225,6 +226,12 @@ export function utcDay(iso: string): string {
 export function formatDistance(metres: number): string {
   if (metres < 1000) return `${Math.round(metres)} m`;
   return `${(metres / 1000).toFixed(1)} km`;
+}
+
+/** Whether a site may link the event: a published one only.
+ *  Mirrors backend `event_filters.site_linkable_events`; change both. */
+export function isSiteLinkable(event: { status: EventStatus }): boolean {
+  return event.status === "geolocated";
 }
 
 /** Whether the viewer owns the site: the one reader who edits it. */
