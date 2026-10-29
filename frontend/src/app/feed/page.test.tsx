@@ -71,6 +71,7 @@ vi.mock("@/hooks/useCursorList", () => ({
 }));
 
 import FeedPage from "./page";
+import { openFilterGroups } from "@/test/filters";
 
 const ANA = { id: "u1", username: "ana", avatar_url: null };
 const BOB = { id: "u2", username: "bob", avatar_url: null };
@@ -96,6 +97,8 @@ function item(extra: Partial<FeedItem>): FeedItem {
 }
 
 const lastPath = () => walk.paths[walk.paths.length - 1];
+
+beforeEach(openFilterGroups);
 
 beforeEach(() => {
   walk.items = [];
@@ -148,6 +151,12 @@ const rail = () => screen.getByRole("complementary", { name: "Filters" });
 
 /** Picks an option of a dimension through its line in the rail. */
 function pick(dimension: string, option: string | RegExp) {
+  const field = within(rail()).queryByRole("combobox", { name: dimension });
+  if (field) {
+    fireEvent.focus(field);
+    fireEvent.click(screen.getByRole("option", { name: option }));
+    return;
+  }
   fireEvent.click(within(rail()).getByRole("button", { name: dimension }));
   fireEvent.click(within(screen.getByRole("dialog", { name: dimension })).getByRole("button", { name: option }));
   fireEvent.keyDown(screen.getByRole("dialog", { name: dimension }), { key: "Escape" });

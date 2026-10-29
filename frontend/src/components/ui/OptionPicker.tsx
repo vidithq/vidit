@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 
 import { ChipBucket } from "./ChipBucket";
+import { Combobox } from "./Combobox";
 import { Input } from "./Input";
 import { LoadMoreRow } from "./LoadMoreRow";
 import { Pill } from "./Pill";
@@ -121,5 +122,49 @@ export function OptionPicker({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * A multi-select over a fixed list of options, as one search field: focus or typing lists the
+ * unpicked options whose label holds the text, under the field and over the page, and a pick
+ * empties the field and keeps the list open for the next one. The caller shows the picks.
+ */
+export function OptionSearch({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  /** The field's accessible name ("Tags"). */
+  label: string;
+  options: Option[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const needle = query.trim().toLowerCase();
+  const matches = options.filter(
+    (o) => !selected.includes(o.value) && o.label.toLowerCase().includes(needle),
+  );
+  return (
+    <Combobox
+      aria-label={label}
+      placeholder="Search"
+      query={query}
+      onQueryChange={setQuery}
+      open={open}
+      onOpenChange={setOpen}
+      options={matches}
+      optionKey={(o) => o.value}
+      renderOption={(o) => o.label}
+      pillOption={() => true}
+      onPick={(o) => {
+        onToggle(o.value);
+        setQuery("");
+      }}
+      status={matches.length === 0 ? "No match" : null}
+    />
   );
 }

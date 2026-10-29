@@ -25,7 +25,7 @@ export function PropertyName({
   className?: string;
 }) {
   return (
-    <span className={cn("flex shrink-0 items-center gap-1 text-sm text-neutral-300", className)}>
+    <span className={cn("flex shrink-0 items-center gap-1 text-sm text-neutral-400", className)}>
       {name}
       {/* Positioned, so it stacks above a row-wide button. */}
       {concept && (
@@ -35,6 +35,20 @@ export function PropertyName({
       )}
     </span>
   );
+}
+
+type PropertyValue = { key: string; label: string; onRemove: () => void };
+
+function ValuePills({ values }: { values: PropertyValue[] }) {
+  return values.map((v) => (
+    <span key={v.key} className="pointer-events-auto relative max-w-full">
+      <Pill tone="accent" onClick={v.onRemove}>
+        <span className="sr-only">Remove {v.label}</span>
+        <span aria-hidden>{v.label}</span>
+        <X size={11} aria-hidden />
+      </Pill>
+    </span>
+  ));
 }
 
 /**
@@ -51,7 +65,7 @@ export function PropertyRow({
   name: string;
   /** A `?` after the name. */
   concept?: Concept;
-  values: { key: string; label: string; onRemove: () => void }[];
+  values: PropertyValue[];
   /** The editor the popover holds, handed the close. */
   editor: (close: () => void) => ReactNode;
 }) {
@@ -85,15 +99,7 @@ export function PropertyRow({
       />
       <PropertyName name={name} concept={concept} className="group-hover:text-neutral-100" />
       <span className="pointer-events-none flex min-w-0 flex-wrap justify-end gap-1">
-        {values.map((v) => (
-          <span key={v.key} className="pointer-events-auto relative max-w-full">
-            <Pill tone="accent" onClick={v.onRemove}>
-              <span className="sr-only">Remove {v.label}</span>
-              <span aria-hidden>{v.label}</span>
-              <X size={11} aria-hidden />
-            </Pill>
-          </span>
-        ))}
+        <ValuePills values={values} />
         {values.length === 0 && (
           <ChevronDown size={14} aria-hidden className="mt-0.5 text-neutral-600" />
         )}
@@ -108,6 +114,37 @@ export function PropertyRow({
         >
           {editor(() => close(true))}
         </PopoverPanel>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A property picked by search: its name at the left and `field`, a search field whose matches
+ * open in a list under it, at the right of the same line. The values sit under the line as
+ * removable accent pills.
+ */
+export function PropertySearchRow({
+  name,
+  concept,
+  values,
+  field,
+}: {
+  name: string;
+  concept?: Concept;
+  values: PropertyValue[];
+  field: ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <PropertyName name={name} concept={concept} />
+        <div className="w-[55%] max-w-56 shrink-0">{field}</div>
+      </div>
+      {values.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-1">
+          <ValuePills values={values} />
+        </div>
       )}
     </div>
   );

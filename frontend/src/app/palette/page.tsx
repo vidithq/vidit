@@ -91,8 +91,8 @@ import {
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { ChipBucket } from "@/components/ui/ChipBucket";
-import { OptionPicker } from "@/components/ui/OptionPicker";
-import { PropertyRow } from "@/components/ui/PropertyRow";
+import { OptionPicker, OptionSearch } from "@/components/ui/OptionPicker";
+import { PropertyRow, PropertySearchRow } from "@/components/ui/PropertyRow";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { SwatchPicker } from "@/components/ui/SwatchPicker";
@@ -766,7 +766,7 @@ export default function PalettePage() {
             <PaletteActiveFilterPills />
           </Entry>
 
-          <Entry name="<PropertyRow>" usage="One property on one line: its name (with an optional FieldHelp ?) at the left, and its values as removable accent pills at the right, or a muted chevron while it holds none. An empty button over the whole line opens the editor, a render prop handed the close, in a PopoverPanel anchored under the line and lifted over the map's floating panel and a sheet, so nothing in the panel moves or expands in place. Escape returns focus to the line. The filter panel draws every list and account dimension through it (Show, Conflict, Tags, Source kind, Level, Media, Location guess, Author, Approved by); a switch dimension is a ToggleRow instead.">
+          <Entry name="<PropertyRow>" usage="One property on one line: its name (with an optional FieldHelp ?) in the secondary text colour at the left, and its values as removable accent pills at the right, or a muted chevron while it holds none. An empty button over the whole line opens the editor, a render prop handed the close, in a PopoverPanel anchored under the line and lifted over the map's floating panel and a sheet, so nothing in the panel moves or expands in place. Escape returns focus to the line. The filter panel draws its short fixed lists through it (Show, Source kind, Level, Media, Location guess). PropertySearchRow is the line of a property picked by search (Conflict, Tags, Author, Approved by): the name at the left, the search field (OptionSearch or AccountPicker) at the right of the same line, its matches in the field's list over the page, and the picks as removable accent pills under the line. A switch dimension is a ToggleRow instead. The rows of a list carry no divider.">
             <PalettePropertyRow />
           </Entry>
 
@@ -774,11 +774,11 @@ export default function PalettePage() {
             <PaletteChipBucket />
           </Entry>
 
-          <Entry name="<OptionPicker>" usage="A multi-select over a fixed option list, the editor of every list dimension of the filter panel. Up to eight options show whole as a <ChipBucket>. A longer list (Conflict, Tags) is a search field, the picks as removable accent chips (PickedPills, which <TagChips> and <ConflictChips> share), then the first eight unpicked options the search matches as neutral chips, with one Show more (<LoadMoreRow>) for the rest. A picked value the list lacks (a crafted URL) still shows, by its value.">
+          <Entry name="<OptionPicker>" usage="A multi-select over a fixed option list, the popover editor of the filter panel's short fixed lists. Up to eight options show whole as a <ChipBucket>. A longer list (Source kind) is a search field, the picks as removable accent chips (PickedPills, which <TagChips> and <ConflictChips> share), then the first eight unpicked options the search matches as neutral chips, with one Show more (<LoadMoreRow>) for the rest. A picked value the list lacks (a crafted URL) still shows, by its value. OptionSearch is the same multi-select as one <Combobox> field, the search of a PropertySearchRow (Conflict, Tags): focus or typing lists the unpicked options whose label holds the text, and a pick empties the field and keeps the list open; the caller shows the picks.">
             <PaletteOptionPicker />
           </Entry>
 
-          <Entry name="<ToggleRow>" usage="An on/off row: an empty button over the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `concept` puts a <FieldHelp> after the label in the settings shape, stacked above that button, so a tap on the `?` opens its help and never toggles (the basemap control's layers and overlays). `description` picks the shape: without one the row is the filter toggle, a micro uppercase label on a divided list; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file on a site). Settings lists one described row per notification kind, its Email switch.">
+          <Entry name="<ToggleRow>" usage="An on/off row: an empty button over the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `concept` puts a <FieldHelp> after the label, stacked above that button, so a tap on the `?` opens its help and never toggles (the basemap control's layers and overlays). `description` picks the shape: without one the row is a line of the filter panel, its name like a <PropertyRow>'s (PropertyName, secondary text colour) beside a small switch; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file on a site). Settings lists one described row per notification kind, its Email switch.">
             <PaletteToggleRow />
           </Entry>
 
@@ -1790,7 +1790,7 @@ export default function PalettePage() {
             <SectionHeading title="Linked accounts" />
           </Entry>
 
-          <Entry name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and every event form section's heading (Sources, Proof, Location, Details), which sits on the page above the card like the event page's. `invalid` turns it red with FORM_INVALID_LABEL when a publish attempt flags the section.">
+          <Entry name="<SectionEyebrow>" usage="Detail page + card/panel headings (uppercase eyebrow), and every event form section's heading (Sources, Proof, Location, Details), which sits on the page above the card like the event page's. `invalid` turns it red with FORM_INVALID_LABEL when a publish attempt flags the section. `toggle` makes the title a button with a chevron that turns when the section opens (aria-expanded), the collapsible group headings of the filter panel.">
             <Variant label="as=h2 (page)">
               <SectionEyebrow title="Details" concept="section_details" />
             </Variant>
@@ -1802,6 +1802,9 @@ export default function PalettePage() {
             </Variant>
             <Variant label="besideScroller (a row as tall as a HorizontalScroller header)">
               <SectionEyebrow title="Location" concept="section_location" besideScroller />
+            </Variant>
+            <Variant label="toggle (a collapsible filter group)">
+              <PaletteEyebrowToggle />
             </Variant>
           </Entry>
         </section>
@@ -2387,8 +2390,11 @@ function PalettePropertyRow() {
   ];
   const toggle = (value: string) =>
     setLevels((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  const [tags, setTags] = useState<string[]>([MOCK_TAGS[0].name]);
+  const toggleTag = (value: string) =>
+    setTags((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   return (
-    <div className="w-72 divide-y divide-neutral-800 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
+    <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
       <PropertyRow
         name="Level"
         concept="source_level"
@@ -2401,8 +2407,26 @@ function PalettePropertyRow() {
           <OptionPicker label="Level" options={options} selected={levels} onToggle={toggle} />
         )}
       />
-      <PropertyRow name="Author" values={[]} editor={() => <p className="text-xs text-neutral-400">The account picker</p>} />
+      <PropertySearchRow
+        name="Tags"
+        values={tags.map((tag) => ({ key: tag, label: tag, onRemove: () => toggleTag(tag) }))}
+        field={
+          <OptionSearch
+            label="Tags"
+            options={MOCK_TAGS.map((t) => ({ value: t.name, label: t.name }))}
+            selected={tags}
+            onToggle={toggleTag}
+          />
+        }
+      />
     </div>
+  );
+}
+
+function PaletteEyebrowToggle() {
+  const [open, setOpen] = useState(false);
+  return (
+    <SectionEyebrow as="h3" margin="none" title="Source" toggle={{ open, onToggle: () => setOpen((o) => !o) }} />
   );
 }
 

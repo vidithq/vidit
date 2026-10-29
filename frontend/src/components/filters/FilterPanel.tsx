@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 
 import type { DayCount } from "@/types";
 import { AccountPicker, analystAccount } from "@/components/ui/AccountPicker";
@@ -8,15 +8,15 @@ import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { Button } from "@/components/ui/Button";
 import { CARD_FRAME } from "@/components/ui/Card";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
-import { OptionPicker } from "@/components/ui/OptionPicker";
-import { PropertyName, PropertyRow } from "@/components/ui/PropertyRow";
+import { OptionPicker, OptionSearch } from "@/components/ui/OptionPicker";
+import { PropertyName, PropertyRow, PropertySearchRow } from "@/components/ui/PropertyRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { cn } from "@/lib/cn";
 import { AUTHOR_FILTER_RE, suggestApprovers, suggestAuthors } from "@/lib/search";
 import { TimelineScrubber } from "./TimelineScrubber";
+import { useOpenGroups } from "./openGroups";
 import {
-  DATES_HEADING,
   DATE_DIMENSIONS,
   DATE_KEYS,
   DIMENSIONS,
@@ -26,11 +26,18 @@ import {
   offeredDimensions,
   type DateKey,
   type DimensionKey,
+  type FilterGroup,
   type FilterPatch,
   type FilterState,
   type Surface,
 } from "./model";
-import { activePills, dimensionOptions, dimensionPills, type Vocabulary } from "./labels";
+import {
+  activePills,
+  dimensionOptions,
+  dimensionPills,
+  groupPills,
+  type Vocabulary,
+} from "./labels";
 
 type SetPlaying = (v: boolean | ((prev: boolean) => boolean)) => void;
 
@@ -97,12 +104,10 @@ function DimensionLine({
   if (control.kind === "switch") {
     return (
       <ToggleRow
-        variant="setting"
         label={control.label}
         concept={concept}
         on={state[control.field]}
         onToggle={() => onPatch({ [control.field]: !state[control.field] })}
-        className="py-2"
       />
     );
   }
@@ -117,6 +122,16 @@ function DimensionLine({
           ? selected.filter((v) => v !== value)
           : [...selected, value],
       });
+    if (control.search) {
+      return (
+        <PropertySearchRow
+          name={name}
+          concept={concept}
+          values={values}
+          field={<OptionSearch label={name} options={options} selected={selected} onToggle={toggle} />}
+        />
+      );
+    }
     return (
       <PropertyRow
         name={name}
@@ -137,69 +152,51 @@ function DimensionLine({
     else onPatch({ approvedBy: analystAccount({ username: typed }) });
   };
   return (
-    <PropertyRow
+    <PropertySearchRow
       name={name}
       concept={concept}
       values={values}
-      editor={(close) => (
+      field={
         <AccountPicker
           search={author ? suggestAuthors : suggestApprovers}
           minQueryLength={2}
-          selected={
-            author
-              ? state.author
-                ? analystAccount({ username: state.author })
-                : null
-              : state.approvedBy
-          }
           onSelect={(account) => {
             if (account.kind === "analyst" && author) onPatch({ author: account.username });
             else if (!author) onPatch({ approvedBy: account });
-            close();
           }}
-          onSubmitText={(typed) => {
-            commit(typed);
-            close();
-          }}
-          onClear={() => onPatch(author ? { author: "" } : { approvedBy: null })}
-          placeholder={author ? "Search analysts" : "Search analysts and organizations"}
+          onSubmitText={commit}
+          placeholder="Search"
           aria-label={name}
           emptyText={author ? "No analyst matches" : "No analyst or organization matches"}
-          autoFocus
         />
-      )}
+      }
     />
   );
 }
 
-/**
- * The filter panel of every surface that lists events: the two date timelines, then one line per
- * dimension under its heading, then **Clear all** once a filter is on. The surface decides which
- * dimensions it offers (`offeredDimensions`); the order, the names and the controls are the
- * model's.
- */
-export function FilterPanel({
-  surface,
-  state,
-  onPatch,
-  onClear,
-  vocabulary,
-  timelines,
-  playback,
-}: FilterPanelProps) {
-  const offered = offeredDimensions(surface, state.show);
-  const groups = FILTER_GROUPS.map((g) => ({
-    title: g.title,
-    dimensions: g.dimensions.filter((d) => offered.includes(d)),
-  })).filter((g) => g.dimensions.length > 0);
-  const active = anyActive(surface, state);
+/** One heading of the panel and its lines. Collapsed, it keeps its active filters on show as
+ *  pills under the heading. */
+function Group({
+  group,
+  open,
+  onToggle,
+  ...props
+}: FilterPanelProps & { group: FilterGroup; open: boolean; onToggle: () => void }) {
+  const { surface, state, onPatch, vocabulary, timelines, playback } = props;
+  const bodyId = useId();
+  const pills = open ? [] : groupPills(group, surface, state, vocabulary, onPatch);
   return (
-    <div className="space-y-4">
-      {datesOffered(surface, state.show) && (
-        <section>
-          <SectionEyebrow as="h3" margin="none" title={DATES_HEADING} />
-          <div className="divide-y divide-neutral-800">
-            {DATE_KEYS.map((key) => (
+    <section>
+      <SectionEyebrow
+        as="h3"
+        margin="none"
+        title={group.title}
+        toggle={{ open, onToggle, controls: open ? bodyId : undefined }}
+      />
+      {open ? (
+        <div id={bodyId}>
+          {group.dates &&
+            DATE_KEYS.map((key) => (
               <Timeline
                 key={key}
                 dateKey={key}
@@ -209,27 +206,55 @@ export function FilterPanel({
                 playback={playback?.[key]}
               />
             ))}
+          {group.dimensions.map((d) => (
+            <DimensionLine
+              key={d}
+              dimension={d}
+              surface={surface}
+              state={state}
+              onPatch={onPatch}
+              vocabulary={vocabulary}
+            />
+          ))}
+        </div>
+      ) : (
+        pills.length > 0 && (
+          <div className="pt-1">
+            <ActiveFilterPills filters={pills} />
           </div>
-        </section>
+        )
       )}
+    </section>
+  );
+}
+
+/**
+ * The filter panel of every surface that lists events: one collapsible heading per group of
+ * dimensions (the When group holds the two date timelines), then **Clear all** once a filter is
+ * on. The surface decides which dimensions it offers (`offeredDimensions`); the order, the names
+ * and the controls are the model's.
+ */
+export function FilterPanel(props: FilterPanelProps) {
+  const { surface, state, onClear } = props;
+  const [openGroups, toggleGroup] = useOpenGroups();
+  const offered = offeredDimensions(surface, state.show);
+  const dates = datesOffered(surface, state.show);
+  const groups = FILTER_GROUPS.map((g) => ({
+    ...g,
+    dimensions: g.dimensions.filter((d) => offered.includes(d)),
+  })).filter((g) => g.dimensions.length > 0 || (g.dates && dates));
+  return (
+    <div className="space-y-4">
       {groups.map((group) => (
-        <section key={group.title}>
-          <SectionEyebrow as="h3" margin="none" title={group.title} />
-          <div className="divide-y divide-neutral-800">
-            {group.dimensions.map((d) => (
-              <DimensionLine
-                key={d}
-                dimension={d}
-                surface={surface}
-                state={state}
-                onPatch={onPatch}
-                vocabulary={vocabulary}
-              />
-            ))}
-          </div>
-        </section>
+        <Group
+          key={group.title}
+          {...props}
+          group={group}
+          open={openGroups.includes(group.title)}
+          onToggle={() => toggleGroup(group.title)}
+        />
       ))}
-      {active && (
+      {anyActive(surface, state) && (
         <div className="flex justify-end">
           <Button action="clear" variant="ghost" onClick={onClear}>
             Clear all

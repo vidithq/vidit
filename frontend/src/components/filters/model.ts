@@ -86,9 +86,10 @@ type ListField =
   | "mediaTypes"
   | "locationGuess";
 
-/** How a dimension is edited: a list of options, a switch, or the account picker. */
+/** How a dimension is edited: a list of options, a switch, or the account picker. A `search`
+ *  list takes its search field on its line; the others open a chip editor. */
 export type Control =
-  | { kind: "options"; field: ListField }
+  | { kind: "options"; field: ListField; search?: true }
   | { kind: "switch"; field: "following" | "approved"; label: string }
   | { kind: "account"; field: "author" | "approvedBy" };
 
@@ -117,13 +118,13 @@ export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
   conflict: {
     name: "Conflict",
     concept: "conflict",
-    control: { kind: "options", field: "conflicts" },
+    control: { kind: "options", field: "conflicts", search: true },
     param: "conflict",
     surfaces: ALL,
   },
   tags: {
     name: "Tags",
-    control: { kind: "options", field: "tags" },
+    control: { kind: "options", field: "tags", search: true },
     param: "tag",
     surfaces: ALL,
   },
@@ -181,9 +182,17 @@ export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
   },
 };
 
+export interface FilterGroup {
+  title: string;
+  dimensions: DimensionKey[];
+  /** The group holds the two date timelines. */
+  dates?: true;
+}
+
 /** The panel's headings, in order, each with its dimensions in order. */
-export const FILTER_GROUPS: ReadonlyArray<{ title: string; dimensions: DimensionKey[] }> = [
+export const FILTER_GROUPS: ReadonlyArray<FilterGroup> = [
   { title: "What", dimensions: ["show", "conflict", "tags"] },
+  { title: "When", dimensions: [], dates: true },
   { title: "Source", dimensions: ["sourceKind", "level", "media"] },
   { title: "Where", dimensions: ["locationGuess"] },
   { title: "Who", dimensions: ["following", "author", "approved", "approvedBy"] },
@@ -191,7 +200,7 @@ export const FILTER_GROUPS: ReadonlyArray<{ title: string; dimensions: Dimension
 
 export type DateKey = "eventDate" | "added";
 
-/** The two date timelines, which head the panel on every surface. `axis` names the histogram of
+/** The two date timelines, under the When heading on every surface. `axis` names the histogram of
  *  `GET /search/dates` and `GET /feed/dates`. */
 export const DATE_DIMENSIONS: Record<
   DateKey,
@@ -223,9 +232,6 @@ export const DATE_DIMENSIONS: Record<
 };
 
 export const DATE_KEYS: ReadonlyArray<DateKey> = ["eventDate", "added"];
-
-/** The heading over the two timelines, which lead the panel. */
-export const DATES_HEADING = "When";
 
 /** The kinds other than events a Show field can list. */
 export const SHOW_KINDS: ReadonlyArray<Exclude<SearchHitType, "event">> = [

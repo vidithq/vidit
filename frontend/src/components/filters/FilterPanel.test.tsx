@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Conflict, Tag } from "@/types";
 
@@ -14,6 +14,7 @@ vi.mock("@/lib/search", async (importOriginal) => ({
 
 import { FilterPanel, FilterSheetBar, type FilterPanelProps } from "./FilterPanel";
 import { EMPTY_FILTERS, type FilterState, type Surface } from "./model";
+import { openFilterGroups } from "@/test/filters";
 
 const TAGS: Tag[] = Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, name: `tag-${i}` }));
 const CONFLICTS: Conflict[] = [
@@ -69,18 +70,71 @@ function Harness({
 
 const line = (name: string) => screen.getByRole("button", { name });
 const editor = (name: string) => screen.getByRole("dialog", { name });
+const group = (name: string) => screen.getByRole("button", { name });
 
-describe("<FilterPanel>", () => {
-  it("leads with the two timelines, then one line per dimension under its heading", () => {
+beforeEach(() => localStorage.clear());
+
+describe("<FilterPanel> groups", () => {
+  it("starts with every group collapsed, What first, then When", () => {
     render(<Harness surface="feed" />);
 
-    expect(
-      screen.getAllByRole("heading").map((h) => h.textContent),
-    ).toEqual(["When", "What", "Source", "Where", "Who"]);
+    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
+      "What",
+      "When",
+      "Source",
+      "Where",
+      "Who",
+    ]);
+    for (const name of ["What", "When", "Source", "Where", "Who"]) {
+      expect(group(name)).toHaveAttribute("aria-expanded", "false");
+    }
+    expect(screen.queryByRole("button", { name: "Show" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("slider", { name: /window start/ })).not.toBeInTheDocument();
+  });
+
+  it("opens a group from its heading and remembers it for the next panel", () => {
+    const { unmount } = render(<Harness surface="feed" />);
+
+    fireEvent.click(group("Source"));
+    expect(group("Source")).toHaveAttribute("aria-expanded", "true");
+    expect(line("Level")).toBeInTheDocument();
+    unmount();
+
+    render(<Harness surface="search" />);
+    expect(group("Source")).toHaveAttribute("aria-expanded", "true");
+    expect(group("What")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps a collapsed group's active filters on show as removable pills", () => {
+    render(
+      <Harness
+        surface="search"
+        initial={{ ...EMPTY_FILTERS, levels: ["direct"], eventFrom: "2024-01-01" }}
+      />,
+    );
+
+    expect(screen.getByTitle("Remove filter Event date: From 1 Jan 2024")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Remove filter Level: Direct"));
+    expect(screen.queryByTitle("Remove filter Level: Direct")).not.toBeInTheDocument();
+
+    fireEvent.click(group("When"));
+    expect(screen.queryByTitle(/Remove filter Event date/)).not.toBeInTheDocument();
+  });
+});
+
+describe("<FilterPanel>", () => {
+  beforeEach(openFilterGroups);
+
+  it("draws one line per dimension under its heading, the timelines under When", () => {
+    render(<Harness surface="feed" />);
+
     expect(screen.getAllByRole("slider", { name: /window start/ })).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Play timeline" })).not.toBeInTheDocument();
-    for (const name of ["Show", "Conflict", "Tags", "Source kind", "Level", "Media"]) {
+    for (const name of ["Show", "Source kind", "Level", "Media"]) {
       expect(line(name)).toHaveAttribute("aria-haspopup", "dialog");
+    }
+    for (const name of ["Conflict", "Tags", "Author"]) {
+      expect(screen.getByRole("combobox", { name })).toBeInTheDocument();
     }
     expect(screen.getByRole("switch", { name: "Following" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Approved only" })).toBeInTheDocument();
@@ -108,22 +162,25 @@ describe("<FilterPanel>", () => {
     expect(line("Level")).toHaveFocus();
   });
 
-  it("searches a long list, shows a short list with one Show more, and picks by name", () => {
+  it("searches a long list in its line, and shows each pick as a pill under it", () => {
     const onChange = vi.fn();
     render(<Harness surface="search" onChange={onChange} />);
 
-    fireEvent.click(line("Tags"));
-    const tags = editor("Tags");
-    expect(within(tags).getAllByRole("button", { name: /^tag-/ })).toHaveLength(8);
-    fireEvent.click(within(tags).getByRole("button", { name: "Show more" }));
-    expect(within(tags).getAllByRole("button", { name: /^tag-/ })).toHaveLength(12);
-
-    fireEvent.change(within(tags).getByRole("searchbox", { name: "Search tags" }), {
-      target: { value: "tag-11" },
-    });
-    fireEvent.click(within(tags).getByRole("button", { name: "tag-11" }));
+    const field = screen.getByRole("combobox", { name: "Tags" });
+    fireEvent.change(field, { target: { value: "tag-1" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "tag-1",
+      "tag-10",
+      "tag-11",
+    ]);
+    fireEvent.click(screen.getByRole("option", { name: "tag-11" }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ tags: ["tag-11"] }));
-    expect(within(tags).getByRole("searchbox", { name: "Search tags" })).toHaveFocus();
+    expect(field).toHaveValue("");
+    expect(screen.queryByRole("option", { name: "tag-11" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove tag-11" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ tags: [] }));
+    expect(screen.queryByRole("button", { name: "Remove tag-11" })).not.toBeInTheDocument();
   });
 
   it("removes a value from its pill on the line, without opening the editor", () => {
@@ -143,20 +200,20 @@ describe("<FilterPanel>", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("picks an author from the account picker and closes the editor", async () => {
+  it("picks an author from the search in its line", async () => {
     const onChange = vi.fn();
     render(<Harness surface="feed" onChange={onChange} />);
 
-    fireEvent.click(line("Author"));
-    const field = within(editor("Author")).getByRole("combobox", { name: "Author" });
+    const field = screen.getByRole("combobox", { name: "Author" });
     fireEvent.change(field, { target: { value: "an" } });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 400));
     });
     fireEvent.click(await screen.findByRole("option", { name: /ana/ }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ author: "ana" }));
-    expect(screen.queryByRole("dialog", { name: "Author" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove ana" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Author" })).toHaveValue("");
   });
 
   it("offers Clear all once a filter is on, and it clears every filter", () => {
@@ -174,6 +231,8 @@ describe("<FilterPanel>", () => {
 });
 
 describe("<FilterSheetBar>", () => {
+  beforeEach(openFilterGroups);
+
   it("shows the active filters as pills and opens the panel in a sheet", () => {
     render(<Harness surface="feed" sheet initial={{ ...EMPTY_FILTERS, following: true }} />);
 

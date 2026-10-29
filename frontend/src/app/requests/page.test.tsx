@@ -20,6 +20,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 import type { Conflict, EventListItem, Tag } from "@/types";
 
 import RequestsPage from "./page";
+import { openFilterGroups } from "@/test/filters";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
 
@@ -55,6 +56,8 @@ const CONFLICTS: Conflict[] = [
 const lastPath = () => apiFetchPage.mock.calls.at(-1)?.[0] as string;
 const lastQuery = () => new URLSearchParams(lastPath().split("?")[1]);
 
+beforeEach(openFilterGroups);
+
 beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   useApiResource.mockImplementation((path: string | null) => ({
@@ -69,7 +72,9 @@ afterEach(() => {
 });
 
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
-const line = (name: string) => within(rail()).getByRole("button", { name });
+// A list line is a button that opens its editor; a searched one is its search field.
+const line = (name: string) =>
+  within(rail()).queryByRole("combobox", { name }) ?? within(rail()).getByRole("button", { name });
 const editor = (name: string) => screen.getByRole("dialog", { name });
 
 describe("RequestsPage", () => {
@@ -158,10 +163,8 @@ describe("RequestsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     const sheet = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Conflict" }));
-    fireEvent.click(
-      within(editor("Conflict")).getByRole("button", { name: /^Russian invasion of Ukraine/ }),
-    );
+    fireEvent.focus(within(sheet).getByRole("combobox", { name: "Conflict" }));
+    fireEvent.click(screen.getByRole("option", { name: /^Russian invasion of Ukraine/ }));
     await waitFor(() =>
       expect(lastQuery().getAll("conflict")).toEqual(["Russian invasion of Ukraine"])
     );

@@ -15,6 +15,7 @@ import {
   DATE_DIMENSIONS,
   DATE_KEYS,
   DIMENSIONS,
+  FILTER_GROUPS,
   FILTER_STATUSES,
   MEDIA_TYPES,
   SHOW_BY_SURFACE,
@@ -24,6 +25,7 @@ import {
   offeredDimensions,
   type DateKey,
   type DimensionKey,
+  type FilterGroup,
   type FilterPatch,
   type FilterState,
   type Surface,
@@ -149,18 +151,31 @@ export function datePill(key: DateKey, state: FilterState, onPatch: FilterPatch)
   ];
 }
 
-/** Every active filter a surface offers as a removable pill: the dates first, then the
- *  dimensions in panel order. */
+/** A group's active filters a surface offers, as removable pills in panel order. */
+export function groupPills(
+  group: FilterGroup,
+  surface: Surface,
+  state: FilterState,
+  vocabulary: Vocabulary,
+  onPatch: FilterPatch,
+): ActiveFilter[] {
+  const offered = offeredDimensions(surface, state.show);
+  return [
+    ...(group.dates && datesOffered(surface, state.show)
+      ? DATE_KEYS.flatMap((k) => datePill(k, state, onPatch))
+      : []),
+    ...group.dimensions
+      .filter((k) => offered.includes(k))
+      .flatMap((k) => dimensionPills(k, surface, state, vocabulary, onPatch)),
+  ];
+}
+
+/** Every active filter a surface offers as a removable pill, in panel order. */
 export function activePills(
   surface: Surface,
   state: FilterState,
   vocabulary: Vocabulary,
   onPatch: FilterPatch,
 ): ActiveFilter[] {
-  return [
-    ...(datesOffered(surface, state.show) ? DATE_KEYS.flatMap((k) => datePill(k, state, onPatch)) : []),
-    ...offeredDimensions(surface, state.show).flatMap((k) =>
-      dimensionPills(k, surface, state, vocabulary, onPatch),
-    ),
-  ];
+  return FILTER_GROUPS.flatMap((g) => groupPills(g, surface, state, vocabulary, onPatch));
 }

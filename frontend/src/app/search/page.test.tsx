@@ -74,6 +74,7 @@ import type {
 import { ApiError } from "@/lib/api";
 import { NO_ANSWER } from "@/lib/errors";
 import SearchPage from "./page";
+import { openFilterGroups } from "@/test/filters";
 
 const OWNER = { id: "u1", username: "ana", avatar_url: null };
 
@@ -177,7 +178,9 @@ const sections = (
 
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
 /** A dimension's line in the rail, or null while the panel does not offer it. */
-const line = (name: string) => within(rail()).queryByRole("button", { name });
+// A list line is a button that opens its editor; a searched one is its search field.
+const line = (name: string) =>
+  within(rail()).queryByRole("combobox", { name }) ?? within(rail()).queryByRole("button", { name });
 const heading = (name: string) => within(rail()).queryByRole("heading", { name });
 const editor = (name: string) => screen.getByRole("dialog", { name });
 /** Toggles a Show option through the Show line's popover. */
@@ -189,6 +192,8 @@ function chip(name: string) {
 const linkTo = (href: string) => document.querySelector<HTMLAnchorElement>(`a[href="${href}"]`)!;
 /** The item a link is stretched over. */
 const rowOf = (href: string) => linkTo(href).parentElement!;
+
+beforeEach(openFilterGroups);
 
 beforeEach(() => {
   vi.clearAllMocks();

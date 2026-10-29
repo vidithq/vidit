@@ -81,6 +81,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 }));
 
 import HomePage from "./page";
+import { openFilterGroups } from "@/test/filters";
 
 function readOf(id: string): Read {
   const read = reads.findLast((r) => r.path === `/events/${id}`);
@@ -101,6 +102,8 @@ function renderMap() {
     </MapStateProvider>,
   );
 }
+
+beforeEach(openFilterGroups);
 
 beforeEach(() => {
   reads = [];

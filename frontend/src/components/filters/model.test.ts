@@ -97,7 +97,7 @@ describe("the filter model", () => {
     ]);
   });
 
-  it("names every active filter as a removable pill, dates first", () => {
+  it("names every active filter as a removable pill, in panel order", () => {
     const onPatch = vi.fn();
     const pills = activePills(
       "feed",
@@ -112,16 +112,16 @@ describe("the filter model", () => {
       onPatch,
     );
     expect(pills.map((p) => [p.filter, p.label])).toEqual([
-      ["Event date", "From 1 Jan 2024"],
       ["Show", "Requested"],
+      ["Event date", "From 1 Jan 2024"],
       ["Location guess", "No guess"],
       [undefined, "Following"],
       ["Approved by", "Open Source Watch"],
     ]);
     pills[0].onRemove();
-    expect(onPatch).toHaveBeenLastCalledWith({ eventFrom: "", eventTo: "" });
-    pills[1].onRemove();
     expect(onPatch).toHaveBeenLastCalledWith({ show: [] });
+    pills[1].onRemove();
+    expect(onPatch).toHaveBeenLastCalledWith({ eventFrom: "", eventTo: "" });
     pills[3].onRemove();
     expect(onPatch).toHaveBeenLastCalledWith({ following: false });
   });

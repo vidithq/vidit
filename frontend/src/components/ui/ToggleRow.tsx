@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import type { Concept } from "@/lib/fieldHelp";
 import { TAP_STEP } from "./Button";
 import { FieldHelp } from "./FieldHelp";
+import { PropertyName } from "./PropertyRow";
 import { Switch } from "./Switch";
 
 /** A described row's text: the label at reading size over a muted line. `<ToggleRow>` and
@@ -44,8 +45,8 @@ export function PreferenceText({
  *  over the whole row is the switch (role + click live there), so `<Switch>`
  *  renders as its visual span and a tap anywhere toggles. It takes the phone tap step.
  *
- *  `variant` picks the shape, by default from `description`. `filter`: the filter
- *  toggle (micro uppercase label on a divided list). `setting`: a preference row
+ *  `variant` picks the shape, by default from `description`. `filter`: a line of the filter
+ *  panel (its name like a `<PropertyRow>`'s, a small switch). `setting`: a preference row
  *  (label at reading size, over a line saying what it does when there is one).
  *  Same control, semantics and tap target.
  *
@@ -63,7 +64,7 @@ export function ToggleRow({
   className = "",
 }: {
   label: string;
-  /** A `?` after the label, in the settings shape. */
+  /** A `?` after the label. */
   concept?: Concept;
   /** A line under the label; passing one moves the row to the settings shape. */
   description?: ReactNode;
@@ -84,7 +85,7 @@ export function ToggleRow({
         "relative w-full flex items-center justify-between text-left group",
         "gap-4",
         TAP_STEP,
-        !setting && "py-2.5 border-b border-neutral-800 last:border-b-0",
+        !setting && "py-2",
         disabled && "opacity-50",
         className,
       )}
@@ -109,11 +110,7 @@ export function ToggleRow({
           descriptionId={described ? descriptionId : undefined}
         />
       ) : (
-        <span
-          className="block min-w-0 text-[10px] text-neutral-500 uppercase tracking-wider group-hover:text-neutral-400 transition-colors"
-        >
-          {label}
-        </span>
+        <PropertyName name={label} concept={concept} className="group-hover:text-neutral-100" />
       )}
       <Switch as="span" size={setting ? "md" : "sm"} on={on} />
     </div>

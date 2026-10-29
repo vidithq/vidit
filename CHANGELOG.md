@@ -35,7 +35,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
-- One filter panel serves the map, search, the feed and the Requests board: the Event date and Added timelines, then one line per filter under What, Source, Where and Who, each opening its editor over the page; a phone opens it in a sheet ([#813](https://github.com/vidithq/vidit/pull/813)).
+- One filter panel serves the map, search, the feed and the Requests board: collapsible groups What, When (the Event date and Added timelines), Source, Where and Who; Conflict, Tags and accounts search in their line; a phone opens it in a sheet ([#813](https://github.com/vidithq/vidit/pull/813)).
 - The feed keeps its filters in the URL, and its Following choice is a switch in the filter panel; search lists an analyst or an organization the query names once, first in its section ([#813](https://github.com/vidithq/vidit/pull/813)).
 - Every list shows an event, a request, a site or a collection one way, as a compact row, a list row or a feed card: its picture or its kind's icon, the title, a line with the kind, date, analyst and place, then its state ([#813](https://github.com/vidithq/vidit/pull/813)).
 - Breaking: `GET /search` returns one ranked list, `hits`, with one `cursor` that pages it, in place of five groups with their totals; `type` repeats to pick the kinds, and `status` narrows only the events ([#807](https://github.com/vidithq/vidit/pull/807)).
