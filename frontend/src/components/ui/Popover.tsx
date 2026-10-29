@@ -1,36 +1,13 @@
 "use client";
 
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
+import { useAnchoredPosition } from "@/hooks/useAnchoredPosition";
+import { useDismiss } from "@/hooks/useDismiss";
 import { cn } from "@/lib/cn";
 import { Button } from "./Button";
 import { ACCENT_SURFACE, TOOLTIP_SURFACE } from "./styles";
-
-// The panel keeps this much room from either viewport edge.
-const EDGE_PX = 8;
-// Between the trigger's edge and the panel.
-const GAP_PX = 4;
-
-/** True when `target` sits in the panel or in a popup a control in it owns through
- *  `aria-controls` (the `Combobox` list, portaled out of the panel). */
-function insidePanel(panel: HTMLElement | null, target: Node): boolean {
-  if (!panel) return false;
-  if (panel.contains(target)) return true;
-  return [...panel.querySelectorAll("[aria-controls]")].some((control) => {
-    const id = control.getAttribute("aria-controls");
-    return !!id && !!document.getElementById(id)?.contains(target);
-  });
-}
 
 /**
  * An icon button that opens a small panel anchored under it, for a control too small to sit in
@@ -94,11 +71,10 @@ export function Popover({
 /**
  * The panel of a `<Popover>`, for a caller that owns its trigger (a write that asks one more
  * thing before it runs, the edit form's version note, the map's basemap control). Mount it while
- * open. It is fixed to the viewport from a portal under `anchorRef`, or above it when the room
- * below is too short, starting at the anchor's left edge, or ending at its right edge with
- * `align="end"`, shifted to stay inside the viewport, and follows the anchor on scroll and on a
- * change of its own size. It takes focus when no field in it took it, so Escape reaches it. Escape calls `onClose(true)`, so focus can return to the anchor; a press outside the
- * panel and the anchor calls `onClose(false)`.
+ * open. `useAnchoredPosition` places it under `anchorRef`, or above it when the room below is
+ * short, starting at the anchor's left edge, or ending at its right edge with `align="end"`. It
+ * takes focus when no field in it took it. Escape calls `onClose(true)`, so focus can return to
+ * the anchor; a press outside the panel and the anchor calls `onClose(false)`.
  */
 export function PopoverPanel({
   id,
@@ -124,58 +100,15 @@ export function PopoverPanel({
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-
-  // Placed before paint and again on every scroll or resize: style writes, not state.
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
-    const anchorEl = anchorRef.current;
-    if (!panel || !anchorEl) return;
-    const place = () => {
-      const anchor = anchorEl.getBoundingClientRect();
-      const { clientWidth, clientHeight } = document.documentElement;
-      const room = clientWidth - EDGE_PX - panel.offsetWidth;
-      const left = align === "end" ? anchor.right - panel.offsetWidth : anchor.left;
-      const below = anchor.bottom + GAP_PX;
-      const fitsBelow = below + panel.offsetHeight <= clientHeight - EDGE_PX;
-      const top = fitsBelow ? below : Math.max(EDGE_PX, anchor.top - GAP_PX - panel.offsetHeight);
-      panel.style.top = `${top}px`;
-      panel.style.left = `${Math.max(EDGE_PX, Math.min(left, room))}px`;
-    };
-    place();
-    const resize = new ResizeObserver(place);
-    resize.observe(panel);
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-    return () => {
-      resize.disconnect();
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
-    };
-  }, [anchorRef, align]);
+  const position = useAnchoredPosition({ open: true, anchorRef, floatingRef: panelRef, align });
+  useDismiss({ open: true, anchorRef, floatingRef: panelRef, onDismiss: onClose });
 
   // After `autoFocus`, which React applies during commit: a panel without a focused field takes
-  // focus itself, or its Escape handler never sees a key.
+  // focus itself, so a keyboard or screen reader user lands in it and its Escape is its own.
   useEffect(() => {
     const panel = panelRef.current;
     if (panel && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
   }, []);
-
-  useEffect(() => {
-    const onPointer = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!anchorRef.current?.contains(target) && !insidePanel(panelRef.current, target)) {
-        onClose(false);
-      }
-    };
-    document.addEventListener("mousedown", onPointer);
-    return () => document.removeEventListener("mousedown", onPointer);
-  }, [anchorRef, onClose]);
-
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Escape") return;
-    e.preventDefault();
-    onClose(true);
-  };
 
   return createPortal(
     <div
@@ -184,7 +117,7 @@ export function PopoverPanel({
       role="dialog"
       aria-label={label}
       tabIndex={-1}
-      onKeyDown={onKeyDown}
+      style={position}
       className={cn(
         "fixed z-50 outline-none max-w-[calc(100vw-1rem)] space-y-2 rounded-md p-2",
         wide ? "w-96" : "w-72",

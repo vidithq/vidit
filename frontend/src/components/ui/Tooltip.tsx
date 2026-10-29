@@ -32,10 +32,7 @@ function focusVisible(el: Element): boolean {
  * pins, for a control whose label holds more than its name says (see `<Tooltip tapToShow>`).
  */
 function useTooltip(label: string, hidden: boolean, shown = false) {
-  const { open, wrapperProps, anchorProps, popoverProps } = usePinnedPopover<HTMLSpanElement>({
-    shown,
-    content: label,
-  });
+  const { open, wrapperProps, anchorProps, popoverProps } = usePinnedPopover<HTMLSpanElement>({ shown });
   const { ref: wrapperRef } = wrapperProps;
   const { ref: anchorRef } = anchorProps;
   // `placeOn` is the box the bubble hangs under, the control itself unless the caller names another.

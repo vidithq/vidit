@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -12,6 +11,8 @@ import {
 import { createPortal } from "react-dom";
 import Link from "next/link";
 
+import { useAnchoredPosition } from "@/hooks/useAnchoredPosition";
+import { useDismiss } from "@/hooks/useDismiss";
 import { cn } from "@/lib/cn";
 import { Button, type ButtonAction } from "./Button";
 import { Tooltip } from "./Tooltip";
@@ -35,10 +36,6 @@ export type ActionMenuItem = {
 
 const ITEM =
   "flex w-full min-h-9 items-center gap-2 rounded px-2.5 py-1.5 text-left text-xs font-medium outline-none transition-colors text-orange-400 hover:bg-orange-500/10 focus-visible:bg-orange-500/10";
-// The menu keeps this much room from either viewport edge.
-const EDGE_PX = 8;
-// Between the trigger's bottom edge and the menu.
-const GAP_PX = 4;
 
 function itemNodes(menu: HTMLElement): HTMLElement[] {
   return [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')];
@@ -47,10 +44,10 @@ function itemNodes(menu: HTMLElement): HTMLElement[] {
 /**
  * A trigger button that opens a short list of links or actions (`role="menu"`). Arrow keys, Home and End
  * move between items; Escape closes and returns focus to the trigger; Tab or an outside click
- * closes. The menu opens under the trigger, aligned to its right edge, and shifts sideways when
- * that would cross the viewport; with `matchTriggerWidth` it is exactly as wide as the trigger. A
- * long list scrolls inside the menu. It is fixed to the viewport from a portal, so a scrolling
- * ancestor (the admin invite table) cannot clip it, and it follows the trigger on scroll.
+ * closes. `useAnchoredPosition` places the menu under the trigger, or above it when the room below
+ * is short, aligned to its right edge; with `matchTriggerWidth` it is exactly as wide as the
+ * trigger. A long list scrolls inside the menu. It is fixed to the viewport from a portal, so a
+ * scrolling ancestor (the admin invite table) cannot clip it.
  */
 export function ActionMenu({
   label,
@@ -82,7 +79,6 @@ export function ActionMenu({
 }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const focusOnOpen = useRef<"first" | "last">("first");
@@ -97,46 +93,24 @@ export function ActionMenu({
     setOpen(true);
   };
 
-  // Placed before paint and again on every scroll or resize: style writes, not state, so the menu
-  // never renders at the wrong spot.
+  const position = useAnchoredPosition({
+    open,
+    anchorRef: triggerRef,
+    floatingRef: menuRef,
+    align: "end",
+    matchWidth: matchTriggerWidth,
+  });
+  useDismiss({ open, anchorRef: triggerRef, floatingRef: menuRef, onDismiss: close });
+
+  // Once placed, so focusing an item never scrolls toward a menu still at its unplaced spot.
+  const placed = position !== undefined;
   useLayoutEffect(() => {
     const menu = menuRef.current;
-    const trigger = triggerRef.current;
-    if (!open || !menu || !trigger) return;
-    const place = () => {
-      const anchor = trigger.getBoundingClientRect();
-      const width = matchTriggerWidth ? anchor.width : menu.getBoundingClientRect().width;
-      const room = document.documentElement.clientWidth - EDGE_PX - width;
-      const left = matchTriggerWidth
-        ? anchor.left
-        : Math.max(EDGE_PX, Math.min(anchor.right - width, room));
-      menu.style.top = `${anchor.bottom + GAP_PX}px`;
-      menu.style.left = `${left}px`;
-      if (matchTriggerWidth) menu.style.width = `${width}px`;
-    };
-    place();
+    if (!placed || !menu) return;
     const nodes = itemNodes(menu);
     const current = nodes.find((node) => node.hasAttribute("aria-current"));
     (focusOnOpen.current === "last" ? nodes[nodes.length - 1] : (current ?? nodes[0]))?.focus();
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
-    };
-  }, [open, matchTriggerWidth]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (!wrapperRef.current?.contains(target) && !menuRef.current?.contains(target)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onPointer);
-    return () => document.removeEventListener("mousedown", onPointer);
-  }, [open]);
+  }, [placed]);
 
   const onTriggerKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -161,9 +135,6 @@ export function ActionMenu({
         return move(0);
       case "End":
         return move(nodes.length - 1);
-      case "Escape":
-        e.preventDefault();
-        return close(true);
       case "Tab":
         // From the trigger, so the Tab moves on from where the menu was opened, not from the
         // portal at the end of the page.
@@ -178,7 +149,7 @@ export function ActionMenu({
   };
 
   return (
-    <div ref={wrapperRef} className="inline-flex">
+    <div className="inline-flex">
       <Button
         ref={triggerRef}
         icon={!text}
@@ -205,6 +176,7 @@ export function ActionMenu({
             role="menu"
             aria-label={menuLabel}
             onKeyDown={onMenuKeyDown}
+            style={position}
             className={cn(
               "fixed z-50 max-h-80 space-y-0.5 overflow-y-auto rounded-md p-1",
               !matchTriggerWidth && "w-56 max-w-[calc(100vw-2rem)]",
