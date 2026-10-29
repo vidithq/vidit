@@ -1,93 +1,85 @@
-"""Pydantic shapes for ``GET /search``.
+"""Pydantic shapes for ``GET /search`` and ``GET /search/sections``.
 
-Five groups: the two event views, collections, analysts and organizations. Hits carry
+One ranked list of hits of five types, told apart by ``type``, or one section per type. Hits carry
 ``*_highlight`` fields with sentinel-delimited match fragments
 (``services.search.HIGHLIGHT_START`` / ``HIGHLIGHT_STOP``) that the frontend
-turns into ``<mark>`` tags, so no raw HTML crosses the wire. Field sets mirror
-the ``EventList`` card plus highlights. The geolocation and request groups are
-two views over ``events`` sharing one FTS path in ``services.search``.
+turns into ``<mark>`` tags, so no raw HTML crosses the wire.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.event import EventStatus
+from app.models.site import SiteKind
 from app.schemas.collection import CollectionRead
 from app.schemas.media import MediaRead
+from app.schemas.site import SiteLastSourceRead
 from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
-# The ``type=`` values, echoed on the response. Mirrors
-# ``services.search.ALLOWED_TYPES`` (a plain set there for the runtime check).
-SearchType = Literal["all", "event", "geolocation", "request", "collection", "user", "organization"]
-
-
-class SearchTotals(BaseModel):
-    """Per-group pre-LIMIT match counts, so the UI needn't re-sum the capped hit lists."""
-
-    geolocations: int
-    requests: int
-    collections: int
-    users: int
-    organizations: int
+SearchType = Literal["event", "site", "collection", "user", "organization"]
 
 
 class SearchEventHit(BaseModel):
+    """A geolocated or detected event, or an open request."""
+
+    type: Literal["event"] = "event"
     id: uuid.UUID
     title: str
-    # ts_headline output with ``[[HL]]…[[/HL]]`` around matches; always present.
     title_highlight: str
-    lat: float
-    lng: float
-    # Nullable but always serialised (``services.search.search_geolocations``).
+    status: EventStatus
     occurred_date: date | None
+    created_at: datetime
+    # The subject coordinate of a geolocated or detected row; null on a request, whose guess is
+    # no located point.
+    lat: float | None
+    lng: float | None
     # See ``EventRead.is_graphic``; travels with the hit to avoid a detail fetch.
     is_graphic: bool
-    # ``detected`` rows surface marked, as everywhere else.
-    status: EventStatus
     owner: AuthorRef
-    # See ``EventRead.geolocators``; the card's byline.
+    # See ``EventRead.geolocators``.
     geolocators: list[AuthorRef]
-    # Picked card thumbnail (at most one row, ``services.thumbnails``). A list
-    # for wire stability; the card renders ``media[0]``.
+    # The card thumbnail (at most one row, ``services.thumbnails``).
     media: list[MediaRead]
     tags: list[TagRead]
 
     model_config = {"from_attributes": True}
 
 
-class SearchRequestHit(BaseModel):
+class SearchSiteHit(BaseModel):
+    """A visible site with its latest source and its picture (``SiteItem.media``)."""
+
+    type: Literal["site"] = "site"
     id: uuid.UUID
-    title: str
-    title_highlight: str
-    # Every link of the request's sources, in source order.
-    source_urls: list[str]
-    # ``requested``, or ``closed`` once withdrawn.
-    status: EventStatus
-    created_at: datetime
-    # Same cover gate as ``SearchEventHit.is_graphic``.
-    is_graphic: bool
+    name: str
+    name_highlight: str
+    kind: SiteKind
     owner: AuthorRef
-    # Same shape as ``SearchEventHit.media``.
+    last_source: SiteLastSourceRead | None
+    # At most one row.
     media: list[MediaRead]
-    tags: list[TagRead]
 
     model_config = {"from_attributes": True}
+
+
+class SearchCollectionHit(CollectionRead):
+    """The ``CollectionRead`` every surface renders. No ``*_highlight``."""
+
+    type: Literal["collection"] = "collection"
 
 
 class SearchUserHit(BaseModel):
+    type: Literal["user"] = "user"
     id: uuid.UUID
     username: str
-    # Always present: username is always indexed.
     username_highlight: str
     bio: str | None
-    # Set only when the bio contributed a fragment; ``None`` lets the UI hide
-    # the snippet block.
+    # Set only when the bio contributed a fragment.
     bio_highlight: str | None
     avatar_url: str | None
 
@@ -98,6 +90,7 @@ class SearchOrganizationHit(BaseModel):
     """Public fields only, the organization page's header: no approval request
     audience, no creator."""
 
+    type: Literal["organization"] = "organization"
     id: uuid.UUID
     slug: str
     name: str
@@ -109,37 +102,45 @@ class SearchOrganizationHit(BaseModel):
     member_count: int
 
 
+SearchHit = Annotated[
+    SearchEventHit | SearchSiteHit | SearchCollectionHit | SearchUserHit | SearchOrganizationHit,
+    Field(discriminator="type"),
+]
+
+
 class SearchResponse(BaseModel):
-    """Grouped result set. Groups not requested via ``type=`` are empty arrays,
-    keeping the JSON shape stable."""
+    """One page of hits in rank order."""
 
-    geolocations: list[SearchEventHit]
-    requests: list[SearchRequestHit]
-    # A hit is the ``CollectionRead`` every surface renders, so a result is the
-    # profile's card. No ``*_highlight``: the card shows a two-line clamp, which
-    # a mark would often cut.
-    collections: list[CollectionRead]
-    users: list[SearchUserHit]
-    organizations: list[SearchOrganizationHit]
-
-    # Group totals, so the UI needn't re-sum the lists.
-    total: SearchTotals
-
-    # The next geolocations page, passed back as ``?cursor=`` with
-    # ``type=geolocation``; ``None`` once the group is exhausted. In the body, not
-    # a ``Link`` header: the next page is a different ``type`` than this one.
-    geolocations_cursor: str | None
-
-    # A respelling of ``query`` that finds results, set only when every group is empty
+    hits: list[SearchHit]
+    # The whole match count, before the page cut.
+    total: int
+    # The next page, passed back as ``?cursor=`` with the same query, types and filters; ``None``
+    # on the last page.
+    cursor: str | None
+    # A respelling of ``query`` that finds results, set only when nothing matched
     # (``services.search.spelling_suggestion``).
     suggestion: str | None = None
-
-    # Echoes the inputs so the frontend can match a response to the current
-    # query among in-flight requests.
+    # Echoes ``q`` so the frontend can match a response to the current query.
     query: str
-    type: SearchType
 
-    model_config = {"from_attributes": True}
+
+class SearchSection(BaseModel):
+    """The first page of one type's list: what ``GET /search`` returns for that type alone with
+    the same ``limit``, its ``cursor`` included."""
+
+    type: SearchType
+    hits: list[SearchHit]
+    total: int
+    cursor: str | None
+
+
+class SearchSections(BaseModel):
+    """One section per type with a hit, in the order of ``services.search.SEARCH_TYPES``."""
+
+    sections: list[SearchSection]
+    # Same rule as ``SearchResponse.suggestion``, set only when no section holds a hit.
+    suggestion: str | None = None
+    query: str
 
 
 class AuthorSuggestions(BaseModel):

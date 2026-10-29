@@ -177,6 +177,8 @@ _READ_LIMITS = [
     # would 422 without touching the bucket.
     (f"/api/v1/events/points?bbox={WORLD_BBOX}", 60),
     ("/api/v1/search?q=vidit", 60),
+    ("/api/v1/search/sections?q=vidit", 60),
+    ("/api/v1/search/dates?q=vidit", 60),
     ("/api/v1/search/authors?q=vidit", 60),
     ("/api/v1/tags", 60),
     ("/api/v1/conflicts", 60),
@@ -234,6 +236,8 @@ _QUOTA_ROUTES = [
     "/api/v1/events/possible-duplicates",
     "/api/v1/events/{geolocation_id}/approvals",
     "/api/v1/search",
+    "/api/v1/search/sections",
+    "/api/v1/search/dates",
     "/api/v1/search/authors",
     "/api/v1/tags",
     "/api/v1/conflicts",
@@ -255,6 +259,7 @@ _QUOTA_ROUTES = [
     "/api/v1/events/{geolocation_id}/site-links",
     "/api/v1/events/{geolocation_id}/site-suggestions",
     "/api/v1/feed",
+    "/api/v1/feed/dates",
 ]
 
 
@@ -488,6 +493,7 @@ _DOCUMENTED_LIMITS = [
     ),
     _Case("get", f"/api/v1/events/import-archive/{_MISSING_ID}", 60),
     _Case("get", "/api/v1/feed", 120),
+    _Case("get", "/api/v1/feed/dates", 120),
     _Case(
         "post",
         "/api/v1/events/import-from-tweet",

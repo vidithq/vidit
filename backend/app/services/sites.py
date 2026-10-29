@@ -60,12 +60,12 @@ from app.schemas.site import (
     SiteContourRead,
     SiteCreate,
     SiteEventLinkCreate,
+    SiteItem,
     SiteLastSourceRead,
     SiteLinkedEventRead,
     SiteList,
     SiteOverlapRead,
     SiteRead,
-    SiteRef,
     SiteSnapshot,
     SiteSnapshotSource,
     SiteSourceCreate,
@@ -90,6 +90,8 @@ from app.services.versions import MAX_VERSIONS_PER_EVENT, VersionLimitError
 
 # Sites one map read returns; past it the oldest sites are absent from the response.
 MAP_SITES_LIMIT = 1000
+# A site's sources as its page lists them: oldest capture first.
+SITE_SOURCE_ORDER = (Source.captured_at, Source.created_at, Source.id)
 OVERLAPS_LIMIT = 20
 SUGGESTIONS_LIMIT = 20
 # Mirrored by `frontend/src/lib/sites.ts::SITE_MARGIN_KM`; change both.
@@ -334,7 +336,7 @@ def _link_urls(db: Session, source_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, 
     return urls
 
 
-def _last_sources(
+def last_sources(
     db: Session, site_ids: Sequence[uuid.UUID], as_of: date | None
 ) -> dict[uuid.UUID, SiteLastSourceRead]:
     """Per site, the live source with the latest capture on or before ``as_of``, with its
@@ -359,6 +361,31 @@ def _last_sources(
             provider=ImageryProviderRef.model_validate(provider) if provider else None,
         )
     return last
+
+
+def site_images(db: Session, site_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Media]:
+    """Per site, its picture: the image of its first live source, in the site page's source
+    order, that carries one. A graphic source is skipped."""
+    if not site_ids:
+        return {}
+    rows = (
+        db.query(Source.site_id, Media)
+        .join(Media, Media.source_id == Source.id)
+        .filter(
+            Source.site_id.in_(site_ids),
+            *live_sources(),
+            Source.is_graphic.is_(False),
+            Media.kind == "image",
+        )
+        .distinct(Source.site_id)
+        .order_by(Source.site_id, *SITE_SOURCE_ORDER)
+        .all()
+    )
+    return {site_id: media for site_id, media in rows}
+
+
+def _media_read(media: Media | None) -> MediaRead | None:
+    return None if media is None else MediaRead.model_validate(media)
 
 
 def _site_states(
@@ -401,7 +428,8 @@ def _site_states(
         .all()
     )
     site_ids = [row[0].id for row in rows]
-    last_sources = _last_sources(db, site_ids, as_of)
+    last_sources_by_site = last_sources(db, site_ids, as_of)
+    images = site_images(db, site_ids)
     states: list[tuple[Site, dict[str, Any]]] = []
     for site, zone_json, lat, lng, contour_id, link_effect, link_date, link_event_id in rows:
         states.append(
@@ -414,7 +442,8 @@ def _site_states(
                     "zone": _geojson(zone_json),
                     "centroid": CoordsRead(lat=lat, lng=lng),
                     "contour_id": contour_id,
-                    "last_source": last_sources.get(site.id),
+                    "last_source": last_sources_by_site.get(site.id),
+                    "media": _media_read(images.get(site.id)),
                     "latest_link_effect": None
                     if link_event_id is None
                     else LatestLinkEffect(
@@ -468,7 +497,7 @@ def _sources(db: Session, *criteria: ColumnElement[bool]) -> list[SiteSourceRead
             joinedload(Source.author),
         )
         .filter(Source.site_id.is_not(None), *criteria)
-        .order_by(Source.captured_at, Source.created_at, Source.id)
+        .order_by(*SITE_SOURCE_ORDER)
         .all()
     )
     return [_source_read(row) for row in rows]
@@ -497,8 +526,7 @@ def _contours(db: Session, *criteria: ColumnElement[bool]) -> list[SiteContourRe
 
 
 def _thumbnail(event: Event) -> MediaRead | None:
-    row = pick_thumbnail(event)
-    return MediaRead.model_validate(row) if row is not None else None
+    return _media_read(pick_thumbnail(event))
 
 
 def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]:
@@ -1056,20 +1084,27 @@ def _suggest(
         .limit(SUGGESTIONS_LIMIT)
         .all()
     )
+    images = site_images(db, [site.id for site, _ in rows])
     return [
         SiteSuggestionRead(
-            id=site.id,
-            name=site.name,
-            kind=site.kind,
+            **_site_item(site, images).model_dump(),
             distance_m=None if dist is None else float(dist),
         )
         for site, dist in rows
     ]
 
 
-def _link_read(site: Site, link: EventSiteLink) -> EventSiteLinkRead:
+def _site_item(site: Site, images: dict[uuid.UUID, Media]) -> SiteItem:
+    return SiteItem(
+        id=site.id, name=site.name, kind=site.kind, media=_media_read(images.get(site.id))
+    )
+
+
+def _link_read(
+    site: Site, link: EventSiteLink, images: dict[uuid.UUID, Media]
+) -> EventSiteLinkRead:
     return EventSiteLinkRead(
-        site=SiteRef(id=site.id, name=site.name, kind=site.kind),
+        site=_site_item(site, images),
         effect=link.effect,
         linked_at=link.linked_at,
     )
@@ -1084,7 +1119,8 @@ def list_event_links(db: Session, *, event_id: uuid.UUID) -> list[EventSiteLinkR
         .order_by(EventSiteLink.linked_at, Site.id)
         .all()
     )
-    return [_link_read(site, link) for site, link in rows]
+    images = site_images(db, [site.id for site, _ in rows])
+    return [_link_read(site, link, images) for site, link in rows]
 
 
 def _link(db: Session, *, event_id: uuid.UUID, site_id: uuid.UUID) -> EventSiteLink | None:
@@ -1115,7 +1151,7 @@ def link_event(
         link.effect = effect
     db.commit()
     db.refresh(link)
-    return _link_read(site, link)
+    return _link_read(site, link, site_images(db, [site.id]))
 
 
 def unlink_event(db: Session, *, event: Event, user: User, site_id: uuid.UUID) -> None:

@@ -15,7 +15,7 @@ import { WARNING_CALLOUT } from "@/components/ui/styles";
  *
  * - `full`: the detail surfaces (`MediaGallery`, the map side panel), with room
  *   for the whole sentence.
- * - `compact`: card-sized slots (`MediaThumb`, the map pin preview, a proof
+ * - `compact`: card-sized slots (`ItemMedia`, a proof
  *   body's inline images), where the overlay is one labelled control.
  *
  * The acknowledgement lives in `sessionStorage` (survives a reload, dies with
@@ -94,7 +94,7 @@ export function GraphicContentGate({
       </div>
       {compact ? (
         // One control filling the tile (no room for a sentence plus a button).
-        // `z-20` outranks an `EntityCard`'s stretched link (`z-10`), which would
+        // `z-20` outranks an `<Item>`'s stretched link (`z-10`), which would
         // otherwise take the click and navigate.
         <Button
           action="show"

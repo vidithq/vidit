@@ -454,9 +454,9 @@ def test_author_filter_and_search_match_any_geolocator(db, author, second_user):
     listed = client.get(_EVENTS, params={"author": second_user.username.upper()}).json()
     assert [item["id"] for item in listed] == [str(geo.id)]
     found = client.get(
-        "/api/v1/search", params={"author": second_user.username, "type": "geolocation"}
+        "/api/v1/search", params={"author": second_user.username, "type": "event"}
     ).json()
-    hits = found["geolocations"]
+    hits = found["hits"]
     assert [hit["id"] for hit in hits] == [str(geo.id)]
     assert [g["username"] for g in hits[0]["geolocators"]] == [
         author.username,

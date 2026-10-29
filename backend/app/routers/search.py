@@ -1,5 +1,6 @@
-"""``GET /search``: full-text search across geolocations, requests, collections, users
-and organizations.
+"""``GET /search``: one ranked list of events, sites, collections, analysts and organizations,
+``GET /search/sections``: the top of that list for each type, and ``GET /search/dates``: its
+events per day.
 
 Anonymous like the rest of the read surface; the 60/min per-IP limit is the
 abuse floor. FTS plumbing is in ``services/search.py``.
@@ -8,20 +9,20 @@ abuse floor. FTS plumbing is in ``services/search.py``.
 from __future__ import annotations
 
 import logging
-from typing import cast
+from dataclasses import dataclass, replace
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.ratelimit import authenticated_read_quota, limiter
-from app.schemas.search import AuthorSuggestions, SearchResponse, SearchTotals, SearchType
+from app.routers._filters import event_filters
+from app.schemas.event import DateHistogram
+from app.schemas.search import AuthorSuggestions, SearchResponse, SearchSections
 from app.services import search as search_service
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
     EventFilters,
-    validate_media_types,
-    validate_source_filters,
     validate_status_filter,
 )
 from app.services.pagination import decode_ranked_cursor
@@ -31,133 +32,142 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@dataclass(frozen=True)
+class _SearchRequest:
+    q: str
+    types: frozenset[str]
+    filters: EventFilters
+
+
+def _search_request(
+    q: str = Query("", description="Free-text query"),
+    type: list[str] | None = Query(
+        None,
+        description=(
+            "Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type"
+        ),
+    ),
+    status: list[str] | None = Query(None),
+    filters: EventFilters = Depends(event_filters),
+) -> _SearchRequest:
+    """The query, the types and the filters every search read takes, 422 on a value outside its
+    domain."""
+    unknown = sorted(set(type or ()) - set(search_service.SEARCH_TYPES))
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"type must be one of: {', '.join(search_service.SEARCH_TYPES)}",
+        )
+    validate_status_filter(status)
+    return _SearchRequest(
+        q=q,
+        types=frozenset(type or search_service.SEARCH_TYPES),
+        filters=replace(filters, status=status),
+    )
+
+
+def _suggestion(db: Session, params: _SearchRequest) -> str | None:
+    return search_service.spelling_suggestion(
+        db, query=params.q, types=params.types, filters=params.filters
+    )
+
+
 @router.get("", response_model=SearchResponse)
 @authenticated_read_quota
 @limiter.limit("60/minute")
 def search(
     request: Request,
-    q: str = Query("", description="Free-text query (empty returns an empty result set)"),
-    type: str = Query(
-        "all",
-        description=(
-            "One of 'all', 'event', 'geolocation', 'request', 'collection', 'user', 'organization'"
-        ),
-    ),
-    limit: int = Query(20, ge=1, le=50, description="Per-group cap"),
+    params: _SearchRequest = Depends(_search_request),
+    limit: int = Query(20, ge=1, le=50, description="Hits per page"),
     cursor: str | None = Query(
         None,
         description=(
-            "Opaque cursor from `geolocations_cursor`: the next page of the geolocations group."
-            " Requires type=geolocation and the query and filters of the page that minted it"
+            "Opaque `cursor` of a previous response: its next page. Send the query, types and"
+            " filters of the request that returned it"
         ),
-    ),
-    # The standard event filter set (``services/event_filters``); scopes the two
-    # event groups. List params take multiple values (?tag=a&tag=b).
-    status: list[str] | None = Query(None),
-    conflict: list[str] | None = Query(None),
-    source_kind: list[str] | None = Query(None),
-    level: list[str] | None = Query(None),
-    tag: list[str] | None = Query(None),
-    occurred_date_from: str | None = None,
-    occurred_date_to: str | None = None,
-    submitted_from: str | None = None,
-    submitted_to: str | None = None,
-    author: str | None = Query(
-        None,
-        pattern=AUTHOR_FILTER_PATTERN,
-        description="Scope the event groups to this owner username (exact, case-insensitive)",
-    ),
-    media: list[str] | None = Query(None),
-    approved: bool = Query(False, description="Keep events approved on their live version"),
-    approved_by: str | None = Query(
-        None,
-        pattern=AUTHOR_FILTER_PATTERN,
-        description="Keep events this analyst approved on their live version (username)",
-    ),
-    approved_by_org: str | None = Query(
-        None,
-        pattern=AUTHOR_FILTER_PATTERN,
-        description="Keep events this organization approved on their live version (slug)",
     ),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
-    """Grouped FTS across the five result groups.
+    """One ranked list of events, sites, collections, analysts and organizations.
 
-    Empty or whitespace-only ``q`` returns an empty response (keeps the
-    still-typing hits cheap).
+    An empty ``q`` with no active filter returns an empty list (keeps the still-typing hits
+    cheap); with an active filter it browses the filtered view, newest first.
 
-    Any active filter scopes the event groups and empties the users and
-    organizations groups;
-    ``author`` narrows the collections group to that owner and every other
-    filter empties it. With an empty ``q`` the response browses the filtered
-    view, collections included when ``author`` is the only filter (the
-    profile's two "Show more" entry points). Filter semantics are
-    ``services/event_filters.apply_filters``.
+    ``type`` picks the hit types. ``status`` narrows the events. Every other filter narrows the
+    events, narrows the sites and collections it applies to, and leaves out the types it does
+    not apply to; see ``docs/api.md``.
 
-    The geolocations group pages: ``geolocations_cursor`` is set exactly when a
-    further page holds a row, and ``cursor`` with ``type=geolocation`` fetches it.
-
-    When every group is empty, ``suggestion`` may hold a respelling of ``q`` that finds results.
+    When nothing matches, ``suggestion`` may hold a respelling of ``q`` that finds results.
     """
-    if type not in search_service.ALLOWED_TYPES:
-        raise HTTPException(
-            status_code=422,
-            detail=(f"type must be one of: {', '.join(sorted(search_service.ALLOWED_TYPES))}"),
-        )
-    if cursor is not None and type != "geolocation":
-        raise HTTPException(status_code=422, detail="cursor requires type=geolocation")
     after = decode_ranked_cursor(cursor) if cursor is not None else None
-    validate_media_types(media)
-    validate_status_filter(status)
-    validate_source_filters(source_kind, level)
-
-    types = search_service.types_from_param(type)
-    filters = EventFilters(
-        status=status,
-        conflict=conflict,
-        source_kind=source_kind,
-        level=level,
-        tag=tag,
-        occurred_date_from=occurred_date_from,
-        occurred_date_to=occurred_date_to,
-        submitted_from=submitted_from,
-        submitted_to=submitted_to,
-        author=author,
-        media=media,
-        approved=approved,
-        approved_by=approved_by,
-        approved_by_org=approved_by_org,
+    page = search_service.search(
+        db,
+        query=params.q,
+        types=params.types,
+        limit=limit,
+        filters=params.filters,
+        after=after,
     )
-    grouped = search_service.search_all(
-        db, query=q, types=types, limit=limit, filters=filters, after=after
+    suggestion = _suggestion(db, params) if after is None and page.total == 0 else None
+    return SearchResponse.model_validate(
+        {
+            "hits": page.hits,
+            "total": page.total,
+            "cursor": page.cursor,
+            "suggestion": suggestion,
+            "query": params.q,
+        }
     )
 
-    suggestion = (
-        search_service.spelling_suggestion(db, query=q, types=types, filters=filters)
-        if after is None and not any(group["total"] for group in grouped.values())
-        else None
+
+@router.get("/sections", response_model=SearchSections)
+@authenticated_read_quota
+@limiter.limit("60/minute")
+def search_sections(
+    request: Request,
+    params: _SearchRequest = Depends(_search_request),
+    limit: int = Query(5, ge=1, le=10, description="Hits per section"),
+    db: Session = Depends(get_db),
+) -> SearchSections:
+    """The top hits of each type, one section per type with a hit.
+
+    Takes the query, types and filters of ``GET /search``; each section is the first page that
+    ``GET /search`` returns for its type alone, its ``cursor`` included.
+    """
+    sections = search_service.search_sections(
+        db, query=params.q, types=params.types, limit=limit, filters=params.filters
+    )
+    suggestion = None if sections else _suggestion(db, params)
+    return SearchSections.model_validate(
+        {
+            # Field by field: ``asdict`` would deep-copy the ORM rows the hits hold.
+            "sections": [
+                {"type": s.type, "hits": s.hits, "total": s.total, "cursor": s.cursor}
+                for s in sections
+            ],
+            "suggestion": suggestion,
+            "query": params.q,
+        }
     )
 
-    # ``total`` is the pre-LIMIT match count (``COUNT(*) OVER ()``), so it can
-    # exceed ``len(hits)``.
-    return SearchResponse(
-        geolocations=grouped["geolocations"]["hits"],
-        requests=grouped["requests"]["hits"],
-        collections=grouped["collections"]["hits"],
-        users=grouped["users"]["hits"],
-        organizations=grouped["organizations"]["hits"],
-        total=SearchTotals(
-            geolocations=grouped["geolocations"]["total"],
-            requests=grouped["requests"]["total"],
-            collections=grouped["collections"]["total"],
-            users=grouped["users"]["total"],
-            organizations=grouped["organizations"]["total"],
-        ),
-        geolocations_cursor=grouped["geolocations"]["cursor"],
-        suggestion=suggestion,
-        query=q,
-        # Safe: the ``ALLOWED_TYPES`` guard above proves membership.
-        type=cast(SearchType, type),
+
+@router.get("/dates", response_model=DateHistogram)
+@authenticated_read_quota
+@limiter.limit("60/minute")
+def search_dates(
+    request: Request,
+    params: _SearchRequest = Depends(_search_request),
+    db: Session = Depends(get_db),
+) -> DateHistogram:
+    """The events ``GET /search`` lists for the request, counted per day on each date axis.
+
+    Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
+    own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
+    / ``submitted_to``. An empty ``q`` with no active filter counts every searchable event; a
+    ``type`` without ``event`` counts nothing.
+    """
+    return DateHistogram.model_validate(
+        search_service.search_dates(db, query=params.q, types=params.types, filters=params.filters)
     )
 
 

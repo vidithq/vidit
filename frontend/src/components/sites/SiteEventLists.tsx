@@ -1,8 +1,8 @@
 "use client";
 
-import { EntityCard } from "@/components/ui/EntityCard";
+import { Item } from "@/components/ui/Item";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { eventHref } from "@/lib/routes";
+import { eventItem } from "@/lib/items";
 import { formatDistance, sortLinkedEvents, type SiteLinkedEvent } from "@/lib/sites";
 import { LinkEffectPill } from "./SiteBadges";
 
@@ -12,9 +12,10 @@ function where(insideZone: boolean, distance: number | null): string {
 }
 
 /**
- * The site page's Linked events section, newest event date first: one catalogue card per event,
- * with its thumbnail, title, author, date, where it lies against the contour it was measured
- * against, and its effect. Each card opens the event. Nothing renders while no event is linked.
+ * The site page's Linked events section, newest event date first: one list `<Item>` per event,
+ * with where it lies against the contour it was measured against as its place, and its effect
+ * as its badge, since every linked event is geolocated. Nothing renders while no event is
+ * linked.
  */
 export function LinkedEvents({ events }: { events: SiteLinkedEvent[] }) {
   if (events.length === 0) return null;
@@ -24,15 +25,9 @@ export function LinkedEvents({ events }: { events: SiteLinkedEvent[] }) {
       <ul className="space-y-2">
         {sortLinkedEvents(events).map((event) => (
           <li key={event.id}>
-            <EntityCard
-              variant="compact"
-              uniformHeight={false}
-              detailHref={eventHref(event.id)}
-              title={event.title}
-              media={event.media ?? undefined}
-              isGraphic={event.is_graphic}
-              author={event.owner}
-              date={event.occurred_date ?? undefined}
+            <Item
+              variant="list"
+              {...eventItem({ ...event, status: "geolocated" })}
               place={where(event.inside_zone, event.distance_m)}
               badge={<LinkEffectPill effect={event.effect} />}
             />

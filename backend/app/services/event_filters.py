@@ -1,23 +1,37 @@
 """The standard event filter set, shared by every surface that lists events, and
 :func:`lock_event`, the row lock every event write takes.
 
-`/events`, `/events/points` and `/search` accept the same filter vocabulary, single-sourced here
-so the surfaces cannot drift. The bbox, media and status validators raise ``HTTPException(422)``
-directly: they are the input boundary for query parameters. Date parsing lives here too
+`/events`, `/events/points`, `/search` and `/feed` accept the same filter vocabulary,
+single-sourced here so the surfaces cannot drift (``routers/_filters`` reads it from the query).
+The bbox, media and status validators raise ``HTTPException(422)`` directly: they are the input
+boundary for query parameters. Date parsing lives here too
 (:func:`parse_optional_iso_date`); ``routers._forms`` re-exports it for the multipart forms.
 """
 
 import math
 import re
 import uuid
-from collections.abc import Iterable
-from dataclasses import dataclass, fields
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, fields, replace
 from datetime import date, timedelta
 from typing import Any, get_args
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
-from sqlalchemy import ColumnElement, CompoundSelect, Select, and_, exists, func, or_, select, union
+from sqlalchemy import (
+    ColumnElement,
+    CompoundSelect,
+    Date,
+    Select,
+    and_,
+    cast,
+    exists,
+    func,
+    literal_column,
+    or_,
+    select,
+    union,
+)
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session, aliased
 
@@ -219,9 +233,8 @@ LEVEL_VALUES = frozenset(get_args(SourceLevel))
 
 # Accepted ``status`` filter values (the ``Event.status`` domain); a typo returns 422. The
 # predicate only narrows within the caller's view, so a value the view can't contain returns
-# empty. Hand-kept FE mirror: ``STATUS_FILTER_OPTIONS`` in
-# ``frontend/src/components/filters/EventFilterSections.tsx`` offers the geolocated / detected
-# subset; change the two together (see AGENTS.md).
+# empty. Hand-kept FE mirror: ``FILTER_STATUSES`` in ``frontend/src/components/filters/model.ts``
+# offers every status but ``closed``; change the two together (see AGENTS.md).
 STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_CLOSED})
 
 # The two read views over the one table. ``located`` is the catalog (vouched and machine rows,
@@ -237,8 +250,8 @@ def owner_username_matches(author: str) -> ColumnElement[bool]:
     Callers gate ``author`` through :data:`AUTHOR_FILTER_PATTERN`.
 
     A predicate rather than a query leg because the event groups match it on every credited
-    analyst (:func:`apply_author_filter`) and the collections group on ``Collection.owner``
-    (``services/search.search_collections``); one home keeps them matching alike.
+    analyst (:func:`apply_author_filter`), and search matches it on the owner of a collection or
+    a site (``services/search``); one home keeps them matching alike.
     """
     return func.lower(User.username) == author.lower()
 
@@ -394,9 +407,9 @@ def taxonomy_predicates(
     Any-match (OR) within a list, all-match (AND) across lists. ``conflict`` matches the
     ``conflicts`` referential (its own join, so a same-named free tag can't poison it);
     ``source_kind`` and ``level`` keep an event with a source of that kind or level; ``tag``
-    matches a tag on the event or on one of its sources. :func:`apply_filters` and the feed
-    (:func:`services.social.get_feed`) both read them. Callers gate ``source_kind`` and
-    ``level`` through :func:`validate_source_filters`.
+    matches a tag on the event or on one of its sources. :func:`apply_filters` reads them, and
+    search reads ``tag`` for the collections. Callers gate ``source_kind`` and ``level`` through
+    :func:`validate_source_filters`.
     """
     # ``.any(...)`` lowers to EXISTS, so it doesn't row-multiply like a JOIN.
     predicates: list[ColumnElement[bool]] = []
@@ -442,7 +455,7 @@ def approval_predicates(
     ``approved_by_org`` one the organization the slug names approved. Each leg pins
     ``organization_id`` so the lookup stays on the partial unique index of its kind
     (``uq_event_approvals_analyst``, ``uq_event_approvals_organization``). Callers gate the two
-    names through :data:`AUTHOR_FILTER_PATTERN`. :func:`apply_filters` and the feed both read them.
+    names through :data:`AUTHOR_FILTER_PATTERN`. :func:`apply_filters` reads them.
     """
     analyst = EventApproval.organization_id.is_(None)
     organization = EventApproval.organization_id.is_not(None)
@@ -474,7 +487,7 @@ def approval_predicates(
 def apply_filters(
     query: SAQuery,
     *,
-    view: str = "located",
+    view: str | None = "located",
     status: list[str] | None = None,
     conflict: list[str] | None = None,
     source_kind: list[str] | None = None,
@@ -497,8 +510,8 @@ def apply_filters(
     The visibility filters live here, so every public read excludes soft-deleted and withheld
     rows; the admin path bypasses this helper.
 
-    ``view`` scopes to one of the two views (see ``VIEWS``); ``status`` narrows within it
-    (any-match). Status-scoping rather than a coordinate predicate, since a ``requested`` event
+    ``view`` scopes to one of the two views (see ``VIEWS``), or to none when the caller scopes
+    the statuses itself (``services/search``); ``status`` narrows within it (any-match). Status-scoping rather than a coordinate predicate, since a ``requested`` event
     may carry an approximate guess and must not leak into the located catalog. Callers gate
     values through :func:`validate_status_filter`.
 
@@ -511,7 +524,9 @@ def apply_filters(
     ``has_coords`` splits on ``coords``: ``True`` keeps rows with a point (a request's
     location guess), ``False`` the blind ones, ``None`` both.
     """
-    query = query.filter(*visible_events(), view_predicate(view))
+    query = query.filter(*visible_events())
+    if view is not None:
+        query = query.filter(view_predicate(view))
 
     if status:
         query = query.filter(Event.status.in_(status))
@@ -586,17 +601,24 @@ class EventFilters:
     approved: bool = False
     approved_by: str | None = None
     approved_by_org: str | None = None
+    has_coords: bool | None = None
 
-    def apply(self, query: SAQuery, *, view: str) -> SAQuery:
+    def apply(self, query: SAQuery, *, view: str | None) -> SAQuery:
         return apply_filters(
             query,
             view=view,
             **{f.name: getattr(self, f.name) for f in fields(self)},
         )
 
+    def is_set(self, name: str) -> bool:
+        """Whether the filter ``name`` narrows the view. ``has_coords=False`` does: it keeps the
+        rows without a point."""
+        value = getattr(self, name)
+        return value is not None if name == "has_coords" else bool(value)
+
     @property
     def active(self) -> bool:
-        return any(getattr(self, f.name) for f in fields(self))
+        return any(self.is_set(f.name) for f in fields(self))
 
     def validate(self) -> None:
         """422 on a value outside its domain, as the query-parameter boundary refuses it.
@@ -618,6 +640,47 @@ class EventFilters:
     def active_beyond(self, *kept: str) -> bool:
         """True when a filter other than the ``kept`` field names narrows the view.
 
-        The collections group of search reads this: it honours ``author`` and ``tag`` but
-        empties on any filter it cannot answer (``services/search.search_all``)."""
-        return any(getattr(self, f.name) for f in fields(self) if f.name not in kept)
+        Search reads this for the hits that are not events: each type keeps the filters it
+        answers and drops out on any other (``services/search.search``)."""
+        return any(self.is_set(f.name) for f in fields(self) if f.name not in kept)
+
+
+def submitted_day() -> ColumnElement[date]:
+    """The UTC calendar day of ``created_at``: the day ``submitted_from`` / ``submitted_to``
+    compare against and ``/events/points`` reports as ``added_date``."""
+    # A SQL literal, not a bound parameter: the SELECT and the GROUP BY must hold the same
+    # expression, and two binds of one value are two expressions to Postgres.
+    return cast(func.timezone(literal_column("'UTC'"), Event.created_at), Date)
+
+
+def date_histogram(
+    rows: Callable[[EventFilters], SAQuery], filters: EventFilters
+) -> dict[str, list[dict[str, Any]]]:
+    """The events per day on each date axis, ascending, days without a row left out.
+
+    ``rows`` builds the caller's event query for a filter set. ``occurred_date`` counts it per
+    ``Event.occurred_date`` (rows without one skipped) under ``filters`` less its own
+    ``occurred_date_from`` / ``occurred_date_to``; ``submitted`` counts it per
+    :func:`submitted_day` under ``filters`` less ``submitted_from`` / ``submitted_to``. Each axis
+    shows the spread its own window cuts from, while every other filter still applies.
+    """
+
+    def counts(day: Any, window: EventFilters) -> list[dict[str, Any]]:
+        query = (
+            rows(window)
+            .with_entities(day, func.count())
+            .filter(day.is_not(None))
+            .group_by(day)
+            .order_by(day)
+        )
+        return [{"date": value, "count": count} for value, count in query]
+
+    return {
+        "occurred_date": counts(
+            Event.occurred_date,
+            replace(filters, occurred_date_from=None, occurred_date_to=None),
+        ),
+        "submitted": counts(
+            submitted_day(), replace(filters, submitted_from=None, submitted_to=None)
+        ),
+    }

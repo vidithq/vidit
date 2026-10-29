@@ -9,7 +9,14 @@ import { usePalette } from "@/hooks/usePalette";
 import { paletteMapColors } from "@/lib/palette";
 import { isCoarsePointer } from "@/lib/pointer";
 import type { Zone } from "@/lib/sites";
-import { CLUSTER_LAYER, SITE_POINT_LAYER, TAP_TARGET_LAYERS, ZONE_MIN_ZOOM } from "./layers";
+import {
+  CLUSTER_LAYER,
+  SITE_POINT_LAYER,
+  SITE_POINT_MAX_ZOOM,
+  SITE_RING_WIDTH_PX,
+  SITE_ZONE_FILL_OPACITY,
+  TAP_TARGET_LAYERS,
+} from "./layers";
 import { MapPreviewCard, PREVIEW_INTENT_MS } from "./MapPreviewCard";
 
 const FILL = "sites-zone-fill";
@@ -58,12 +65,12 @@ interface HoverTarget {
 }
 
 /**
- * The sites layer of a map, mounted as `<Map>` children: the zones from `ZONE_MIN_ZOOM`, under
- * the event pins, in the event pin colour. Below it the sites are
- * triangles in `<Map>`'s clusters (its `sites`). The map prints no site name: the preview and the
+ * The sites layer of a map, mounted as `<Map>` children: the zones from `SITE_POINT_MAX_ZOOM`, under
+ * the event pins, in the event pin colour. Below it the sites join `<Map>`'s clusters (its
+ * `sites`) instead, where a lone site is a ring. The map prints no site name: the preview and the
  * side panel carry it.
  *
- * With `onSelect`, a zone or a triangle takes the pointer like an event pin: the hand cursor, a
+ * With `onSelect`, a zone or a lone site's ring takes the pointer like an event pin: the hand cursor, a
  * click selects it, and with `renderPreview` a mouse resting on it shows that content in the
  * map's preview card after the same hover intent. A pin over the site takes the click and the
  * hover instead.
@@ -161,20 +168,20 @@ export function SiteLayers({
       <Source id="sites-zones" type="geojson" data={zones}>
         <Layer
           id={FILL}
+          minzoom={SITE_POINT_MAX_ZOOM}
           type="fill"
-          minzoom={ZONE_MIN_ZOOM}
           paint={{
             "fill-color": accent,
-            "fill-opacity": ["case", SELECTED, 0.22, 0.12],
+            "fill-opacity": ["case", SELECTED, 0.22, SITE_ZONE_FILL_OPACITY],
           }}
         />
         <Layer
           id={LINE}
+          minzoom={SITE_POINT_MAX_ZOOM}
           type="line"
-          minzoom={ZONE_MIN_ZOOM}
           paint={{
             "line-color": accent,
-            "line-width": ["case", SELECTED, 3, 2],
+            "line-width": ["case", SELECTED, 3, SITE_RING_WIDTH_PX],
           }}
         />
       </Source>

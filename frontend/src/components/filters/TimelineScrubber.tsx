@@ -3,18 +3,16 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Pause, Play, RotateCcw } from "lucide-react";
 
-import type { MapPoint } from "@/types";
+import type { DayCount } from "@/types";
 import { cn } from "@/lib/cn";
 import { DAY_MS } from "@/lib/format";
 import { ICON_TAP_STEP } from "@/components/ui/Button";
 import { FIELD_TEXT } from "@/components/ui/Input";
 
 interface TimelineScrubberProps {
-  /** Filtered point set (post conflict/tag/author, pre-window); drives the histogram and axis. */
-  points: MapPoint[];
-  /** Which date each point is bucketed/filtered on: 3 = occurred_date,
-   *  4 = submitted (created_at) date. */
-  dateIndex: 3 | 4;
+  /** The rows per ISO day under every filter but this window, ascending: the histogram and the
+   *  axis. */
+  days: ReadonlyArray<DayCount>;
   /** Short label for accessibility ("Event date" / "Added"). */
   label: string;
   /** The active window, owned by the parent. An empty string at an edge is open (snaps to data min/max). */
@@ -22,8 +20,9 @@ interface TimelineScrubberProps {
   setStart: (v: string) => void;
   end: string;
   setEnd: (v: string) => void;
-  playing: boolean;
-  setPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
+  /** Playback, offered only with `setPlaying`: the map sweeps its window, a list does not. */
+  playing?: boolean;
+  setPlaying?: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 /** ISO `YYYY-MM-DD` to ms at UTC midnight (strings sort chronologically; positioning needs numbers). */
@@ -36,34 +35,24 @@ const BIN_COUNT = 48;
 const PLAY_INTERVAL_MS = 280;
 
 /**
- * Reusable date-timeline filter. Two handles (and the date inputs) select a window, filtered
- * client-side so dragging and playback never refetch. Play sweeps the window's end across the axis.
+ * A date window over a histogram: two handles and the from and to date fields select it. Play
+ * sweeps the window's end across the axis.
  */
 export function TimelineScrubber({
-  points,
-  dateIndex,
+  days,
   label,
   start,
   setStart,
   end,
   setEnd,
-  playing,
+  playing = false,
   setPlaying,
 }: TimelineScrubberProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<null | "start" | "end">(null);
 
-  const { dataMin, dataMax } = useMemo(() => {
-    let lo: string | null = null;
-    let hi: string | null = null;
-    for (const p of points) {
-      const d = p[dateIndex];
-      if (!d) continue;
-      if (lo === null || d < lo) lo = d;
-      if (hi === null || d > hi) hi = d;
-    }
-    return { dataMin: lo, dataMax: hi };
-  }, [points, dateIndex]);
+  const dataMin = days.length > 0 ? days[0].date : null;
+  const dataMax = days.length > 0 ? days[days.length - 1].date : null;
 
   // An empty handle snaps to the axis edge.
   const winStart = start || dataMin || "";
@@ -77,17 +66,14 @@ export function TimelineScrubber({
   const bins = useMemo(() => {
     const counts = new Array<number>(BIN_COUNT).fill(0);
     if (!hasAxis) return counts;
-    for (const p of points) {
-      const d = p[dateIndex];
-      if (!d) continue;
-      const t = toMs(d);
-      if (t < axisMinMs || t > axisMaxMs) continue;
+    for (const { date, count } of days) {
+      const t = toMs(date);
       const idx =
         span > 0 ? Math.min(BIN_COUNT - 1, Math.floor(((t - axisMinMs) / span) * BIN_COUNT)) : 0;
-      counts[idx] += 1;
+      counts[idx] += count;
     }
     return counts;
-  }, [points, dateIndex, hasAxis, axisMinMs, axisMaxMs, span]);
+  }, [days, hasAxis, axisMinMs, span]);
 
   const maxBin = Math.max(1, ...bins);
   const frac = (ms: number) => (span > 0 ? clamp01((ms - axisMinMs) / span) : 0);
@@ -96,7 +82,7 @@ export function TimelineScrubber({
   const winStartMs = winStart ? toMs(winStart) : axisMinMs;
   const winEndMs = winEnd ? toMs(winEnd) : axisMaxMs;
 
-  const isWindowed = startFrac > 0.001 || endFrac < 0.999;
+  const isWindowed = !!(start || end);
 
   // Latest `end` readable inside the play interval without re-subscribing the timer.
   const endRef = useRef(end);
@@ -139,7 +125,7 @@ export function TimelineScrubber({
     e.preventDefault();
     draggingRef.current = which;
     trackRef.current?.setPointerCapture(e.pointerId);
-    if (playing) setPlaying(false);
+    if (playing) setPlaying?.(false);
   };
   const onTrackMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const which = draggingRef.current;
@@ -165,7 +151,7 @@ export function TimelineScrubber({
     if (span <= 0) return;
     if (e.key === "Home" || e.key === "End") {
       e.preventDefault();
-      if (playing) setPlaying(false);
+      if (playing) setPlaying?.(false);
       const lo = winStart ? toMs(winStart) : axisMinMs;
       const hi = winEnd ? toMs(winEnd) : axisMaxMs;
       if (which === "start") setStart(msToIso(e.key === "Home" ? axisMinMs : hi));
@@ -184,7 +170,7 @@ export function TimelineScrubber({
     const delta = deltas[e.key];
     if (delta === undefined) return;
     e.preventDefault();
-    if (playing) setPlaying(false);
+    if (playing) setPlaying?.(false);
     nudgeHandle(which, delta);
   };
 
@@ -195,7 +181,7 @@ export function TimelineScrubber({
   const resetWindow = () => {
     setStart("");
     setEnd("");
-    setPlaying(false);
+    setPlaying?.(false);
   };
 
   const handleInner = (
@@ -280,14 +266,16 @@ export function TimelineScrubber({
       </div>
 
       <div className="flex items-center gap-1.5 mt-2">
-        <button
-          onClick={() => setPlaying((p) => !p)}
-          disabled={!hasAxis || span <= 0}
-          className={`flex items-center justify-center ${ICON_TAP_STEP} sm:size-6 shrink-0 rounded-sm bg-neutral-800 border border-neutral-700 text-orange-400 hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
-          aria-label={playing ? "Pause" : "Play timeline"}
-        >
-          {playing ? <Pause size={12} /> : <Play size={12} />}
-        </button>
+        {setPlaying && (
+          <button
+            onClick={() => setPlaying((p) => !p)}
+            disabled={!hasAxis || span <= 0}
+            className={`flex items-center justify-center ${ICON_TAP_STEP} sm:size-6 shrink-0 rounded-sm bg-neutral-800 border border-neutral-700 text-orange-400 hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+            aria-label={playing ? "Pause" : "Play timeline"}
+          >
+            {playing ? <Pause size={12} /> : <Play size={12} />}
+          </button>
+        )}
         {hasAxis ? (
           <>
             <input
@@ -299,7 +287,7 @@ export function TimelineScrubber({
               aria-label={`${label} window start date`}
               className={inputClass}
             />
-            <span className="text-neutral-600 text-[11px] shrink-0">–</span>
+            <span className="text-neutral-600 text-[11px] shrink-0">to</span>
             <input
               type="date"
               value={winEnd}
@@ -321,7 +309,7 @@ export function TimelineScrubber({
             )}
           </>
         ) : (
-          <span className="text-[11px] text-neutral-500">No dated points</span>
+          <span className="text-[11px] text-neutral-500">No dates</span>
         )}
       </div>
     </div>

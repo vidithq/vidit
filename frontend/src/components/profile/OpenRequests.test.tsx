@@ -61,7 +61,7 @@ describe("OpenRequests", () => {
     expect(
       screen.getByText("ana's footage waiting to be geolocated, newest first.")
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Show more" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "See all" })).toHaveAttribute(
       "href",
       "/search?type=event&author=ana&status=requested"
     );

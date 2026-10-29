@@ -93,14 +93,16 @@ describe("CollectionsSection", () => {
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 
-  it("prints what a card says the collection holds", () => {
+  it("lists each collection as an item: its span, its owner and its size", () => {
     useApiResource.mockReturnValue({ data: page([collection()]) });
 
     render(<CollectionsSection username="ana" isOwn={false} />);
 
-    expect(
-      screen.getByText("Three days of strikes on the eastern approach."),
-    ).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Kupiansk rail corridor" });
+    expect(link).toHaveAttribute("href", "/collections/c1");
+    expect(link.parentElement).toHaveTextContent(
+      /Collection·14 Mar 2026 to 16 Mar 2026·A?ana5 events/,
+    );
   });
 
   it("offers no expansion once the whole shelf is on screen", () => {
@@ -113,7 +115,7 @@ describe("CollectionsSection", () => {
     );
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
     expect(
-      screen.queryByRole("link", { name: "Show more" }),
+      screen.queryByRole("link", { name: "See all" }),
     ).not.toBeInTheDocument();
   });
 
@@ -122,9 +124,9 @@ describe("CollectionsSection", () => {
 
     render(<CollectionsSection username="ana" isOwn={false} />);
 
-    // The grid previews four; search walks the shelf, scoped to this analyst.
+    // The section previews four; search walks the shelf, scoped to this analyst.
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
-    expect(screen.getByRole("link", { name: "Show more" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "See all" })).toHaveAttribute(
       "href",
       "/search?type=collection&author=ana",
     );

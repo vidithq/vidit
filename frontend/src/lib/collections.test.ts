@@ -316,16 +316,7 @@ describe("the event picker's two sources", () => {
   });
 
   it("sends a typed query to search, scoped the same way", async () => {
-    mockFetch.mockResolvedValue({
-      geolocations: [],
-      requests: [],
-      collections: [],
-      users: [],
-      organizations: [],
-      total: { geolocations: 0, requests: 0, collections: 0, users: 0, organizations: 0 },
-      query: "kakhovka",
-      type: "event",
-    });
+    mockFetch.mockResolvedValue({ hits: [], total: 0, cursor: null, query: "kakhovka" });
 
     await searchPickableEvents("ana", "kakhovka");
 
@@ -340,8 +331,9 @@ describe("the event picker's two sources", () => {
 
   it("turns a hit into the row the browse list renders", async () => {
     mockFetch.mockResolvedValue({
-      geolocations: [
+      hits: [
         {
+          type: "event",
           id: "e1",
           title: "Kakhovka dam",
           title_highlight: "Kakhovka dam",
@@ -355,13 +347,9 @@ describe("the event picker's two sources", () => {
           tags: [],
         },
       ],
-      requests: [],
-      collections: [],
-      users: [],
-      organizations: [],
-      total: { geolocations: 62, requests: 0, collections: 0, users: 0, organizations: 0 },
+      total: 62,
+      cursor: null,
       query: "kakhovka",
-      type: "event",
     });
 
     const found = await searchPickableEvents("ana", "kakhovka");

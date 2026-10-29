@@ -20,6 +20,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 import type { Conflict, EventListItem, Tag } from "@/types";
 
 import RequestsPage from "./page";
+import { openFilterGroups, sheetButton } from "@/test/filters";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
 
@@ -55,6 +56,8 @@ const CONFLICTS: Conflict[] = [
 const lastPath = () => apiFetchPage.mock.calls.at(-1)?.[0] as string;
 const lastQuery = () => new URLSearchParams(lastPath().split("?")[1]);
 
+beforeEach(openFilterGroups);
+
 beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   useApiResource.mockImplementation((path: string | null) => ({
@@ -68,38 +71,59 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const rail = () => screen.getByRole("complementary", { name: "Filters" });
+// A list line is a button that opens its editor; a searched one is its search field.
+const line = (name: string) =>
+  within(rail()).queryByRole("combobox", { name }) ?? within(rail()).getByRole("button", { name });
+const editor = (name: string) => screen.getByRole("dialog", { name });
+
 describe("RequestsPage", () => {
   it("mounts the filter panel with the status locked to requested", async () => {
     render(<RequestsPage />);
 
     expect(await screen.findByText(REQUEST.title)).toBeInTheDocument();
-    expect(screen.queryByText("Show")).not.toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Conflict" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Tags" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Location guess" })).toBeInTheDocument();
+    expect(within(rail()).queryByRole("button", { name: "Show" })).not.toBeInTheDocument();
+    expect(within(rail()).queryByRole("switch", { name: "Approved only" })).not.toBeInTheDocument();
+    for (const name of ["Conflict", "Tags", "Source kind", "Level", "Media", "Location guess", "Author"]) {
+      expect(line(name)).toBeInTheDocument();
+    }
 
-    fireEvent.click(screen.getByRole("button", { name: "Source" }));
-    expect(screen.getByText("Source kind")).toBeInTheDocument();
-    expect(screen.getByText("Level")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Drone" }));
+    fireEvent.click(line("Source kind"));
+    fireEvent.click(within(editor("Source kind")).getByRole("button", { name: "Drone" }));
 
     await waitFor(() => expect(lastQuery().getAll("source_kind")).toEqual(["drone"]));
     expect(lastQuery().get("view")).toBe("requested");
     expect(lastQuery().getAll("status")).toEqual(["requested"]);
   });
 
-  it("sends the location guess as has_coords", async () => {
+  it("sends the location guess as has_coords and the media as media", async () => {
     render(<RequestsPage />);
     await screen.findByText(REQUEST.title);
     expect(lastQuery().has("has_coords")).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Location guess" }));
-    fireEvent.click(screen.getByRole("button", { name: "No guess" }));
+    fireEvent.click(line("Location guess"));
+    fireEvent.click(within(editor("Location guess")).getByRole("button", { name: "No guess" }));
     await waitFor(() => expect(lastQuery().get("has_coords")).toBe("false"));
 
-    // Both chips match every row, so the filter drops off the query.
-    fireEvent.click(screen.getByRole("button", { name: "With a guess" }));
+    // Both options match every row, so the filter drops off the query.
+    fireEvent.click(within(editor("Location guess")).getByRole("button", { name: "With a guess" }));
     await waitFor(() => expect(lastQuery().has("has_coords")).toBe(false));
+
+    fireEvent.click(line("Media"));
+    fireEvent.click(within(editor("Media")).getByRole("button", { name: "Video" }));
+    await waitFor(() => expect(lastQuery().getAll("media")).toEqual(["video"]));
+  });
+
+  it("reads its timelines from the open requests search lists", async () => {
+    render(<RequestsPage />);
+    await screen.findByText(REQUEST.title);
+
+    const datesPath = useApiResource.mock.calls
+      .map(([path]) => path as string | null)
+      .find((path) => path?.startsWith("/search/dates"));
+    const query = new URLSearchParams(datesPath?.split("?")[1]);
+    expect(query.getAll("type")).toEqual(["event"]);
+    expect(query.getAll("status")).toEqual(["requested"]);
   });
 
   it("changes the sort through the query", async () => {
@@ -133,30 +157,25 @@ describe("RequestsPage", () => {
     expect(screen.getAllByText(/^Open /)).toHaveLength(2);
   });
 
-  it("holds the panel in the Filters rail and applies each change in the dialog at once", async () => {
+  it("holds the panel in the Filters rail and opens it in a sheet below lg", async () => {
     render(<RequestsPage />);
     await screen.findByText(REQUEST.title);
-    expect(screen.getByRole("complementary", { name: "Filters" })).toContainElement(
-      screen.getByRole("button", { name: "Toggle Source" })
-    );
 
-    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Filters" });
-    expect(within(dialog).queryByRole("button", { name: "Apply" })).not.toBeInTheDocument();
-    fireEvent.focus(within(dialog).getByRole("combobox", { name: "Conflict" }));
+    fireEvent.click(sheetButton());
+    const sheet = screen.getByRole("dialog", { name: "Filters" });
+    fireEvent.focus(within(sheet).getByRole("combobox", { name: "Conflict" }));
     fireEvent.click(screen.getByRole("option", { name: /^Russian invasion of Ukraine/ }));
     await waitFor(() =>
       expect(lastQuery().getAll("conflict")).toEqual(["Russian invasion of Ukraine"])
     );
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
-    // The applied filter heads the rail as a pill, as it does the narrow row.
+    fireEvent.click(within(sheet).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole("complementary", { name: "Filters" })).getByTitle(
-        "Remove filter Conflict: Russian invasion of Ukraine",
-      ),
+      screen.getByTitle("Remove filter Conflict: Russian invasion of Ukraine (2022-present)"),
+    ).toBeInTheDocument();
+    expect(
+      within(rail()).getByRole("button", { name: "Remove Russian invasion of Ukraine (2022-present)" }),
     ).toBeInTheDocument();
   });
 });

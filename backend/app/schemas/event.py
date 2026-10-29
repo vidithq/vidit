@@ -309,6 +309,20 @@ class FeedItemRead(EventList):
     feed_at: datetime
 
 
+class DayCount(BaseModel):
+    date: date
+    count: int
+
+
+class DateHistogram(BaseModel):
+    """Events per day on each date axis, ascending, days without a row left out
+    (``services.event_filters.date_histogram``)."""
+
+    occurred_date: list[DayCount]
+    # The UTC day of ``created_at``.
+    submitted: list[DayCount]
+
+
 class PaginatedEvents(BaseModel):
     items: list[EventList]
     total: int

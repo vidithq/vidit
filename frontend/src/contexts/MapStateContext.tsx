@@ -10,12 +10,7 @@ import {
   type SetStateAction,
 } from "react";
 
-import {
-  EMPTY_DATE_WINDOWS,
-  EMPTY_EVENT_FILTERS,
-  type DateWindows,
-  type EventFilterValues,
-} from "@/components/filters/EventFilterSections";
+import { EMPTY_FILTERS, type FilterState } from "@/components/filters/model";
 
 /** Map-page state that survives navigating away and back: lifted into the root layout's
  * provider so returning from a deep page restores the view, selected point and filters. */
@@ -39,29 +34,20 @@ interface MapState {
   selectedId: string | null;
   setSelectedId: (v: string | null) => void;
 
-  /** The shared filter vocabulary in the filter panel's shape. Server side: OR within a tag
-   *  bucket, AND across (`routers/events::_apply_filters`). The lifecycle status pick is the
-   *  exception: the points payload flags each row (`POINT_DETECTED_FLAG`), so it filters in
-   *  memory with no refetch. */
-  filters: EventFilterValues;
-  setFilters: Dispatch<SetStateAction<EventFilterValues>>;
+  /** The filter panel's state. Server side: OR within a list, AND across. The Show pick and the
+   *  two date windows filter in memory with no refetch: the points payload flags each row
+   *  (`POINT_DETECTED_FLAG`) and carries its event date (point[3]) and added date (point[4]).
+   *  `site` in `show` is the Show field's Sites chip. */
+  filters: FilterState;
+  setFilters: Dispatch<SetStateAction<FilterState>>;
 
-  /** Event date (point[3]) and Added (point[4]); both filter client side, so dragging and
-   *  playback never refetch. */
-  dateWindows: DateWindows;
-  setDateWindows: Dispatch<SetStateAction<DateWindows>>;
   eventPlaying: boolean;
   setEventPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
   addedPlaying: boolean;
   setAddedPlaying: (v: boolean | ((prev: boolean) => boolean)) => void;
 
-  filtersOpen: boolean;
-  setFiltersOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
 
-  /** The Show field's Sites chip (`showFieldScope` reads it with `filters.show`), and the site
-   *  whose panel is open. */
-  sitesSelected: boolean;
-  setSitesSelected: (v: boolean) => void;
+  /** The site whose panel is open. */
   selectedSiteId: string | null;
   setSelectedSiteId: (v: string | null) => void;
 }
@@ -71,14 +57,9 @@ const MapStateContext = createContext<MapState | null>(null);
 export function MapStateProvider({ children }: { children: ReactNode }) {
   const [viewState, setViewState] = useState<ViewState>(DEFAULT_VIEW_STATE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [filters, setFilters] = useState<EventFilterValues>(EMPTY_EVENT_FILTERS);
-  const [dateWindows, setDateWindows] = useState<DateWindows>(EMPTY_DATE_WINDOWS);
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [eventPlaying, setEventPlaying] = useState(false);
   const [addedPlaying, setAddedPlaying] = useState(false);
-  // Collapsed by default: the map leads with the catalogue; ActiveFilterPills still surfaces
-  // active filters.
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [sitesSelected, setSitesSelected] = useState(false);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
   // Memoised so consumers re-render only when a slot they read changes.
@@ -90,16 +71,10 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       setSelectedId,
       filters,
       setFilters,
-      dateWindows,
-      setDateWindows,
       eventPlaying,
       setEventPlaying,
       addedPlaying,
       setAddedPlaying,
-      filtersOpen,
-      setFiltersOpen,
-      sitesSelected,
-      setSitesSelected,
       selectedSiteId,
       setSelectedSiteId,
     }),
@@ -107,11 +82,8 @@ export function MapStateProvider({ children }: { children: ReactNode }) {
       viewState,
       selectedId,
       filters,
-      dateWindows,
       eventPlaying,
       addedPlaying,
-      filtersOpen,
-      sitesSelected,
       selectedSiteId,
     ]
   );

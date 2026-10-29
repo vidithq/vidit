@@ -1,22 +1,20 @@
 import Link from "next/link";
 
-import { StatusBadge } from "@/components/event/StatusBadge";
 import { Card } from "@/components/ui/Card";
-import { ShowMoreLink } from "@/components/ui/LoadMoreRow";
+import { SeeAllLink } from "@/components/ui/LoadMoreRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { EntityCard } from "@/components/ui/EntityCard";
+import { Item } from "@/components/ui/Item";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { submitHref } from "@/lib/routes";
 import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
 import type { components } from "@/lib/api-types";
 import type { EventListItem } from "@/types";
-import { creditProps } from "@/lib/geolocatorCredit";
-import { eventHref } from "@/lib/routes";
+import { eventItem } from "@/lib/items";
 
-/** One card in the recent-submissions list, the compact shape the located catalogue and requested
- * queue use. The endpoint serves published work only (`geolocated`). */
+/** One row of the recent-submissions list. The endpoint serves published work only
+ * (`geolocated`). */
 export type RecentSubmission = EventListItem;
 
 /** Shape returned by `GET /users/{username}/events`. */
@@ -53,7 +51,7 @@ export function RecentSubmissions({
           // Mirrors backend `event_filters.published_events()`: `status=geolocated` makes the expansion serve the
           // same work as the block above (search's located group otherwise widens to machine detections). In the
           // panel's own vocabulary, so it lands as a removable chip. Same builder as the Insights tiles.
-          <ShowMoreLink
+          <SeeAllLink
             href={profileSearchHref(profile.username, { status: "geolocated" })}
             className="shrink-0"
           />
@@ -63,19 +61,7 @@ export function RecentSubmissions({
       {submissions.length > 0 ? (
         <div className="space-y-2">
           {submissions.map((entry) => (
-            <EntityCard
-              key={entry.id}
-              variant="compact"
-              {...creditProps(entry)}
-              detailHref={eventHref(entry.id)}
-              title={entry.title}
-              badge={entry.status ? <StatusBadge status={entry.status} /> : undefined}
-              media={entry.media ?? undefined}
-              isGraphic={entry.is_graphic}
-              date={entry.occurred_date ?? undefined}
-              coords={entry.coords}
-              tags={entry.tags}
-            />
+            <Item key={entry.id} variant="list" {...eventItem(entry)} />
           ))}
         </div>
       ) : (

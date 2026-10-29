@@ -111,7 +111,7 @@ export function detectionsReviewPath(): string {
  *  `docs/data-model.md`. */
 type EventView = "located" | "requested";
 
-/** `hasCoords` `true` keeps rows with a location (a request's guess), `false` the blind ones. */
+/** The filter set of `GET /events`, plus its view, order and page. */
 interface EventListParams extends EventFilterParams {
   view?: EventView;
   sort?: EventListSort;

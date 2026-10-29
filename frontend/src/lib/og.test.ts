@@ -97,7 +97,7 @@ describe("ogProfileCounts", () => {
 });
 
 describe("ogMosaicBoxes", () => {
-  // The panel the collection card draws: 16:9, with `<CollectionCover>`'s gap.
+  // The panel the collection card draws: 16:9, with `<ItemMedia>`'s gap.
   const frame = { width: 480, height: 270, gap: 2 };
 
   it("gives a lone tile the whole panel", () => {

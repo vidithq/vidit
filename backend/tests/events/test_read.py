@@ -226,6 +226,35 @@ def test_list_filters_requests_by_location_guess(db, author):
     assert {row["id"] for row in either.json()} == {str(guessed.id), str(blind.id)}
 
 
+def test_list_filters_media(db, author):
+    """``media`` matches a source file or a proof image of that type, as on ``/points``."""
+    from app.models.media import Media
+
+    plain = _make_geo(db, author=author)
+    with_video = _make_geo(db, author=author)
+    with_video.sources[0].media = Media(
+        sha256=fake_sha256(), storage_url="s3://x/v.mp4", kind="video"
+    )
+    proof_only = _make_geo(db, author=author)
+    db.add(
+        Media(
+            sha256=fake_sha256(), event_id=proof_only.id, storage_url="s3://x/p.jpg", kind="image"
+        )
+    )
+    db.commit()
+
+    def ids(**params) -> set[str]:
+        response = client.get("/api/v1/events", params={"author": author.username, **params})
+        assert response.status_code == 200, response.text
+        return {row["id"] for row in response.json()}
+
+    assert ids(media="video") == {str(with_video.id)}
+    assert ids(media="image") == {str(proof_only.id)}
+    assert ids(media=["image", "video"]) == {str(with_video.id), str(proof_only.id)}
+    assert str(plain.id) in ids()
+    assert client.get("/api/v1/events", params={"media": "bogus"}).status_code == 422
+
+
 def test_list_carries_requested_at(db, author):
     request = _make_geo(db, author=author, status=STATUS_REQUESTED)
     geo = _make_geo(db, author=author)

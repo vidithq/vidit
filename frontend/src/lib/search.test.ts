@@ -3,8 +3,12 @@ import {
   appendEventFilterParams,
   exactProfile,
   readEventFilterParams,
+  readShowPick,
+  searchPageParams,
+  searchTypes,
   splitHighlights,
 } from "./search";
+import type { SearchHit } from "@/types";
 
 const STX = "";
 const ETX = "";
@@ -61,6 +65,7 @@ describe("the event filter keys", () => {
       sourceKinds: ["drone"], levels: ["direct"],
       tags: ["drone", "night"],
       mediaTypes: ["video"],
+      locationGuess: ["blind"],
       author: " ana ",
       approved: true,
       approvedBy: { kind: "analyst", username: "bo" },
@@ -71,7 +76,8 @@ describe("the event filter keys", () => {
     });
     expect(params.toString()).toBe(
       "status=geolocated&conflict=Ukraine&source_kind=drone&level=direct&tag=drone&tag=night&media=video" +
-        "&author=ana&approved=true&approved_by=bo&occurred_date_from=2026-01-01&submitted_to=2026-02-01",
+        "&author=ana&has_coords=false&approved=true&approved_by=bo&occurred_date_from=2026-01-01" +
+        "&submitted_to=2026-02-01",
     );
     expect(readEventFilterParams(params)).toEqual({
       show: ["geolocated"],
@@ -79,6 +85,7 @@ describe("the event filter keys", () => {
       sourceKinds: ["drone"], levels: ["direct"],
       tags: ["drone", "night"],
       mediaTypes: ["video"],
+      locationGuess: ["blind"],
       author: "ana",
       approved: true,
       approvedBy: { kind: "analyst", username: "bo" },
@@ -114,6 +121,7 @@ describe("the event filter keys", () => {
 
 describe("exactProfile", () => {
   const analyst = {
+    type: "user" as const,
     id: "u1",
     username: "Kharkiv_Watch",
     username_highlight: "Kharkiv_Watch",
@@ -122,6 +130,7 @@ describe("exactProfile", () => {
     avatar_url: null,
   };
   const organization = {
+    type: "organization" as const,
     id: "o1",
     slug: "open-source-watch",
     name: "Open Source Watch",
@@ -131,7 +140,7 @@ describe("exactProfile", () => {
     avatar_url: null,
     member_count: 3,
   };
-  const results = { users: [analyst], organizations: [organization] };
+  const results: SearchHit[] = [organization, analyst];
 
   it("names an analyst by username, ignoring case and a leading @", () => {
     expect(exactProfile("@kharkiv_watch ", results)).toEqual({ kind: "analyst", hit: analyst });
@@ -146,5 +155,31 @@ describe("exactProfile", () => {
     expect(exactProfile("kharkiv", results)).toBeNull();
     expect(exactProfile("kharkiv_watch strike", results)).toBeNull();
     expect(exactProfile("  ", results)).toBeNull();
+  });
+});
+
+describe("the Show pick", () => {
+  it("lists every type with no chip selected, and only what the selected chips name", () => {
+    expect(searchTypes([])).toEqual([]);
+    expect(searchTypes(["geolocated"])).toEqual(["event"]);
+    expect(searchTypes(["site"])).toEqual(["site"]);
+    expect(searchTypes(["detected", "site", "collection"])).toEqual(["event", "site", "collection"]);
+  });
+
+  it("writes the pick in the GET /search vocabulary and reads it back", () => {
+    const params = searchPageParams("depot", { show: ["geolocated", "site"], author: "ana" });
+    expect(params.toString()).toBe("q=depot&type=event&type=site&status=geolocated&author=ana");
+    expect(readShowPick(params)).toEqual(["geolocated", "site"]);
+  });
+
+  it("reads type=event alone as every status, and drops values no chip offers", () => {
+    expect(readShowPick(new URLSearchParams("type=event"))).toEqual([
+      "requested",
+      "detected",
+      "geolocated",
+    ]);
+    expect(
+      readShowPick(new URLSearchParams("type=geolocation&type=collection&status=closed")),
+    ).toEqual(["collection"]);
   });
 });

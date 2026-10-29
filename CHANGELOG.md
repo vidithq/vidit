@@ -6,6 +6,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- `GET /feed` takes the date, media, author and location guess filters, `GET /search` takes `has_coords` and `GET /events` takes `media`; `GET /search/dates` and `GET /feed/dates` count the matching events per day ([#813](https://github.com/vidithq/vidit/pull/813)).
+- `GET /sites`, an event's site links and the site suggestions carry each site's picture in `media`, the image of its first source in source order that is not graphic; a site search hit carries the same picture ([#813](https://github.com/vidithq/vidit/pull/813)).
+- `GET /search/sections` returns the top hits of each kind in one request, each section the first page of that kind's list with its cursor ([#813](https://github.com/vidithq/vidit/pull/813)).
+- Search finds sites by their name or by the title or note of one of their sources, and the search page's Show field picks every kind: Requested, Detected, Geolocated, Sites, Collections, Analysts and Organizations ([#807](https://github.com/vidithq/vidit/pull/807)).
 - On the event forms, each source carries Move earlier and Move later, and readers see the sources in the order the author set ([#804](https://github.com/vidithq/vidit/pull/804)).
 - An admin can restore a soft-deleted account from the onboarding table: the account and the events its soft delete hid come back ([#793](https://github.com/vidithq/vidit/pull/793)).
 - On the search page, a typed coordinate pair offers to open that point on the map, and on All a query that names an analyst or an organization exactly puts a link to their page right under the search field ([#791](https://github.com/vidithq/vidit/pull/791)).
@@ -31,6 +35,12 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- One filter panel serves the map, search, the feed and the Requests board: collapsible groups What, When (the Event date and Added timelines), Source, Where and Who; Conflict, Tags and accounts search in their line; a phone opens it in a sheet ([#813](https://github.com/vidithq/vidit/pull/813)).
+- Search, the feed and the Requests board show the filter panel under the map's Filters header, open by default and closed on the map; each surface remembers your choice, and the map header drops its point count ([#813](https://github.com/vidithq/vidit/pull/813)).
+- The feed keeps its filters in the URL, and its Following choice is a switch in the filter panel; search lists an analyst or an organization the query names once, first in its section ([#813](https://github.com/vidithq/vidit/pull/813)).
+- Every list shows an event, a request, a site or a collection one way, as a compact row, a list row or a feed card: its picture or its kind's icon, the title, a line with the kind, date, analyst and place, then its state ([#813](https://github.com/vidithq/vidit/pull/813)).
+- Breaking: `GET /search` returns one ranked list, `hits`, with one `cursor` that pages it, in place of five groups with their totals; `type` repeats to pick the kinds, and `status` narrows only the events ([#807](https://github.com/vidithq/vidit/pull/807)).
+- The search page lists the top hits of each kind under its name, and See all opens one kind's list with Show more; the URL keeps the query and the kind, so Back and shared links work. The profile's links into search read See all ([#813](https://github.com/vidithq/vidit/pull/813)).
 - The Links help on the source forms holds two sentences, and the methodology guide says how to link, archive and permalink a source ([#804](https://github.com/vidithq/vidit/pull/804)).
 - The suggested tags under a tag field wrap instead of running off the card, the first 6 then one Show more ([#804](https://github.com/vidithq/vidit/pull/804)).
 - A minor destructive action, such as dismissing a notification, acts at once from a red cross; an important one, such as removing a co-geolocator or deleting an approval, asks for a second click in place instead of a dialog ([#803](https://github.com/vidithq/vidit/pull/803)).
@@ -59,7 +69,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The filter panel groups its filters under labels (Layers, Event, Source and people), and filters that belong together share one row, so the map shows five rows for its eleven filters; search, the Requests board and the feed group the same way ([#750](https://github.com/vidithq/vidit/pull/750)).
 - On the map, Sites is one more filter chip after Requested, Detected and Geolocated, in a row now labelled Show, counted, removed and cleared like the other filters; the filter panel drops its group headings and its New site link ([#763](https://github.com/vidithq/vidit/pull/768)).
 - On a wide screen, the About page keeps the prose in its main column and moves Guides, Stay in touch and Legal to the right rail, which stays in view while you read; on a phone the links follow the prose ([#735](https://github.com/vidithq/vidit/pull/749)).
-- The map draws sites in the event point colour: below zoom 10 each site is a triangle, and a cluster shows its sites as a counted triangle beside its event count; from zoom 10 the zones show. The contour editor no longer draws the nearby sites ([#756](https://github.com/vidithq/vidit/pull/760)).
+- On the map, sites take the event point colour, show as rings below zoom 10 (around a cluster or alone) and as zones from zoom 10 ([#756](https://github.com/vidithq/vidit/pull/760), [#810](https://github.com/vidithq/vidit/pull/811), [#813](https://github.com/vidithq/vidit/pull/813)).
+- The contour editor no longer draws the nearby sites ([#756](https://github.com/vidithq/vidit/pull/760)).
 - A site on the map previews its name when you rest the mouse on it and opens the same side panel as an event; the map draws sites without names ([#747](https://github.com/vidithq/vidit/pull/747)).
 - The site side panel on the map reads like the event side panel: the site name links to its page, the owner sits under it, and the latest source shows with its image, above the location and the details ([#755](https://github.com/vidithq/vidit/pull/759)).
 - `POST /uploads` answers an `UploadList` whose `items` holds one `UploadRead` per staged file, one per frame for a GIF ([#744](https://github.com/vidithq/vidit/pull/744)).

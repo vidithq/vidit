@@ -10,7 +10,7 @@ import {
   type AdminEventModeration,
 } from "@/lib/admin";
 import { countLabel, formatDate, formatInstant, formatInstantDate } from "@/lib/format";
-import { search } from "@/lib/search";
+import { hitsOf, search } from "@/lib/search";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -19,7 +19,9 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Combobox } from "@/components/ui/Combobox";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { Item, type ItemData } from "@/components/ui/Item";
 import { Pill } from "@/components/ui/Pill";
+import { eventItem } from "@/lib/items";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ActionReceipt } from "@/components/admin/ActionReceipt";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -66,7 +68,7 @@ type Receipt =
 /** An event the panel acts on. A pasted ID carries no title. `meta` is its date and author, which
  *  tell apart two events with the same title. */
 type Target = { id: string; title: string | null; meta: string | null };
-type Hit = { id: string; title: string; meta: string };
+type Hit = { id: string; title: string; meta: string; item: ItemData };
 
 // An event ID alone or inside an event link (`/events/{id}`, `/events/{id}/v2`).
 const EVENT_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -74,20 +76,21 @@ const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_LIMIT = 10;
 
 async function searchEvents(q: string): Promise<Hit[]> {
-  const found = await search({ q, type: "event", limit: SEARCH_LIMIT });
-  const hit = (id: string, title: string, date: string, owner: string): Hit => ({
-    id,
-    title,
-    meta: `${date} · ${owner}`,
+  const found = await search({ q, types: ["event"], limit: SEARCH_LIMIT });
+  return hitsOf(found.hits, "event").map((e) => {
+    const date =
+      e.status === "requested"
+        ? `Requested ${formatInstantDate(e.created_at)}`
+        : e.occurred_date
+          ? formatDate(e.occurred_date)
+          : "Undated";
+    return {
+      id: e.id,
+      title: e.title,
+      meta: `${date} · ${e.owner.username}`,
+      item: { ...eventItem({ ...e, media: e.media[0] }), date, href: undefined },
+    };
   });
-  return [
-    ...found.geolocations.map((e) =>
-      hit(e.id, e.title, e.occurred_date ? formatDate(e.occurred_date) : "Undated", e.owner.username),
-    ),
-    ...found.requests.map((r) =>
-      hit(r.id, r.title, `Requested ${formatInstantDate(r.created_at)}`, r.owner.username),
-    ),
-  ];
 }
 
 /** The event field: a title search over the public events, or a pasted ID or event link, which
@@ -169,10 +172,9 @@ function EventField({
       options={current ? rows : []}
       optionKey={(hit) => hit.id}
       renderOption={(hit) => (
-        <span className="min-w-0">
-          <span className="block truncate">{hit.title}</span>
-          <span className="block truncate text-xs text-neutral-500">{hit.meta}</span>
-        </span>
+        <div className="min-w-0 flex-1">
+          <Item variant="compact" {...hit.item} />
+        </div>
       )}
       onPick={(hit) => pick(hit)}
       status={

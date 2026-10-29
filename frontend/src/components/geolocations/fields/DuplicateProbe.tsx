@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "@/lib/coordinates";
-import { formatDate } from "@/lib/format";
+import { eventItem } from "@/lib/items";
 import type { PossibleDuplicate } from "@/types";
+import { Item } from "@/components/ui/Item";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
-import { eventHref } from "@/lib/routes";
 
 // "User paused typing" threshold.
 const DUPLICATE_PROBE_DEBOUNCE_MS = 500;
@@ -115,28 +114,15 @@ function DuplicateWarning({ hits }: { hits: PossibleDuplicate[] }) {
           </p>
         </div>
       </header>
-      <ul className="space-y-1.5">
+      <ul className="space-y-1">
         {hits.map((hit) => (
           <li key={hit.id}>
-            <Link
-              href={eventHref(hit.id)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between gap-3 px-3 py-2 bg-neutral-900/60 border border-neutral-700 rounded-md hover:border-orange-500/50 hover:bg-neutral-900 transition-colors"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-neutral-100 truncate">
-                  {hit.title}
-                </p>
-                <p className="text-xs text-neutral-400">
-                  {hit.occurred_date ? `${formatDate(hit.occurred_date)} · ` : ""}
-                  {hit.owner.username} · {formatDistance(hit.distance_m)}
-                </p>
-              </div>
-              <span className="text-xs text-orange-400 shrink-0">
-                Open ↗
-              </span>
-            </Link>
+            <Item
+              variant="compact"
+              {...eventItem(hit)}
+              place={formatDistance(hit.distance_m)}
+              newTab
+            />
           </li>
         ))}
       </ul>

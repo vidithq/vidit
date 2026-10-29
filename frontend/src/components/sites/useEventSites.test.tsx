@@ -96,7 +96,8 @@ describe("useEventSites", () => {
       fireEvent.click(screen.getByRole("button", { name: "Link to a site" }));
     });
     fireEvent.click(screen.getByRole("button", { name: /Site Bravo/ }));
-    expect(screen.getByText("Depot · 640 m from the event")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Site Bravo" })).toBeInTheDocument();
+    expect(screen.getByText("640 m from the event")).toBeInTheDocument();
     // No effect is picked for the analyst: the link waits for one.
     expect(screen.getByRole("button", { name: "Link" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Destruction" }));

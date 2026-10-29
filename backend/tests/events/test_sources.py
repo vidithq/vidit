@@ -627,9 +627,9 @@ def test_search_matches_source_titles_and_urls(db, author):
     geo.sources[0].title = "Thermal footage"
     db.commit()
     for q in ("thermal", "t.me/frontline/4242"):
-        response = client.get("/api/v1/search", params={"q": q, "type": "geolocation"})
+        response = client.get("/api/v1/search", params={"q": q, "type": "event"})
         assert response.status_code == 200
-        assert str(geo.id) in {hit["id"] for hit in response.json()["geolocations"]}, q
+        assert str(geo.id) in {hit["id"] for hit in response.json()["hits"]}, q
 
 
 def test_a_proof_image_is_a_media_row_of_the_event_not_of_a_source(db, author, conflict):

@@ -107,6 +107,7 @@ export function PopoverPanel({
   onClose,
   align = "start",
   wide = false,
+  className,
   children,
 }: {
   id?: string;
@@ -117,6 +118,9 @@ export function PopoverPanel({
   align?: "start" | "end";
   /** 24rem instead of 18rem, for a row of choices that needs the room. */
   wide?: boolean;
+  /** Caller-wins extras: a panel opened from a surface above `z-50` (the map's filter panel, a
+   *  sheet) lifts itself over it. */
+  className?: string;
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -185,6 +189,7 @@ export function PopoverPanel({
         "fixed z-50 outline-none max-w-[calc(100vw-1rem)] space-y-2 rounded-md p-2",
         wide ? "w-96" : "w-72",
         TOOLTIP_SURFACE,
+        className,
       )}
     >
       {children}

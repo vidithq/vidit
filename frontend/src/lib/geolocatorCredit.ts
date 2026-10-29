@@ -21,7 +21,7 @@ export function creditedAuthors(event: {
   return [event.owner, ...event.geolocators.filter((g) => g.id !== event.owner.id)];
 }
 
-/** The credit line as `AuthorByline` and `EntityCard` take it: the lead name and the rest. */
+/** The credit line as `AuthorByline` and `<Item>` take it: the lead name and the rest. */
 export function creditProps(event: { owner: Author; geolocators: Author[] }): {
   author: Author;
   coAuthors: Author[];

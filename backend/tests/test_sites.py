@@ -698,7 +698,12 @@ def test_only_the_event_owner_links_and_unlinks(db, users):
     assert _code(refused) == "not_event_owner"
     first = _link(owner, event, site["id"], "activity")
     assert first.status_code == 200
-    assert first.json()["site"] == {"id": site["id"], "name": "Site Alpha", "kind": "airbase"}
+    assert first.json()["site"] == {
+        "id": site["id"],
+        "name": "Site Alpha",
+        "kind": "airbase",
+        "media": None,
+    }
     assert first.json()["effect"] == "activity"
     assert _link(owner, event, site["id"], "activity").json() == first.json()
     assert len(_link_rows(db, event)) == 1
@@ -845,6 +850,41 @@ def test_map_read_carries_the_owner_and_the_latest_link_effect_on_as_of(db, user
     }
     assert _on_map(site["id"], "2025-06-01")["latest_link_effect"]["event_id"] == str(damage.id)
     assert _on_map(site["id"], "2025-02-01")["latest_link_effect"] is None
+
+
+def test_a_site_picture_is_the_first_image_in_source_order_never_a_graphic_one(db, users):
+    owner = users()
+    lat = LAT - 0.6
+    site = _create_site(owner, _square(0.01, lat=lat), captured="2025-01-01")
+    second = _file(owner, site["id"], _source("2025-02-01", upload_id=stage_file(owner)))
+    third = _file(owner, site["id"], _source("2025-03-01", upload_id=stage_file(owner)))
+    assert second.status_code == third.status_code == 201
+    event = _event(db, owner, lat=lat)
+    assert _link(owner, event, site["id"]).status_code == 200
+
+    def pictures() -> set[str | None]:
+        headers = login_as(client, owner)
+        suggested = client.get(
+            f"/api/v1/events/{event.id}/site-suggestions", headers=headers
+        ).json()
+        (linked,) = client.get(f"/api/v1/events/{event.id}/site-links", headers=headers).json()
+        rows = [
+            _read(site["id"]),
+            _on_map(site["id"], "2025-12-31"),
+            next(row for row in suggested if row["id"] == site["id"]),
+            linked["site"],
+        ]
+        return {row["media"] and row["media"]["id"] for row in rows}
+
+    assert pictures() == {second.json()["media"]["id"]}
+
+    db.query(Source).filter(Source.id == second.json()["id"]).update({"is_graphic": True})
+    db.commit()
+    assert pictures() == {third.json()["media"]["id"]}
+
+    db.query(Source).filter(Source.site_id == site["id"]).update({"is_graphic": True})
+    db.commit()
+    assert pictures() == {None}
 
 
 def test_site_suggestions_by_distance_and_by_name(db, users):

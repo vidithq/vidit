@@ -54,6 +54,7 @@ measured_contour_id  # schemas/site.py SiteLinkedEventRead
 last_source  # schemas/site.py SiteState
 latest_link_effect  # schemas/site.py SiteState
 linked_events  # schemas/site.py SiteRead
+submitted  # schemas/event.py DateHistogram
 overlapping_sites  # schemas/site.py SiteCreatedRead
 archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead

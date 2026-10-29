@@ -3,11 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 
-import { CollectionItemCard } from "@/components/collections/CollectionItemCard";
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Item } from "@/components/ui/Item";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
+import { eventItem } from "@/lib/items";
 import { profileSearchHref } from "@/lib/search";
 import type { EventListItem } from "@/types";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -16,9 +17,10 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 const PAGE_SIZE = 20;
 
 /**
- * A collection's items, in the order the events happened, as `<CollectionItemCard>` rows, a
+ * A collection's items, in the order the events happened, as list `<Item>` rows, a
  * page of `PAGE_SIZE` at a time behind the shared **Show more** row. The sequence is already
- * loaded whole, so a page is a slice of it.
+ * loaded whole, so a page is a slice of it. The rows name no analyst, since the
+ * page header names the owner once.
  *
  * **The list is the step control.** A click on a row moves the Coverage section to that item,
  * and the current row wears the accent border. A step past the rows shown (a shared link, the
@@ -82,11 +84,14 @@ export function CollectionItems({
       {items.length > 0 ? (
         <div className="space-y-2">
           {items.slice(0, visible).map((item, index) => (
-            <CollectionItemCard
+            <Item
               key={item.id}
-              item={item}
+              variant="list"
+              {...eventItem(item)}
+              analyst={null}
               selected={index + 1 === step}
               onSelect={() => onStep(index + 1)}
+              selectLabel={`Read this collection from ${item.title}`}
             />
           ))}
           <LoadMoreRow

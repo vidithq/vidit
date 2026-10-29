@@ -29,6 +29,7 @@ import type {
   EventDetail,
   EventListItem,
   SearchResponse,
+  SearchSections,
   Tag,
   User,
 } from "@/types";
@@ -226,17 +227,7 @@ export const FEED_ITEMS: components["schemas"]["FeedItemRead"][] = [
 ];
 
 /** A search that matched nothing, what the filtered search page reads. */
-export const EMPTY_SEARCH: SearchResponse = {
-  geolocations: [],
-  requests: [],
-  collections: [],
-  users: [],
-  organizations: [],
-  total: { geolocations: 0, requests: 0, collections: 0, users: 0, organizations: 0 },
-  geolocations_cursor: null,
-  query: "",
-  type: "event",
-};
+export const EMPTY_SEARCH: SearchResponse = { hits: [], total: 0, cursor: null, query: "" };
 
 /** Id of the collection the collection-page spec opens. */
 export const COLLECTION_ID = "77777777-7777-4777-8777-777777777771";
@@ -644,6 +635,7 @@ export const SITE: Site = {
   version_no: 1,
   hidden_at: null,
   latest_link_effect: { effect: "destruction", occurred_date: "2025-09-02", event_id: EVENT_ID },
+  media: SITE_SOURCES.find((source) => source.media?.kind === "image" && !source.is_graphic)?.media ?? null,
   sources: SITE_SOURCES,
   contours: SITE_CONTOURS,
   linked_events: [
@@ -664,4 +656,66 @@ export const SITE: Site = {
   ],
   created_at: "2026-01-01T10:00:00Z",
   updated_at: "2026-01-01T10:00:00Z",
+};
+
+/** The search page's sections for a query: the open request among the events, with more to
+ *  see, and the site with the longest name, whose rows are the narrowest at phone width. */
+export const SEARCH_SECTIONS: SearchSections = {
+  sections: [
+    {
+      type: "event",
+      hits: [
+        {
+          type: "event",
+          id: REQUESTED_EVENT.id,
+          title: REQUESTED_EVENT.title,
+          title_highlight: REQUESTED_EVENT.title.replace("rail", "\u0002rail\u0003"),
+          status: "requested",
+          occurred_date: REQUESTED_EVENT.occurred_date,
+          created_at: "2025-01-02T10:00:00Z",
+          lat: null,
+          lng: null,
+          is_graphic: false,
+          owner: REQUESTED_EVENT.owner,
+          geolocators: [],
+          media: [],
+          tags: REQUESTED_EVENT.tags,
+        },
+      ],
+      total: 7,
+      cursor: "next-events",
+    },
+    {
+      type: "site",
+      hits: [
+        {
+          type: "site",
+          id: SITE.id,
+          name: SITE.name,
+          name_highlight: SITE.name,
+          kind: SITE.kind,
+          owner: SITE.owner,
+          last_source: SITE.last_source,
+          media: SITE.media ? [SITE.media] : [],
+        },
+      ],
+      total: 1,
+      cursor: null,
+    },
+  ],
+  suggestion: null,
+  query: "rail",
+};
+
+/** `GET /search/dates` and `GET /feed/dates`: a spread wide enough for both timelines' axes. */
+export const DATE_HISTOGRAM: components["schemas"]["DateHistogram"] = {
+  occurred_date: [
+    { date: "2024-02-24", count: 3 },
+    { date: "2024-11-02", count: 1 },
+    { date: "2025-06-14", count: 5 },
+  ],
+  submitted: [
+    { date: "2025-01-02", count: 2 },
+    { date: "2025-09-30", count: 4 },
+  ],
 };

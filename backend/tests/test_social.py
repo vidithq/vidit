@@ -27,6 +27,7 @@ from app.models.event import (
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
     Event,
+    EventGeolocator,
 )
 from app.models.follow import Follow
 from app.models.media import Media
@@ -35,6 +36,7 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.services import social as social_service
 from app.services.auth import hash_password
+from app.services.event_filters import EventFilters
 from app.services.pagination import MAX_PAGE_SIZE, encode_cursor
 from tests._fixtures import fake_sha256
 from tests.conftest import login_as
@@ -603,7 +605,14 @@ def test_feed_page_query_reads_its_index(db, scope, paged):
     cursor = (datetime(2026, 5, 20, tzinfo=UTC), uuid.uuid4()) if paged else None
     event.listen(engine, "before_cursor_execute", capture)
     try:
-        social_service.get_feed(db, user_id=uuid.uuid4(), scope=scope, size=10, cursor=cursor)
+        social_service.get_feed(
+            db,
+            user_id=uuid.uuid4(),
+            scope=scope,
+            size=10,
+            filters=EventFilters(),
+            cursor=cursor,
+        )
     finally:
         event.remove(engine, "before_cursor_execute", capture)
 
@@ -719,6 +728,138 @@ def test_feed_filters_by_kind_conflict_source_kind_level_and_tag(db, conflict, t
     assert client.get("/api/v1/feed?kind=detection", headers=headers).status_code == 422
     assert client.get("/api/v1/feed?source_kind=tripod", headers=headers).status_code == 422
     assert client.get("/api/v1/feed?level=primary", headers=headers).status_code == 422
+
+
+def _stamp(row: Event, *, occurred: date | None, created: datetime) -> None:
+    row.occurred_date = occurred
+    row.created_at = created
+
+
+def test_feed_takes_the_filter_set_of_get_events(db, cleanup):
+    """Dates, ``media``, ``has_coords`` and ``author`` narrow the feed as on ``GET /events``;
+    ``author`` keeps a row that credits the analyst as a co-geolocator."""
+    record_user, record_geo = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    analyst = _make_user(db, suffix="analyst")
+    owner = _make_user(db, suffix="owner")
+    for user in (viewer, analyst, owner):
+        record_user(user)
+
+    old_geo = _make_geo(db, author=analyst, title="Old geo")
+    _stamp(old_geo, occurred=date(2024, 1, 10), created=datetime(2024, 1, 11, 23, 30, tzinfo=UTC))
+    old_geo.sources[0].media = Media(sha256=fake_sha256(), storage_url="s3://x/v.mp4", kind="video")
+    new_geo = _make_geo(db, author=analyst, title="New geo")
+    _stamp(new_geo, occurred=date(2025, 6, 1), created=datetime(2025, 6, 2, tzinfo=UTC))
+    db.add(
+        Media(sha256=fake_sha256(), event_id=new_geo.id, storage_url="s3://x/p.jpg", kind="image")
+    )
+    blind = _make_request(db, requester=analyst, title="Blind ask")
+    _stamp(blind, occurred=None, created=datetime(2024, 3, 6, tzinfo=UTC))
+    guessed = _make_request(db, requester=analyst, title="Guessed ask")
+    guessed.coords = from_shape(Point(37.8, 48.0), srid=4326)
+    _stamp(guessed, occurred=None, created=datetime(2024, 3, 6, tzinfo=UTC))
+    shared = _make_geo(db, author=owner, title="Shared geo")
+    _stamp(shared, occurred=date(2024, 1, 10), created=datetime(2024, 1, 11, tzinfo=UTC))
+    db.add(
+        EventGeolocator(
+            event_id=shared.id, user_id=analyst.id, state="active", joined_at=datetime.now(UTC)
+        )
+    )
+    db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
+    db.commit()
+    for row in (old_geo, new_geo, blind, guessed, shared):
+        record_geo(row)
+    headers = login_as(client, viewer)
+
+    def titles(**params: str) -> set[str]:
+        query = "&".join(f"{key}={value}" for key, value in params.items())
+        return {item["title"] for item in _walk(headers, f"/api/v1/feed?limit=2&{query}")}
+
+    every = {"Old geo", "New geo", "Blind ask", "Guessed ask", "Shared geo"}
+    assert titles() == every
+    assert titles(occurred_date_from="2025-01-01") == {"New geo"}
+    assert titles(occurred_date_to="2024-12-31") == {"Old geo", "Shared geo"}
+    assert titles(submitted_from="2025-01-01") == {"New geo"}
+    assert titles(submitted_to="2024-01-11") == {"Old geo", "Shared geo"}
+    assert titles(media="video") == {"Old geo"}
+    assert titles(media="image") == {"New geo"}
+    assert titles(has_coords="false") == {"Blind ask"}
+    assert titles(has_coords="true") == every - {"Blind ask"}
+    assert titles(author=owner.username) == {"Shared geo"}
+    assert titles(author=analyst.username) == every
+
+    assert client.get("/api/v1/feed?media=hologram", headers=headers).status_code == 422
+    assert client.get("/api/v1/feed?author=bad%20name", headers=headers).status_code == 422
+    assert client.get("/api/v1/feed?occurred_date_from=garbage", headers=headers).status_code == 422
+
+
+def _feed_dates(headers: dict, **params) -> dict:
+    response = client.get("/api/v1/feed/dates", params=params, headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _days(*pairs: tuple[str, int]) -> list[dict]:
+    return [{"date": day, "count": count} for day, count in pairs]
+
+
+def test_feed_dates_count_the_walked_rows_per_day(db, cleanup):
+    """Each axis counts the rows ``GET /feed`` walks per day, ignores its own window and keeps
+    every other filter, the other window too. The submitted day is the UTC day."""
+    record_user, record_geo = cleanup
+    viewer = _make_user(db, suffix="viewer")
+    analyst = _make_user(db, suffix="analyst")
+    stranger = _make_user(db, suffix="stranger")
+    for user in (viewer, analyst, stranger):
+        record_user(user)
+
+    drone = _make_geo(db, author=analyst, title="Drone")
+    drone.sources[0].kind = "drone"
+    _stamp(drone, occurred=date(2024, 1, 10), created=datetime(2024, 1, 11, 23, 30, tzinfo=UTC))
+    phone = _make_geo(db, author=analyst, title="Phone")
+    _stamp(phone, occurred=date(2024, 1, 10), created=datetime(2024, 2, 1, 8, 0, tzinfo=UTC))
+    undated = _make_geo(db, author=analyst, title="Undated")
+    _stamp(undated, occurred=None, created=datetime(2024, 2, 1, 9, 0, tzinfo=UTC))
+    ask = _make_request(db, requester=analyst, title="Ask")
+    _stamp(ask, occurred=date(2024, 3, 5), created=datetime(2024, 3, 6, tzinfo=UTC))
+    unfollowed = _make_geo(db, author=stranger, title="Unfollowed")
+    _stamp(unfollowed, occurred=date(2024, 1, 10), created=datetime(2024, 1, 11, tzinfo=UTC))
+    db.add(Follow(follower_id=viewer.id, followed_id=analyst.id))
+    db.commit()
+    for row in (drone, phone, undated, ask, unfollowed):
+        record_geo(row)
+    headers = login_as(client, viewer)
+
+    everything = _feed_dates(headers)
+    assert everything == {
+        "occurred_date": _days(("2024-01-10", 2), ("2024-03-05", 1)),
+        "submitted": _days(("2024-01-11", 1), ("2024-02-01", 2), ("2024-03-06", 1)),
+    }
+
+    by_occurrence = _feed_dates(headers, occurred_date_from="2024-03-01")
+    assert by_occurrence["occurred_date"] == everything["occurred_date"]
+    assert by_occurrence["submitted"] == _days(("2024-03-06", 1))
+
+    by_submission = _feed_dates(headers, submitted_from="2024-02-01")
+    assert by_submission["submitted"] == everything["submitted"]
+    assert by_submission["occurred_date"] == _days(("2024-01-10", 1), ("2024-03-05", 1))
+
+    assert _feed_dates(headers, source_kind="drone") == {
+        "occurred_date": _days(("2024-01-10", 1)),
+        "submitted": _days(("2024-01-11", 1)),
+    }
+    assert _feed_dates(headers, kind="request") == {
+        "occurred_date": _days(("2024-03-05", 1)),
+        "submitted": _days(("2024-03-06", 1)),
+    }
+    assert _feed_dates(headers, scope="all", author=stranger.username) == {
+        "occurred_date": _days(("2024-01-10", 1)),
+        "submitted": _days(("2024-01-11", 1)),
+    }
+
+
+def test_feed_dates_requires_auth():
+    assert client.get("/api/v1/feed/dates").status_code == 401
 
 
 # ── GET /users/{username} — follower counters + is_following ─────────────

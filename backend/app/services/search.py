@@ -1,32 +1,39 @@
-"""Full-text search across events (located + requested), collections, users and organizations.
+"""Full-text search: one ranked list of events, sites, collections, analysts and organizations,
+or the top of that list for each type.
 
 Postgres FTS: ``websearch_to_tsquery`` parses user input (quoted phrases, ``OR``
 and ``-word``, never a syntax error), and ``ts_headline`` returns fragments with
 sentinel delimiters the frontend renders as ``<mark>`` (no HTML across the wire,
 so XSS-safe). Soft-deleted rows are filtered at query time.
 
-One FTS path serves both event views (:func:`_search_events`), composed with
-the standard event filters (``services/event_filters``). An event's document is
-its title and its sources' titles together, so ``-word`` excludes an event
-whichever of them holds the word. The collections, users and organizations
-TSVECTOR expressions must stay expression-tree-equal to their GIN indexes
-(config name as a SQL literal, never a bound parameter) or Postgres falls back to
-a sequential scan: ``_collection_tsvector`` and the ``_USER_TSVECTOR`` and
-``_ORGANIZATION_TSVECTOR`` constants.
+Each type contributes one candidate select of ``(type, id, rank, created_at)``
+(:func:`_candidates`); their union is ordered and paged once (:func:`search`), or cut per
+type (:func:`search_sections`), and only the served rows are read in full (:func:`_hydrate`). Events compose with the standard
+event filters (``services/event_filters``). An event's document is its title and its
+sources' titles together, so ``-word`` excludes an event whichever of them holds the
+word. A site's document is its name and its live sources' titles and notes, the same way
+(:func:`_site_document`). The collections, users and organizations TSVECTOR expressions
+must stay expression-tree-equal to their GIN indexes (config name as a SQL literal, never
+a bound parameter) or Postgres falls back to a sequential scan: ``_collection_tsvector``
+and the ``_USER_TSVECTOR`` and ``_ORGANIZATION_TSVECTOR`` constants.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, get_args
 
 from sqlalchemy import (
     ColumnElement,
+    Select,
     String,
     Text,
+    and_,
     bindparam,
+    case,
     cast,
     false,
     func,
@@ -35,11 +42,14 @@ from sqlalchemy import (
     select,
     text,
     tuple_,
+    union_all,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, DOUBLE_PRECISION, TSQUERY
+from sqlalchemy.dialects.postgresql import DOUBLE_PRECISION, TSQUERY
+from sqlalchemy.engine import Row
 from sqlalchemy.orm import Query as SAQuery
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.elements import ColumnClause
+from sqlalchemy.sql.selectable import Subquery
 
 from app.models.collection import Collection
 from app.models.event import (
@@ -49,9 +59,10 @@ from app.models.event import (
     Event,
 )
 from app.models.organization import Organization
+from app.models.site import Site
 from app.models.source import Source, SourceLink
 from app.models.user import User
-from app.schemas.collection import CollectionRead
+from app.schemas.search import SearchType
 from app.services import organizations
 from app.services.collections import (
     build_collection_reads,
@@ -62,17 +73,19 @@ from app.services.event_filters import (
     EventFilters,
     collectable_events,
     credited_to,
+    date_histogram,
     owner_username_matches,
     taxonomy_predicates,
     visible_events,
 )
 from app.services.geolocator_credit import CREDIT_LOAD, live_geolocators
 from app.services.pagination import encode_ranked_cursor
+from app.services.sites import last_sources, live_sources, site_images, visible_sites
 from app.services.thumbnails import pick_thumbnail, thumbnail_loads
 
 # ``ts_headline`` sentinels: STX / ETX, not an ASCII marker like ``[[HL]]``,
 # which a user could type into a bio to corrupt highlights. Planted STX / ETX
-# are stripped first (see ``_strip_sentinels``).
+# are stripped first (see ``_headline``).
 HIGHLIGHT_START = "\x02"
 HIGHLIGHT_STOP = "\x03"
 
@@ -82,11 +95,6 @@ _HEADLINE_OPTS_FULL = f"StartSel={HIGHLIGHT_START}, StopSel={HIGHLIGHT_STOP}, Hi
 _HEADLINE_OPTS_FRAGMENT = (
     f"StartSel={HIGHLIGHT_START}, StopSel={HIGHLIGHT_STOP}, MaxFragments=2, MaxWords=20, MinWords=5"
 )
-
-
-def _strip_sentinels(col: str) -> str:
-    """SQL fragment stripping STX/ETX from ``col`` so planted sentinels can't unbalance the markup."""
-    return f"translate({col}, chr(2) || chr(3), '')"
 
 
 # ``simple`` with accents folded (migration ``a8d4f2c6e1b3``): ``cafe`` finds ``café``.
@@ -268,9 +276,9 @@ def _event_terms(db: Session, query: str) -> _EventTerms:
 
 
 def _matching(
-    stmt: SAQuery, *criteria, terms: _EventTerms, view: str, filters: EventFilters
+    stmt: SAQuery, *criteria, terms: _EventTerms, view: str | None, filters: EventFilters
 ) -> SAQuery:
-    """Narrow ``stmt`` to the events an event group matches: ``filters`` on ``view``, the group's
+    """Narrow ``stmt`` to the events search matches: ``filters`` on ``view``, the caller's
     ``criteria``, and :func:`_event_match` on the words of ``terms``. A word naming an analyst
     also matches the events credited to them (``services/event_filters.credited_to``)."""
     stmt = filters.apply(stmt, view=view).filter(*criteria)
@@ -284,9 +292,8 @@ def _matching(
 
 
 def _located_hits() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
-    """What the Geolocations group adds to the ``located`` view: a live ``geolocated`` or
-    ``detected`` row with a subject coordinate. A ``requested`` row may carry an approximate
-    guess yet belongs to the requested view; closed rows stay out."""
+    """The located events search lists: a live ``geolocated`` or ``detected`` row with a
+    subject coordinate. Closed rows stay out."""
     return Event.status.in_((STATUS_GEOLOCATED, STATUS_DETECTED)), Event.coords.isnot(None)
 
 
@@ -305,162 +312,481 @@ def _collection_tsvector():
     return func.to_tsvector(_TS_CONFIG, document)
 
 
-# What both event groups' hits read: the owner, the card thumbnail and the tags. Hydration runs
-# on an id list without ``LIMIT``, so ``joinedload`` on the tags cannot truncate it.
-_HIT_LOADS = (joinedload(Event.owner), *thumbnail_loads(), joinedload(Event.tags))
+# What an event hit reads: the owner, the credited geolocators, the thumbnail and the tags.
+# Hydration runs on an id list without ``LIMIT``, so ``joinedload`` on the tags cannot truncate it.
+_HIT_LOADS = (joinedload(Event.owner), *thumbnail_loads(), joinedload(Event.tags), CREDIT_LOAD)
+
+# The hit types, in the vocabulary of ``GET /search?type=`` and in the order of the sections.
+SEARCH_TYPES: tuple[str, ...] = get_args(SearchType)
+
+# The filters each type other than ``event`` answers. ``status`` narrows events alone and never
+# drops another type; any other active filter drops a type that does not answer it. Mirrored by
+# ``frontend/src/components/filters/model.ts::KIND_DIMENSIONS``; change both.
+_TYPE_FILTERS: dict[str, tuple[str, ...]] = {
+    "site": ("status", "author"),
+    "collection": ("status", "author", "tag"),
+    "user": ("status",),
+    "organization": ("status",),
+}
+
+# Added to the rank of an analyst a word of the query names exactly, so that analyst leads the
+# list: ``ts_rank`` of a short document stays far below it.
+_NAMED_RANK = 10.0
+
+_NO_RANK = cast(literal_column("0"), DOUBLE_PRECISION)
 
 
-def _search_events(
-    db: Session,
-    *extra_criteria,
-    query: str,
-    limit: int,
-    view: str,
-    filters: EventFilters,
-    after: tuple[float, datetime, uuid.UUID] | None = None,
-) -> tuple[list[uuid.UUID], dict[uuid.UUID, str], int, str | None]:
-    """Run the FTS over ``events`` and return ``(ids, highlights, total, next_cursor)``.
+def _searchable_events() -> ColumnElement[bool]:
+    """The events search lists: the located ones (:func:`_located_hits`) and the open requests.
+    A request may carry an approximate guess, yet it is no located row."""
+    return or_(
+        and_(*_located_hits()),
+        Event.status == STATUS_REQUESTED,
+    )
 
-    The query matches an event's title, its sources' titles and its source URLs
-    (:func:`_event_match`). ``ids`` are ranked by ``ts_rank`` of the title desc,
-    then ``created_at`` desc and ``id`` desc, a total order. ``highlights`` maps
-    id to its ``ts_headline`` title. ``total`` is the whole match count
-    (``COUNT(*) OVER ()``), whatever ``after`` skips. Soft-deleted rows are
-    excluded in ``filters.apply``.
 
-    With active filters and an empty ``query`` the FTS predicate drops: browse
-    mode, newest first, plain title as the "highlight", rank 0 for every row.
-    The profile's "Show more" lands here.
+def _candidate(type_: str, id_col: Any, rank: ColumnElement[Any], created_at: Any) -> list[Any]:
+    """The four columns every type's candidate select carries, in the union's order."""
+    return [
+        literal_column(f"'{type_}'", String).label("type"),
+        id_col.label("id"),
+        cast(rank, DOUBLE_PRECISION).label("rank"),
+        created_at.label("created_at"),
+    ]
 
-    ``after`` resumes the walk past a :func:`encode_ranked_cursor` position.
-    ``next_cursor`` names the page's last row when a further row exists, else
-    ``None``. The count runs in the inner query, before the cursor predicate, so
-    every page reports the same total.
 
-    ``extra_criteria`` narrow the view further (closed rows stay out of search).
-    """
-    q = query.strip()
-    terms = _event_terms(db, q)
-    # Sentinel-stripped in browse mode too: planted STX/ETX must not render fake <mark>s.
-    title = func.translate(Event.title, literal_column("chr(2) || chr(3)"), literal_column("''"))
-    rank: ColumnElement[float] = literal_column("0", DOUBLE_PRECISION)
-    if q:
-        title = func.ts_headline(
-            _TS_CONFIG, title, _tsquery(terms.query_parsed.typed), _HEADLINE_OPTS_FULL
+def _event_candidates(db: Session, terms: _EventTerms, filters: EventFilters) -> Select[Any]:
+    """The events :func:`_searchable_events` names that ``filters`` and the words of ``terms``
+    match (:func:`_matching`), ranked on the title by the words that are not a handle."""
+    rank: ColumnElement[Any] = _NO_RANK
+    if terms.text or terms.handles:
+        rank = _rank(_geo_tsvector(), terms.parsed if terms.text else terms.query_parsed)
+    stmt = db.query(*_candidate("event", Event.id, rank, Event.created_at))
+    matched = _matching(stmt, _searchable_events(), terms=terms, view=None, filters=filters)
+    return select(matched.subquery())
+
+
+def search_dates(
+    db: Session, *, query: str, types: frozenset[str], filters: EventFilters
+) -> dict[str, list[dict[str, Any]]]:
+    """The events :func:`search` lists for ``query`` and ``filters`` (:func:`_event_candidates`),
+    counted per day by ``services/event_filters.date_histogram``. Unlike :func:`search`, an empty
+    ``query`` with no active filter counts every searchable event; ``types`` without ``event``
+    counts nothing."""
+    if "event" not in types:
+        return {"occurred_date": [], "submitted": []}
+    terms = _event_terms(db, query.strip())
+    return date_histogram(
+        lambda window: _matching(
+            db.query(Event.id), _searchable_events(), terms=terms, view=None, filters=window
+        ),
+        filters,
+    )
+
+
+def _site_name_tsvector():
+    """The site name's ``tsvector``, which the rank and the highlight read."""
+    return func.to_tsvector(_TS_CONFIG, func.coalesce(Site.name, literal_column("''")))
+
+
+def _site_document():
+    """The site name and its live sources' titles and notes as one ``tsvector``, like
+    :func:`_event_document`."""
+    source_text = (
+        select(
+            func.string_agg(
+                func.concat_ws(literal_column("' '"), Source.title, Source.note),
+                literal_column("' '"),
+            )
         )
-        # Ranked on the words that are not a handle, which a credited event's title need not hold.
-        # ``real`` widened to ``double precision``: a ``real`` reaches Python as its
-        # shortest float4 text, a different double than the one Postgres compares
-        # against the cursor, so the walk would skip the cursor row's rank ties.
-        rank = cast(
-            _rank(_geo_tsvector(), terms.parsed if terms.text else terms.query_parsed),
-            DOUBLE_PRECISION,
+        .where(Source.site_id == Site.id, *live_sources())
+        .scalar_subquery()
+    )
+    return _site_name_tsvector().op("||")(
+        func.to_tsvector(_TS_CONFIG, func.coalesce(source_text, literal_column("''")))
+    )
+
+
+def _site_candidates(parsed: _Query | None, filters: EventFilters) -> Select[Any]:
+    """Visible sites (``services/sites.visible_sites``, the rule of ``GET /sites``), owned by
+    ``filters.author`` when set."""
+    criteria: list[ColumnElement[bool]] = [*visible_sites()]
+    if filters.author:
+        criteria.append(Site.owner.has(owner_username_matches(filters.author)))
+    rank: ColumnElement[Any] = _NO_RANK
+    if parsed is not None:
+        criteria.append(_site_document().op("@@")(_tsquery(parsed.typed)))
+        rank = _rank(_site_name_tsvector(), parsed)
+    return select(*_candidate("site", Site.id, rank, Site.created_at)).where(*criteria)
+
+
+def _collection_candidates(parsed: _Query | None, filters: EventFilters) -> Select[Any]:
+    """Readable collections holding a showable event (``services/collections``), so a hit never
+    opens on an empty shelf. ``author`` keeps one owner's; ``tag`` keeps those holding a showable
+    event tagged with one of the values, on the event or a source: the tags the collection
+    prints (``services/collections.tags_for``)."""
+    criteria: list[ColumnElement[bool]] = [*visible_collections(), has_showable_item()]
+    if filters.tag:
+        criteria.append(has_showable_item(*taxonomy_predicates(tag=filters.tag)))
+    if filters.author:
+        criteria.append(Collection.owner.has(owner_username_matches(filters.author)))
+    rank: ColumnElement[Any] = _NO_RANK
+    if parsed is not None:
+        criteria.append(_collection_tsvector().op("@@")(_tsquery(parsed.typed)))
+        rank = _rank(_collection_tsvector(), parsed)
+    return select(*_candidate("collection", Collection.id, rank, Collection.created_at)).where(
+        *criteria
+    )
+
+
+def _user_candidates(parsed: _Query, query: str) -> Select[Any]:
+    """Live analysts matching on their username and bio, or whose username a word of the query
+    names exactly (:func:`_handle_candidates`), which ranks first."""
+    tsvector: ColumnClause[Any] = literal_column(_USER_TSVECTOR)
+    named = func.lower(User.username).in_(_handle_candidates(query))
+    rank = _rank(tsvector, parsed) + case((named, _NAMED_RANK), else_=0.0)
+    return select(*_candidate("user", User.id, rank, User.created_at)).where(
+        User.deleted_at.is_(None), or_(tsvector.op("@@")(_tsquery(parsed.typed)), named)
+    )
+
+
+def _organization_candidates(parsed: _Query) -> Select[Any]:
+    """Organizations matching on their name, slug and bio."""
+    tsvector: ColumnClause[Any] = literal_column(_ORGANIZATION_TSVECTOR)
+    return select(
+        *_candidate(
+            "organization", Organization.id, _rank(tsvector, parsed), Organization.created_at
         )
-    stmt = db.query(
-        Event.id,
-        Event.created_at,
-        title.label("title_highlight"),
-        rank.label("rank"),
-        func.count().over().label("total_count"),
-    )
-    ranked = _matching(stmt, *extra_criteria, terms=terms, view=view, filters=filters).subquery()
-
-    page = db.query(ranked)
-    if after is not None:
-        page = page.filter(tuple_(ranked.c.rank, ranked.c.created_at, ranked.c.id) < after)
-    rows = (
-        page.order_by(ranked.c.rank.desc(), ranked.c.created_at.desc(), ranked.c.id.desc())
-        .limit(limit + 1)
-        .all()
-    )
-    if not rows:
-        return [], {}, 0, None
-    served = rows[:limit]
-    last = served[-1]
-    next_cursor = (
-        encode_ranked_cursor(last.rank, last.created_at, last.id) if len(rows) > limit else None
-    )
-    highlight_by_id: dict[uuid.UUID, str] = {r.id: r.title_highlight for r in served}
-    return [r.id for r in served], highlight_by_id, int(rows[0].total_count), next_cursor
+    ).where(tsvector.op("@@")(_tsquery(parsed.typed)))
 
 
-def search_geolocations(
+def _candidates(
+    db: Session, *, query: str, types: frozenset[str], filters: EventFilters
+) -> list[Select[Any]]:
+    """One select per type that may match: events when ``query`` or a filter is set, a type
+    other than ``event`` when it answers every active filter (:data:`_TYPE_FILTERS`) and
+    ``query`` or one of its own filters is set."""
+    terms = _event_terms(db, query)
+    parsed = terms.query_parsed if query else None
+    selects: list[Select[Any]] = []
+    if "event" in types and (query or filters.active):
+        selects.append(_event_candidates(db, terms, filters))
+
+    def offered(type_: str) -> bool:
+        kept = _TYPE_FILTERS[type_]
+        own = any(filters.is_set(name) for name in kept if name != "status")
+        return type_ in types and not filters.active_beyond(*kept) and (bool(query) or own)
+
+    if offered("site"):
+        selects.append(_site_candidates(parsed, filters))
+    if offered("collection"):
+        selects.append(_collection_candidates(parsed, filters))
+    if parsed is not None and offered("user"):
+        selects.append(_user_candidates(parsed, query))
+    if parsed is not None and offered("organization"):
+        selects.append(_organization_candidates(parsed))
+    return selects
+
+
+def _union(
+    db: Session, *, query: str, types: frozenset[str], filters: EventFilters
+) -> Subquery | None:
+    """Every candidate of ``types`` as one ``(type, id, rank, created_at)`` relation, or ``None``
+    when nothing can match: an empty ``query`` with no active filter matches nothing."""
+    if not query and not filters.active:
+        return None
+    selects = _candidates(db, query=query, types=types, filters=filters)
+    if not selects:
+        return None
+    return union_all(*selects).subquery("candidates")
+
+
+def _ranking(candidates: Any) -> tuple[ColumnElement[Any], ...]:
+    """``rank``, then ``created_at``, then ``id``, all descending: a total order, so a walk by
+    cursor never repeats or skips a hit."""
+    return candidates.rank.desc(), candidates.created_at.desc(), candidates.id.desc()
+
+
+def _next_cursor(rows: Sequence[Row[Any]], limit: int) -> str | None:
+    """The cursor after the first ``limit`` of ``rows``, read one past the cut, or ``None`` when
+    no row lies past it."""
+    if len(rows) <= limit:
+        return None
+    last = rows[limit - 1]
+    return encode_ranked_cursor(last.rank, last.created_at, last.id)
+
+
+@dataclass(frozen=True)
+class SearchPage:
+    """One page of hits in rank order, the whole match count, and the next page's cursor
+    (``None`` on the last page)."""
+
+    hits: list[dict]
+    total: int
+    cursor: str | None
+
+
+def search(
     db: Session,
     *,
     query: str,
+    types: frozenset[str],
     limit: int,
     filters: EventFilters | None = None,
     after: tuple[float, datetime, uuid.UUID] | None = None,
-) -> tuple[list[dict], int, str | None]:
-    """One page of located events matching ``query``, the whole match count, and the
-    next page's cursor (``None`` on the last page). ``after`` is the decoded cursor.
+) -> SearchPage:
+    """One ranked list across ``types`` (a subset of :data:`SEARCH_TYPES`).
 
-    The rows :func:`_located_hits` names. ``hits`` are dicts for the router's
-    Pydantic schema.
+    Each type ranks on its own text with the same ``ts_rank``: an event on its title, a site on
+    its name, a collection on its title and description, an analyst on their username and bio,
+    an organization on its name, slug and bio, in the order of :func:`_ranking`. ``total`` is the
+    whole match count, whatever ``after`` skips.
+
+    With an empty ``query`` and an active filter the list browses: every hit ranks 0, so the
+    order is newest first. An empty ``query`` with no active filter matches nothing.
     """
-    ids, highlight_by_id, total, next_cursor = _search_events(
-        db,
-        *_located_hits(),
-        query=query,
-        limit=limit,
-        view="located",
-        filters=filters or EventFilters(),
-        after=after,
-    )
-    if not ids:
-        return [], 0, None
+    filters = filters or EventFilters()
+    q = query.strip()
+    union = _union(db, query=q, types=types, filters=filters)
+    if union is None:
+        return SearchPage([], 0, None)
+    counted = select(union, func.count().over().label("total_count")).subquery("counted")
+    page = select(counted)
+    if after is not None:
+        page = page.where(tuple_(counted.c.rank, counted.c.created_at, counted.c.id) < after)
+    rows = db.execute(page.order_by(*_ranking(counted.c)).limit(limit + 1)).all()
+    if not rows:
+        return SearchPage([], 0, None)
+    hits = _hydrate(db, [(row.type, row.id) for row in rows[:limit]], query=q)
+    return SearchPage(hits, int(rows[0].total_count), _next_cursor(rows, limit))
 
-    # Hydrate in one round-trip; re-sort in Python because ``IN (...)`` loses rank order.
-    geos = (
+
+@dataclass(frozen=True)
+class SearchSection:
+    """The first page of one type's list: what :func:`search` returns for that type alone."""
+
+    type: str
+    hits: list[dict]
+    total: int
+    cursor: str | None
+
+
+def search_sections(
+    db: Session,
+    *,
+    query: str,
+    types: frozenset[str],
+    limit: int,
+    filters: EventFilters | None = None,
+) -> list[SearchSection]:
+    """The top ``limit`` hits of each type of ``types`` that has one, in :data:`SEARCH_TYPES`
+    order, read in one query. Each section's ``cursor`` continues that type's list in
+    :func:`search`."""
+    filters = filters or EventFilters()
+    q = query.strip()
+    union = _union(db, query=q, types=types, filters=filters)
+    if union is None:
+        return []
+    ranked = select(
+        union,
+        func.row_number()
+        .over(partition_by=union.c.type, order_by=_ranking(union.c))
+        .label("position"),
+        func.count().over(partition_by=union.c.type).label("total_count"),
+    ).subquery("ranked")
+    rows = db.execute(
+        select(ranked)
+        .where(ranked.c.position <= limit + 1)
+        .order_by(ranked.c.type, ranked.c.position)
+    ).all()
+    by_type: dict[str, list[Row[Any]]] = {}
+    for row in rows:
+        by_type.setdefault(row.type, []).append(row)
+    present = [type_ for type_ in SEARCH_TYPES if type_ in by_type]
+    served = [(row.type, row.id) for type_ in present for row in by_type[type_][:limit]]
+    hits = _hydrate(db, served, query=q)
+    sections = [
+        SearchSection(
+            type=type_,
+            hits=[hit for hit in hits if hit["type"] == type_],
+            total=int(by_type[type_][0].total_count),
+            cursor=_next_cursor(by_type[type_], limit),
+        )
+        for type_ in present
+    ]
+    return [section for section in sections if section.hits]
+
+
+def _headline(column: Any, parsed: _Query | None, opts: str = _HEADLINE_OPTS_FULL) -> Any:
+    """``column`` with its planted sentinels stripped, the matches marked when ``parsed`` is set."""
+    stripped = func.translate(column, literal_column("chr(2) || chr(3)"), literal_column("''"))
+    if parsed is None:
+        return stripped
+    return func.ts_headline(_TS_CONFIG, stripped, _tsquery(parsed.typed), opts)
+
+
+def _bio_highlight(raw: str | None) -> str | None:
+    """A bio headline only when the bio contributed a match; ``ts_headline`` returns the text
+    unmarked otherwise."""
+    return raw if raw is not None and HIGHLIGHT_START in raw else None
+
+
+def _hydrate(db: Session, page: list[tuple[str, uuid.UUID]], *, query: str) -> list[dict]:
+    """The hits of ``page``, in its order. A row deleted between the two reads drops out."""
+    parsed = _parse(db, query)[0] if query else None
+    ids: dict[str, list[uuid.UUID]] = {}
+    for type_, id_ in page:
+        ids.setdefault(type_, []).append(id_)
+    found: dict[tuple[str, uuid.UUID], dict] = {}
+    readers = {
+        "event": _event_hits,
+        "site": _site_hits,
+        "collection": _collection_hits,
+        "user": _user_hits,
+        "organization": _organization_hits,
+    }
+    for type_, type_ids in ids.items():
+        for hit in readers[type_](db, type_ids, parsed):
+            found[(type_, hit["id"])] = hit
+    return [found[key] for key in page if key in found]
+
+
+def _event_hits(db: Session, ids: list[uuid.UUID], parsed: _Query | None) -> list[dict]:
+    located = Event.status != STATUS_REQUESTED
+    rows = (
         db.query(
             Event,
-            func.ST_Y(Event.coords).label("lat"),
-            func.ST_X(Event.coords).label("lng"),
+            _headline(Event.title, parsed).label("title_highlight"),
+            case((located, func.ST_Y(Event.coords))).label("lat"),
+            case((located, func.ST_X(Event.coords))).label("lng"),
         )
-        .options(*_HIT_LOADS, CREDIT_LOAD)
+        .options(*_HIT_LOADS)
         .filter(Event.id.in_(ids))
         .all()
     )
-    geo_by_id = {g.Event.id: g for g in geos}
-
-    out: list[dict] = []
-    for hit_id in ids:
-        row = geo_by_id.get(hit_id)
-        if row is None:  # soft-deleted between SELECTs
-            continue
-        geo = row.Event
-        thumb = pick_thumbnail(geo)
-        out.append(
+    hits: list[dict] = []
+    for event, title_highlight, lat, lng in rows:
+        thumb = pick_thumbnail(event)
+        hits.append(
             {
-                "id": geo.id,
-                "title": geo.title,
-                "title_highlight": highlight_by_id[hit_id],
-                "lat": row.lat,
-                "lng": row.lng,
-                "occurred_date": geo.occurred_date,
-                "is_graphic": geo.is_graphic,
-                "status": geo.status,
-                "owner": geo.owner,
-                "geolocators": live_geolocators(geo),
+                "type": "event",
+                "id": event.id,
+                "title": event.title,
+                "title_highlight": title_highlight,
+                "status": event.status,
+                "occurred_date": event.occurred_date,
+                "created_at": event.created_at,
+                "lat": lat,
+                "lng": lng,
+                "is_graphic": event.is_graphic,
+                "owner": event.owner,
+                "geolocators": live_geolocators(event),
                 "media": [thumb] if thumb is not None else [],
-                "tags": geo.tags,
+                "tags": event.tags,
             }
         )
-    return out, total, next_cursor
+    return hits
+
+
+def _site_hits(db: Session, ids: list[uuid.UUID], parsed: _Query | None) -> list[dict]:
+    rows = (
+        db.query(Site, _headline(Site.name, parsed).label("name_highlight"))
+        .options(joinedload(Site.owner))
+        .filter(Site.id.in_(ids))
+        .all()
+    )
+    last = last_sources(db, ids, None)
+    images = site_images(db, ids)
+    return [
+        {
+            "type": "site",
+            "id": site.id,
+            "name": site.name,
+            "name_highlight": name_highlight,
+            "kind": site.kind,
+            "owner": site.owner,
+            "last_source": last.get(site.id),
+            "media": [images[site.id]] if site.id in images else [],
+        }
+        for site, name_highlight in rows
+    ]
+
+
+def _collection_hits(db: Session, ids: list[uuid.UUID], parsed: _Query | None) -> list[dict]:
+    collections = (
+        db.query(Collection).options(joinedload(Collection.owner)).filter(Collection.id.in_(ids))
+    )
+    return [
+        {"type": "collection", **read.model_dump()}
+        for read in build_collection_reads(db, list(collections))
+    ]
+
+
+def _user_hits(db: Session, ids: list[uuid.UUID], parsed: _Query | None) -> list[dict]:
+    rows = (
+        db.query(
+            User,
+            _headline(User.username, parsed).label("username_highlight"),
+            _headline(User.bio, parsed, _HEADLINE_OPTS_FRAGMENT).label("bio_highlight"),
+        )
+        .filter(User.id.in_(ids))
+        .all()
+    )
+    return [
+        {
+            "type": "user",
+            "id": user.id,
+            "username": user.username,
+            "username_highlight": username_highlight,
+            "bio": user.bio,
+            "bio_highlight": _bio_highlight(bio_highlight),
+            "avatar_url": user.avatar_url,
+        }
+        for user, username_highlight, bio_highlight in rows
+    ]
+
+
+def _organization_hits(db: Session, ids: list[uuid.UUID], parsed: _Query | None) -> list[dict]:
+    live = organizations.live_member_counts(db)
+    rows = (
+        db.query(
+            Organization,
+            func.coalesce(live.c.members, 0),
+            _headline(Organization.name, parsed).label("name_highlight"),
+            _headline(Organization.bio, parsed, _HEADLINE_OPTS_FRAGMENT).label("bio_highlight"),
+        )
+        .outerjoin(live, live.c.org_id == Organization.id)
+        .filter(Organization.id.in_(ids))
+        .all()
+    )
+    return [
+        {
+            "type": "organization",
+            "id": org.id,
+            "slug": org.slug,
+            "name": org.name,
+            "name_highlight": name_highlight,
+            "bio": org.bio,
+            "bio_highlight": _bio_highlight(bio_highlight),
+            "avatar_url": org.avatar_url,
+            "member_count": members,
+        }
+        for org, members, name_highlight, bio_highlight in rows
+    ]
 
 
 def collectable_matches(
     db: Session, *columns: Any, query: str, filters: EventFilters, user: User
 ) -> SAQuery:
-    """``columns`` (``Event.id`` when none) of each of ``user``'s events the Geolocations group
-    lists for ``query`` and ``filters`` that a collection can hold. Unordered and unlimited, so
+    """``columns`` (``Event.id`` when none) of each of ``user``'s located events search lists
+    for ``query`` and ``filters`` that a collection can hold. Unordered and unlimited, so
     the set does not depend on how many hits a page has loaded; the count, the paged read and
     the bulk add of ``services/collections_bulk`` all read it.
 
-    The group's own matching (:func:`_matching` on :func:`_located_hits`), narrowed to the
+    Search's own matching (:func:`_matching` on :func:`_located_hits`), narrowed to the
     events credited to ``user`` (``services/event_filters.credited_to``) and to
     ``services/event_filters.collectable_events``. An empty ``query`` with no active filter
-    matches nothing, as in :func:`search_all`.
+    matches nothing, as in :func:`search`.
     """
     q = query.strip()
     stmt = _matching(
@@ -473,333 +799,6 @@ def collectable_matches(
         filters=filters,
     )
     return stmt if q or filters.active else stmt.filter(false())
-
-
-def search_requests(
-    db: Session, *, query: str, limit: int, filters: EventFilters | None = None
-) -> tuple[list[dict], int]:
-    """Top-N requested events matching ``query`` + the pre-LIMIT total.
-
-    ``status = 'requested'`` only (withdrawn requests stay out of search).
-    """
-    ids, highlight_by_id, total, _ = _search_events(
-        db,
-        Event.status == STATUS_REQUESTED,
-        query=query,
-        limit=limit,
-        view="requested",
-        filters=filters or EventFilters(),
-    )
-    if not ids:
-        return [], 0
-
-    geos = (
-        db.query(Event)
-        .options(*_HIT_LOADS, selectinload(Event.sources).selectinload(Source.links))
-        .filter(Event.id.in_(ids))
-        .all()
-    )
-    geo_by_id = {g.id: g for g in geos}
-
-    out: list[dict] = []
-    for hit_id in ids:
-        geo = geo_by_id.get(hit_id)
-        if geo is None:
-            continue
-        thumb = pick_thumbnail(geo)
-        out.append(
-            {
-                "id": geo.id,
-                "title": geo.title,
-                "title_highlight": highlight_by_id[hit_id],
-                "source_urls": [link.url for source in geo.sources for link in source.links],
-                "status": geo.status,
-                "created_at": geo.created_at,
-                "is_graphic": geo.is_graphic,
-                "owner": geo.owner,
-                "media": [thumb] if thumb is not None else [],
-                "tags": geo.tags,
-            }
-        )
-    return out, total
-
-
-def search_collections(
-    db: Session,
-    *,
-    query: str,
-    limit: int,
-    author: str | None = None,
-    tags: list[str] | None = None,
-) -> tuple[list[CollectionRead], int]:
-    """Top-N collections matching ``query`` + the pre-LIMIT total.
-
-    FTS over :func:`_collection_tsvector`, ranked by ``ts_rank`` then
-    ``created_at`` desc.
-
-    Only readable, non-empty collections match
-    (``services/collections.visible_collections`` and ``has_showable_item``),
-    so a hit never opens on an empty shelf.
-
-    ``author`` scopes to one owner, with the same exact case-insensitive match
-    as the event groups. ``tags`` keeps the collections holding a showable
-    event tagged with any of them, on the event or a source: the tags the card
-    prints (``services/collections.tags_for``). No highlights: the card prints
-    the collection's own text.
-
-    With an empty ``query`` and an ``author`` or ``tags`` the FTS predicate
-    drops (browse mode, newest first; the profile's Collections "Show more"
-    lands here). An empty query with neither returns nothing: that is a
-    listing, not a search.
-
-    One statement selects the collection with its owner, already in rank
-    order: there are no per-hit highlights to key back onto, so no id re-fetch.
-    """
-    q = query.strip()
-    if not q and not author and not tags:
-        return [], 0
-    stmt = (
-        db.query(Collection, func.count().over().label("total_count"))
-        .options(joinedload(Collection.owner))
-        .filter(*visible_collections(), has_showable_item())
-    )
-    if tags:
-        stmt = stmt.filter(has_showable_item(*taxonomy_predicates(tag=tags)))
-    if author:
-        stmt = stmt.filter(Collection.owner.has(owner_username_matches(author)))
-    if q:
-        parsed = _parse(db, q)[0]
-        stmt = stmt.filter(_collection_tsvector().op("@@")(_tsquery(parsed.typed))).order_by(
-            _rank(_collection_tsvector(), parsed).desc(),
-            Collection.created_at.desc(),
-        )
-    else:
-        stmt = stmt.order_by(Collection.created_at.desc())
-    rows = stmt.limit(limit).all()
-    if not rows:
-        return [], 0
-    return build_collection_reads(db, [row[0] for row in rows]), int(rows[0].total_count)
-
-
-def _search_profiles(
-    db: Session,
-    *,
-    table: str,
-    tsvector: str,
-    name_col: str,
-    live: str,
-    query: str,
-    limit: int,
-    handle_col: str | None = None,
-) -> tuple[list[uuid.UUID], dict[uuid.UUID, tuple[str, str | None]], int]:
-    """Rank one profile table (analysts or organizations) for ``query``.
-
-    Returns the ranked ids, each id's ``(name highlight, bio highlight)``, and
-    the pre-LIMIT total. The bio highlight is ``None`` unless the bio
-    contributed a fragment. A row whose ``handle_col`` a word of ``query`` names
-    exactly (:func:`_handle_candidates`) matches whatever the other words are,
-    and ranks first. ``table``, ``tsvector``, ``name_col``, ``live`` and
-    ``handle_col`` are module constants, never caller input.
-    """
-    named_or, named_first = "", ""
-    if handle_col:
-        named = f"lower({handle_col}) = ANY(:handles)"
-        named_or, named_first = f"OR {named}", f"{named} DESC,"
-    sql = text(
-        f"""
-        SELECT id,
-               ts_rank({tsvector}, CAST(:tsq AS tsquery))
-                 + ts_rank({tsvector}, CAST(:tsq_exact AS tsquery)) AS rank,
-               ts_headline(
-                   {_TS_CONFIG_NAME}, {_strip_sentinels(name_col)},
-                   CAST(:tsq AS tsquery),
-                   :opts_full
-               ) AS name_highlight,
-               CASE
-                   WHEN bio IS NULL OR length(bio) = 0 THEN NULL
-                   ELSE ts_headline(
-                       {_TS_CONFIG_NAME}, {_strip_sentinels("bio")},
-                       CAST(:tsq AS tsquery),
-                       :opts_fragment
-                   )
-               END AS bio_highlight,
-               COUNT(*) OVER () AS total_count
-        FROM {table}
-        WHERE {live}
-          AND ({tsvector} @@ CAST(:tsq AS tsquery) {named_or})
-        ORDER BY {named_first} rank DESC, created_at DESC
-        LIMIT :lim
-        """
-    )
-    if handle_col:
-        sql = sql.bindparams(bindparam("handles", type_=ARRAY(String)))
-    parsed = _parse(db, query)[0]
-    rows = db.execute(
-        sql,
-        {
-            "tsq": parsed.typed,
-            "tsq_exact": parsed.exact,
-            "handles": _handle_candidates(query.strip()),
-            "lim": limit,
-            "opts_full": _HEADLINE_OPTS_FULL,
-            "opts_fragment": _HEADLINE_OPTS_FRAGMENT,
-        },
-    ).all()
-    if not rows:
-        return [], {}, 0
-    # ts_headline returns the original text on a no-match field.
-    highlights = {
-        r.id: (
-            r.name_highlight,
-            r.bio_highlight
-            if r.bio_highlight is not None and HIGHLIGHT_START in r.bio_highlight
-            else None,
-        )
-        for r in rows
-    }
-    return [r.id for r in rows], highlights, int(rows[0].total_count)
-
-
-def search_users(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
-    """Top-N analyst handles matching ``query`` + the pre-LIMIT total."""
-    ids, highlights, total = _search_profiles(
-        db,
-        table="users",
-        tsvector=_USER_TSVECTOR,
-        name_col="username",
-        live="deleted_at IS NULL",
-        query=query,
-        limit=limit,
-        handle_col="username",
-    )
-    if not ids:
-        return [], 0
-    user_by_id = {u.id: u for u in db.query(User).filter(User.id.in_(ids))}
-
-    out: list[dict] = []
-    for hit_id in ids:
-        u = user_by_id.get(hit_id)
-        if u is None:
-            continue
-        username_hl, bio_hl = highlights[hit_id]
-        out.append(
-            {
-                "id": u.id,
-                "username": u.username,
-                "username_highlight": username_hl,
-                "bio": u.bio,
-                "bio_highlight": bio_hl,
-                "avatar_url": u.avatar_url,
-            }
-        )
-    return out, total
-
-
-def search_organizations(db: Session, *, query: str, limit: int) -> tuple[list[dict], int]:
-    """Top-N organizations matching ``query`` on name, slug or bio + the pre-LIMIT total."""
-    ids, highlights, total = _search_profiles(
-        db,
-        table="organizations",
-        tsvector=_ORGANIZATION_TSVECTOR,
-        name_col="name",
-        live="TRUE",
-        query=query,
-        limit=limit,
-    )
-    if not ids:
-        return [], 0
-    live = organizations.live_member_counts(db)
-    rows = (
-        db.query(Organization, func.coalesce(live.c.members, 0))
-        .outerjoin(live, live.c.org_id == Organization.id)
-        .filter(Organization.id.in_(ids))
-        .all()
-    )
-    org_by_id = {org.id: (org, members) for org, members in rows}
-
-    out: list[dict] = []
-    for hit_id in ids:
-        if hit_id not in org_by_id:
-            continue
-        org, members = org_by_id[hit_id]
-        name_hl, bio_hl = highlights[hit_id]
-        out.append(
-            {
-                "id": org.id,
-                "slug": org.slug,
-                "name": org.name,
-                "name_highlight": name_hl,
-                "bio": org.bio,
-                "bio_highlight": bio_hl,
-                "avatar_url": org.avatar_url,
-                "member_count": members,
-            }
-        )
-    return out, total
-
-
-def search_all(
-    db: Session,
-    *,
-    query: str,
-    types: set[str],
-    limit: int,
-    filters: EventFilters | None = None,
-    after: tuple[float, datetime, uuid.UUID] | None = None,
-) -> dict[str, dict]:
-    """Run grouped FTS across the requested entity types.
-
-    ``types`` is a subset of ``{"geolocation", "request", "collection",
-    "user", "organization"}`` (the router expands ``type=all``). An empty query
-    returns empty unless a filter is active, which puts the event groups in
-    browse mode.
-
-    ``filters`` scopes the two event groups. While any filter is active the
-    users and organizations groups empty, since the filters are event
-    predicates. The
-    collections group follows the same rule except for ``author`` and ``tag``,
-    which narrow it (and enable browse mode); any other filter names an event
-    property a collection has no reading of, and empties it
-    (``EventFilters.active_beyond``).
-
-    ``after`` pages the geolocations group (``search_geolocations``).
-
-    Returns ``{group: {"hits": [...], "total": int}}`` for every group, with
-    empty hits and total 0 for unrequested ones so the shape stays stable. The
-    geolocations group also carries ``"cursor"``, its next page's cursor or
-    ``None``.
-    """
-    filters = filters or EventFilters()
-    result: dict[str, dict] = {
-        "geolocations": {"hits": [], "total": 0, "cursor": None},
-        "requests": {"hits": [], "total": 0},
-        "collections": {"hits": [], "total": 0},
-        "users": {"hits": [], "total": 0},
-        "organizations": {"hits": [], "total": 0},
-    }
-    if not query.strip() and not filters.active:
-        return result
-
-    if "geolocation" in types:
-        hits, total, cursor = search_geolocations(
-            db, query=query, limit=limit, filters=filters, after=after
-        )
-        result["geolocations"] = {"hits": hits, "total": total, "cursor": cursor}
-    if "request" in types:
-        hits, total = search_requests(db, query=query, limit=limit, filters=filters)
-        result["requests"] = {"hits": hits, "total": total}
-    if "collection" in types and not filters.active_beyond("author", "tag"):
-        collection_hits, total = search_collections(
-            db, query=query, limit=limit, author=filters.author, tags=filters.tag
-        )
-        result["collections"] = {"hits": collection_hits, "total": total}
-    if "user" in types and not filters.active:
-        hits, total = search_users(db, query=query, limit=limit)
-        result["users"] = {"hits": hits, "total": total}
-    if "organization" in types and not filters.active:
-        hits, total = search_organizations(db, query=query, limit=limit)
-        result["organizations"] = {"hits": hits, "total": total}
-    return result
 
 
 # The words a suggestion may offer: the titles of the events a reader can see, and live handles.
@@ -874,19 +873,19 @@ def _respelled(db: Session, query: str) -> str | None:
 
 
 def spelling_suggestion(
-    db: Session, *, query: str, types: set[str], filters: EventFilters | None = None
+    db: Session, *, query: str, types: frozenset[str], filters: EventFilters | None = None
 ) -> str | None:
-    """A respelling of ``query`` that finds results in ``types``, for a search that found none:
-    each unknown word becomes the closest word of the catalogue (``Khan Younis`` to ``Khan
-    Yunis``). ``None`` when a filter is active, when no word has a close match, or when the
-    respelling finds nothing either."""
-    if (filters is not None and filters.active) or not query.strip():
+    """A respelling of ``query`` that finds results in ``types`` and ``filters``, for a search
+    that found none: each unknown word becomes the closest word of the catalogue (``Khan Younis``
+    to ``Khan Yunis``). ``None`` when a filter other than ``status`` is active, when no word has a
+    close match, or when the respelling finds nothing either."""
+    if (filters is not None and filters.active_beyond("status")) or not query.strip():
         return None
     candidate = _respelled(db, query.strip())
     if candidate is None:
         return None
-    grouped = search_all(db, query=candidate, types=types, limit=1)
-    return candidate if any(group["total"] for group in grouped.values()) else None
+    found = search(db, query=candidate, types=types, limit=1, filters=filters)
+    return candidate if found.total else None
 
 
 def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
@@ -913,17 +912,3 @@ def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
         .all()
     )
     return [r.username for r in rows]
-
-
-# Allowed ``type`` values, re-exported by the router for its 422 message.
-# ``event`` is the union of the two event groups (the unified "Events" chip).
-ALLOWED_TYPES = {"all", "event", "geolocation", "request", "collection", "user", "organization"}
-
-
-def types_from_param(param: str) -> set[str]:
-    """Expand the ``type`` parameter (already validated by the router) into the group set."""
-    if param == "all":
-        return {"geolocation", "request", "collection", "user", "organization"}
-    if param == "event":
-        return {"geolocation", "request"}
-    return {param}

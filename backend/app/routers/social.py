@@ -4,10 +4,11 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
+from app.routers._filters import event_filters
 from app.routers.events._common import build_event_list
-from app.schemas.event import FeedItemRead
+from app.schemas.event import DateHistogram, FeedItemRead
 from app.services import social
-from app.services.event_filters import AUTHOR_FILTER_PATTERN, validate_source_filters
+from app.services.event_filters import EventFilters
 from app.services.pagination import (
     decode_cursor,
     encode_cursor,
@@ -29,13 +30,7 @@ def get_feed(
     limit: int = Query(10, ge=1),
     cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
     kind: list[FeedKind] | None = Query(None),
-    conflict: list[str] | None = Query(None),
-    source_kind: list[str] | None = Query(None),
-    level: list[str] | None = Query(None),
-    tag: list[str] | None = Query(None),
-    approved: bool = Query(False),
-    approved_by: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    approved_by_org: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
+    filters: EventFilters = Depends(event_filters),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[FeedItemRead]:
@@ -44,12 +39,10 @@ def get_feed(
     ``scope=following`` (default) keeps the geolocations credited to analysts
     the current user follows and the requests and detections they own, and is
     empty when they follow nobody; ``scope=all`` keeps every row. ``kind``
-    (``geolocation``, ``request``, ``detected``; all three when omitted), ``conflict``,
-    ``source_kind``, ``level``, ``tag``, ``approved``, ``approved_by`` and
-    ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
-    ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
+    (``geolocation``, ``request``, ``detected``; all three when omitted) keeps those kinds,
+    and the filter set narrows the rows as on ``GET /events``. Cursor-paged, capped at 100
+    rows; the ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
     """
-    validate_source_filters(source_kind, level)
     size = page_size(limit)
     window = social.get_feed(
         db,
@@ -58,16 +51,32 @@ def get_feed(
         size=size,
         cursor=decode_cursor(cursor) if cursor is not None else None,
         kind=kind,
-        conflict=conflict,
-        source_kind=source_kind,
-        level=level,
-        tag=tag,
-        approved=approved,
-        approved_by=approved_by,
-        approved_by_org=approved_by_org,
+        filters=filters,
     )
     rows = paged(request, response, window, size, lambda r: encode_cursor(r[3], r[0].id))
     return [
         FeedItemRead(**build_event_list(geo, lat=lat, lng=lng).model_dump(), feed_at=at)
         for geo, lat, lng, at in rows
     ]
+
+
+@router.get("/feed/dates", response_model=DateHistogram)
+@authenticated_read_quota
+@limiter.limit("120/minute")
+def get_feed_dates(
+    request: Request,
+    scope: FeedScope = Query("following"),
+    kind: list[FeedKind] | None = Query(None),
+    filters: EventFilters = Depends(event_filters),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DateHistogram:
+    """The rows ``GET /feed`` walks for the request, counted per day on each date axis.
+
+    Takes the ``scope``, ``kind`` and filters of ``GET /feed``. ``occurred_date`` ignores the
+    request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
+    ``submitted_from`` / ``submitted_to``.
+    """
+    return DateHistogram.model_validate(
+        social.get_feed_dates(db, user_id=current_user.id, scope=scope, kind=kind, filters=filters)
+    )

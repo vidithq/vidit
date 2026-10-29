@@ -1116,8 +1116,7 @@ def test_owner_delete_under_an_open_report_withholds_the_collection(
     client.cookies.clear()
     assert client.get(f"/api/v1/users/{owner.username}/collections").json()["total"] == 0
     assert (
-        client.get(f"/api/v1/search?type=collection&author={owner.username}").json()["collections"]
-        == []
+        client.get(f"/api/v1/search?type=collection&author={owner.username}").json()["hits"] == []
     )
 
     # The owner sees it as deleted too, and can no longer write to it.
@@ -1675,7 +1674,7 @@ def test_every_read_surface_carries_the_same_tags(db, cleanup, owner, make_tag):
     assert _tag_names(client.get(f"/api/v1/collections/{collection.id}").json()) == expected
 
     hits = client.get(f"/api/v1/search?type=collection&author={owner.username}").json()
-    assert [_tag_names(hit) for hit in hits["collections"]] == [expected]
+    assert [_tag_names(hit) for hit in hits["hits"]] == [expected]
 
     listed = client.get(f"/api/v1/users/{owner.username}/collections").json()
     assert [_tag_names(item) for item in listed["items"]] == [expected]

@@ -16,6 +16,7 @@ import {
   COLLECTION,
   COLLECTION_ID,
   CONFLICTS,
+  DATE_HISTOGRAM,
   SUGGESTED_TAGS,
   TAGS,
   UPLOAD,
@@ -42,6 +43,7 @@ import {
   SITE,
   SITE_ID,
   X_HANDLE,
+  SEARCH_SECTIONS,
 } from "./fixtures";
 
 /**
@@ -74,6 +76,9 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/events\/points$/, []],
   [/^\/feed$/, FEED_ITEMS],
   [/^\/search$/, EMPTY_SEARCH],
+  [/^\/search\/sections$/, SEARCH_SECTIONS],
+  // The timelines of search, the feed and the Requests board.
+  [/^\/(search|feed)\/dates$/, DATE_HISTOGRAM],
   [/^\/events\/possible-duplicates$/, []],
   [/^\/tags$/, TAGS],
   [/^\/tags\/suggested$/, SUGGESTED_TAGS],

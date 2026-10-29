@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { DetectionQueueRow } from "@/components/detections/DetectionQueueRow";
+import { detectionItem } from "@/components/detections/detectionItem";
+import { Item } from "@/components/ui/Item";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
@@ -121,7 +122,7 @@ export default function DetectionsPage() {
         ) : (
           <div className="space-y-2">
             {rows.map((detection) => (
-              <DetectionQueueRow key={detection.id} detection={detection} />
+              <Item key={detection.id} variant="list" {...detectionItem(detection)} />
             ))}
           </div>
         )}

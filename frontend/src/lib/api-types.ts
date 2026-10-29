@@ -1774,12 +1774,35 @@ export interface paths {
          *     ``scope=following`` (default) keeps the geolocations credited to analysts
          *     the current user follows and the requests and detections they own, and is
          *     empty when they follow nobody; ``scope=all`` keeps every row. ``kind``
-         *     (``geolocation``, ``request``, ``detected``; all three when omitted), ``conflict``,
-         *     ``source_kind``, ``level``, ``tag``, ``approved``, ``approved_by`` and
-         *     ``approved_by_org`` narrow the rows as on ``GET /events``. Cursor-paged, capped at 100 rows; the
-         *     ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
+         *     (``geolocation``, ``request``, ``detected``; all three when omitted) keeps those kinds,
+         *     and the filter set narrows the rows as on ``GET /events``. Cursor-paged, capped at 100
+         *     rows; the ``Link: rel="next"`` cursor is present exactly when a next page holds a row.
          */
         get: operations["get_feed_api_v1_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feed/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feed Dates
+         * @description The rows ``GET /feed`` walks for the request, counted per day on each date axis.
+         *
+         *     Takes the ``scope``, ``kind`` and filters of ``GET /feed``. ``occurred_date`` ignores the
+         *     request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
+         *     ``submitted_from`` / ``submitted_to``.
+         */
+        get: operations["get_feed_dates_api_v1_feed_dates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2148,23 +2171,16 @@ export interface paths {
         };
         /**
          * Search
-         * @description Grouped FTS across the five result groups.
+         * @description One ranked list of events, sites, collections, analysts and organizations.
          *
-         *     Empty or whitespace-only ``q`` returns an empty response (keeps the
-         *     still-typing hits cheap).
+         *     An empty ``q`` with no active filter returns an empty list (keeps the still-typing hits
+         *     cheap); with an active filter it browses the filtered view, newest first.
          *
-         *     Any active filter scopes the event groups and empties the users and
-         *     organizations groups;
-         *     ``author`` narrows the collections group to that owner and every other
-         *     filter empties it. With an empty ``q`` the response browses the filtered
-         *     view, collections included when ``author`` is the only filter (the
-         *     profile's two "Show more" entry points). Filter semantics are
-         *     ``services/event_filters.apply_filters``.
+         *     ``type`` picks the hit types. ``status`` narrows the events. Every other filter narrows the
+         *     events, narrows the sites and collections it applies to, and leaves out the types it does
+         *     not apply to; see ``docs/api.md``.
          *
-         *     The geolocations group pages: ``geolocations_cursor`` is set exactly when a
-         *     further page holds a row, and ``cursor`` with ``type=geolocation`` fetches it.
-         *
-         *     When every group is empty, ``suggestion`` may hold a respelling of ``q`` that finds results.
+         *     When nothing matches, ``suggestion`` may hold a respelling of ``q`` that finds results.
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -2188,6 +2204,54 @@ export interface paths {
          *     this is how a partial name becomes a handle. Empty ``q`` returns [].
          */
         get: operations["suggest_authors_api_v1_search_authors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Dates
+         * @description The events ``GET /search`` lists for the request, counted per day on each date axis.
+         *
+         *     Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
+         *     own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
+         *     / ``submitted_to``. An empty ``q`` with no active filter counts every searchable event; a
+         *     ``type`` without ``event`` counts nothing.
+         */
+        get: operations["search_dates_api_v1_search_dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/search/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Sections
+         * @description The top hits of each type, one section per type with a hit.
+         *
+         *     Takes the query, types and filters of ``GET /search``; each section is the first page that
+         *     ``GET /search`` returns for its type alone, its ``cursor`` included.
+         */
+        get: operations["search_sections_api_v1_search_sections_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4050,6 +4114,27 @@ export interface components {
             /** Lng */
             lng: number;
         };
+        /**
+         * DateHistogram
+         * @description Events per day on each date axis, ascending, days without a row left out
+         *     (``services.event_filters.date_histogram``).
+         */
+        DateHistogram: {
+            /** Occurred Date */
+            occurred_date: components["schemas"]["DayCount"][];
+            /** Submitted */
+            submitted: components["schemas"]["DayCount"][];
+        };
+        /** DayCount */
+        DayCount: {
+            /** Count */
+            count: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+        };
         /** DisplayPreferences */
         DisplayPreferences: {
             /** Help Tooltips */
@@ -4107,6 +4192,8 @@ export interface components {
             author?: string | null;
             /** Conflict */
             conflict?: string[] | null;
+            /** Has Coords */
+            has_coords?: boolean | null;
             /** Level */
             level?: string[] | null;
             /** Media */
@@ -4249,7 +4336,7 @@ export interface components {
              * Format: date-time
              */
             linked_at: string;
-            site: components["schemas"]["SiteRef"];
+            site: components["schemas"]["SiteItem"];
         };
         /**
          * EventVersionList
@@ -4955,8 +5042,56 @@ export interface components {
             /** Token */
             token: string;
         };
-        /** SearchEventHit */
+        /**
+         * SearchCollectionHit
+         * @description The ``CollectionRead`` every surface renders. No ``*_highlight``.
+         */
+        SearchCollectionHit: {
+            /** Cover */
+            cover: components["schemas"]["CollectionCoverTile"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Description Text */
+            description_text: string;
+            /** Event Count */
+            event_count: number;
+            /** First Date */
+            first_date: string | null;
+            /** Hidden At */
+            hidden_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Date */
+            last_date: string | null;
+            owner: components["schemas"]["AuthorRef"];
+            /** Tags */
+            tags: components["schemas"]["TagRead"][];
+            /** Title */
+            title: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "collection";
+        };
+        /**
+         * SearchEventHit
+         * @description A geolocated or detected event, or an open request.
+         */
         SearchEventHit: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Geolocators */
             geolocators: components["schemas"]["AuthorRef"][];
             /**
@@ -4967,9 +5102,9 @@ export interface components {
             /** Is Graphic */
             is_graphic: boolean;
             /** Lat */
-            lat: number;
+            lat: number | null;
             /** Lng */
-            lng: number;
+            lng: number | null;
             /** Media */
             media: components["schemas"]["MediaRead"][];
             /** Occurred Date */
@@ -4986,6 +5121,11 @@ export interface components {
             title: string;
             /** Title Highlight */
             title_highlight: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "event";
         };
         /**
          * SearchMatch
@@ -5029,82 +5169,86 @@ export interface components {
             name_highlight: string;
             /** Slug */
             slug: string;
-        };
-        /** SearchRequestHit */
-        SearchRequestHit: {
             /**
-             * Created At
-             * Format: date-time
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
-            created_at: string;
+            type: "organization";
+        };
+        /**
+         * SearchResponse
+         * @description One page of hits in rank order.
+         */
+        SearchResponse: {
+            /** Cursor */
+            cursor: string | null;
+            /** Hits */
+            hits: (components["schemas"]["SearchEventHit"] | components["schemas"]["SearchSiteHit"] | components["schemas"]["SearchCollectionHit"] | components["schemas"]["SearchUserHit"] | components["schemas"]["SearchOrganizationHit"])[];
+            /** Query */
+            query: string;
+            /** Suggestion */
+            suggestion?: string | null;
+            /** Total */
+            total: number;
+        };
+        /**
+         * SearchSection
+         * @description The first page of one type's list: what ``GET /search`` returns for that type alone with
+         *     the same ``limit``, its ``cursor`` included.
+         */
+        SearchSection: {
+            /** Cursor */
+            cursor: string | null;
+            /** Hits */
+            hits: (components["schemas"]["SearchEventHit"] | components["schemas"]["SearchSiteHit"] | components["schemas"]["SearchCollectionHit"] | components["schemas"]["SearchUserHit"] | components["schemas"]["SearchOrganizationHit"])[];
+            /** Total */
+            total: number;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "event" | "site" | "collection" | "user" | "organization";
+        };
+        /**
+         * SearchSections
+         * @description One section per type with a hit, in the order of ``services.search.SEARCH_TYPES``.
+         */
+        SearchSections: {
+            /** Query */
+            query: string;
+            /** Sections */
+            sections: components["schemas"]["SearchSection"][];
+            /** Suggestion */
+            suggestion?: string | null;
+        };
+        /**
+         * SearchSiteHit
+         * @description A visible site with its latest source and its picture (``SiteItem.media``).
+         */
+        SearchSiteHit: {
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Is Graphic */
-            is_graphic: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            last_source: components["schemas"]["SiteLastSourceRead"] | null;
             /** Media */
             media: components["schemas"]["MediaRead"][];
+            /** Name */
+            name: string;
+            /** Name Highlight */
+            name_highlight: string;
             owner: components["schemas"]["AuthorRef"];
-            /** Source Urls */
-            source_urls: string[];
             /**
-             * Status
+             * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            status: "requested" | "detected" | "geolocated" | "closed";
-            /** Tags */
-            tags: components["schemas"]["TagRead"][];
-            /** Title */
-            title: string;
-            /** Title Highlight */
-            title_highlight: string;
-        };
-        /**
-         * SearchResponse
-         * @description Grouped result set. Groups not requested via ``type=`` are empty arrays,
-         *     keeping the JSON shape stable.
-         */
-        SearchResponse: {
-            /** Collections */
-            collections: components["schemas"]["CollectionRead"][];
-            /** Geolocations */
-            geolocations: components["schemas"]["SearchEventHit"][];
-            /** Geolocations Cursor */
-            geolocations_cursor: string | null;
-            /** Organizations */
-            organizations: components["schemas"]["SearchOrganizationHit"][];
-            /** Query */
-            query: string;
-            /** Requests */
-            requests: components["schemas"]["SearchRequestHit"][];
-            /** Suggestion */
-            suggestion?: string | null;
-            total: components["schemas"]["SearchTotals"];
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "all" | "event" | "geolocation" | "request" | "collection" | "user" | "organization";
-            /** Users */
-            users: components["schemas"]["SearchUserHit"][];
-        };
-        /**
-         * SearchTotals
-         * @description Per-group pre-LIMIT match counts, so the UI needn't re-sum the capped hit lists.
-         */
-        SearchTotals: {
-            /** Collections */
-            collections: number;
-            /** Geolocations */
-            geolocations: number;
-            /** Organizations */
-            organizations: number;
-            /** Requests */
-            requests: number;
-            /** Users */
-            users: number;
+            type: "site";
         };
         /** SearchUserHit */
         SearchUserHit: {
@@ -5119,6 +5263,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "user";
             /** Username */
             username: string;
             /** Username Highlight */
@@ -5218,6 +5367,7 @@ export interface components {
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
             /** Linked Events */
             linked_events: components["schemas"]["SiteLinkedEventRead"][];
+            media: components["schemas"]["MediaRead"] | null;
             /** Name */
             name: string;
             /** Overlapping Sites */
@@ -5249,6 +5399,26 @@ export interface components {
              * Format: uuid
              */
             event_id: string;
+        };
+        /**
+         * SiteItem
+         * @description A site as a list shows it: the reference and its picture
+         *     (``services/sites.site_images``).
+         */
+        SiteItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            media: components["schemas"]["MediaRead"] | null;
+            /** Name */
+            name: string;
         };
         /** SiteLastSourceRead */
         SiteLastSourceRead: {
@@ -5331,6 +5501,7 @@ export interface components {
             kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
             last_source: components["schemas"]["SiteLastSourceRead"] | null;
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
+            media: components["schemas"]["MediaRead"] | null;
             /** Name */
             name: string;
             /**
@@ -5407,6 +5578,7 @@ export interface components {
             latest_link_effect: components["schemas"]["LatestLinkEffect"] | null;
             /** Linked Events */
             linked_events: components["schemas"]["SiteLinkedEventRead"][];
+            media: components["schemas"]["MediaRead"] | null;
             /** Name */
             name: string;
             owner: components["schemas"]["AuthorRef"];
@@ -5420,21 +5592,6 @@ export interface components {
             /** Version No */
             version_no: number;
             zone: components["schemas"]["ZonePolygon"];
-        };
-        /** SiteRef */
-        SiteRef: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
-            /** Name */
-            name: string;
         };
         /**
          * SiteSourceCreate
@@ -5572,6 +5729,7 @@ export interface components {
              * @enum {string}
              */
             kind: "airbase" | "military_base" | "depot" | "port" | "air_defence_position" | "artillery_position" | "radar" | "fortification" | "unknown" | "other";
+            media: components["schemas"]["MediaRead"] | null;
             /** Name */
             name: string;
         };
@@ -7883,26 +8041,30 @@ export interface operations {
             query?: {
                 view?: string;
                 status?: string[] | null;
-                conflict?: string[] | null;
-                source_kind?: string[] | null;
-                level?: string[] | null;
-                tag?: string[] | null;
                 bbox?: string | null;
-                occurred_date_from?: string | null;
-                occurred_date_to?: string | null;
-                submitted_from?: string | null;
-                submitted_to?: string | null;
-                author?: string | null;
-                /** @description true: approved on the live version */
-                approved?: boolean;
-                approved_by?: string | null;
-                approved_by_org?: string | null;
-                /** @description true: with a location; false: without */
-                has_coords?: boolean | null;
                 sort?: "newest" | "oldest";
                 limit?: number;
                 /** @description Opaque cursor from a Link: rel=next header */
                 cursor?: string | null;
+                conflict?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
+                tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -9132,9 +9294,21 @@ export interface operations {
                 source_kind?: string[] | null;
                 level?: string[] | null;
                 tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
                 approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
                 approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
                 approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -9151,6 +9325,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedItemRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_feed_dates_api_v1_feed_dates_get: {
+        parameters: {
+            query?: {
+                scope?: "following" | "all";
+                kind?: ("geolocation" | "request" | "detected")[] | null;
+                conflict?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
+                tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DateHistogram"];
                 };
             };
             /** @description Validation Error */
@@ -9863,14 +10090,14 @@ export interface operations {
     search_api_v1_search_get: {
         parameters: {
             query?: {
-                /** @description Free-text query (empty returns an empty result set) */
-                q?: string;
-                /** @description One of 'all', 'event', 'geolocation', 'request', 'collection', 'user', 'organization' */
-                type?: string;
-                /** @description Per-group cap */
+                /** @description Hits per page */
                 limit?: number;
-                /** @description Opaque cursor from `geolocations_cursor`: the next page of the geolocations group. Requires type=geolocation and the query and filters of the page that minted it */
+                /** @description Opaque `cursor` of a previous response: its next page. Send the query, types and filters of the request that returned it */
                 cursor?: string | null;
+                /** @description Free-text query */
+                q?: string;
+                /** @description Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type */
+                type?: string[] | null;
                 status?: string[] | null;
                 conflict?: string[] | null;
                 source_kind?: string[] | null;
@@ -9880,7 +10107,7 @@ export interface operations {
                 occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
-                /** @description Scope the event groups to this owner username (exact, case-insensitive) */
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
                 author?: string | null;
                 media?: string[] | null;
                 /** @description Keep events approved on their live version */
@@ -9889,6 +10116,8 @@ export interface operations {
                 approved_by?: string | null;
                 /** @description Keep events this organization approved on their live version (slug) */
                 approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -9935,6 +10164,116 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthorSuggestions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_dates_api_v1_search_dates_get: {
+        parameters: {
+            query?: {
+                /** @description Free-text query */
+                q?: string;
+                /** @description Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type */
+                type?: string[] | null;
+                status?: string[] | null;
+                conflict?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
+                tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DateHistogram"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_sections_api_v1_search_sections_get: {
+        parameters: {
+            query?: {
+                /** @description Hits per section */
+                limit?: number;
+                /** @description Free-text query */
+                q?: string;
+                /** @description Repeatable: 'event', 'site', 'collection', 'user', 'organization'. Omitted, every type */
+                type?: string[] | null;
+                status?: string[] | null;
+                conflict?: string[] | null;
+                source_kind?: string[] | null;
+                level?: string[] | null;
+                tag?: string[] | null;
+                occurred_date_from?: string | null;
+                occurred_date_to?: string | null;
+                submitted_from?: string | null;
+                submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
+                author?: string | null;
+                media?: string[] | null;
+                /** @description Keep events approved on their live version */
+                approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
+                approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
+                approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchSections"];
                 };
             };
             /** @description Validation Error */

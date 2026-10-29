@@ -6,8 +6,21 @@ import type { ReadableError } from "@/lib/errors";
 
 type FeedItem = components["schemas"]["FeedItemRead"];
 
+// The page's URL: what it reads on load and what it writes back on each change.
+const nav = vi.hoisted(() => {
+  const state = { query: "", replace: (href: string, options?: object) => void [href, options] };
+  return {
+    state,
+    router: {
+      push: () => {},
+      back: () => {},
+      replace: (href: string, options?: object) => state.replace(href, options),
+    },
+  };
+});
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  useRouter: () => nav.router,
+  useSearchParams: () => new URLSearchParams(nav.state.query),
 }));
 
 // Mutable so a test can hold the page behind the auth gate while the first page arrives.
@@ -22,6 +35,7 @@ vi.mock("@/hooks/useRequireAuth", () => ({
 // The profile read answers the follow count once the following view comes back empty, and the
 // taxonomy reads feed the filter panel.
 const profile = vi.hoisted(() => ({ following_count: 0 }));
+const NO_DATES = vi.hoisted(() => ({ occurred_date: [], submitted: [] }));
 vi.mock("@/hooks/useApiResource", () => ({
   useApiResource: (path: string | null) => {
     const data =
@@ -29,9 +43,11 @@ vi.mock("@/hooks/useApiResource", () => ({
         ? [{ id: "t1", name: "airstrike" }]
         : path === "/conflicts?used=true"
           ? [{ id: "c1", name: "Russo-Ukrainian war" }]
-          : path
-            ? profile
-            : null;
+          : path?.startsWith("/feed/dates")
+            ? NO_DATES
+            : path
+              ? profile
+              : null;
     return { data, error: null, loading: false, refetch: () => {} };
   },
 }));
@@ -55,6 +71,7 @@ vi.mock("@/hooks/useCursorList", () => ({
 }));
 
 import FeedPage from "./page";
+import { openFilterGroups, sheetButton } from "@/test/filters";
 
 const ANA = { id: "u1", username: "ana", avatar_url: null };
 const BOB = { id: "u2", username: "bob", avatar_url: null };
@@ -81,6 +98,8 @@ function item(extra: Partial<FeedItem>): FeedItem {
 
 const lastPath = () => walk.paths[walk.paths.length - 1];
 
+beforeEach(openFilterGroups);
+
 beforeEach(() => {
   walk.items = [];
   walk.error = null;
@@ -91,6 +110,8 @@ beforeEach(() => {
   walk.paths = [];
   profile.following_count = 0;
   auth.loading = false;
+  nav.state.query = "";
+  nav.state.replace = vi.fn();
 });
 
 /** Observers by the node they watch: card media observes too, so a test fires the one watching
@@ -126,11 +147,20 @@ afterEach(() => {
 });
 
 
-/** A filter chip in the rail, not the active-filter pill of the same name that heads the rail. */
-const chip = (rail: HTMLElement, name: string) =>
-  within(rail)
-    .getAllByRole("button", { name })
-    .find((button) => !button.title.startsWith("Remove filter")) as HTMLElement;
+const rail = () => screen.getByRole("complementary", { name: "Filters" });
+
+/** Picks an option of a dimension through its line in the rail. */
+function pick(dimension: string, option: string | RegExp) {
+  const field = within(rail()).queryByRole("combobox", { name: dimension });
+  if (field) {
+    fireEvent.focus(field);
+    fireEvent.click(screen.getByRole("option", { name: option }));
+    return;
+  }
+  fireEvent.click(within(rail()).getByRole("button", { name: dimension }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: dimension })).getByRole("button", { name: option }));
+  fireEvent.keyDown(screen.getByRole("dialog", { name: dimension }), { key: "Escape" });
+}
 
 describe("FeedPage", () => {
   it("cards a request and a geolocation, each linked and credited by kind", () => {
@@ -154,24 +184,18 @@ describe("FeedPage", () => {
     expect(screen.getByRole("link", { name: "bob" })).toHaveAttribute("href", "/profile/bob");
   });
 
-  it("starts on Following and walks everyone's activity on All, picked in the filter panel", () => {
+  it("starts on Following and walks everyone's activity once the switch is off", () => {
     walk.items = [item({})];
     render(<FeedPage />);
     expect(lastPath()).toBe("/feed?scope=following");
-    const rail = screen.getByRole("complementary", { name: "Filters" });
-    const activity = within(rail).getByRole("group", { name: "Activity" });
-    expect(within(activity).getByRole("button", { name: "Following" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    const following = within(rail()).getByRole("switch", { name: "Following" });
+    expect(following).toBeChecked();
 
-    fireEvent.click(within(activity).getByRole("button", { name: "All" }));
+    fireEvent.click(following);
 
     expect(lastPath()).toBe("/feed?scope=all");
-    expect(within(activity).getByRole("button", { name: "All" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(following).not.toBeChecked();
+    expect(nav.state.replace).toHaveBeenLastCalledWith("/feed?scope=all", { scroll: false });
   });
 
   it("offers All to an analyst who follows nobody", () => {
@@ -256,7 +280,7 @@ describe("FeedPage", () => {
     expect(screen.getByText("You have reached the end of the feed")).toBeInTheDocument();
   });
 
-  it("puts the title first, names both dates, and keys the conflict, tags plain", () => {
+  it("puts the title before the byline, and the detail line names the kind and both dates", () => {
     walk.items = [
       item({
         id: "g1",
@@ -284,16 +308,11 @@ describe("FeedPage", () => {
     const byline = card.querySelector("a[href^='/profile/']")!;
     expect(heading.compareDocumentPosition(byline) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    expect(within(card).getByText("Event 25 Aug 2009")).toBeInTheDocument();
-    expect(within(card).getByText("Published 3 Oct 2026")).toBeInTheDocument();
-    expect(screen.getByText("Requested 4 Oct 2026")).toBeInTheDocument();
-
-    expect(within(card).getByText("Conflict:").parentElement).toHaveTextContent(
-      "Conflict:Russo-Ukrainian war",
-    );
-    // A card carries no source, so it names no source kind.
-    expect(within(card).queryByText("Kind:")).toBeNull();
-    expect(within(card).getByText("airstrike")).toBeInTheDocument();
+    const [event, request] = container.querySelectorAll("article");
+    expect(event).toHaveTextContent(/Event·25 Aug 2009·.*·Published 3 Oct 2026/);
+    expect(request).toHaveTextContent(/^Where is this bridge.*Request·.*·Requested 4 Oct 2026/);
+    // The card's anatomy holds no tag row.
+    expect(within(card).queryByText("airstrike")).toBeNull();
   });
 
   it("cards a detection with its badge and date, linked to its event page", () => {
@@ -310,75 +329,73 @@ describe("FeedPage", () => {
     expect(screen.getByText("Detected 5 Oct 2026")).toBeInTheDocument();
   });
 
-  it("lists every kind with no Show chip, and narrows to the chosen statuses, Detected included", () => {
+  it("lists every kind with no Show pick, and narrows to the chosen statuses, Detected included", () => {
     walk.items = [item({})];
     render(<FeedPage />);
     expect(lastPath()).toBe("/feed?scope=following");
-    const rail = screen.getByRole("complementary", { name: "Filters" });
-    expect(within(rail).getByText("Show")).toBeInTheDocument();
-    expect(within(rail).queryByText("Kind")).toBeNull();
 
-    fireEvent.click(chip(rail, "Detected"));
+    pick("Show", "Detected");
     expect(lastPath()).toBe("/feed?scope=following&kind=detected");
-    expect(within(rail).getByTitle("Remove filter Show: Detected")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+    expect(within(rail()).getByRole("button", { name: "Remove Detected" })).toBeInTheDocument();
 
-    fireEvent.click(chip(rail, "Geolocated"));
+    pick("Show", "Geolocated");
     expect(lastPath()).toBe("/feed?scope=following&kind=detected&kind=geolocation");
 
-    fireEvent.click(within(rail).getByTitle("Remove filter Show: Detected"));
+    fireEvent.click(within(rail()).getByRole("button", { name: "Remove Detected" }));
     expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
-
-    fireEvent.click(chip(rail, "Geolocated"));
-    expect(lastPath()).toBe("/feed?scope=following");
-    expect(within(rail).queryByTitle(/^Remove filter/)).toBeNull();
   });
 
-  it("narrows the walk from the rail: show, conflict and tag", () => {
-    walk.items = [item({})];
-    render(<FeedPage />);
-    const rail = screen.getByRole("complementary", { name: "Filters" });
-
-    fireEvent.click(chip(rail, "Requested"));
-    expect(lastPath()).toBe("/feed?scope=following&kind=request");
-
-    fireEvent.focus(within(rail).getByRole("combobox", { name: "Conflict" }));
-    fireEvent.click(screen.getByRole("option", { name: /^Russo-Ukrainian war/ }));
-    fireEvent.focus(within(rail).getByRole("combobox", { name: "Tags" }));
-    fireEvent.click(screen.getByRole("option", { name: "airstrike" }));
-    expect(lastPath()).toBe(
-      "/feed?scope=following&kind=request&conflict=Russo-Ukrainian+war&tag=airstrike",
-    );
-    expect(screen.getByRole("button", { name: "Filters (3)" })).toBeInTheDocument();
-
-    fireEvent.click(within(rail).getByTitle("Remove filter Show: Requested"));
-    expect(lastPath()).toBe(
-      "/feed?scope=following&conflict=Russo-Ukrainian+war&tag=airstrike",
-    );
-  });
-
-  it("applies each change in the Filters dialog at once, the scope included", () => {
+  it("narrows the walk from the rail with every dimension the feed serves", () => {
     walk.items = [item({})];
     render(<FeedPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Filters" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Geolocated" }));
-    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
-    fireEvent.click(within(dialog).getByRole("button", { name: "All" }));
-    expect(lastPath()).toBe("/feed?scope=all&kind=geolocation");
+    pick("Show", "Requested");
+    pick("Conflict", /^Russo-Ukrainian war/);
+    pick("Tags", "airstrike");
+    pick("Media", "Video");
+    pick("Location guess", "No guess");
+    expect(lastPath()).toBe(
+      "/feed?scope=following&kind=request&conflict=Russo-Ukrainian+war&tag=airstrike&media=video" +
+        "&has_coords=false",
+    );
+    expect(nav.state.replace).toHaveBeenLastCalledWith(
+      "/feed?status=requested&conflict=Russo-Ukrainian+war&tag=airstrike&media=video&has_coords=false",
+      { scroll: false },
+    );
+  });
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Clear" }));
+  it("reads its filters off the URL, the date windows included", () => {
+    nav.state.query = "scope=all&status=detected&author=ana&occurred_date_from=2024-01-01";
+    walk.items = [item({})];
+    render(<FeedPage />);
+
+    expect(lastPath()).toBe("/feed?scope=all&kind=detected&author=ana&occurred_date_from=2024-01-01");
+    expect(within(rail()).getByRole("switch", { name: "Following" })).not.toBeChecked();
+    expect(within(rail()).getByRole("button", { name: "Remove ana" })).toBeInTheDocument();
+    expect(nav.state.replace).not.toHaveBeenCalled();
+  });
+
+  it("applies each change in the sheet at once, Following included", () => {
+    walk.items = [item({})];
+    render(<FeedPage />);
+
+    fireEvent.click(sheetButton());
+    const sheet = screen.getByRole("dialog", { name: "Filters" });
+    fireEvent.click(within(sheet).getByRole("switch", { name: "Following" }));
     expect(lastPath()).toBe("/feed?scope=all");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(within(sheet).getByRole("switch", { name: "Approved only" }));
+    expect(lastPath()).toBe("/feed?scope=all&approved=true");
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Clear all" }));
+    expect(lastPath()).toBe("/feed?scope=all");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog", { name: "Filters" })).toBeNull();
   });
 
   it("says nothing matched the filters instead of the follow prompts", () => {
     profile.following_count = 0;
     render(<FeedPage />);
-    const rail = screen.getByRole("complementary", { name: "Filters" });
-    fireEvent.click(chip(rail, "Requested"));
+    pick("Show", "Requested");
 
     expect(screen.getByText("Nothing in the feed matches the filters.")).toBeInTheDocument();
     expect(screen.queryByText("You follow no analysts yet")).toBeNull();

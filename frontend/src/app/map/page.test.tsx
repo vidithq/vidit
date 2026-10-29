@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MapStateProvider } from "@/contexts/MapStateContext";
@@ -81,6 +81,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 }));
 
 import HomePage from "./page";
+import { openFilterGroups } from "@/test/filters";
 
 function readOf(id: string): Read {
   const read = reads.findLast((r) => r.path === `/events/${id}`);
@@ -101,6 +102,8 @@ function renderMap() {
     </MapStateProvider>,
   );
 }
+
+beforeEach(openFilterGroups);
 
 beforeEach(() => {
   reads = [];
@@ -198,10 +201,24 @@ describe("map detail panel", () => {
 });
 
 describe("map sites layer", () => {
-  const filtersButton = () => screen.getByRole("button", { name: /^Filters/ });
-  // The Sites pill shares the chip's name; only the pill carries a title.
-  const sitesChip = () => screen.getAllByRole("button", { name: "Sites" }).find((b) => !b.title)!;
-  const sitesPill = () => screen.queryByTitle("Remove filter Show: Sites");
+  // From lg up: the Filters header over the panel or, collapsed, the active pills. The phone bar
+  // renders its own Filters button after it.
+  const header = () => screen.getAllByRole("button", { name: /^Filters/ })[0];
+  const desktop = () => header().parentElement!;
+  const collapsedPills = () =>
+    within(desktop())
+      .queryAllByTitle(/^Remove filter Show: /)
+      .map((p) => p.title.replace("Remove filter Show: ", ""));
+  const lineValues = () =>
+    within(desktop())
+      .queryAllByRole("button", { name: /^Remove / })
+      .map((p) => p.querySelector("[aria-hidden]")?.textContent);
+  /** Toggles a Show option through the Show line's popover. */
+  const show = (option: string) => {
+    fireEvent.click(within(desktop()).getByRole("button", { name: "Show" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Show" })).getByRole("button", { name: option }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Show" }), { key: "Escape" });
+  };
 
   const SITE_NAME = "Rail depot";
   const ROW = {
@@ -248,19 +265,13 @@ describe("map sites layer", () => {
     events: Number(screen.getByRole("status", { name: "event points" }).textContent),
     sites: Number(screen.getByRole("status", { name: "sites" }).textContent),
   });
-  // The button reads "Filters", the active filter count, then the point count.
-  const filterCount = () => filtersButton().firstElementChild!.textContent!.replace("Filters", "");
-  const chip = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
-  const pills = () =>
-    screen.queryAllByTitle(/^Remove filter Show: /).map((p) => p.title.replace("Remove filter Show: ", ""));
-
   it("previews a site from its list row", async () => {
     await loadMap();
     const preview = screen.getByTestId("site preview");
     expect(preview).toHaveTextContent(SITE_NAME);
     expect(preview).toHaveTextContent("Depot");
     expect(preview).toHaveTextContent("Damage");
-    expect(preview).toHaveTextContent("Last source: 7 Sept 2026, Copernicus Browser");
+    expect(preview).toHaveTextContent("Site·7 Sept 2026·Damage");
   });
 
   it("opens a site in the event's side panel slot, one record at a time", async () => {
@@ -281,65 +292,89 @@ describe("map sites layer", () => {
     expect(screen.getAllByRole("button", { name: "Close detail panel" })).toHaveLength(1);
   });
 
-  it("shows every event and every site while no Show chip is selected", async () => {
+  it("shows every event and every site while no Show option is selected", async () => {
     await loadMap();
     expect(drawn()).toEqual({ events: 2, sites: 1 });
-    expect(filterCount()).toBe("");
-    expect(pills()).toEqual([]);
+    expect(collapsedPills()).toEqual([]);
+  });
+
+  it("offers Show the kinds the map draws, no request", async () => {
+    await loadMap();
+    fireEvent.click(header());
+    fireEvent.click(within(desktop()).getByRole("button", { name: "Show" }));
+    expect(
+      within(screen.getByRole("dialog", { name: "Show" }))
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Detected", "Geolocated", "Sites"]);
+    expect(within(desktop()).queryByRole("button", { name: "Location guess" })).toBeNull();
   });
 
   it("hides the sites when Geolocated alone is selected", async () => {
     await loadMap();
-    fireEvent.click(filtersButton());
-    chip("Geolocated");
+    fireEvent.click(header());
+    show("Geolocated");
 
     expect(drawn()).toEqual({ events: 1, sites: 0 });
     expect(screen.queryByRole("button", { name: "site s1" })).not.toBeInTheDocument();
-    expect(filterCount()).toBe("1");
-    expect(pills()).toEqual(["Geolocated"]);
+    expect(lineValues()).toEqual(["Geolocated"]);
   });
 
   it("hides every event when Sites alone is selected", async () => {
     await loadMap();
-    fireEvent.click(filtersButton());
-    fireEvent.click(sitesChip());
+    fireEvent.click(header());
+    show("Sites");
 
     expect(drawn()).toEqual({ events: 0, sites: 1 });
-    expect(filterCount()).toBe("1");
-    expect(pills()).toEqual(["Sites"]);
 
-    // Collapsed, the count and the pill still say what the map shows.
-    fireEvent.click(filtersButton());
-    expect(filterCount()).toBe("1");
-    fireEvent.click(sitesPill()!);
+    // Collapsed, the pill still says what the map shows, and removes it.
+    fireEvent.click(header());
+    expect(collapsedPills()).toEqual(["Sites"]);
+    fireEvent.click(within(desktop()).getByTitle("Remove filter Show: Sites"));
     expect(drawn()).toEqual({ events: 2, sites: 1 });
-    expect(filterCount()).toBe("");
+    expect(collapsedPills()).toEqual([]);
   });
 
-  it("shows the sites and the named statuses when Sites is mixed with status chips", async () => {
+  it("shows the sites and the named statuses when Sites is mixed with a status", async () => {
     await loadMap();
-    fireEvent.click(filtersButton());
-    fireEvent.click(sitesChip());
-    chip("Requested");
-    // The map draws no requests, so Sites and Requested leave the sites alone.
-    expect(drawn()).toEqual({ events: 0, sites: 1 });
+    fireEvent.click(header());
+    show("Sites");
+    show("Detected");
 
-    chip("Detected");
     expect(drawn()).toEqual({ events: 1, sites: 1 });
-    expect(filterCount()).toBe("3");
-    expect(pills()).toEqual(["Requested", "Detected", "Sites"]);
+    fireEvent.click(header());
+    expect(collapsedPills()).toEqual(["Detected", "Sites"]);
+  });
+
+  it("narrows the drawn points by the date windows, in memory", async () => {
+    await loadMap();
+    fireEvent.click(header());
+    const [eventStart] = within(desktop()).getAllByLabelText("Event date window start date");
+    fireEvent.change(eventStart, { target: { value: "2026-09-02" } });
+
+    expect(drawn()).toEqual({ events: 1, sites: 1 });
+    expect(reads.filter((r) => r.path.startsWith("/events/points?"))).toHaveLength(1);
   });
 
   it("shows every event and every site again on Clear all", async () => {
     await loadMap();
-    fireEvent.click(filtersButton());
-    chip("Detected");
-    chip("Geolocated");
+    fireEvent.click(header());
+    show("Detected");
+    show("Geolocated");
     expect(drawn()).toEqual({ events: 2, sites: 0 });
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    fireEvent.click(within(desktop()).getByRole("button", { name: "Clear all" }));
     expect(drawn()).toEqual({ events: 2, sites: 1 });
-    expect(pills()).toEqual([]);
-    expect(filterCount()).toBe("");
+    expect(lineValues()).toEqual([]);
+  });
+
+  it("opens the same panel in a sheet from the phone bar", async () => {
+    await loadMap();
+    fireEvent.click(screen.getAllByRole("button", { name: "Filters" }).at(-1)!);
+    const sheet = screen.getByRole("dialog", { name: "Filters" });
+    expect(within(sheet).getAllByRole("button", { name: "Play timeline" })).toHaveLength(2);
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Show" })).getByRole("button", { name: "Sites" }));
+    expect(drawn()).toEqual({ events: 0, sites: 1 });
   });
 });

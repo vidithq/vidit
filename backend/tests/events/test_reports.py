@@ -209,7 +209,7 @@ def test_hidden_event_absent_from_search(db, author):
 
     response = client.get(f"/api/v1/search?q={token}")
     assert response.status_code == 200
-    ids = {hit["id"] for hit in response.json()["geolocations"]}
+    ids = {hit["id"] for hit in response.json()["hits"]}
     assert str(visible.id) in ids
     assert str(hidden.id) not in ids
 

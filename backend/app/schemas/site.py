@@ -208,6 +208,13 @@ class SiteRef(BaseModel):
     kind: SiteKind
 
 
+class SiteItem(SiteRef):
+    """A site as a list shows it: the reference and its picture
+    (``services/sites.site_images``)."""
+
+    media: MediaRead | None
+
+
 class SiteOverlapRead(SiteRef):
     """A visible site whose current zone intersects the probed zone.
 
@@ -295,6 +302,8 @@ class SiteState(BaseModel):
     contour_id: uuid.UUID
     last_source: SiteLastSourceRead | None
     latest_link_effect: LatestLinkEffect | None
+    # See ``SiteItem.media``.
+    media: MediaRead | None
 
 
 class SiteList(SiteState):
@@ -324,7 +333,7 @@ class SiteCreatedRead(SiteRead):
     overlapping_sites: list[SiteOverlapRead]
 
 
-class SiteSuggestionRead(SiteRef):
+class SiteSuggestionRead(SiteItem):
     """A site an event may link to; ``distance_m`` is from the event to the current zone."""
 
     distance_m: float | None
@@ -338,7 +347,7 @@ class EventSiteLinkCreate(BaseModel):
 class EventSiteLinkRead(BaseModel):
     """One live link of an event to a site."""
 
-    site: SiteRef
+    site: SiteItem
     effect: LinkEffect
     linked_at: datetime
 

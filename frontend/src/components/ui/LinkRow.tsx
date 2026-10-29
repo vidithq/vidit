@@ -7,7 +7,7 @@ import { FORM_LABEL } from "./form-styles";
 import { OutboundLink } from "./OutboundLink";
 
 // "icon + label + value" link row (the About page's guide, legal and contact
-// channels; the Notifications feed).
+// channels; the Notifications feed; the search page's hits).
 //
 // - `href` present: a link; the value reads orange with the orange-border hover.
 // - `href` absent: a <div>; the value stays neutral (names a destination without
@@ -80,7 +80,8 @@ export function LinkRow({
   icon: LucideIcon;
   leading?: ReactNode;
   label?: string;
-  value: string;
+  /** A node, so a row can mark the words a search matched. */
+  value: ReactNode;
   meta?: ReactNode;
   href?: string;
   external?: boolean;

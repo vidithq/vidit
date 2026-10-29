@@ -16,8 +16,8 @@ import {
   type MapBounds,
 } from "@/lib/viewport";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
-import { FilterPanel } from "@/components/map/FilterPanel";
-import { showFieldScope } from "@/components/filters/EventFilterSections";
+import { MapFilters } from "@/components/map/MapFilters";
+import { inWindow, showScope, splitShow } from "@/components/filters/model";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SitePanel, SitePreview } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
@@ -39,15 +39,13 @@ const SiteLayers = dynamic(
 );
 
 export default function HomePage() {
-  // Navigation-surviving state lives in MapStateContext; the page reads only filter values (setters live with FilterPanel).
+  // Navigation-surviving state lives in MapStateContext; the page reads only filter values (setters live with MapFilters).
   const {
     viewState,
     setViewState,
     selectedId,
     setSelectedId,
     filters,
-    dateWindows,
-    sitesSelected,
     selectedSiteId,
     setSelectedSiteId,
   } = useMapState();
@@ -61,9 +59,9 @@ export default function HomePage() {
   // The padded region those points cover; a viewport inside it needs no request.
   const coveredRef = useRef<MapBounds | null>(null);
   const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { tags, conflicts } = useFilterVocabulary();
-  const shown = showFieldScope(filters.show, sitesSelected);
-  const sitesShown = shown.layer;
+  const vocabulary = useFilterVocabulary();
+  const shown = showScope(filters.show);
+  const sitesShown = shown.others;
   // Keyed on the selection in context, so returning to the map re-reads it.
   const detail = useApiResource<EventDetail>(
     selectedId ? `/events/${selectedId}` : null,
@@ -73,7 +71,7 @@ export default function HomePage() {
   );
   const [sites, setSites] = useState<SiteListItem[]>([]);
   // The zone a site shows is the one valid at the end of the event date window.
-  const asOf = sitesAsOf(dateWindows.eventTo, todayUtc());
+  const asOf = sitesAsOf(filters.eventTo, todayUtc());
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchPoints = useCallback(() => {
@@ -199,29 +197,20 @@ export default function HomePage() {
     []
   );
 
-  // The Show field and both timeline windows filter client-side (`POINT_DETECTED_FLAG`, event and added dates).
+  // The Show field and both timeline windows filter client-side (`POINT_DETECTED_FLAG`, event and
+  // added dates); a point with no event date is never dropped by its window.
   const statusFiltered = useMemo(
-    () => (shown.events ? filterPointsByStatus(points, filters.show) : []),
+    () => (shown.events ? filterPointsByStatus(points, splitShow(filters.show).statuses) : []),
     [points, filters.show, shown.events],
   );
-  const visiblePoints = useMemo(() => {
-    const { eventFrom, eventTo, addedFrom, addedTo } = dateWindows;
-    if (!eventFrom && !eventTo && !addedFrom && !addedTo) return statusFiltered;
-    const lo = (iso: string) => (iso ? Date.parse(`${iso}T00:00:00Z`) : -Infinity);
-    const hi = (iso: string) => (iso ? Date.parse(`${iso}T23:59:59Z`) : Infinity);
-    const evLo = lo(eventFrom);
-    const evHi = hi(eventTo);
-    const subLo = lo(addedFrom);
-    const subHi = hi(addedTo);
-    return statusFiltered.filter((p) => {
-      // A missing or unparseable date (occurred_date is optional) is unconstrained, like the histogram, so the point is not dropped.
-      const ev = p[3] ? Date.parse(`${p[3]}T00:00:00Z`) : NaN;
-      const sub = p[4] ? Date.parse(`${p[4]}T00:00:00Z`) : NaN;
-      const evOk = Number.isNaN(ev) || (ev >= evLo && ev <= evHi);
-      const subOk = Number.isNaN(sub) || (sub >= subLo && sub <= subHi);
-      return evOk && subOk;
-    });
-  }, [statusFiltered, dateWindows]);
+  const { eventFrom, eventTo, addedFrom, addedTo } = filters;
+  const visiblePoints = useMemo(
+    () =>
+      statusFiltered.filter(
+        (p) => inWindow(p[3], eventFrom, eventTo) && inWindow(p[4], addedFrom, addedTo),
+      ),
+    [statusFiltered, eventFrom, eventTo, addedFrom, addedTo],
+  );
 
   return (
     <div className="h-dvh w-screen relative overflow-hidden bg-neutral-950">
@@ -248,11 +237,9 @@ export default function HomePage() {
         )}
       </Map>
 
-      <FilterPanel
-        tags={tags}
-        conflicts={conflicts}
+      <MapFilters
+        vocabulary={vocabulary}
         points={statusFiltered}
-        pointCount={visiblePoints.length}
         loading={loading}
       />
 

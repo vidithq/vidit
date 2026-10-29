@@ -1,21 +1,20 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
 import { Link2 } from "lucide-react";
 
 import { EventSection } from "@/components/event/EventLayout";
 import { Button } from "@/components/ui/Button";
-import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
-import { TEXT_LINK } from "@/components/ui/styles";
+import { DetailCard } from "@/components/ui/DetailRow";
+import { Item } from "@/components/ui/Item";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
+import { siteItem } from "@/lib/items";
 import {
   SITE_MARGIN_KM,
   eventSiteLinksPath,
   linkEventToSite,
-  siteHref,
   siteSuggestionsPath,
   type EventSiteLink,
   type SiteSuggestion,
@@ -38,8 +37,9 @@ export const SITE_SEARCH_COPY = {
 /**
  * The sites of the event page, as two nodes over one read of the event's links:
  *
- * - `block`, the Linked sites block last in the side column: each site the event is linked to,
- *   with the effect the event shows there. Null while the event has no link.
+ * - `block`, the Linked sites block last in the side column: each site the event is linked to, as
+ *   a compact `<Item>` with the effect the event shows there as its badge. Null while the event
+ *   has no link.
  * - `linkAction`, **Link to a site** for the actions row: the owner of a published event links
  *   it to a site from the dialog it opens. Null for every other reader.
  *
@@ -70,22 +70,19 @@ export function useEventSites(event: EventDetail | null): {
         content: (
           <DetailCard>
             {links.error && <ErrorNotice error={links.error} className="m-3" />}
-            {rows.map((row) => (
-              <DetailRow
-                key={row.site.id}
-                align="center"
-                wrapLabel
-                label={
-                  <Link href={siteHref(row.site.id)} className={TEXT_LINK}>
-                    {row.site.name}
-                  </Link>
-                }
-              >
-                <span className="ml-auto flex shrink-0 justify-end">
-                  <LinkEffectPill effect={row.effect} />
-                </span>
-              </DetailRow>
-            ))}
+            {rows.length > 0 && (
+              <ul className="space-y-1 px-4 py-3">
+                {rows.map((row) => (
+                  <li key={row.site.id}>
+                    <Item
+                      variant="compact"
+                      {...siteItem(row.site)}
+                      badge={<LinkEffectPill effect={row.effect} />}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
           </DetailCard>
         ),
       }}

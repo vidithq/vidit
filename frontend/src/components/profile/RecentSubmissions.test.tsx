@@ -52,8 +52,8 @@ describe("RecentSubmissions", () => {
 
     expect(screen.getByText("No geolocations yet.")).toBeInTheDocument();
     expect(screen.queryByText(/latest geolocations/)).not.toBeInTheDocument();
-    // Nothing to expand into, so no "Show more" either.
-    expect(screen.queryByRole("link", { name: "Show more" })).not.toBeInTheDocument();
+    // Nothing to expand into, so no "See all" either.
+    expect(screen.queryByRole("link", { name: "See all" })).not.toBeInTheDocument();
     // The heading says it once; no second sentence repeats that the block is empty.
     expect(screen.queryByText("Nothing yet.")).not.toBeInTheDocument();
   });
@@ -81,7 +81,7 @@ describe("RecentSubmissions", () => {
     );
 
     expect(screen.getByText("ana's latest geolocations, newest first.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Show more" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "See all" })).toHaveAttribute(
       "href",
       "/search?type=event&author=ana&status=geolocated"
     );

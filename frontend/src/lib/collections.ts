@@ -4,7 +4,7 @@ import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
 import { EVENT_TITLE_MAX_LEN, eventListPath, type ContentReport } from "./events";
 import { countLabel, formatDate } from "./format";
-import { eventFilterFields, search, type EventFilterParams } from "./search";
+import { eventFilterFields, hitsOf, search, type EventFilterParams } from "./search";
 import type {
   EventDetail,
   EventListItem,
@@ -127,7 +127,7 @@ export function readerStep(raw: string | null, total: number): number {
  *  would invite a tick the add verb refuses with a 409. */
 export const COLLECTABLE_STATUSES: EventStatus[] = ["geolocated", "detected"];
 
-/** One row of the event picker: the slots a compact `<EntityCard>` fills. */
+/** One row of the event picker: the slots a compact `<Item>` fills. */
 export type PickableEvent = Pick<
   EventListItem,
   | "id"
@@ -183,7 +183,7 @@ export function pickableFromHit(hit: SearchEventHit): PickableEvent {
     media: hit.media[0] ?? null,
     is_graphic: hit.is_graphic,
     occurred_date: hit.occurred_date,
-    coords: { lat: hit.lat, lng: hit.lng },
+    coords: hit.lat !== null && hit.lng !== null ? { lat: hit.lat, lng: hit.lng } : null,
     tags: hit.tags,
   };
 }
@@ -196,14 +196,14 @@ export async function searchPickableEvents(
 ): Promise<{ items: PickableEvent[]; total: number }> {
   const response = await search({
     q,
-    type: "event",
+    types: ["event"],
     author: username,
     show: COLLECTABLE_STATUSES,
     limit: PICKER_ROW_LIMIT,
   });
   return {
-    items: response.geolocations.map(pickableFromHit),
-    total: response.total.geolocations,
+    items: hitsOf(response.hits, "event").map(pickableFromHit),
+    total: response.total,
   };
 }
 
