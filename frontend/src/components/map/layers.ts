@@ -1,7 +1,6 @@
 import type { ExpressionSpecification, SymbolLayerSpecification } from "maplibre-gl";
 
 import type { paletteMapColors } from "@/lib/palette";
-import type { Zone } from "@/lib/sites";
 import type { Brightness } from "./basemap";
 import { CLUSTER_MAX_ZOOM } from "./stack";
 
@@ -16,8 +15,8 @@ export const POINT_LAYERS = ["points-selected", "points-circle"];
 export const SITE_POINT_LAYER = "sites-point";
 export const SITE_RING_LAYER = "sites-cluster-ring";
 
-/** Below this zoom each site is a point in the event clusters; from it the zones alone stand for
- *  the sites. */
+/** Below this zoom each site is a point in the event clusters and no zone draws; from it the zones
+ *  alone stand for the sites. */
 export const SITE_POINT_MAX_ZOOM = 10;
 
 /** Every layer a tap can target (a query returns matches topmost first whatever the order here). */
@@ -110,65 +109,5 @@ export const SITE_RING_GAP_PX = 3;
 export const SITE_RING_WIDTH_PX = 2;
 /** The fill opacity of a zone and of a lone site's ring. */
 export const SITE_ZONE_FILL_OPACITY = 0.12;
-/** A lone site's ring is never smaller than this radius, in px. */
-export const SITE_RING_MIN_RADIUS_PX = 7;
-/** A lone site's ring fades out once its zone is this much wider than the smallest ring. */
-const SITE_RING_FADE_FACTOR = 1.5;
-/** The width of the world at zoom 0, in px: MapLibre's 512 px tiles. */
-const WORLD_PX = 512;
-
-function mercatorPx([lng, lat]: readonly number[]): [number, number] {
-  const phi = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
-  return [
-    ((lng + 180) / 360) * WORLD_PX,
-    ((1 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / Math.PI) / 2) * WORLD_PX,
-  ];
-}
-
-/** The radius at zoom 0, in px, of the smallest circle around `centroid` that holds `zone`: at
- *  zoom z it is `2 ** z` times larger. */
-export function zoneRadiusAtZoom0(zone: Zone, centroid: { lat: number; lng: number }): number {
-  const [cx, cy] = mercatorPx([centroid.lng, centroid.lat]);
-  let farthest = 0;
-  for (const ring of zone.coordinates) {
-    for (const vertex of ring) {
-      const [x, y] = mercatorPx(vertex);
-      farthest = Math.max(farthest, Math.hypot(x - cx, y - cy));
-    }
-  }
-  return farthest;
-}
-
-const ZONE_RADIUS = ["get", "zone_radius"] satisfies ExpressionSpecification;
-const RING_ZOOMS = Array.from({ length: SITE_POINT_MAX_ZOOM + 1 }, (_, zoom) => zoom);
-
-/** A zoom curve with one stop per integer zoom up to `SITE_POINT_MAX_ZOOM`, `output(zoneRadiusPx)`
- *  at each: a `zoom` expression is legal only as the input of a top-level `interpolate`. */
-function perZoom(
-  curve: ["linear"] | ["exponential", number],
-  output: (zoneRadiusPx: ExpressionSpecification) => unknown,
-): ExpressionSpecification {
-  return [
-    "interpolate",
-    curve,
-    ["zoom"],
-    ...RING_ZOOMS.flatMap((zoom) => [zoom, output(["*", ZONE_RADIUS, 2 ** zoom])]),
-  ] as unknown as ExpressionSpecification;
-}
-
-/** A lone site's ring radius: its zone's, never under `SITE_RING_MIN_RADIUS_PX`. */
-export const LONE_SITE_RING_RADIUS = perZoom(["exponential", 2], (zoneRadiusPx) => [
-  "max",
-  SITE_RING_MIN_RADIUS_PX,
-  zoneRadiusPx,
-]);
-
-/** `opacity` while a lone site's zone is too small to read, 0 once the zone stands for it. */
-export function loneSiteRingOpacity(opacity: number): ExpressionSpecification {
-  return perZoom(["linear"], (zoneRadiusPx) => [
-    "case",
-    ["<", zoneRadiusPx, SITE_RING_MIN_RADIUS_PX * SITE_RING_FADE_FACTOR],
-    opacity,
-    0,
-  ]);
-}
+/** The radius of a lone site's ring, in px. */
+export const SITE_RING_RADIUS_PX = 7;

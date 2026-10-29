@@ -51,7 +51,6 @@ import {
   CLUSTER_LAYER,
   CLUSTER_OPACITY,
   CLUSTER_SOURCE,
-  LONE_SITE_RING_RADIUS,
   POINT_COUNT,
   POINT_LAYERS,
   POINT_RADIUS,
@@ -64,6 +63,7 @@ import {
   SITE_POINT_MAX_ZOOM,
   SITE_RING_GAP_PX,
   SITE_RING_LAYER,
+  SITE_RING_RADIUS_PX,
   SITE_RING_WIDTH_PX,
   SITE_ZONE_FILL_OPACITY,
   STACK_LAYER,
@@ -71,8 +71,6 @@ import {
   clusterColor,
   clusterCountLayout,
   clusterRadius,
-  loneSiteRingOpacity,
-  zoneRadiusAtZoom0,
 } from "./layers";
 import type { MapSite } from "./SiteLayers";
 import { applyMapAssets, BASEMAP_PRESETS, BLANK_STYLE, carryOverlays, resolvePreset } from "./basemap";
@@ -1047,12 +1045,6 @@ export default function Map({
     return base as FilterSpecification;
   }, [spiderHiddenIds]);
 
-  // A site's zone radius depends on its zone alone, so a selection or a points change keeps it.
-  const sitePoints = useMemo(
-    () => (sites ?? []).map((site) => ({ site, zoneRadius: zoneRadiusAtZoom0(site.zone, site.centroid) })),
-    [sites],
-  );
-
   // Group co-located points (~1 m epsilon grid, `groupStacks`): all stay in the source so cluster
   // counts stay true, but past the ceiling only the first renders, as the counted stack badge.
   // A stack of 3 must never look like one pin.
@@ -1094,21 +1086,20 @@ export default function Map({
       });
     }
     if (sitePointsShown) {
-      for (const { site, zoneRadius } of sitePoints) {
+      for (const site of sites ?? []) {
         features.push({
           type: "Feature",
           properties: {
             id: site.id,
             kind: "site",
             selected: site.id === selectedSiteId ? 1 : 0,
-            zone_radius: zoneRadius,
           },
           geometry: { type: "Point", coordinates: [site.centroid.lng, site.centroid.lat] },
         });
       }
     }
     return { type: "FeatureCollection", features };
-  }, [points, selectedId, dimmedIds, sitePoints, selectedSiteId, sitePointsShown]);
+  }, [points, selectedId, dimmedIds, sites, selectedSiteId, sitePointsShown]);
 
   // A walked-past pin loses strength only. Applied per opacity value because a `zoom` expression is
   // legal only as input of a top-level `step`/`interpolate`: the crossfade stays outside and this
@@ -1228,19 +1219,18 @@ export default function Map({
         data={geojson}
         {...CLUSTER_SOURCE}
       >
-        {/* A lone site: a ring that grows with its zone and fades out once the zone reads. */}
+        {/* A lone site: a ring of one size, until its zone takes over at `SITE_POINT_MAX_ZOOM`. */}
         <Layer
           id={SITE_POINT_LAYER}
           type="circle"
           maxzoom={SITE_POINT_MAX_ZOOM}
           filter={SITE_POINT_FILTER}
           paint={{
-            "circle-radius": LONE_SITE_RING_RADIUS,
+            "circle-radius": SITE_RING_RADIUS_PX,
             "circle-color": marker.base,
-            "circle-opacity": loneSiteRingOpacity(SITE_ZONE_FILL_OPACITY),
+            "circle-opacity": SITE_ZONE_FILL_OPACITY,
             "circle-stroke-color": ["case", ["==", ["get", "selected"], 1], selectedStroke, marker.base],
             "circle-stroke-width": ["case", ["==", ["get", "selected"], 1], SELECTED_STROKE_WIDTH, SITE_RING_WIDTH_PX],
-            "circle-stroke-opacity": loneSiteRingOpacity(1),
           }}
         />
 

@@ -12,6 +12,7 @@ import type { Zone } from "@/lib/sites";
 import {
   CLUSTER_LAYER,
   SITE_POINT_LAYER,
+  SITE_POINT_MAX_ZOOM,
   SITE_RING_WIDTH_PX,
   SITE_ZONE_FILL_OPACITY,
   TAP_TARGET_LAYERS,
@@ -64,10 +65,10 @@ interface HoverTarget {
 }
 
 /**
- * The sites layer of a map, mounted as `<Map>` children: the zones at every zoom, under the event
- * pins, in the event pin colour. Below `SITE_POINT_MAX_ZOOM` the sites also join `<Map>`'s
- * clusters (its `sites`), where a lone site is a ring. The map prints no site name: the preview
- * and the side panel carry it.
+ * The sites layer of a map, mounted as `<Map>` children: the zones from `SITE_POINT_MAX_ZOOM`, under
+ * the event pins, in the event pin colour. Below it the sites join `<Map>`'s clusters (its
+ * `sites`) instead, where a lone site is a ring. The map prints no site name: the preview and the
+ * side panel carry it.
  *
  * With `onSelect`, a zone or a lone site's ring takes the pointer like an event pin: the hand cursor, a
  * click selects it, and with `renderPreview` a mouse resting on it shows that content in the
@@ -167,6 +168,7 @@ export function SiteLayers({
       <Source id="sites-zones" type="geojson" data={zones}>
         <Layer
           id={FILL}
+          minzoom={SITE_POINT_MAX_ZOOM}
           type="fill"
           paint={{
             "fill-color": accent,
@@ -175,6 +177,7 @@ export function SiteLayers({
         />
         <Layer
           id={LINE}
+          minzoom={SITE_POINT_MAX_ZOOM}
           type="line"
           paint={{
             "line-color": accent,

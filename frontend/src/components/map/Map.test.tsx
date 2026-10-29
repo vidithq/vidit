@@ -43,7 +43,8 @@ import {
   SITE_POINT_LAYER,
   SITE_RING_GAP_PX,
   SITE_RING_LAYER,
-  SITE_RING_MIN_RADIUS_PX,
+  SITE_POINT_MAX_ZOOM,
+  SITE_RING_RADIUS_PX,
   STACK_LAYER,
   clusterRadius,
 } from "./layers";
@@ -148,23 +149,31 @@ describe("<Map> sites", () => {
     expect((layer(SITE_RING_LAYER).paint as Props)["circle-opacity"]).toBe(0);
   });
 
-  it("draws a lone site as a ring of the smallest size until its zone outgrows it", () => {
+  it("draws a lone site as a ring of one size below zoom 10, whatever its zone's size", () => {
     renderMap();
-    const paint = layer(SITE_POINT_LAYER).paint as Props;
+    const ring = layer(SITE_POINT_LAYER);
+    const paint = ring.paint as Props;
     expect(shows(SITE_POINT_LAYER, sitePoint(DEPOT.id))).toBe(true);
+    expect(shows(SITE_POINT_LAYER, sitePoint(AIRBASE.id))).toBe(true);
     expect(shows(SITE_POINT_LAYER, { id: EVENT_ID })).toBe(false);
+    expect(ring.minzoom).toBeUndefined();
+    expect(ring.maxzoom).toBe(SITE_POINT_MAX_ZOOM);
 
-    const depot = sitePoint(DEPOT.id);
-    expect(evaluate(paint["circle-radius"], 4, depot)).toBe(SITE_RING_MIN_RADIUS_PX);
-    expect(evaluate(paint["circle-stroke-opacity"], 4, depot)).toBe(1);
+    // The airbase's zone, 0.05 degrees on each side, spans about 30 px at zoom 9: the ring keeps its
+    // size and stays opaque.
+    for (const id of [DEPOT.id, AIRBASE.id]) {
+      for (const zoom of [2, 9]) {
+        expect(evaluate(paint["circle-radius"], zoom, sitePoint(id))).toBe(SITE_RING_RADIUS_PX);
+      }
+    }
+    expect(paint["circle-stroke-opacity"]).toBeUndefined();
+  });
 
-    // The airbase's zone, 0.05 degrees on each side, spans about 30 px at zoom 9.
-    const airbase = sitePoint(AIRBASE.id);
-    const at9 = evaluate(paint["circle-radius"], 9, airbase) as number;
-    expect(at9).toBeCloseTo((airbase.zone_radius as number) * 2 ** 9, 5);
-    expect(at9).toBeGreaterThan(SITE_RING_MIN_RADIUS_PX * 2);
-    expect(evaluate(paint["circle-stroke-opacity"], 9, airbase)).toBe(0);
-    expect(evaluate(paint["circle-opacity"], 9, airbase)).toBe(0);
+  it("draws the zones from zoom 10 only", () => {
+    renderMap();
+    for (const id of ["sites-zone-fill", "sites-zone-line"]) {
+      expect(layer(id).minzoom).toBe(SITE_POINT_MAX_ZOOM);
+    }
   });
 
   it("puts no site in the clusters from zoom 10, where the zones stand for them", () => {
@@ -175,6 +184,5 @@ describe("<Map> sites", () => {
     );
     const points = sources.find((s) => s.id === "points")?.data as FeatureCollection;
     expect(points.features.map((f) => f.properties?.id)).toEqual([EVENT_ID]);
-    expect(layer("sites-zone-fill").minzoom).toBeUndefined();
   });
 });

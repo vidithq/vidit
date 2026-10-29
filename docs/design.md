@@ -257,7 +257,7 @@ flowchart BT
 - **Sites layer.** A map draws sites through `<Map>`'s `children`, the slot for extra sources and layers. [`SiteLayers`](../frontend/src/components/map/SiteLayers.tsx) keeps them under the event pins through `useUnderEventPins`, so an event always draws above a zone.
   - On `/map` the filter panel's **Show** line offers **Sites** after **Detected** and **Geolocated** (see [Filter panel](#filter-panel)), and the Show rule sets when the layer shows. The map reads the zones valid at the end of the event date window, or today when the window has no end. Moving the window refetches the zones valid on that date (`GET /sites?as_of`), so a site whose contour changed shows the contour valid at the window's end. The panel creates no site: a site starts from Submit.
   - While **Sites** is selected, a **Show:** *Sites* pill names it, after the status pills. Removing the pill or **Clear all** deselects it.
-  - The map draws every zone at every zoom. Below zoom 10 (`SITE_POINT_MAX_ZOOM`) each site also joins the event clusters as a point at its centroid. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
+  - Below zoom 10 (`SITE_POINT_MAX_ZOOM`) each site joins the event clusters as a point at its centroid, and the map draws no zone. From zoom 10 the zones alone stand for the sites: the fill and the outline both take `SITE_POINT_MAX_ZOOM` as their `minzoom`. The map prints no site name: the preview and the side panel carry it. Every site draws the same way for every viewer.
   - Below zoom 10 the sites cluster with the event points, in one source:
 
     ```mermaid
@@ -275,7 +275,7 @@ flowchart BT
       end
 
       events["`filtered event points`"]:::spec
-      sites["`site centroids with their zone radius, while the **Show** field shows sites and the zoom is under 10`"]:::spec
+      sites["`site centroids, while the **Show** field shows sites and the zoom is under 10`"]:::spec
       source["`**points** source, **CLUSTER_SOURCE**
       counts the **sites** of each cluster`"]:::core
       circle["`**clusters** circle, one count of events and sites`"]:::shared
@@ -291,7 +291,7 @@ flowchart BT
   - `CLUSTER_SOURCE` in [`layers.ts`](../frontend/src/components/map/layers.ts) sets the clustering radius and the maximum zoom, and its `clusterProperties` count the sites of each cluster (`sites`). A cluster draws one circle with one count, `point_count`, the events and the sites together, and the circle's size and colour follow that count.
   - When a cluster holds at least one site, a hollow ring in the accent colour surrounds its circle: 2 px wide (`SITE_RING_WIDTH_PX`), 3 px out from the circle (`SITE_RING_GAP_PX`). The ring marks that the cluster holds a site, not how many.
   - A click on the circle or on the ring zooms to the cluster's expansion zoom. A cluster that holds a site never opens the hover ring: past the clustering ceiling the site is a zone.
-  - A site outside any cluster draws as a ring in the zone's style: a 2 px accent outline over a 12% fill (`SITE_ZONE_FILL_OPACITY`). The ring takes the zone's radius on screen, the distance from the centroid to the zone's farthest corner (`zoneRadiusAtZoom0` in `layers.ts`, doubled at each zoom level), and never less than 7 px (`SITE_RING_MIN_RADIUS_PX`). Once the zone's radius passes 1.5 times that floor, the ring fades out over one zoom level and the zone under it stands for the site. A selected site's ring takes the selected halo colour.
+  - A site outside any cluster draws as a ring in the zone's style: a 2 px accent outline over a 12% fill (`SITE_ZONE_FILL_OPACITY`), 7 px in radius at every zoom (`SITE_RING_RADIUS_PX`), whatever the size of its zone. At zoom 10 the ring leaves and the zone takes its place. A selected site's ring takes the selected halo colour.
   - The event filters narrow the points before they reach the source, so they never drop a site. While the **Show** field hides the sites, no site reaches the source or the counts, and while it hides the events, no event does. From zoom 10 the map leaves the sites out of the source (`sitePointsShown` in `Map.tsx`), so the clusters count events only and the zones stand for the sites.
   - A zone and both rings take the event point colour: the accent palette's `base` (`paletteMapColors` in [`lib/palette.ts`](../frontend/src/lib/palette.ts)). A cluster circle takes the darker ramp stops for a large count, like any cluster.
   - The latest link effect does not tint the map: the warning amber and the danger red sit too close to the orange and rose palettes to read. The preview and the side panel show it as a `<Pill>` (`LinkEffectPill`), in the warning or danger tone for damage and destruction and neutral for the others.
