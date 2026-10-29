@@ -27,7 +27,7 @@ describe("<ItemSearch>", () => {
     render(<ItemSearch {...accounts} options={[ANA, BO, OSW]} onPick={onPick} emptyText="Nobody." />);
 
     fireEvent.focus(field());
-    expect(optionNames()).toEqual(["anaAnalyst", "boAnalyst", "Open Source WatchOrganization·osw"]);
+    expect(optionNames()).toEqual(["anaAnalyst", "boAnalyst", "Open Source WatchOrganization · osw"]);
 
     fireEvent.change(field(), { target: { value: "b" } });
     expect(optionNames()).toEqual(["boAnalyst"]);

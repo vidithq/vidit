@@ -103,6 +103,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- A compact item (the map's pin preview, the pickers, the link dialogs) gives its title two lines and ends its detail line in an ellipsis, so the status badge never covers the analyst's name; a list item's long analyst name wraps on a phone ([#814](https://github.com/vidithq/vidit/pull/814)).
 - The site forms refuse a contour whose corner touches another edge or whose edges overlap, which the server refused after the submit ([#814](https://github.com/vidithq/vidit/pull/814)).
 - On the map, no Show chip selected shows every event and every site, and selected chips show only what they name: Sites alone hides the events, and Clear all brings the sites back. No zones date sits under the chips ([#808](https://github.com/vidithq/vidit/pull/808)).
 - A GIF inserted into a proof shows one image per frame, and one past 6 frames is refused under the editor with the reason ([#804](https://github.com/vidithq/vidit/pull/804)).

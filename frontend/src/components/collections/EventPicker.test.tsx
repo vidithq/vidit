@@ -180,7 +180,7 @@ describe("EventPicker, the held list", () => {
       "href",
       "/events/e9",
     );
-    expect(within(item).getByText("16 Mar 2026")).toBeInTheDocument();
+    expect(item).toHaveTextContent("16 Mar 2026");
     expect(
       within(item).getByRole("button", { name: "Remove Later strike from this collection" }),
     ).toBeInTheDocument();

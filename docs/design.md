@@ -431,7 +431,7 @@ The variants:
 
 | Variant | Shape | Surfaces |
 |---|---|---|
-| `compact` | A bare row: a 56px slot, the title and the detail line on one line each, the badge at the right | The link dialogs and the Linked sites field of the event forms, the event page's Linked sites, the Add to collection pickers, the collection write pages' Add events options and held events, the map's hover previews, the submit form's duplicate probe, the admin event field |
+| `compact` | A bare row: a 56px slot, the title on up to two lines, the detail line on one line that ends in an ellipsis with the analysts as plain names, and the badge in its own column at the right, so no text runs under it | The link dialogs and the Linked sites field of the event forms, the event page's Linked sites, the Add to collection pickers, the collection write pages' Add events options and held events, the map's hover previews, the submit form's duplicate probe, the admin event field |
 | `list` | A bordered row: the media on the left, the title on two lines, the detail line, the badge at the right, under the text on a phone | Search, the Requests board, a profile's open requests, recent submissions and collections, a collection's page, a site's linked events, the detections queue, an organization's approvals and approval requests |
 | `card` | A bordered card: the media at full width on top, then the title with the badge, then the detail line | The feed |
 

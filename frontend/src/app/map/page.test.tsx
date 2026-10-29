@@ -275,7 +275,7 @@ describe("map sites layer", () => {
     expect(preview).toHaveTextContent(SITE_NAME);
     expect(preview).toHaveTextContent("Depot");
     expect(preview).toHaveTextContent("Damage");
-    expect(preview).toHaveTextContent("Site·7 Sept 2026·Damage");
+    expect(preview).toHaveTextContent("Site · 7 Sept 2026 · Damage");
   });
 
   it("opens a site in the event's side panel slot, one record at a time", async () => {
