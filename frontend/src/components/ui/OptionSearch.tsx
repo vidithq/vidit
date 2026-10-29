@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
+import { useFirstLines } from "@/hooks/useFirstLines";
 import { Combobox } from "./Combobox";
-import { LoadMoreRow } from "./LoadMoreRow";
 import { Pill } from "./Pill";
 import { Switch } from "./Switch";
 
@@ -12,8 +12,6 @@ export interface Option {
   value: string;
   label: string;
 }
-
-const SUGGESTIONS_SHOWN = 6;
 
 type Row = { option: Option } | { create: string };
 
@@ -50,7 +48,7 @@ export function OptionSearch({
   placeholder: string;
   /** Offers to create the typed name when no option bears it exactly. */
   creatable?: { onCreate: (name: string) => void; maxLength?: number };
-  /** One-click neutral pills under the field, the first few then one **Show more**. */
+  /** One-click neutral pills under the field, as many as fit on two lines. */
   suggestions?: Option[];
   /** A switch under the field that adds the options `isEnded` holds back. */
   includeEnded?: { isEnded: (value: string) => boolean; label: string };
@@ -64,7 +62,6 @@ export function OptionSearch({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [ended, setEnded] = useState(false);
-  const [allSuggested, setAllSuggested] = useState(false);
 
   const name = query.trim();
   const needle = name.toLowerCase();
@@ -87,7 +84,10 @@ export function OptionSearch({
   };
   const add = (value: string) => onChange(single ? [value] : [...selected, value]);
   const unpicked = suggestions.filter((o) => !selected.includes(o.value));
-  const offered = allSuggested ? unpicked : unpicked.slice(0, SUGGESTIONS_SHOWN);
+  const { ref: suggestedRef, cut, height } = useFirstLines<HTMLDivElement>(
+    2,
+    unpicked.map((o) => o.value).join("\n"),
+  );
 
   return (
     <div className="space-y-2">
@@ -154,25 +154,29 @@ export function OptionSearch({
           )}
         </div>
       )}
-      {offered.length > 0 && (
-        <>
-          <div role="group" aria-label={`Suggested ${ariaLabel.toLowerCase()}`} className="flex flex-wrap gap-1.5">
-            {offered.map((o) => (
-              <Pill key={o.value} onClick={() => add(o.value)} icon={<Plus size={12} aria-hidden />}>
+      {unpicked.length > 0 && (
+        <div
+          ref={suggestedRef}
+          role="group"
+          aria-label={`Suggested ${ariaLabel.toLowerCase()}`}
+          className="flex flex-wrap gap-1.5 overflow-hidden"
+          style={{ maxHeight: height }}
+        >
+          {unpicked.map((o, i) => {
+            const past = i >= cut;
+            return (
+              <Pill
+                key={o.value}
+                onClick={() => add(o.value)}
+                icon={<Plus size={12} aria-hidden />}
+                className={past ? "invisible" : undefined}
+              >
                 <span className="sr-only">Add {o.label}</span>
                 <span aria-hidden>{o.label}</span>
               </Pill>
-            ))}
-          </div>
-          <LoadMoreRow
-            walk={{
-              hasMore: offered.length < unpicked.length,
-              loadingMore: false,
-              loadMore: () => setAllSuggested(true),
-              error: null,
-            }}
-          />
-        </>
+            );
+          })}
+        </div>
       )}
     </div>
   );

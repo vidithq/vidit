@@ -750,7 +750,7 @@ export default function PalettePage() {
             <PalettePropertyRow />
           </Entry>
 
-          <Entry name="<OptionSearch>" usage="The one selector over a vocabulary: the filter panel's lines and every form field that picks a kind, a level, a reason, an effect, a conflict or a tag. Focus lists every unpicked option, typing narrows them, a pick empties the field and closes the list, and the picks show under the field as removable accent pills. single keeps one pick that a new pick replaces; required keeps it from removal. creatable offers Create name, suggestions adds one-click pills, includeEnded adds a switch.">
+          <Entry name="<OptionSearch>" usage="The one selector over a vocabulary: the filter panel's lines and every form field that picks a kind, a level, a reason, an effect, a conflict or a tag. Focus lists every unpicked option, typing narrows them, a pick empties the field and closes the list, and the picks show under the field as removable accent pills. single keeps one pick that a new pick replaces; required keeps it from removal. creatable offers Create name, suggestions adds one-click pills, as many as fit on two lines, includeEnded adds a switch.">
             <PaletteOptionSearch />
           </Entry>
 

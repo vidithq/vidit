@@ -71,7 +71,7 @@ export function SiteLocation({
       coords={site.centroid}
       coordinatesConcept="site_coordinates"
       // A new object per Go, so the same pair typed twice centres the map twice.
-      header={goToField && <GoToCoordinates onGo={(pair) => setGoTo({ ...pair })} />}
+      field={goToField && <GoToCoordinates onGo={(pair) => setGoTo({ ...pair })} />}
       map={
         bounds && (
           <SiteMap

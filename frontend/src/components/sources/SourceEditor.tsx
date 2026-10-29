@@ -13,7 +13,6 @@ import {
 } from "@/components/sources/ArchivedCopies";
 import { Button } from "@/components/ui/Button";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
-import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Card } from "@/components/ui/Card";
 import { LEAD_BESIDE_SPLIT } from "@/components/ui/DetailRow";
@@ -289,7 +288,6 @@ export function SourceEditor({
         <FieldLabel
           {...SOURCE_FIELDS.title}
           htmlFor={id("title")}
-          trailing={<CharCounter length={draft.title.length} max={SOURCE_TITLE_MAX_LEN} />}
         />
         <Input
           id={id("title")}
