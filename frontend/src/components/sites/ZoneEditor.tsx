@@ -140,10 +140,6 @@ export function ZoneEditor({
       <p className="border-b border-neutral-800 bg-neutral-900 px-4 py-2 text-xs text-neutral-400" aria-live="polite">
         {hint(state)}
       </p>
-      <div className="border-b border-neutral-800 bg-neutral-900 px-4 py-2">
-        {/* A new object per Go, so the same pair typed twice centres the map twice. */}
-        <GoToCoordinates onGo={(pair) => setGoTo({ ...pair })} />
-      </div>
       <div className="h-80 overflow-hidden sm:h-96">
         <ZoneDrawMap
           state={state}
@@ -153,6 +149,11 @@ export function ZoneEditor({
           center={center}
           goTo={goTo}
         />
+      </div>
+      {/* Under the map, where every form that picks a location puts its field. A new object per
+          Go, so the same pair typed twice centres the map twice. */}
+      <div className="border-t border-neutral-800 bg-neutral-900 px-4 py-2">
+        <GoToCoordinates onGo={(pair) => setGoTo({ ...pair })} />
       </div>
       <DetailRow
         label="Contour"
