@@ -71,7 +71,8 @@ export function ShowOnMap({
  * What one site source adds to the event page's source block: its name by capture day, the
  * control that shows that day's zone on the site map (an accent *On the map* pill and border on
  * the source on show), then `controls` (its filer's Remove), and the rows for the provider, the
- * note, who filed it and when, and the contour drawn on it.
+ * note, who filed it and when, and the contour drawn on it. It drops the Level and Kind rows,
+ * which read the same on every site source.
  */
 export function siteSourceExtras({
   source,
@@ -91,6 +92,7 @@ export function siteSourceExtras({
   const name = siteSourceName(source);
   return {
     name,
+    levelAndKind: false,
     className: cn(shown && "border-orange-500/50"),
     actions: (
       <>

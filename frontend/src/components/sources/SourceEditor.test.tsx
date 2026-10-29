@@ -410,4 +410,39 @@ describe("SourceEditor as a site source", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Import the file of/ }));
     expect(onImportLink).toHaveBeenCalledWith({ url, index: 0, kinds: [] });
   });
+
+  const siteEditor = (draft: SourceDraft, extraHolds = false) =>
+    render(
+      <SourceEditor
+        draft={{ ...draft, kind: "satellite", level: "context" }}
+        index={0}
+        variant="site-source"
+        name="Source 1"
+        update={() => {}}
+        onPickFile={() => {}}
+        onImportLink={() => {}}
+        extra={<p>Note field</p>}
+        extraHolds={extraHolds}
+      />,
+    );
+  const titleAndNote = () => screen.getByRole("button", { name: "Title and note" });
+
+  it("keeps the title and the note behind a closed Title and note on a new source", () => {
+    siteEditor(newSourceDraft());
+    expect(titleAndNote()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("textbox", { name: "Source 1 title", hidden: true })).not.toBeVisible();
+    expect(screen.getByText("Note field")).not.toBeVisible();
+    expect(screen.getByLabelText("Captured", { selector: "input" })).toBeVisible();
+    fireEvent.click(titleAndNote());
+    expect(screen.getByRole("textbox", { name: "Source 1 title" })).toBeVisible();
+    expect(screen.getByText("Note field")).toBeVisible();
+  });
+
+  it.each([
+    ["a title", { ...newSourceDraft(), title: "Sentinel-2" }, false],
+    ["a note", newSourceDraft(), true],
+  ])("opens Title and note on a source that holds %s", (_, draft, extraHolds) => {
+    siteEditor(draft, extraHolds);
+    expect(titleAndNote()).toHaveAttribute("aria-expanded", "true");
+  });
 });

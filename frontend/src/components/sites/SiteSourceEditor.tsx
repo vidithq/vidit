@@ -39,8 +39,9 @@ export function useSiteSourceDraft() {
 
 /**
  * The source of a site form: the event form's source editor in its site source shape (the file,
- * the title, the required capture time, the links with their archive and the imagery provider
- * check), closed by the note. `flagged` turns the fields a write attempt found missing red.
+ * the required capture time, the links with their archive and the imagery provider check), with
+ * the title and the note behind **Title and note** at its foot. `flagged` turns the fields a write
+ * attempt found missing red.
  */
 export function SiteSourceEditor({
   state,
@@ -74,6 +75,7 @@ export function SiteSourceEditor({
         captured: flagged && !draft.capturedAt,
         link: flagged && draft.links.every((l) => !l.url.trim()),
       }}
+      extraHolds={note.trim() !== ""}
       extra={
         <div className="space-y-1.5">
           <FieldLabel

@@ -44,6 +44,7 @@ export function SourceBlock({
   actions,
   className,
   children,
+  levelAndKind = true,
 }: {
   source: Source;
   /** Position in the event's source order, for the names ("Source 2"). */
@@ -59,6 +60,8 @@ export function SourceBlock({
   className?: string;
   /** More rows, after the source's own. */
   children?: ReactNode;
+  /** Shows the Level and Kind rows; off where every source holds the same ones (a site's). */
+  levelAndKind?: boolean;
 }) {
   const file = source.media === null && !isEvidenceLevel(source.level) ? null : (
     <MediaGallery
@@ -72,7 +75,7 @@ export function SourceBlock({
   );
   const rows = (
     <>
-      <SourceRows source={source} name={name} compact={compact} />
+      <SourceRows source={source} name={name} compact={compact} levelAndKind={levelAndKind} />
       {children}
     </>
   );
@@ -112,20 +115,24 @@ function SourceRows({
   source,
   name,
   compact,
+  levelAndKind,
 }: {
   source: Source;
   name: string;
   compact: boolean;
+  levelAndKind: boolean;
 }) {
   const kind = sourceKindLabel(source);
   const position = source.capture_position;
   return (
     <>
       {source.title && <DetailRow {...SOURCE_FIELDS.title} value={source.title} compact={compact} />}
-      <DetailRow {...SOURCE_FIELDS.level} compact={compact} align="center">
-        <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
-      </DetailRow>
-      {kind && <DetailRow {...SOURCE_FIELDS.kind} compact={compact} value={kind} />}
+      {levelAndKind && (
+        <DetailRow {...SOURCE_FIELDS.level} compact={compact} align="center">
+          <Pill tone="neutral">{LEVEL_LABELS[source.level]}</Pill>
+        </DetailRow>
+      )}
+      {levelAndKind && kind && <DetailRow {...SOURCE_FIELDS.kind} compact={compact} value={kind} />}
       <LinksRow source={source} name={name.charAt(0).toLowerCase() + name.slice(1)} compact={compact} />
       <PostedRow source={source} compact={compact} />
       <CapturedRow source={source} compact={compact} />
@@ -222,7 +229,7 @@ function CapturedRow({ source, compact }: { source: Source; compact: boolean }) 
 /** What a caller adds to one block of `SourceBlocks`: a site source's name, rows and map control. */
 export type SourceBlockExtras = Pick<
   Parameters<typeof SourceBlock>[0],
-  "name" | "actions" | "className" | "children"
+  "name" | "actions" | "className" | "children" | "levelAndKind"
 >;
 
 /**

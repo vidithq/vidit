@@ -44,8 +44,22 @@ describe("siteSourceExtras", () => {
     expect(screen.getByText("Sources (2)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next source" })).toBeInTheDocument();
     const block = screen.getByRole("region", { name: "Source of 7 Sept 2026" });
-    for (const label of ["Level", "Kind", "Captured", "Provider", "Filed"]) {
+    for (const label of ["Captured", "Provider", "Filed"]) {
       expect(within(block).getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it("drops the rows every site source repeats: the level, the kind and an unknown post time", () => {
+    render(
+      <SourceBlocks
+        sources={[{ ...sources[0], links: [{ url: "https://browser.dataspace.copernicus.eu/", posted_at: null, archived: null }] }]}
+        alt="Depot"
+        extras={(i) => siteSourceExtras({ source: i, contour: null, shown: true, onShow: vi.fn() })}
+      />,
+    );
+    const block = screen.getByRole("region", { name: "Source of 7 Sept 2026" });
+    for (const label of ["Level", "Kind", "Posted"]) {
+      expect(within(block).queryByText(label)).toBeNull();
     }
   });
 

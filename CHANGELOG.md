@@ -37,6 +37,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The site source editor keeps the title and the note behind Title and note at the foot of the card, and a site page drops the Level and Kind rows every site source repeats ([#816](https://github.com/vidithq/vidit/pull/816)).
 - The edit form of an open request shows Linked sites, since its Publish makes it a geolocation and writes the links; Save request still refuses while it holds a site ([#816](https://github.com/vidithq/vidit/pull/816)).
 - A source write fills the post time of an X link left blank from its status id, and the Posted column of the source editor and the Posted row of a source show only once a link has a post time ([#816](https://github.com/vidithq/vidit/pull/816)).
 - The source editor of the event forms shows the file, the kind and the links; the title, the level, the capture time and position, the tags and the graphic flag sit under Capture details, which opens by itself when one of them holds a value ([#816](https://github.com/vidithq/vidit/pull/816)).

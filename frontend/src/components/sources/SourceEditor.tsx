@@ -91,8 +91,9 @@ export function holdsCaptureDetails(draft: SourceDraft): boolean {
  * (remove).
  *
  * `variant="site-source"` is a site's satellite source: its kind and level are fixed (satellite,
- * context), so neither shows, the capture time is required and sits under the title beside the
- * file, and `extra` (the source's note) closes the card in place of **Capture details**.
+ * context), so neither shows, and the required capture time sits beside the file. Its foot is
+ * **Title and note**, the title and `extra` (the source's note), which opens by itself when
+ * either holds a value (`extraHolds`).
  */
 export function SourceEditor({
   draft,
@@ -111,6 +112,7 @@ export function SourceEditor({
   variant = "event",
   name = sourceName(index),
   extra,
+  extraHolds = false,
 }: {
   draft: SourceDraft;
   /** Position in the list, for the names ("Source 2"). */
@@ -133,8 +135,10 @@ export function SourceEditor({
   variant?: "event" | "site-source";
   /** The card's heading, and the root of its fields' accessible names. */
   name?: string;
-  /** What a site source adds after its links: the note. */
+  /** What a site source adds to its foot, after the title: the note. */
   extra?: ReactNode;
+  /** `extra` holds a value, which opens the foot. */
+  extraHolds?: boolean;
 }) {
   const siteSource = variant === "site-source";
   const id = (field: string) => `${draft.key}-${field}`;
@@ -142,7 +146,9 @@ export function SourceEditor({
   const hasFile = file !== null && file.state !== "failed";
   const positionInvalid = capturePositionInvalid(draft);
   // Opens on a source that already says more than the essentials; the analyst closes it.
-  const [footOpen, setFootOpen] = useState(() => holdsCaptureDetails(draft));
+  const [footOpen, setFootOpen] = useState(() =>
+    siteSource ? draft.title.trim() !== "" || extraHolds : holdsCaptureDetails(draft),
+  );
   // An X link's post time is filled by the write, so the column waits for a value or the foot.
   const showPosted = footOpen || draft.links.some((link) => link.postedAt !== "");
 
@@ -445,14 +451,12 @@ export function SourceEditor({
 
   // The disclosure at the foot of the card. Hidden rather than unmounted, so a field inside keeps
   // what it holds.
-  const foot = siteSource ? (
-    extra
-  ) : (
+  const foot = (
     <div className="space-y-4">
       <SectionEyebrow
         as="h3"
         margin="none"
-        title="Capture details"
+        title={siteSource ? "Title and note" : "Capture details"}
         toggle={{
           open: footOpen,
           onToggle: () => setFootOpen((open) => !open),
@@ -460,7 +464,14 @@ export function SourceEditor({
         }}
       />
       <div id={id("details")} hidden={!footOpen} className="space-y-4">
-        {captureDetails}
+        {siteSource ? (
+          <>
+            {titleField}
+            {extra}
+          </>
+        ) : (
+          captureDetails
+        )}
       </div>
     </div>
   );
@@ -469,20 +480,13 @@ export function SourceEditor({
     <Card as="section" aria-label={name} dense className="@container">
       <SourceHeader name={name} actions={actions} />
       {/* A lone editor reads like the event page's lone source: once the card is 42rem wide the
-          file sits left of the kind (the title and the capture time on a site source), 3:2
+          file sits left of the kind (the capture time on a site source), 3:2
           (`DetailCard leadBeside`), and the links and the foot take the card's width under both,
           so a link keeps its one-row layout; narrower, everything stacks. */}
       <div className={cn("grid gap-4", wide && cn(LEAD_BESIDE_SPLIT, "@2xl:gap-x-5"))}>
         {fileSlot}
         <div className="space-y-4">
-          {siteSource ? (
-            <>
-              {titleField}
-              {captured}
-            </>
-          ) : (
-            kindField
-          )}
+          {siteSource ? captured : kindField}
         </div>
         <div className={cn("space-y-4", wide && "@2xl:col-span-2")}>
           {links}
