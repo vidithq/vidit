@@ -135,7 +135,7 @@
   --color-neutral-900: #f7f5f1;
   --color-neutral-950: #eae8e4;
 
-  /* The semantic red / amber scales (danger + warning surfaces: FORM_ERROR_BANNER,
+  /* The semantic red / amber scales (danger + warning surfaces: ErrorNotice,
      WARNING_CALLOUT, danger pills / buttons) are tuned light-on-dark, so on a
      light surface the pale text stops wash out. Mirror each scale about its 500
      midpoint: the hue stays, only lightness flips, giving dark saturated text on

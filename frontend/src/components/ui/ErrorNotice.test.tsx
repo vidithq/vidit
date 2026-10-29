@@ -60,3 +60,23 @@ describe("FieldError", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("<ErrorNotice> with a message node and a dismiss", () => {
+  it("renders a link in the message and closes on the cross", () => {
+    const onDismiss = vi.fn();
+    render(
+      <ErrorNotice
+        error={
+          <>
+            Your session ended. <a href="/login">Sign in again</a>
+          </>
+        }
+        onDismiss={onDismiss}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Your session ended. Sign in again");
+    expect(screen.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/login");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(onDismiss).toHaveBeenCalled();
+  });
+});

@@ -28,20 +28,59 @@ const REMOVAL_ICONS = [
   "XSquare",
 ];
 
+// Primitives that left the codebase for the one primitive of their job (docs/design.md,
+// Primitives by job): a module under one of these names comes back only through that table.
+const RETIRED_PRIMITIVES = {
+  "@/components/ui/AccountPicker": "Search an account with <ItemSearch>.",
+  "@/components/ui/OptionPicker": "Pick from a vocabulary with <OptionSearch>.",
+  "@/components/ui/ChipBucket": "Pick from a vocabulary with <OptionSearch>.",
+  "@/components/ui/Disclosure": "Collapse a section with the <SectionEyebrow> toggle.",
+};
+
 const restrictRemovalIcons = (names, message) => ({
   "no-restricted-imports": [
     "error",
     {
       paths: [
-        {
-          name: "lucide-react",
-          importNames: names.flatMap((n) => [n, `${n}Icon`, `Lucide${n}`]),
-          message,
-        },
+        ...(names.length > 0
+          ? [
+              {
+                name: "lucide-react",
+                importNames: names.flatMap((n) => [n, `${n}Icon`, `Lucide${n}`]),
+                message,
+              },
+            ]
+          : []),
+        ...Object.entries(RETIRED_PRIMITIVES).map(([name, message]) => ({ name, message })),
       ],
     },
   ],
 });
+
+// A raw element that would bypass the one primitive of its job. Input.tsx owns the native
+// fields the primitives wrap.
+const RAW_FIELDS = {
+  "no-restricted-syntax": [
+    "error",
+    {
+      selector: "JSXOpeningElement[name.name='select']",
+      message: "Pick from a vocabulary with <OptionSearch>; a position in a list the form holds takes <Select>.",
+    },
+    {
+      selector: "JSXOpeningElement[name.name='textarea']",
+      message: "Use <Textarea> from components/ui/Input.tsx.",
+    },
+    {
+      selector:
+        "JSXOpeningElement[name.name='input'] > JSXAttribute[name.name='type'][value.value=/^(date|time|datetime-local|month|week)$/]",
+      message: "Enter a date, a time or an instant with <DateTimeInput>.",
+    },
+    {
+      selector: "CallExpression[callee.name='confirm'], CallExpression[callee.property.name='confirm'][callee.object.name='window']",
+      message: "Confirm a destructive action with <ConfirmButton>, or <ConfirmDialog> when it needs input.",
+    },
+  ],
+};
 
 const REMOVAL_MESSAGE =
   "A removal takes ACTION_ICONS.remove (a cross that acts at once) or ACTION_ICONS.delete (a trash behind <ConfirmButton>). See docs/design.md, Destructive actions.";
@@ -75,13 +114,12 @@ const config = [
       "react-hooks/set-state-in-effect": "warn",
     },
   },
-  { rules: restrictRemovalIcons(REMOVAL_ICONS, REMOVAL_MESSAGE) },
+  { rules: { ...restrictRemovalIcons(REMOVAL_ICONS, REMOVAL_MESSAGE), ...RAW_FIELDS } },
   {
     // The cross where it closes or marks a state and removes nothing: the drawer's and the
-    // lightbox's close, the session notice's dismiss, a failed step, the closed status badge.
+    // lightbox's close, a failed step, the closed status badge.
     files: [
       "src/components/Sidebar.tsx",
-      "src/components/SessionEndedNotice.tsx",
       "src/components/ui/MediaLightbox.tsx",
       "src/components/ui/ProgressSteps.tsx",
       "src/components/event/StatusBadge.tsx",
@@ -94,7 +132,12 @@ const config = [
   {
     // The one home of the removal icons.
     files: ["src/components/ui/Button.tsx"],
-    rules: { "no-restricted-imports": "off" },
+    rules: restrictRemovalIcons([], REMOVAL_MESSAGE),
+  },
+  {
+    // The one home of the native fields, and the test stubs that stand in for an editor.
+    files: ["src/components/ui/Input.tsx", "src/test/**"],
+    rules: { "no-restricted-syntax": "off" },
   },
 ];
 

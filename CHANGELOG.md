@@ -35,6 +35,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- `docs/design.md` names one primitive per job (show an item, pick from a vocabulary, enter a date, remove, delete, show an error...), and lint fails on a raw `<select>`, `<textarea>` or date input, `confirm()` or a retired primitive ([#814](https://github.com/vidithq/vidit/pull/814)).
 - `/palette` lists the shared components by category, one file each, with a table of contents and a filter by name; each entry shows its live demos only, and `docs/design.md` holds the details ([#814](https://github.com/vidithq/vidit/pull/814)).
 - On the event and site forms, the coordinates field sits under the map, the title fields drop their character counter, and the suggested tags show as many as fit on two lines with no Show more ([#814](https://github.com/vidithq/vidit/pull/814)).
 - The Filters header and the phone's filter bar show how many results match, such as *284 results*, on the map, search, the feed and the Requests board; `GET /search/dates` and `GET /feed/dates` return that `total` ([#814](https://github.com/vidithq/vidit/pull/814)).

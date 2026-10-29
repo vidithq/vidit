@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
-import { FORM_ERROR_BANNER, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
+import { FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import { NO_ANSWER } from "@/lib/errors";
@@ -52,6 +52,9 @@ export const FEEDBACK: PaletteCategory = {
           <Variant label="refusal" className="w-full max-w-sm">
             <ErrorNotice error="This invite code was already used." />
           </Variant>
+          <Variant label="onDismiss" className="w-full max-w-sm">
+            <ErrorNotice error="Your session ended." onDismiss={() => {}} />
+          </Variant>
         </>
       ),
     },
@@ -71,10 +74,6 @@ export const FEEDBACK: PaletteCategory = {
           </FieldError>
         </div>
       ),
-    },
-    {
-      name: "FORM_ERROR_BANNER",
-      demo: <div className={`${FORM_ERROR_BANNER} max-w-sm`}>Your session ended.</div>,
     },
     {
       name: "FORM_SUCCESS_BANNER",

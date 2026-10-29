@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import { useFirstLines } from "@/hooks/useFirstLines";
 import { Combobox } from "./Combobox";
 import { Pill } from "./Pill";
-import { Switch } from "./Switch";
+import { ToggleRow } from "./ToggleRow";
 
 export interface Option {
   value: string;
@@ -123,16 +123,12 @@ export function OptionSearch({
         status={rows.length === 0 ? "No match." : null}
       />
       {includeEnded && (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={ended}
-          onClick={() => setEnded((on) => !on)}
-          className="flex items-center gap-2 text-xs text-neutral-400 transition-colors hover:text-neutral-300"
-        >
-          <Switch as="span" size="sm" on={ended} />
-          {includeEnded.label}
-        </button>
+        <ToggleRow
+          label={includeEnded.label}
+          on={ended}
+          onToggle={() => setEnded((on) => !on)}
+          className="py-0"
+        />
       )}
       {picks && selected.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
