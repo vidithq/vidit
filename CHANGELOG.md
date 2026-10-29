@@ -35,6 +35,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- `GET /feed` and `GET /feed/dates` take the Show filter as `status` (`geolocated`, `requested`, `detected`), the same parameter and values as `GET /search` and `GET /events`, and no longer accept `kind` ([#814](https://github.com/vidithq/vidit/pull/814)).
+- The Requests board keeps its filters in the page URL, like the map, search and the feed ([#814](https://github.com/vidithq/vidit/pull/814)).
 - Every field that picks from a list, in the filter panel and on the forms (kinds, levels, reasons, effects, conflicts, tags), lists its options on focus, closes after a pick and shows the picks as removable pills ([#814](https://github.com/vidithq/vidit/pull/814)).
 - Every field that finds an event, a site, a collection, an analyst or an organization lists its matches the same way, and Find a collection now runs the collection's own action on a pick ([#814](https://github.com/vidithq/vidit/pull/814)).
 - One filter panel serves the map, search, the feed and the Requests board: collapsible groups What, When (the Event date and Added timelines), Source, Where and Who; Conflict, Tags and accounts search in their line; a phone opens it in a sheet ([#813](https://github.com/vidithq/vidit/pull/813)).
@@ -101,6 +103,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- The site forms refuse a contour whose corner touches another edge or whose edges overlap, which the server refused after the submit ([#814](https://github.com/vidithq/vidit/pull/814)).
 - On the map, no Show chip selected shows every event and every site, and selected chips show only what they name: Sites alone hides the events, and Clear all brings the sites back. No zones date sits under the chips ([#808](https://github.com/vidithq/vidit/pull/808)).
 - A GIF inserted into a proof shows one image per frame, and one past 6 frames is refused under the editor with the reason ([#804](https://github.com/vidithq/vidit/pull/804)).
 - The submit form keeps its draft across a reload, files and proof images included, until you publish ([#804](https://github.com/vidithq/vidit/pull/804)).

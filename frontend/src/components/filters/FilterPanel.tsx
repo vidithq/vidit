@@ -19,7 +19,7 @@ import { cn } from "@/lib/cn";
 import { accountItem } from "@/lib/items";
 import { AUTHOR_FILTER_RE, suggestApprovers, suggestAuthors } from "@/lib/search";
 import { TimelineScrubber } from "./TimelineScrubber";
-import { useOpenGroups, usePanelOpen } from "./panelState";
+import { useOpenGroups, usePanelOpen } from "@/hooks/useFilterPanelState";
 import {
   DATE_DIMENSIONS,
   DATE_KEYS,
@@ -108,7 +108,7 @@ function DimensionLine({
   if (control.kind === "switch") {
     return (
       <ToggleRow
-        label={control.label}
+        label={name}
         concept={concept}
         on={state[control.field]}
         onToggle={() => onPatch({ [control.field]: !state[control.field] })}

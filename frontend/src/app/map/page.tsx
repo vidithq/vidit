@@ -2,8 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { filterPointsByStatus } from "@/types";
-import type { MapPoint, EventDetail } from "@/types";
+import { POINT_DETECTED_FLAG, type MapPoint, type EventDetail } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
 import { apiFetch } from "@/lib/api";
 import { readError, type ReadableError } from "@/lib/errors";
@@ -17,11 +16,10 @@ import {
 } from "@/lib/viewport";
 import { DetailSidePanel } from "@/components/map/DetailSidePanel";
 import { MapFilters } from "@/components/map/MapFilters";
-import { inWindow, showScope, splitShow } from "@/components/filters/model";
+import { inWindow, showScope, splitShow, type FilterState } from "@/components/filters/model";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SitePanel, SitePreview } from "@/components/map/SitePanel";
 import { useMapState } from "@/contexts/MapStateContext";
-import { useFilterVocabulary } from "@/hooks/useFilterVocabulary";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import {
   sitePath,
@@ -37,6 +35,30 @@ const SiteLayers = dynamic(
   () => import("@/components/map/SiteLayers").then((m) => m.SiteLayers),
   { ssr: false },
 );
+
+/** The `/events/points` filters of a filter state: every filter but the Show pick and the date
+ *  windows, which apply in memory. */
+function pointsQuery(filters: FilterState): string {
+  const params = new URLSearchParams();
+  appendEventFilterParams(params, {
+    ...filters,
+    show: [],
+    eventFrom: "",
+    eventTo: "",
+    addedFrom: "",
+    addedTo: "",
+  });
+  return params.toString();
+}
+
+/** The points of the picked statuses (every status when none is picked): the client counterpart
+ *  of `?status=`. `/events/points` serves live `geolocated` and `detected` rows only. */
+function pointsOfStatuses(points: MapPoint[], statuses: string[]): MapPoint[] {
+  if (statuses.length === 0) return points;
+  return points.filter((p) =>
+    statuses.includes(p[POINT_DETECTED_FLAG] === 1 ? "detected" : "geolocated"),
+  );
+}
 
 export default function HomePage() {
   // Navigation-surviving state lives in MapStateContext; the page reads only filter values (setters live with MapFilters).
@@ -59,7 +81,6 @@ export default function HomePage() {
   // The padded region those points cover; a viewport inside it needs no request.
   const coveredRef = useRef<MapBounds | null>(null);
   const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const vocabulary = useFilterVocabulary();
   const shown = showScope(filters.show);
   const sitesShown = shown.others;
   // Keyed on the selection in context, so returning to the map re-reads it.
@@ -73,6 +94,9 @@ export default function HomePage() {
   // The zone a site shows is the one valid at the end of the event date window.
   const asOf = sitesAsOf(filters.eventTo, todayUtc());
   const abortRef = useRef<AbortController | null>(null);
+  // Keyed on the serialized filters: the Show pick and the date windows apply in memory, so
+  // changing them must not refetch.
+  const serverFilters = pointsQuery(filters);
 
   const fetchPoints = useCallback(() => {
     if (!bbox) return;
@@ -80,19 +104,9 @@ export default function HomePage() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(serverFilters);
     // Required: the endpoint 422s without it, and the viewport bounds the payload.
     params.set("bbox", bbox);
-    appendEventFilterParams(params, {
-      conflicts: filters.conflicts,
-      sourceKinds: filters.sourceKinds,
-      levels: filters.levels,
-      tags: filters.tags,
-      mediaTypes: filters.mediaTypes,
-      author: filters.author,
-      approved: filters.approved,
-      approvedBy: filters.approvedBy,
-    });
 
     setLoading(true);
     apiFetch<MapPoint[]>(`/events/points?${params.toString()}`, {
@@ -112,18 +126,7 @@ export default function HomePage() {
         // A superseded request must not clear the spinner its replacement raised.
         if (abortRef.current === controller) setLoading(false);
       });
-    // Per-bucket deps: status and date windows are client-side, so a status chip must not refetch.
-  }, [
-    bbox,
-    filters.conflicts,
-    filters.sourceKinds,
-    filters.levels,
-    filters.tags,
-    filters.mediaTypes,
-    filters.author,
-    filters.approved,
-    filters.approvedBy,
-  ]);
+  }, [bbox, serverFilters]);
 
   useEffect(() => {
     fetchPoints();
@@ -200,7 +203,7 @@ export default function HomePage() {
   // The Show field and both timeline windows filter client-side (`POINT_DETECTED_FLAG`, event and
   // added dates); a point with no event date is never dropped by its window.
   const statusFiltered = useMemo(
-    () => (shown.events ? filterPointsByStatus(points, splitShow(filters.show).statuses) : []),
+    () => (shown.events ? pointsOfStatuses(points, splitShow(filters.show).statuses) : []),
     [points, filters.show, shown.events],
   );
   const { eventFrom, eventTo, addedFrom, addedTo } = filters;
@@ -238,7 +241,6 @@ export default function HomePage() {
       </Map>
 
       <MapFilters
-        vocabulary={vocabulary}
         points={statusFiltered}
         loading={loading}
       />

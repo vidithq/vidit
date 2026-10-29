@@ -264,7 +264,7 @@ describe("the search page with no kind picked", () => {
     // Events keep the filters and take every status.
     expect(seeAll("Events")).toHaveAttribute(
       "href",
-      "/search?q=kakhovka&type=event&status=requested&status=detected&status=geolocated&tag=dam&author=ana",
+      "/search?q=kakhovka&type=event&tag=dam&author=ana",
     );
     // A kind other than events keeps only the filters it answers.
     expect(seeAll("Collections")).toHaveAttribute(
@@ -349,11 +349,11 @@ describe("the search page's URL", () => {
     await screen.findByRole("link", { name: "Kakhovka depot" });
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "kakhovka dam" } });
-    await waitFor(() => expect(replace).toHaveBeenLastCalledWith("/search?q=kakhovka+dam"));
+    await waitFor(() => expect(replace).toHaveBeenLastCalledWith("/search?q=kakhovka+dam", { scroll: false }));
     expect(push).not.toHaveBeenCalled();
 
     chip("Sites");
-    await waitFor(() => expect(push).toHaveBeenLastCalledWith("/search?q=kakhovka+dam&type=site"));
+    await waitFor(() => expect(push).toHaveBeenLastCalledWith("/search?q=kakhovka+dam&type=site", { scroll: false }));
   });
 });
 
@@ -394,7 +394,7 @@ describe("the Show field", () => {
     chip("Geolocated");
     await waitFor(() =>
       expect(searchSections).toHaveBeenLastCalledWith(
-        expect.objectContaining({ types: ["event", "site"], show: ["geolocated"] }),
+        expect.objectContaining({ types: ["event", "site"], show: ["site", "geolocated"] }),
       ),
     );
     expect(heading("When")).toBeInTheDocument();
@@ -651,7 +651,8 @@ describe("the approval filters on the search page", () => {
     await screen.findByText("Kakhovka spillway");
     fireEvent.click(within(rail()).getByRole("switch", { name: "Approved only" }));
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/search?q=kakhovka&approved=true"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/search?q=kakhovka&approved=true", { scroll: false }),
+    );
   });
 });
 

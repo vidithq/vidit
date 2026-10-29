@@ -27,7 +27,6 @@ from app.services.pagination import keyset_before
 from app.services.thumbnails import thumbnail_loads
 
 FeedScope = Literal["following", "all"]
-FeedKind = Literal["geolocation", "request", "detected"]
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
@@ -103,29 +102,20 @@ def _feed_rows(
     *columns: Any,
     user_id: uuid.UUID,
     scope: FeedScope,
-    kind: list[FeedKind] | None,
     filters: EventFilters,
 ) -> SAQuery:
-    """``columns`` of the rows the feed lists for ``scope``, ``kind`` and ``filters``, unordered
+    """``columns`` of the rows the feed lists for ``scope`` and ``filters``, unordered
     (see :func:`get_feed`)."""
-    kinds = set(kind or ("geolocation", "request", "detected"))
-    legs = []
     if scope == "following":
         followed = select(Follow.followed_id).where(Follow.follower_id == user_id)
-        if "geolocation" in kinds:
-            legs.append(published_credited_to(followed))
-        if "request" in kinds:
-            legs.append(and_(open_requests(), Event.owner_id.in_(followed)))
-        if "detected" in kinds:
-            legs.append(and_(live_detections(), Event.owner_id.in_(followed)))
+        legs = or_(
+            published_credited_to(followed),
+            and_(open_requests(), Event.owner_id.in_(followed)),
+            and_(live_detections(), Event.owner_id.in_(followed)),
+        )
     else:
-        if "geolocation" in kinds:
-            legs.append(published_events())
-        if "request" in kinds:
-            legs.append(open_requests())
-        if "detected" in kinds:
-            legs.append(live_detections())
-    return filters.apply(db.query(*columns).filter(or_(*legs)), view=None)
+        legs = or_(published_events(), open_requests(), live_detections())
+    return filters.apply(db.query(*columns).filter(legs), view=None)
 
 
 def get_feed(
@@ -136,7 +126,6 @@ def get_feed(
     size: int,
     filters: EventFilters,
     cursor: tuple[datetime, uuid.UUID] | None = None,
-    kind: list[FeedKind] | None = None,
 ) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
     """One window of the feed, newest first, over-fetched by one row for ``pagination.paged``.
 
@@ -149,8 +138,8 @@ def get_feed(
     ``user_id`` follows (owner or co-geolocator) and the requests and detections such an analyst
     owns; ``"all"`` keeps every row.
 
-    ``kind`` keeps the named kinds (all three when empty). ``filters`` narrows the rows as on
-    ``GET /events`` (:class:`services.event_filters.EventFilters`).
+    ``filters`` narrows the rows as on ``GET /events``
+    (:class:`services.event_filters.EventFilters`): its ``status`` keeps the named kinds.
 
     Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
     (:func:`models.event.feed_at`), a total order over the three kinds, so a keyset walk
@@ -165,7 +154,6 @@ def get_feed(
         key.label("feed_at"),
         user_id=user_id,
         scope=scope,
-        kind=kind,
         filters=filters,
     ).options(
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
@@ -185,15 +173,12 @@ def get_feed_dates(
     *,
     user_id: uuid.UUID,
     scope: FeedScope,
-    kind: list[FeedKind] | None,
     filters: EventFilters,
 ) -> dict[str, list[dict[str, Any]]]:
-    """The rows :func:`get_feed` walks for ``scope``, ``kind`` and ``filters``, counted per day
-    by :func:`services.event_filters.date_histogram`."""
+    """The rows :func:`get_feed` walks for ``scope`` and ``filters``, counted per day by
+    :func:`services.event_filters.date_histogram`."""
     return date_histogram(
-        lambda window: _feed_rows(
-            db, Event.id, user_id=user_id, scope=scope, kind=kind, filters=window
-        ),
+        lambda window: _feed_rows(db, Event.id, user_id=user_id, scope=scope, filters=window),
         filters,
     )
 

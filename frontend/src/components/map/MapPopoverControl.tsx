@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useControl } from "react-map-gl/maplibre";
 
 import { Dot } from "@/components/ui/Dot";
-import { MapControlButton } from "@/components/ui/MapControlButton";
+import { MapControlButton } from "@/components/map/MapControlButton";
 import { PopoverPanel } from "@/components/ui/Popover";
 
 /** A map control beside the zoom buttons that opens a `<PopoverPanel>` above it: the basemap

@@ -335,14 +335,14 @@ describe("FeedPage", () => {
     expect(lastPath()).toBe("/feed?scope=following");
 
     pick("Show", "Detected");
-    expect(lastPath()).toBe("/feed?scope=following&kind=detected");
+    expect(lastPath()).toBe("/feed?scope=following&status=detected");
     expect(within(rail()).getByRole("button", { name: "Remove Detected" })).toBeInTheDocument();
 
     pick("Show", "Geolocated");
-    expect(lastPath()).toBe("/feed?scope=following&kind=detected&kind=geolocation");
+    expect(lastPath()).toBe("/feed?scope=following&status=detected&status=geolocated");
 
     fireEvent.click(within(rail()).getByRole("button", { name: "Remove Detected" }));
-    expect(lastPath()).toBe("/feed?scope=following&kind=geolocation");
+    expect(lastPath()).toBe("/feed?scope=following&status=geolocated");
   });
 
   it("narrows the walk from the rail with every dimension the feed serves", () => {
@@ -355,7 +355,7 @@ describe("FeedPage", () => {
     pick("Media", "Video");
     pick("Location guess", "No guess");
     expect(lastPath()).toBe(
-      "/feed?scope=following&kind=request&conflict=Russo-Ukrainian+war&tag=airstrike&media=video" +
+      "/feed?scope=following&status=requested&conflict=Russo-Ukrainian+war&tag=airstrike&media=video" +
         "&has_coords=false",
     );
     expect(nav.state.replace).toHaveBeenLastCalledWith(
@@ -369,7 +369,7 @@ describe("FeedPage", () => {
     walk.items = [item({})];
     render(<FeedPage />);
 
-    expect(lastPath()).toBe("/feed?scope=all&kind=detected&author=ana&occurred_date_from=2024-01-01");
+    expect(lastPath()).toBe("/feed?scope=all&status=detected&author=ana&occurred_date_from=2024-01-01");
     expect(within(rail()).getByRole("switch", { name: "Following" })).not.toBeChecked();
     expect(within(rail()).getByRole("button", { name: "Remove ana" })).toBeInTheDocument();
     expect(nav.state.replace).not.toHaveBeenCalled();

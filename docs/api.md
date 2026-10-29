@@ -2554,7 +2554,7 @@ A site is a named area of interest that analysts monitor through dated satellite
 ```
 
 - **Shape (422):** a ring holds at least 4 positions and ends on its first position, and a zone holds at most 1000 positions across all its rings.
-- **Content (400 `invalid_zone`):** a position outside the event coordinate bounds, a self-crossing polygon, or a polygon without area.
+- **Content (400 `invalid_zone`):** a position outside the event coordinate bounds, a ring that crosses or touches itself, or a polygon without area.
 - **Size (400 `zone_too_wide`, `zone_too_large`):** a zone spans less than 180 degrees of longitude and covers at most 1,000 km², measured on the spheroid. The longitude span is checked first, and keeps a zone from wrapping the antimeridian.
 - **Area cap:** a site is a depot, a port, a base, an airfield, a position or a training ground. Depots, ports and airfields cover a few km² to a few tens of km², and the largest training grounds a few hundred km². The 1,000 km² cap holds the largest of them with margin and refuses a region drawn by mistake. The site forms apply the same cap while you draw.
 
@@ -3900,7 +3900,7 @@ A retraction, a withdrawn request and a rejected detection are in no kind. A sof
 | Param | Type | Description |
 |-------|------|-------------|
 | `scope` | string | `following` (default) keeps the geolocations crediting an analyst you follow and the requests and detections one of them owns, and is empty when you follow nobody. `all` keeps every row. Anything else returns 422. |
-| `kind` | string (repeatable) | `geolocation`, `request` or `detected` keeps that kind of row. Omitted, it keeps all three. Anything else returns 422. |
+| `status` | string (repeatable) | Same values as on [`GET /events`](#get-events) and [`GET /search`](#get-search): `geolocated`, `requested` or `detected` keeps that kind of row. Omitted, it keeps all three. `closed` returns an empty list, and a value outside the four returns 422. |
 | `conflict`, `source_kind`, `level`, `tag`, `media` | string (repeatable) | Same semantics as on [`GET /events`](#get-events). |
 | `occurred_date_from`, `occurred_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`, `has_coords` | | Same semantics as on [`GET /events`](#get-events). `author` keeps a row that credits the analyst as owner or geolocator, and `has_coords=false` keeps the requests without a location guess. |
 | `limit` | int | Rows per page, default 10. See [Pagination](#pagination). |
@@ -3938,7 +3938,7 @@ A retraction, a withdrawn request and a rejected detection are in no kind. A sof
 
 The rows a [`GET /feed`](#get-feed) walk lists, counted per day on each date axis. Read it to draw a timeline under the date filters.
 
-**Query params:** `scope`, `kind` and the filters of [`GET /feed`](#get-feed), with the same meaning. It takes no `limit` and no `cursor`.
+**Query params:** `scope`, `status` and the filters of [`GET /feed`](#get-feed), with the same meaning. It takes no `limit` and no `cursor`.
 
 `occurred_date` ignores the request's own `occurred_date_from` and `occurred_date_to`, and `submitted` ignores its own `submitted_from` and `submitted_to`. Every other filter applies to both, so each timeline shows the spread its own window cuts from.
 

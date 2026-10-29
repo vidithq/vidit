@@ -33,7 +33,6 @@ import { PageShell } from "@/components/ui/PageShell";
 import { ItemSearch } from "@/components/ui/ItemSearch";
 import { accountKey, analystAccount, type Account } from "@/lib/accounts";
 import { Popover } from "@/components/ui/Popover";
-import { MapControlButton } from "@/components/ui/MapControlButton";
 import {
   PUBLISHING_LABEL,
   PUBLISH_CONFIRM,
@@ -83,12 +82,6 @@ import { SUBMIT_PATHS } from "@/components/geolocations/SubmitChooser";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { SourceHostBar } from "@/components/ui/SourceHostBar";
 import { NumberedSteps } from "@/components/ui/NumberedSteps";
-import {
-  MOCK_ANALYST,
-  MOCK_BOT,
-  MockPost,
-  MockPostLink,
-} from "@/components/ui/MockPost";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { OptionSearch } from "@/components/ui/OptionSearch";
@@ -118,12 +111,7 @@ import { EVENT_FIELDS } from "@/lib/events";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import {
-  ArchiveBox,
-  ArchivedCopies,
-  ArchiveSnapshotField,
-  linkDescription,
-} from "@/components/ui/ArchivedCopies";
+import { ArchiveBox, ArchiveSnapshotField, linkDescription } from "@/components/sources/ArchivedCopies";
 import { StatusBadge } from "@/components/event/StatusBadge";
 import {
   TEXT_LINK,
@@ -148,7 +136,6 @@ import {
 import { CoordinateActions, CoordinateValue } from "@/components/event/CoordinateActions";
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
-import { Disclosure } from "@/components/ui/Disclosure";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Switch } from "@/components/ui/Switch";
 import { ProofSection } from "@/components/ui/ProofSection";
@@ -720,10 +707,6 @@ export default function PalettePage() {
             </Variant>
           </Entry>
 
-          <Entry name="<MapControlButton>" usage="A square icon button drawn like the MapLibre controls beside it: 29px, the panel paint and border of the zoom buttons, the native title as its tooltip like theirs, so a control the app adds to the map reads as one of the map's own. active paints the accent while what it opens is open; the rest of the button props pass through (aria-expanded, aria-controls, a ref for an anchored panel). components/map/MapPopoverControl.tsx is the one use, behind the basemap control and the go-to-coordinates control: MapLibre places the control's element in the bottom-left corner beside the zoom buttons, and the button opens a PopoverPanel above it.">
-            <PaletteMapControlButton />
-          </Entry>
-
           <Entry name="<Tooltip>" usage="The label of an icon-only control in a TOOLTIP_SURFACE bubble, while a mouse rests on it or the keyboard focuses it; a touch never opens it, so a tap leaves nothing standing, except with tapToShow (the AvatarStack pictures, the CountBadge count), where a touch's first tap pins the bubble and the second follows the link. underParent hangs the bubble under the wrapper's parent rather than under the control (a CountBadge's list under the button it counts for). Placement and dismissal (Escape, scroll, resize, an outside click) are usePinnedPopover's. <Button icon> renders its button through TooltipButton, so every icon button gets it with no call-site change: the tip is `title` when it differs from the name (a longer hint) and the aria-label otherwise, and the native title is dropped so no second tooltip appears. An icon link (buttonClasses on a Link or an a) wraps itself in <Tooltip label>, a display: contents span that leaves the layout alone. The bubble is aria-hidden, since the control's accessible name already says it.">
             <Variant label="icon button (hover or tab to it)">
               <Button icon variant="ghost" aria-label="Copy coordinates">
@@ -764,7 +747,7 @@ export default function PalettePage() {
             </Variant>
           </Entry>
 
-          <Entry name="<ActiveFilterPills>" usage="The one rendering of the applied filters outside the panel: a row of removable accent key/value chips (filter name, value, ×), on the phone filter bar of every surface, under the closed Filters header of the filter card (the map's and every list rail's), and under a collapsed group of the filter panel. Each pill names its filter as its line in the panel reads and its value as its option reads (Conflict: Russo-Ukrainian War, Event date: Until 1 Jan 2025); a switch's pill reads as its name alone (Approved only). Each pill is a <Pill> with `onRemove`, titled Remove filter and its name and value. Entries are {key, filter?, label, onRemove}; `onClearAll` adds a quiet clear-everything affordance once two or more filters are on. Renders nothing when the list is empty. No pill carries a count.">
+          <Entry name="<ActiveFilterPills>" usage="The one rendering of the applied filters outside the panel: a row of removable accent key/value chips (filter name, value, ×), on the phone filter bar of every surface, under the closed Filters header of the filter card (the map's and every list rail's), and under a collapsed group of the filter panel. Each pill names its filter as its line in the panel reads and its value as its option reads (Conflict: Russo-Ukrainian War, Event date: Until 1 Jan 2025); a switch's pill reads as its name alone (Approved only). Each pill is a <Pill> with `onRemove`, titled Remove filter and its name and value. Entries are {key, filter?, label, onRemove}; `onClearAll` adds the filter panel's Clear all ghost button once two or more filters are on. Renders nothing when the list is empty. No pill carries a count.">
             <PaletteActiveFilterPills />
           </Entry>
 
@@ -1038,10 +1021,6 @@ export default function PalettePage() {
                 </div>
               </Variant>
             </div>
-          </Entry>
-
-          <Entry name="<Disclosure>" usage="A ghost toggle, a chevron and a label, that shows or hides a block of secondary fields under it: a source editor's **Capture details** (capture time, capture position, tags, graphic flag). The parent owns `open` and `onToggle`, so it decides the first state (a source editor opens it when a field inside holds a value). The block stays mounted while closed (`hidden`), so a field keeps what it holds; `aria-expanded` and `aria-controls` tie the toggle to it.">
-            <PaletteDisclosure />
           </Entry>
 
           <Entry name="FORM_LABEL (+ _COMPACT, LABEL_TEXT, FORM_INVALID_LABEL)" usage="Field labels, kept separate from <Input>. LABEL_TEXT is the bare 11px uppercase text (FORM_LABEL minus block) for block hosts: table head rows, group headings, the error-digest label. FORM_INVALID_LABEL is FORM_INVALID_FIELD's label-side companion: every required field appends it to its own label alongside the input's FORM_INVALID_FIELD outline, so the two always turn red together.">
@@ -1331,114 +1310,6 @@ export default function PalettePage() {
             <SourceLabel url={null} variant="inline" />
           </Entry>
 
-          <Entry
-            name="<ArchivedCopies>"
-            usage="The archived copy beside each link of a source block, on the event detail surfaces. One copy per link, from whichever service produced it, so the affordance is a single lucide mark: the Archive box, one mark for archiving in every state and for every provider, never the services' own logos. Provider identity lives in the accessible name of the stored copy, never in the shape. It is one ghost icon button in exactly two states, and colour says which: accent where a copy exists and the mark opens it, grey and disabled where none does, for every reader including the event's owner. Recording a copy is an edit, so it happens on the forms through <ArchiveBox> + <ArchiveSnapshotField> and files a version; nothing here writes. The mark carries no `?` of its own: the source_links concept explains it once, so a source with ten links shows one explanation rather than ten. It sits `self-center` because those rows align their text on the baseline, where the square hangs low. Every mark looks alike across the page, so the accessible name carries the state and the target both: linkDescription(source, host, link, total) leads with the source's position, adds the link's position whenever the source holds more than one (two links on one host would otherwise share a name) and falls back to a literal for a URL with no host."
-          >
-            <Variant label="a stored copy named for the Wayback Machine (a source's one link)">
-              <span className="text-sm text-neutral-300">
-                t.me
-                <ArchivedCopies
-                  copy={{
-                    url: "https://web.archive.org/web/20260601120000/https://t.me/channel/12345",
-                    provider: "wayback",
-                    archived_at: "2026-06-01T12:00:00Z",
-                  }}
-                  describes={linkDescription(0, "t.me", 0, 1)}
-                />
-              </span>
-            </Variant>
-            <Variant label="a stored copy named for archive.today, same mark (link 2 of a source)">
-              <span className="text-sm text-neutral-300">
-                t.me
-                <ArchivedCopies
-                  copy={{
-                    url: "https://archive.ph/abcde",
-                    provider: "archive_today",
-                    archived_at: "2026-06-01T12:00:00Z",
-                  }}
-                  describes={linkDescription(0, "t.me", 1, 2)}
-                />
-              </span>
-            </Variant>
-            <Variant label="no copy yet: grey and inert, for every reader">
-              <span className="text-sm text-neutral-300">
-                x.com
-                <ArchivedCopies copy={null} describes={linkDescription(1, "x.com", 0, 1)} />
-              </span>
-            </Variant>
-          </Entry>
-
-          <Entry
-            name="<ArchiveBox>"
-            usage="One link's archive box on a form, in the link's row after its post time (a <LinkListInput> column). On a form it is never grey: whatever state the link is in there is something to do with it. No copy yet is an icon-only ghost button, the ArchiveRestore mark with an Archive tooltip, which opens the paste line under the row. A copy (the stored one, or a pasted snapshot on an allowed host) shows as itself: the Archive mark and the service's name, opening the copy under the accessible name the event page gives it, with ArchiveRestore beside it, since one link holds one copy and a wrong paste has to be replaceable. On a wide link list the box is 9rem wide in every state, so a copy appearing never narrows the row's other fields; a long service name truncates and its tooltip shows it whole. Every name folds in `describes`, because a form carries several of these and they look alike. Nothing is written here: the paste travels with the form."
-          >
-            <Variant label="no copy yet: the Archive icon opens the paste line">
-              <ArchiveBox
-                describes={linkDescription(0, "t.me", 0, 1)}
-                snapshot=""
-                expanded={false}
-                onToggle={() => {}}
-              />
-            </Variant>
-            <Variant label="a copy exists: it opens, and the mark beside it replaces it">
-              <ArchiveBox
-                describes={linkDescription(0, "t.me", 0, 1)}
-                snapshot="https://archive.ph/abcde"
-                expanded={false}
-                onToggle={() => {}}
-              />
-            </Variant>
-          </Entry>
-
-          <Entry
-            name="<ArchiveSnapshotField>"
-            usage="The line <ArchiveBox> opens, across the row of the link it archives: one field and nothing else. No label, no optional marker, no sentence, because the placeholder states the whole contract and names the three archiving services behind SNAPSHOT_HOSTS. The trailing mark opens web.archive.org/save/<link> for the value currently typed above, so archiving a corrected URL is a re-click; it is the one place on a form a mark goes grey, since a link that does not parse has no page to open. isSnapshotUrl / SNAPSHOT_HINT are the client-side check (https + an allowed archive host) and the one sentence explaining it, reused by the forms to refuse a publish before the upload. Under the field, at most one more line: a red refusal for a value that cannot be a snapshot, or an amber WARNING_CALLOUT naming both URLs when the paste reads as a copy of a different link (snapshotArchivesAnotherLink). The warning blocks nothing, which is why its comparison may be loose; the server checks where a snapshot lives, never what it captured. Nothing is written here: the paste travels with the form as the link's `snapshot_url`."
-          >
-            <div className="w-full max-w-sm space-y-2">
-              <Variant label="a link is typed: the door is live">
-                <ArchiveSnapshotField
-                  link="https://t.me/channel/12345"
-                  describes={linkDescription(0, "t.me", 0, 1)}
-                  value=""
-                  onChange={() => {}}
-                />
-              </Variant>
-              <Variant label="no usable link yet: the door is inert">
-                <ArchiveSnapshotField
-                  link=""
-                  describes={linkDescription(0, "t.me", 0, 1)}
-                  value=""
-                  onChange={() => {}}
-                />
-              </Variant>
-              <Variant label="a paste that cannot be a snapshot">
-                <ArchiveSnapshotField
-                  link="https://t.me/channel/12345"
-                  describes={linkDescription(0, "t.me", 0, 1)}
-                  value="https://example.com/not-an-archive"
-                  onChange={() => {}}
-                />
-              </Variant>
-              <Variant label="a snapshot of some other link: a warning, not a refusal">
-                <ArchiveSnapshotField
-                  link="https://t.me/channel/12345"
-                  describes={linkDescription(0, "t.me", 0, 1)}
-                  value="https://web.archive.org/web/20260601120000/https://t.me/channel/999"
-                  onChange={() => {}}
-                />
-              </Variant>
-              <Variant label="a second link's line">
-                <ArchiveSnapshotField
-                  link="https://rumble.com/v-mirror"
-                  describes={linkDescription(0, "rumble.com", 1, 2)}
-                  value=""
-                  onChange={() => {}}
-                />
-              </Variant>
-            </div>
-          </Entry>
-
           <Entry name="<Dot>" usage="The orange notification dot: the rail's identity row, the profile's detections entry, the filter card header's in-flight pulse on the map. Position / ring / size / colour via className.">
             <Variant label="bare">
               <Dot />
@@ -1459,9 +1330,9 @@ export default function PalettePage() {
             </span>
           </Entry>
 
-          <Entry name="<MediaGallery>" usage="The detail-surface media block: geoloc detail + map panel + request detail. variant=page (hero tiles, a lone one at full width, 2-up from two) / panel (stacked thumbnails); grow gives each page tile a 16:9 box at the full width instead of the fixed height (a lone source's file), and a video tile then takes the clip's own aspect ratio, centered, at most 28rem tall and at least 20rem wide; one marked empty box, shown here through the shared TileNotice. A video tile is <VideoPlayer>, whose own bar already covers play, download and the expand control, so a clip carries no floating tile control at all. An image tile is cropped, so the tile itself opens <MediaLightbox> at hero resolution, and its download floats in the corner under HOVER_REVEAL. The card-sized media slot is ItemMedia, inside <Item>.">
+          <Entry name="<MediaGallery>" usage="A source's file on a reading surface (SourceBlock), one tile: variant=page at hero resolution, panel at thumbnail; grow gives a page tile a 16:9 box at the full width. A video tile is <VideoPlayer>; an image tile opens <MediaLightbox>. No media is one marked empty box, through TileNotice.">
             <div className="w-full max-w-sm">
-              <MediaGallery media={[]} alt="demo" />
+              <MediaGallery media={null} alt="demo" />
             </div>
           </Entry>
 
@@ -1617,37 +1488,6 @@ export default function PalettePage() {
                     },
                   ]}
                 />
-              </Variant>
-            </div>
-          </Entry>
-
-          <Entry name="<MockPost>" usage="A fake X post in X's own dark card, so a guide can show the shape of a real post instead of describing it (/import teaches what to write and what the bot answers). Illustration only: the &quot;links&quot; are <MockPostLink> spans, never anchors, and the body breaks anywhere so a long one cannot widen its column. MOCK_ANALYST and MOCK_BOT are the shared identities, so the guides read as one person's posts. `media` attaches one placeholder, `quoted` renders the quote card X draws around a quoted post (with its own optional media), `replyingTo` puts a handle in the byline. The body, the quoted text and the media labels take nodes, so /import places STEP_NUMBER markers on the parts it annotates.">
-            <div className="w-full max-w-sm space-y-3">
-              <Variant label="a post with an attachment">
-                <MockPost
-                  {...MOCK_ANALYST}
-                  media={{ kind: "image", label: "an attached photo" }}
-                >
-                  {"Strike on the vehicle depot\n48.123456, 37.654321\n"}
-                  <MockPostLink>x.com/warfootage/status/1783</MockPostLink>
-                </MockPost>
-              </Variant>
-              <Variant label="a post quoting the footage it geolocates">
-                <MockPost
-                  {...MOCK_ANALYST}
-                  quoted={{
-                    handle: "@warfootage",
-                    text: "Footage near 49.842900, 24.031100 by the bridge",
-                    media: { kind: "video", label: "the quoted video" },
-                  }}
-                >
-                  {"Geolocated this one."}
-                </MockPost>
-              </Variant>
-              <Variant label="the bot answering in-thread">
-                <MockPost {...MOCK_BOT} replyingTo={MOCK_ANALYST.handle}>
-                  {"✅ 1 detection saved · ref 94183d44"}
-                </MockPost>
               </Variant>
             </div>
           </Entry>
@@ -2005,7 +1845,7 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads; on a form that edits a stored event, while no direct or indirect source has a file, an empty direct or indirect slot holds Use a proof image, a ghost <Button> that copies a stored proof image into it through POST /uploads/from-proof, with a <Select> under the slot to pick another when the proof holds several), the Title (named Source N title), the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput> under Links (N), one row per link with its post time, <ArchiveBox> and, on an X, Telegram or TikTok post link while the source has no file, a ghost icon button that imports the link's file through POST /uploads/from-link (a post with several files gets a <Select> under the slot to pick one), Add a link under them, then <SourceImageryCheck> on a satellite or aircraft source), then Capture details (<Disclosure>, open when a field inside holds a value): Captured (<DateTimeInput>, UTC), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and Graphic content (<Switch> with its ?, locked on a flagged stored source). Each label's ? sits beside its <label>, never inside it. The section has no card of its own: its Sources (N) <SectionEyebrow> header row sits on the page like the event page's, and a missing file's red line sits in that row, so no editor moves down. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width with its file beside its title, level and kind once the card is 42rem wide (like <DetailCard leadBeside>), the links and Capture details under both, and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap. `variant` site-source is a site's satellite source (SiteSourceEditor): no level or kind (fixed to context and satellite), a required Captured under the title, and the caller's `extra` (the note) in place of Capture details.">
+          <Entry name="<SourcesField> / <SourceEditor>" usage="The Sources section of every event form (components/sources/): one <SourceEditor> per source, each a <Card>, in the order of the event page's source block: the file slot (MediaManager on <FileManager>, one full-width tile; a pick uploads at once through POST /uploads; on a form that edits a stored event, while no direct or indirect source has a file, an empty direct or indirect slot holds Use a proof image, a ghost <Button> that copies a stored proof image into it through POST /uploads/from-proof, with a <Select> under the slot to pick another when the proof holds several), the Title (named Source N title), the level (<SegmentedControl>) on its own line and the kind (<Select>, required on every source) under it, the links (<LinkListInput> under Links (N), one row per link with its post time, <ArchiveBox> and, on an X, Telegram or TikTok post link while the source has no file, a ghost icon button that imports the link's file through POST /uploads/from-link (a post with several files gets a <Select> under the slot to pick one), Add a link under them, then <SourceImageryCheck> on a satellite or aircraft source), then Capture details (a SectionEyebrow toggle, open when a field inside holds a value): Captured (<DateTimeInput>, UTC), the capture position (CoordinateInputs, hidden for an article, an official statement or another document), the tags (<TagChips>) and Graphic content (<Switch> with its ?, locked on a flagged stored source). Each label's ? sits beside its <label>, never inside it. The section has no card of its own: its Sources (N) <SectionEyebrow> header row sits on the page like the event page's, and a missing file's red line sits in that row, so no editor moves down. It lays the editors out in a row <HorizontalScroller> like the event page's sources, a lone editor at full width with its file beside its title, level and kind once the card is 42rem wide (like <DetailCard leadBeside>), the links and Capture details under both, and two or more side by side with the row's peek, every editor mounted, with Add a source (capped at 10) in its header; Add a source scrolls the new editor into view, the red trash icon (per editor, from two) arms on the first click and removes on the second, then shows the neighbour, and a publish attempt shows the first editor with a gap. `variant` site-source is a site's satellite source (SiteSourceEditor): no level or kind (fixed to context and satellite), a required Captured under the title, and the caller's `extra` (the note) in place of Capture details.">
             <div className="w-full max-w-2xl">
               <SourcesField
                 sources={paletteSources}
@@ -2295,27 +2135,6 @@ function PalettePublishActions() {
   );
 }
 
-function PaletteDisclosure() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="w-full max-w-sm">
-      <Disclosure label="Capture details" open={open} onToggle={() => setOpen((o) => !o)}>
-        <div className="space-y-1.5">
-          <label htmlFor="palette-disclosure-captured" className={FORM_LABEL}>
-            Captured (UTC)
-          </label>
-          <DateTimeInput
-            id="palette-disclosure-captured"
-            type="datetime-local"
-            value=""
-            onChange={() => {}}
-          />
-        </div>
-      </Disclosure>
-    </div>
-  );
-}
-
 function PaletteOptionSearch() {
   const [tags, setTags] = useState<string[]>([MOCK_TAGS[0].name]);
   const [kind, setKind] = useState<string[]>([]);
@@ -2424,19 +2243,6 @@ function PaletteSwatchPicker() {
       ]}
       value={value}
       onChange={setValue}
-    />
-  );
-}
-
-function PaletteMapControlButton() {
-  const [active, setActive] = useState(false);
-  return (
-    <MapControlButton
-      label="Basemap"
-      icon={<MapIcon size={15} />}
-      active={active}
-      aria-pressed={active}
-      onClick={() => setActive((v) => !v)}
     />
   );
 }

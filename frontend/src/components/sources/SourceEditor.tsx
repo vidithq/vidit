@@ -10,10 +10,9 @@ import {
   ArchiveBox,
   ArchiveSnapshotField,
   linkDescription,
-} from "@/components/ui/ArchivedCopies";
+} from "@/components/sources/ArchivedCopies";
 import { Button } from "@/components/ui/Button";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
-import { Disclosure } from "@/components/ui/Disclosure";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Card } from "@/components/ui/Card";
@@ -22,6 +21,7 @@ import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
 import { OptionSearch } from "@/components/ui/OptionSearch";
+import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Switch } from "@/components/ui/Switch";
 import { TagsField } from "@/components/ui/TagPicker";
 import { cn } from "@/lib/cn";
@@ -309,53 +309,62 @@ export function SourceEditor({
   );
 
   const details = (
-    <Disclosure
-      label="Capture details"
-      open={detailsOpen}
-      onToggle={() => setDetailsOpen((open) => !open)}
-    >
-      {captured}
+    <div className="space-y-4">
+      <SectionEyebrow
+        as="h3"
+        margin="none"
+        title="Capture details"
+        toggle={{
+          open: detailsOpen,
+          onToggle: () => setDetailsOpen((open) => !open),
+          controls: id("details"),
+        }}
+      />
+      {/* Hidden rather than unmounted, so a field inside keeps what it holds. */}
+      <div id={id("details")} hidden={!detailsOpen} className="space-y-4">
+        {captured}
 
-      {hasCapturePosition(draft.kind) && (
-        <div className="space-y-1.5">
-          <FieldLabel {...SOURCE_FIELDS.capture_position} />
-          <CoordinateInputs
-            idPrefix={id("capture_")}
-            required={false}
-            lat={draft.captureLat}
-            setLat={(captureLat) => update({ captureLat })}
-            lng={draft.captureLng}
-            setLng={(captureLng) => update({ captureLng })}
-            invalid={positionInvalid}
+        {hasCapturePosition(draft.kind) && (
+          <div className="space-y-1.5">
+            <FieldLabel {...SOURCE_FIELDS.capture_position} />
+            <CoordinateInputs
+              idPrefix={id("capture_")}
+              required={false}
+              lat={draft.captureLat}
+              setLat={(captureLat) => update({ captureLat })}
+              lng={draft.captureLng}
+              setLng={(captureLng) => update({ captureLng })}
+              invalid={positionInvalid}
+            />
+          </div>
+        )}
+
+        {tags && setTags && (
+          <TagsField
+            tags={tags}
+            setTags={setTags}
+            suggested={suggestedTags}
+            selected={draft.tagIds}
+            setSelected={(tagIds) => update({ tagIds })}
+            owner={name}
+          />
+        )}
+
+        {/* A `span` label plus the switch's own name: not a labelable field. */}
+        <div className="flex items-center justify-between gap-4">
+          <FieldLabel
+            {...SOURCE_FIELDS.is_graphic}
+            trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
+          />
+          <Switch
+            on={draft.isGraphic}
+            onToggle={() => update({ isGraphic: !draft.isGraphic })}
+            disabled={draft.graphicLocked}
+            aria-label={`${name} graphic content`}
           />
         </div>
-      )}
-
-      {tags && setTags && (
-        <TagsField
-          tags={tags}
-          setTags={setTags}
-          suggested={suggestedTags}
-          selected={draft.tagIds}
-          setSelected={(tagIds) => update({ tagIds })}
-          owner={name}
-        />
-      )}
-
-      {/* A `span` label plus the switch's own name: not a labelable field. */}
-      <div className="flex items-center justify-between gap-4">
-        <FieldLabel
-          {...SOURCE_FIELDS.is_graphic}
-          trailing={draft.graphicLocked && <LockedHint>admin only</LockedHint>}
-        />
-        <Switch
-          on={draft.isGraphic}
-          onToggle={() => update({ isGraphic: !draft.isGraphic })}
-          disabled={draft.graphicLocked}
-          aria-label={`${name} graphic content`}
-        />
       </div>
-    </Disclosure>
+    </div>
   );
 
   const rest = (

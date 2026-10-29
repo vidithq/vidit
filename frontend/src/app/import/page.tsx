@@ -17,7 +17,7 @@ import {
   MOCK_BOT,
   MockPost,
   MockPostLink,
-} from "@/components/ui/MockPost";
+} from "./MockPost";
 import { MAX_UPLOAD_LABEL } from "@/lib/archive";
 import { ARCHIVE_EXPORT_STEPS, X_ARCHIVE_HELP } from "@/lib/archiveExport";
 import { IMPORT_ENTRIES, IMPORT_GLYPH } from "@/lib/importEntries";

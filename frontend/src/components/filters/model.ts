@@ -1,10 +1,10 @@
-import type { DayCount, SearchHitType } from "@/types";
+import type { DayCount, EventStatus, SearchHitType } from "@/types";
 import type { Account } from "@/lib/accounts";
 import type { Concept } from "@/lib/fieldHelp";
-import { showFieldScope } from "@/lib/showField";
+import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 
 // The filter vocabulary, its rules and its parameters. `labels.ts` names the values and builds the
-// pills; this module imports no label so `lib/search` can read it without an import cycle.
+// pills; this module imports nothing from it, so `lib/search` can read it without an import cycle.
 
 /** The surfaces that list events behind the filter panel. */
 export type Surface = "map" | "search" | "feed" | "requests";
@@ -50,19 +50,10 @@ export const EMPTY_FILTERS: FilterState = {
 
 export type FilterPatch = (patch: Partial<FilterState>) => void;
 
-/** The statuses the Show field offers, in the backend vocabulary's order. Mirrors backend
- *  `event_filters.STATUSES` minus `closed`; change both. */
-export const FILTER_STATUSES = [
-  "requested",
-  "detected",
-  "geolocated",
-] as const;
-
-/** The `media` values (`Media.kind`). Mirrors backend `event_filters.MEDIA_TYPES`; change both. */
-export const MEDIA_TYPES = [
-  "image",
-  "video",
-] as const;
+/** The statuses the Show field offers: every status but `closed`, in lifecycle order. */
+export const FILTER_STATUSES = (Object.keys(EVENT_STATUS_META) as EventStatus[]).filter(
+  (status) => status !== "closed",
+);
 
 export type DimensionKey =
   | "show"
@@ -77,7 +68,7 @@ export type DimensionKey =
   | "approved"
   | "approvedBy";
 
-type ListField =
+export type ListField =
   | "show"
   | "conflicts"
   | "tags"
@@ -89,7 +80,7 @@ type ListField =
 /** How a dimension is edited: a search over a list of options, a switch, or an account search. */
 export type Control =
   | { kind: "options"; field: ListField; placeholder: string }
-  | { kind: "switch"; field: "following" | "approved"; label: string }
+  | { kind: "switch"; field: "following" | "approved" }
   | { kind: "account"; field: "author" | "approvedBy" };
 
 export interface DimensionSpec {
@@ -104,8 +95,7 @@ export interface DimensionSpec {
 const ALL: ReadonlyArray<Surface> = ["map", "search", "feed", "requests"];
 
 /** Every dimension the panel offers, its control, the surfaces whose data can serve it, and its
- *  parameter. Show goes out as `kind` on `GET /feed`; Following goes out as `scope=all` when off.
- *  The surfaces mirror backend `routers/_filters.event_filters`; change both. */
+ *  parameter. Following goes out as `scope=all` when off. The surfaces mirror backend `routers/_filters.event_filters`; change both. */
 export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
   show: {
     name: "Show",
@@ -119,12 +109,6 @@ export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
     concept: "conflict",
     control: { kind: "options", field: "conflicts", placeholder: "Search conflicts" },
     param: "conflict",
-    surfaces: ALL,
-  },
-  tags: {
-    name: "Tags",
-    control: { kind: "options", field: "tags", placeholder: "Search tags" },
-    param: "tag",
     surfaces: ALL,
   },
   sourceKind: {
@@ -141,6 +125,12 @@ export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
     param: "level",
     surfaces: ALL,
   },
+  tags: {
+    name: "Tags",
+    control: { kind: "options", field: "tags", placeholder: "Search tags" },
+    param: "tag",
+    surfaces: ALL,
+  },
   media: {
     name: "Media",
     control: { kind: "options", field: "mediaTypes", placeholder: "Search media" },
@@ -155,7 +145,7 @@ export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
   },
   following: {
     name: "Following",
-    control: { kind: "switch", field: "following", label: "Following" },
+    control: { kind: "switch", field: "following" },
     param: "scope",
     surfaces: ["feed"],
   },
@@ -168,7 +158,7 @@ export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
   approved: {
     name: "Approved only",
     concept: "approval_filter",
-    control: { kind: "switch", field: "approved", label: "Approved only" },
+    control: { kind: "switch", field: "approved" },
     param: "approved",
     surfaces: ["map", "search", "feed"],
   },
@@ -199,8 +189,7 @@ export const FILTER_GROUPS: ReadonlyArray<FilterGroup> = [
 
 export type DateKey = "eventDate" | "added";
 
-/** The two date timelines, under the When heading on every surface. `axis` names the histogram of
- *  `GET /search/dates` and `GET /feed/dates`. */
+/** The two date timelines, under the When heading on every surface. */
 export const DATE_DIMENSIONS: Record<
   DateKey,
   {
@@ -209,7 +198,6 @@ export const DATE_DIMENSIONS: Record<
     from: "eventFrom" | "addedFrom";
     to: "eventTo" | "addedTo";
     params: [string, string];
-    axis: "occurred_date" | "submitted";
   }
 > = {
   eventDate: {
@@ -218,7 +206,6 @@ export const DATE_DIMENSIONS: Record<
     from: "eventFrom",
     to: "eventTo",
     params: ["occurred_date_from", "occurred_date_to"],
-    axis: "occurred_date",
   },
   added: {
     name: "Added",
@@ -226,7 +213,6 @@ export const DATE_DIMENSIONS: Record<
     from: "addedFrom",
     to: "addedTo",
     params: ["submitted_from", "submitted_to"],
-    axis: "submitted",
   },
 };
 
@@ -274,10 +260,13 @@ export function splitShow(show: string[]): {
   };
 }
 
-/** Whether a Show pick lists events and whether it lists the other kinds, by the Show rule. */
+/** Whether a Show pick lists events and whether it lists the other kinds, by the Show rule: with
+ *  no chip selected, every event and every other kind shows; once a chip is selected, only what
+ *  the selected chips name. */
 export function showScope(show: string[]): { events: boolean; others: boolean } {
   const { statuses, kinds } = splitShow(show);
-  return showFieldScope(statuses, kinds.length > 0);
+  const none = statuses.length === 0 && kinds.length === 0;
+  return { events: none || statuses.length > 0, others: none || kinds.length > 0 };
 }
 
 /** The dimensions a surface offers for a Show pick, in panel order. On search a pick that lists

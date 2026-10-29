@@ -497,7 +497,6 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/proofImages.ts` | `sanitize.PROOF_PLACEHOLDER_PREFIX`, `storage.safe_original_filename`, `storage._gif_frame_filename` | proof images lose their upload binding; a GIF's frames take other names in the editor than at publish |
 | `lib/proof.tsx::LOCAL_STORAGE_URL_PREFIX` | `storage.LOCAL_STORAGE_URL_PREFIX` | a development proof image fails the image source check |
 | `lib/search.ts::AUTHOR_FILTER_RE` | `event_filters.AUTHOR_FILTER_PATTERN` | author filter parses differently |
-| `components/filters/model.ts::MEDIA_TYPES`, `FILTER_STATUSES` | `event_filters.MEDIA_TYPES`; `STATUSES` minus `closed`, in declared order | filter offers a value the API refuses |
 | `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *See all* expands a different set than the preview |
 | `components/collections/CollectionsSection.tsx` link `type=collection` | `search._TYPE_FILTERS`, where `author` narrows collections | *See all* lands on an empty list |
 | `components/filters/model.ts::KIND_DIMENSIONS` | `search._TYPE_FILTERS` | the search panel offers a filter that leaves the picked kind out, or hides one that narrows it |
@@ -508,7 +507,7 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/pagination.ts` | `pagination.next_link` `Link` header shape | paging stops after page one |
 | `lib/sources.ts::MAX_SOURCES_PER_EVENT` (the event form's source list) | `models/source.MAX_SOURCES_PER_EVENT` | form offers a source the API refuses (`too_many_sources`) |
 | `lib/sources.ts::MAX_LINKS_PER_SOURCE` (each source editor's link list) | `models/source.MAX_LINKS_PER_SOURCE` | form offers a URL the API refuses (`too_many_source_links`) |
-| `lib/sources.ts::SOURCE_TITLE_MAX_LEN`, `SOURCE_URL_MAX_LEN` (the source title, each URL and each archived copy; `components/ui/ArchivedCopies.tsx::isSnapshotUrl` counts a copy in UTF-8 bytes) | `models/source.SOURCE_TITLE_MAX_LENGTH`, `SOURCE_URL_MAX_LENGTH`, `source_archive.SNAPSHOT_URL_MAX_LENGTH` | server refuses typed text (422, or `snapshot_url_too_long`) |
+| `lib/sources.ts::SOURCE_TITLE_MAX_LEN`, `SOURCE_URL_MAX_LEN` (the source title, each URL and each archived copy; `components/sources/ArchivedCopies.tsx::isSnapshotUrl` counts a copy in UTF-8 bytes) | `models/source.SOURCE_TITLE_MAX_LENGTH`, `SOURCE_URL_MAX_LENGTH`, `source_archive.SNAPSHOT_URL_MAX_LENGTH` | server refuses typed text (422, or `snapshot_url_too_long`) |
 | `lib/sources.ts::isEvidenceLevel` | `models/source.EVIDENCE_LEVELS` | the form, the queue and the source block count a source toward the evidence floor that the server does not, or the reverse |
 | `lib/sources.ts::DOCUMENT_SOURCE_KINDS` | `models/source.DOCUMENT_SOURCE_KINDS` (`schemas/source.SourceCreate` drops a document's capture position) | the editor offers a capture position the server drops, or hides one it keeps |
 | `lib/sources.ts::isImportableLink` (the source editor's import button) | `tweet_ingest/urls.is_importable_link` (`x_status_id`, `telegram_post_url`, `tiktok_post_id`, `tiktok_short_url`) | the form offers an import the server refuses (`unsupported_link`), or hides one it reads |
@@ -552,7 +551,7 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/proof.tsx::TAG_CLASSES` (the read view's tag allowlist), `isSafeLinkHref`, `isSafeImageSrc` (`NEXT_PUBLIC_MEDIA_HOST`); `components/editor/ProofEditor.tsx` schema | `sanitize.py` nh3 tag and attribute allowlist, `safe_link_href`, `_safe_image_src` (CDN host pin) | a security fix lands on one side only |
 | `types/index.ts::MapPoint` 6-tuple | `routers/events/read.py::list_points` tuple order `[id, lat, lng, occurred_date, added_date, detected]` | every map point mis-decodes |
 | expiry copy on `app/(auth)/forgot-password`, `registration-pending` and `resend-confirmation` (15 minutes, 24 hours) | `config.password_reset_token_minutes`, `registration.CONFIRMATION_TOKEN_MINUTES` | page states the wrong expiry |
-| `@viditbot` in `app/import/page.tsx` and `components/ui/MockPost.tsx` | `config.x_bot_handle` | guide names the wrong handle |
+| `@viditbot` in `app/import/page.tsx` and `app/import/MockPost.tsx` | `config.x_bot_handle` | guide names the wrong handle |
 | the retention periods on `app/privacy/page.tsx` (24 hours, 30 days) | `registration.CONFIRMATION_TOKEN_MINUTES`, `maintenance.PASSWORD_RESET_TOKEN_RETENTION_DAYS` | the privacy page states a period the server does not apply |
 | `lib/approvalRequests.ts::APPROVAL_REQUEST_AUDIENCE_DEFAULT` | `models/user_preferences.APPROVAL_REQUEST_AUDIENCE_DEFAULT` | Settings shows an audience the server does not apply while preferences load |
 | `lib/notifications.ts::NOTIFICATION_KIND_COPY` labels | the `setting` each notification builder passes in `services/email.py` | an email names a switch Settings does not show |

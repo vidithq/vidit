@@ -47,19 +47,6 @@ export type MapPoint = [string, number, number, string | null, string, 0 | 1];
 /** Index of the ``detected`` flag in the `MapPoint` tuple. */
 export const POINT_DETECTED_FLAG = 5;
 
-/** Lifecycle status from the `detected` flag. Total because `/events/points` serves live
- *  `geolocated` and `detected` rows only (not `requested` guesses or `closed` rows). */
-function pointLifecycleStatus(point: MapPoint): EventStatus {
-  return point[POINT_DETECTED_FLAG] === 1 ? "detected" : "geolocated";
-}
-
-/** Narrow points to the picked statuses (empty pick = all): the client counterpart of the
- *  server's `?status=` any-match, shared by the map canvas and the filter histograms. */
-export function filterPointsByStatus(points: MapPoint[], statuses: string[]): MapPoint[] {
-  if (statuses.length === 0) return points;
-  return points.filter((p) => statuses.includes(pointLifecycleStatus(p)));
-}
-
 /** What one pasted X post did (`POST /events/import-from-tweet`): the ids created, updated and
  * left alone, in engine order. `warnings` are codes for what review must answer; `reason`
  * names the refusal when no detection resulted. */

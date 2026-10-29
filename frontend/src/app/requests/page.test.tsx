@@ -1,9 +1,12 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The page's URL: what it reads on load and what it writes back on each change.
+const nav = vi.hoisted(() => ({ query: "", replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/requests",
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: nav.replace, back: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(nav.query),
 }));
 
 const useApiResource = vi.fn();
@@ -60,6 +63,8 @@ const lastQuery = () => new URLSearchParams(lastPath().split("?")[1]);
 beforeEach(openFilterGroups);
 
 beforeEach(() => {
+  nav.query = "";
+  nav.replace.mockReset();
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   useApiResource.mockImplementation((path: string | null) => ({
     data: path === "/tags" ? TAGS : path?.startsWith("/conflicts") ? CONFLICTS : null,
@@ -91,6 +96,27 @@ describe("RequestsPage", () => {
     await waitFor(() => expect(lastQuery().getAll("source_kind")).toEqual(["drone"]));
     expect(lastQuery().get("view")).toBe("requested");
     expect(lastQuery().getAll("status")).toEqual(["requested"]);
+  });
+
+  it("writes each filter change to the URL and reads its filters off it", async () => {
+    render(<RequestsPage />);
+    await screen.findByText(REQUEST.title);
+    expect(nav.replace).not.toHaveBeenCalled();
+
+    pickOption(line("Media")!, "Video");
+    await waitFor(() =>
+      expect(nav.replace).toHaveBeenLastCalledWith("/requests?media=video", { scroll: false }),
+    );
+    cleanup();
+
+    nav.query = "tag=Drone&author=ana";
+    nav.replace.mockReset();
+    render(<RequestsPage />);
+    await screen.findByText(REQUEST.title);
+    expect(lastQuery().getAll("tag")).toEqual(["Drone"]);
+    expect(lastQuery().get("author")).toBe("ana");
+    expect(within(rail()).getByRole("button", { name: "Remove ana" })).toBeInTheDocument();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
   it("sends the location guess as has_coords and the media as media", async () => {

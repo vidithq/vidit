@@ -63,7 +63,7 @@ describe("OpenRequests", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See all" })).toHaveAttribute(
       "href",
-      "/search?type=event&author=ana&status=requested"
+      "/search?type=event&status=requested&author=ana"
     );
   });
 });

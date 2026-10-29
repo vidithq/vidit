@@ -1,6 +1,6 @@
 import { CoordinateValue } from "@/components/event/CoordinateActions";
 import { EVENT_SECTIONS } from "@/components/event/EventLayout";
-import { ArchivedCopies, linkDescription } from "@/components/ui/ArchivedCopies";
+import { ArchivedCopies, linkDescription } from "@/components/sources/ArchivedCopies";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { Pill } from "@/components/ui/Pill";
@@ -62,7 +62,7 @@ export function SourceBlock({
 }) {
   const file = source.media === null && !isEvidenceLevel(source.level) ? null : (
     <MediaGallery
-      media={source.media ? [source.media] : []}
+      media={source.media}
       alt={alt}
       variant={compact ? "panel" : "page"}
       isGraphic={source.is_graphic}

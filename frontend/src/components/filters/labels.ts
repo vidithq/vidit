@@ -1,7 +1,8 @@
-import type { Conflict, Tag } from "@/types";
+import type { Conflict, EventStatus, Media, Tag } from "@/types";
 import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
 import { accountName } from "@/lib/accounts";
+import { formatInstantDate } from "@/lib/format";
 import type { Option } from "@/components/ui/OptionSearch";
 import { conflictLabel, sortConflicts } from "@/lib/conflicts";
 import { searchTypeLabel } from "@/lib/items";
@@ -16,8 +17,6 @@ import {
   DATE_KEYS,
   DIMENSIONS,
   FILTER_GROUPS,
-  FILTER_STATUSES,
-  MEDIA_TYPES,
   SHOW_BY_SURFACE,
   SHOW_KINDS,
   datesOffered,
@@ -38,13 +37,13 @@ const LOCATION_GUESS_OPTIONS: Option[] = [
   { value: "blind", label: "No guess" },
 ];
 
-const MEDIA_LABELS: Record<(typeof MEDIA_TYPES)[number], string> = {
+const MEDIA_LABELS: Record<Media["kind"], string> = {
   image: "Image",
   video: "Video",
 };
 
 function showLabel(value: string): string {
-  if (isStatus(value)) return EVENT_STATUS_META[value as (typeof FILTER_STATUSES)[number]].label;
+  if (isStatus(value)) return EVENT_STATUS_META[value as EventStatus].label;
   const kind = SHOW_KINDS.find((k) => k === value);
   return kind ? searchTypeLabel(kind) : value;
 }
@@ -74,7 +73,7 @@ export function dimensionOptions(
     case "level":
       return SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
     case "media":
-      return MEDIA_TYPES.map((value) => ({ value, label: MEDIA_LABELS[value] }));
+      return Object.entries(MEDIA_LABELS).map(([value, label]) => ({ value, label }));
     case "locationGuess":
       return LOCATION_GUESS_OPTIONS;
     default:
@@ -82,23 +81,15 @@ export function dimensionOptions(
   }
 }
 
-const fmtDay = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-
 /** A date window in words: "From 1 Jan 2024", "Until 1 Jan 2025" or "1 Jan 2024 to 1 Jan 2025". */
 export function rangeSummary(from: string, to: string): string {
-  if (from && to) return `${fmtDay(from)} to ${fmtDay(to)}`;
-  if (from) return `From ${fmtDay(from)}`;
-  return `Until ${fmtDay(to)}`;
+  if (from && to) return `${formatInstantDate(from)} to ${formatInstantDate(to)}`;
+  if (from) return `From ${formatInstantDate(from)}`;
+  return `Until ${formatInstantDate(to)}`;
 }
 
 /** The value a dimension holds, as removable pills: one per picked option in the options' order,
- *  one for a switch that is on (its label alone) and one for an account. */
+ *  one for a switch that is on (its name alone) and one for an account. */
 export function dimensionPills(
   key: DimensionKey,
   surface: Surface,
@@ -123,7 +114,7 @@ export function dimensionPills(
   }
   if (control.kind === "switch") {
     return state[control.field]
-      ? [{ key, label: control.label, onRemove: () => onPatch({ [control.field]: false }) }]
+      ? [{ key, label: name, onRemove: () => onPatch({ [control.field]: false }) }]
       : [];
   }
   if (control.field === "author") {

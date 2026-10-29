@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendEventFilterParams,
   exactProfile,
+  profileSearchHref,
   readEventFilterParams,
   readShowPick,
   searchPageParams,
@@ -181,5 +182,23 @@ describe("the Show pick", () => {
     expect(
       readShowPick(new URLSearchParams("type=geolocation&type=collection&status=closed")),
     ).toEqual(["collection"]);
+  });
+
+  it("writes a pick of every status as type=event alone", () => {
+    const params = searchPageParams("", { show: ["requested", "detected", "geolocated"] });
+    expect(params.toString()).toBe("type=event");
+  });
+});
+
+describe("profileSearchHref", () => {
+  it("links an analyst's events, of one status or of every status, and their collections", () => {
+    expect(profileSearchHref("ana")).toBe("/search?type=event&author=ana");
+    expect(profileSearchHref("ana", { show: ["detected"] })).toBe(
+      "/search?type=event&status=detected&author=ana",
+    );
+    expect(profileSearchHref("ana", { conflicts: ["Yemen"] })).toBe(
+      "/search?type=event&conflict=Yemen&author=ana",
+    );
+    expect(profileSearchHref("ana", {}, "collection")).toBe("/search?type=collection&author=ana");
   });
 });

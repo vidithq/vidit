@@ -5,8 +5,8 @@ import { useCallback, useMemo } from "react";
 import type { MapPoint } from "@/types";
 import { CARD_FRAME } from "@/components/ui/Card";
 import { FilterCard, FilterSheetBar, type FilterPanelProps } from "@/components/filters/FilterPanel";
-import { EMPTY_FILTERS, dayCounts, inWindow, type FilterPatch } from "@/components/filters/model";
-import type { Vocabulary } from "@/components/filters/labels";
+import { dayCounts, inWindow, type FilterPatch } from "@/components/filters/model";
+import { useFilterSurface } from "@/components/filters/useFilterSurface";
 import { useMapState } from "@/contexts/MapStateContext";
 import { cn } from "@/lib/cn";
 
@@ -17,11 +17,9 @@ import { cn } from "@/lib/cn";
  * the points in memory, so a scrub or playback never refetches.
  */
 export function MapFilters({
-  vocabulary,
   points,
   loading,
 }: {
-  vocabulary: Vocabulary;
   /** The points the Show field leaves, before the date windows. */
   points: MapPoint[];
   loading: boolean;
@@ -35,16 +33,18 @@ export function MapFilters({
     setAddedPlaying,
   } = useMapState();
 
+  const { panel } = useFilterSurface("map", { store: [filters, setFilters] });
+  const { onPatch: patchFilters, onClear: clearFilters } = panel;
   const onPatch: FilterPatch = useCallback(
     (patch) => {
-      setFilters((f) => ({ ...f, ...patch }));
+      patchFilters(patch);
       if (patch.eventFrom === "" && patch.eventTo === "") setEventPlaying(false);
       if (patch.addedFrom === "" && patch.addedTo === "") setAddedPlaying(false);
     },
-    [setFilters, setEventPlaying, setAddedPlaying],
+    [patchFilters, setEventPlaying, setAddedPlaying],
   );
   const onClear = () => {
-    setFilters(EMPTY_FILTERS);
+    clearFilters();
     setEventPlaying(false);
     setAddedPlaying(false);
   };
@@ -59,11 +59,9 @@ export function MapFilters({
   );
 
   const props: FilterPanelProps = {
-    surface: "map",
-    state: filters,
+    ...panel,
     onPatch,
     onClear,
-    vocabulary,
     timelines,
     playback: {
       eventDate: { playing: eventPlaying, setPlaying: setEventPlaying },

@@ -234,8 +234,7 @@ LEVEL_VALUES = frozenset(get_args(SourceLevel))
 
 # Accepted ``status`` filter values (the ``Event.status`` domain); a typo returns 422. The
 # predicate only narrows within the caller's view, so a value the view can't contain returns
-# empty. Hand-kept FE mirror: ``FILTER_STATUSES`` in ``frontend/src/components/filters/model.ts``
-# offers every status but ``closed``; change the two together (see AGENTS.md).
+# empty.
 STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_CLOSED})
 
 # The two read views over the one table. ``located`` is the catalog (vouched and machine rows,

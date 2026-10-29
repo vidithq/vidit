@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 
 import { FILTER_GROUPS } from "@/components/filters/model";
-import { FILTER_GROUPS_KEY } from "@/components/filters/panelState";
+import { FILTER_GROUPS_KEY } from "@/hooks/useFilterPanelState";
 
 /** A fresh viewer who expanded every group of the filter panel. */
 export function openFilterGroups() {

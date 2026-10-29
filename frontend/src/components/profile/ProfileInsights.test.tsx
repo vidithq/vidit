@@ -42,19 +42,19 @@ describe("ProfileInsights", () => {
     // vocabulary, the leaders their own name.
     expect(screen.getByRole("link", { name: /Geolocated/ })).toHaveAttribute(
       "href",
-      "/search?type=event&author=ana&status=geolocated"
+      "/search?type=event&status=geolocated&author=ana"
     );
     expect(screen.getByRole("link", { name: /Detected/ })).toHaveAttribute(
       "href",
-      "/search?type=event&author=ana&status=detected"
+      "/search?type=event&status=detected&author=ana"
     );
     expect(screen.getByRole("link", { name: /Top conflict/ })).toHaveAttribute(
       "href",
-      "/search?type=event&author=ana&conflict=Russo-Ukrainian+War"
+      "/search?type=event&conflict=Russo-Ukrainian+War&author=ana"
     );
     expect(
       screen.getByRole("link", { name: /Top source kind/ })
-    ).toHaveAttribute("href", "/search?type=event&author=ana&source_kind=drone");
+    ).toHaveAttribute("href", "/search?type=event&source_kind=drone&author=ana");
   });
 
   it("names the leader of each ranked list once", async () => {

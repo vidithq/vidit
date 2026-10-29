@@ -8,7 +8,7 @@ import { SourcesRow } from "@/components/sources/SourcesRow";
 import { Button } from "@/components/ui/Button";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import type { HorizontalScrollerHandle } from "@/components/ui/HorizontalScroller";
-import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/ui/ArchivedCopies";
+import { isSnapshotUrl, SNAPSHOT_HINT } from "@/components/sources/ArchivedCopies";
 import type { MissingFieldKey } from "@/lib/events";
 import {
   draftUrls,

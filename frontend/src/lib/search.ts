@@ -6,11 +6,12 @@ import {
   FILTER_STATUSES,
   SHOW_KINDS,
   hasCoordsFilter,
+  isStatus,
   locationGuessOf,
   showScope,
   splitShow,
-  type DimensionKey,
   type FilterState,
+  type ListField,
 } from "@/components/filters/model";
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
@@ -28,7 +29,7 @@ type SearchOptions = { q: string; types?: SearchHitType[] } & EventFilterParams;
 function searchQuery(opts: SearchOptions, extra: Record<string, string>): string {
   const params = new URLSearchParams({ q: opts.q, ...extra });
   appendSearchTypes(params, opts.types ?? []);
-  appendEventFilterParams(params, { ...opts, show: splitShow(opts.show ?? []).statuses });
+  appendEventFilterParams(params, opts);
   return params.toString();
 }
 
@@ -71,13 +72,16 @@ function appendSearchTypes(params: URLSearchParams, types: SearchHitType[]): voi
 }
 
 /** The search page's URL for a query and its filters: the `GET /search` vocabulary, so a
- *  profile link and the page read one format. */
+ *  profile link and the page read one format. A pick of every status and no other kind goes out
+ *  as `type=event` alone, which `readShowPick` reads back as every status. */
 export function searchPageParams(q: string, filters: EventFilterParams): URLSearchParams {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   const show = filters.show ?? [];
-  appendSearchTypes(params, searchTypes(show));
-  appendEventFilterParams(params, { ...filters, show: splitShow(show).statuses });
+  const types = searchTypes(show);
+  appendSearchTypes(params, types);
+  const everyStatus = types.length === 1 && types[0] === "event" && show.length === FILTER_STATUSES.length;
+  appendEventFilterParams(params, everyStatus ? { ...filters, show: [] } : filters);
   return params;
 }
 
@@ -86,7 +90,7 @@ export function searchPageParams(q: string, filters: EventFilterParams): URLSear
  *  status. */
 export function readShowPick(params: { getAll(name: string): string[] }): string[] {
   const types = params.getAll("type");
-  const named = params.getAll("status").filter((s) => (FILTER_STATUSES as ReadonlyArray<string>).includes(s));
+  const named = params.getAll("status").filter(isStatus);
   const statuses = named.length === 0 && types.includes("event") ? [...FILTER_STATUSES] : named;
   return [...statuses, ...SHOW_KINDS.filter((kind) => types.includes(kind))];
 }
@@ -94,26 +98,28 @@ export function readShowPick(params: { getAll(name: string): string[] }): string
 /** The filter values a request or a URL carries: the panel's state less the feed's Following. */
 export type EventFilterParams = Partial<Omit<FilterState, "following">>;
 
-const LIST_PARAMS: ReadonlyArray<[keyof EventFilterParams & string, DimensionKey]> = [
-  ["show", "show"],
-  ["conflicts", "conflict"],
-  ["sourceKinds", "sourceKind"],
-  ["levels", "level"],
-  ["tags", "tags"],
-  ["mediaTypes", "media"],
-];
+/** The list dimensions that go out as one parameter value per picked option. */
+const LIST_DIMENSIONS = Object.values(DIMENSIONS).flatMap(({ control, param }) =>
+  control.kind === "options" && control.field !== "locationGuess"
+    ? [{ field: control.field as Exclude<ListField, "locationGuess">, param }]
+    : [],
+);
+
+/** Approved by's parameter for an organization; `DIMENSIONS.approvedBy.param` carries an analyst. */
+const APPROVED_BY_ORG = "approved_by_org";
 
 /** The filter set under its wire names (`DIMENSIONS`), the one mapping the query string and a
  *  JSON body (`SearchMatch.filters`, `lib/collections.ts`) both read. A list is any-match within
- *  itself and AND across lists. An author the `AUTHOR_FILTER_RE` gate refuses is dropped rather
- *  than sent to a 422. */
+ *  itself and AND across lists. Show sends its statuses alone, since the other kinds it picks
+ *  are not event filters. An author the `AUTHOR_FILTER_RE` gate refuses is dropped rather than
+ *  sent to a 422. */
 export function eventFilterFields(
   f: EventFilterParams,
 ): Record<string, string[] | string | boolean> {
   const fields: Record<string, string[] | string | boolean> = {};
-  for (const [field, key] of LIST_PARAMS) {
-    const values = f[field] as string[] | undefined;
-    if (values?.length) fields[DIMENSIONS[key].param] = values;
+  for (const { field, param } of LIST_DIMENSIONS) {
+    const values = field === "show" ? (f.show ?? []).filter(isStatus) : (f[field] ?? []);
+    if (values.length) fields[param] = values;
   }
   const author = f.author?.trim();
   if (author && AUTHOR_FILTER_RE.test(author)) fields[DIMENSIONS.author.param] = author;
@@ -122,7 +128,7 @@ export function eventFilterFields(
   if (f.approved) fields[DIMENSIONS.approved.param] = true;
   const by = f.approvedBy;
   if (by?.kind === "analyst") fields[DIMENSIONS.approvedBy.param] = by.username;
-  else if (by) fields.approved_by_org = by.slug;
+  else if (by) fields[APPROVED_BY_ORG] = by.slug;
   for (const key of DATE_KEYS) {
     const { from, to, params } = DATE_DIMENSIONS[key];
     if (f[from]) fields[params[0]] = f[from];
@@ -147,19 +153,16 @@ export function readEventFilterParams(params: {
 }): Required<EventFilterParams> {
   const author = params.get(DIMENSIONS.author.param) ?? "";
   const username = params.get(DIMENSIONS.approvedBy.param) ?? "";
-  const slug = params.get("approved_by_org") ?? "";
+  const slug = params.get(APPROVED_BY_ORG) ?? "";
   let approvedBy: Account | null = null;
   if (AUTHOR_FILTER_RE.test(username)) approvedBy = { kind: "analyst", username };
   else if (AUTHOR_FILTER_RE.test(slug)) approvedBy = { kind: "organization", slug, name: slug };
-  const list = (key: DimensionKey) => params.getAll(DIMENSIONS[key].param);
   const date = (name: string) => params.get(name) ?? "";
+  const lists = Object.fromEntries(
+    LIST_DIMENSIONS.map(({ field, param }) => [field, params.getAll(param)]),
+  ) as Record<Exclude<ListField, "locationGuess">, string[]>;
   return {
-    show: list("show"),
-    conflicts: list("conflict"),
-    sourceKinds: list("sourceKind"),
-    levels: list("level"),
-    tags: list("tags"),
-    mediaTypes: list("media"),
+    ...lists,
     locationGuess: locationGuessOf(params.get(DIMENSIONS.locationGuess.param)),
     author: AUTHOR_FILTER_RE.test(author) ? author : "",
     approved: params.get(DIMENSIONS.approved.param) === "true",
@@ -208,17 +211,17 @@ export function hitsOf<T extends SearchHitType>(
 
 /** A `/search` URL scoped to one analyst: the profile's one entry into the filtered catalogue
  *  (Insights tiles, *See all* links). `author` is an exact username match
- *  (`services/event_filters.apply_author_filter`). `type` defaults to the analyst's events;
- *  `collection` lists the analyst's shelf, which `author` narrows to the collections they own.
- *  `filters` takes the search page's URL vocabulary, one value per key. */
+ *  (`services/event_filters.apply_author_filter`). `type` defaults to the analyst's events, of
+ *  the statuses `filters.show` names or of every status; `collection` lists the analyst's shelf,
+ *  which `author` narrows to the collections they own. */
 export function profileSearchHref(
   username: string,
-  filters: Record<string, string> = {},
+  filters: EventFilterParams = {},
   type: SearchHitType = "event",
 ): string {
-  const params = new URLSearchParams({ type, author: username });
-  for (const [key, value] of Object.entries(filters)) params.set(key, value);
-  return `/search?${params.toString()}`;
+  const statuses = filters.show?.length ? filters.show : [...FILTER_STATUSES];
+  const show = type === "event" ? statuses : [type];
+  return `/search?${searchPageParams("", { ...filters, author: username, show })}`;
 }
 
 /** Mirrors `AUTHOR_FILTER_PATTERN` (`services/event_filters.py`); change both. Anything else

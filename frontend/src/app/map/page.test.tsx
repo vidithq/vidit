@@ -62,6 +62,9 @@ vi.mock("next/dynamic", () => ({
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: null }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+}));
 
 // Each read waits for the test to settle it; the filter taxonomies stay pending (the panel is what is measured).
 interface Read {
