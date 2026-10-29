@@ -37,6 +37,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- A source write fills the post time of an X link left blank from its status id, and the Posted column of the source editor and the Posted row of a source show only once a link has a post time ([#816](https://github.com/vidithq/vidit/pull/816)).
 - The source editor of the event forms shows the file, the kind and the links; the title, the level, the capture time and position, the tags and the graphic flag sit under Capture details, which opens by itself when one of them holds a value ([#816](https://github.com/vidithq/vidit/pull/816)).
 - The Conflict field of the event forms searches every conflict, the ongoing ones first, with no Include ended conflicts switch ([#816](https://github.com/vidithq/vidit/pull/816)).
 - The source kind is optional on the event forms, so a source with no kind saves as Unknown, and `POST /events/batch-complete` takes a row without a kind, keeping the kinds its sources hold ([#816](https://github.com/vidithq/vidit/pull/816)).

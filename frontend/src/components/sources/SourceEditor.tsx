@@ -18,7 +18,7 @@ import { Card } from "@/components/ui/Card";
 import { LEAD_BESIDE_SPLIT } from "@/components/ui/DetailRow";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
-import { LinkListInput } from "@/components/ui/LinkListInput";
+import { LinkListInput, type LinkListRow } from "@/components/ui/LinkListInput";
 import { OptionSearch } from "@/components/ui/OptionSearch";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Switch } from "@/components/ui/Switch";
@@ -143,6 +143,8 @@ export function SourceEditor({
   const positionInvalid = capturePositionInvalid(draft);
   // Opens on a source that already says more than the essentials; the analyst closes it.
   const [footOpen, setFootOpen] = useState(() => holdsCaptureDetails(draft));
+  // An X link's post time is filled by the write, so the column waits for a value or the foot.
+  const showPosted = footOpen || draft.links.some((link) => link.postedAt !== "");
 
   // A picked file previews from its object URL until the staged copy answers.
   const pending = file?.state === "uploading" ? file.file : null;
@@ -313,20 +315,24 @@ export function SourceEditor({
             />
           }
           columns={[
-            {
-              header: `${SOURCE_FIELDS.posted.label} (UTC)`,
-              width: "13rem",
-              cell: ({ index: i, row, update: updateLink }) => (
-                <DateTimeInput
-                  type="datetime-local"
-                  variant="compact"
-                  aria-label={`${SOURCE_FIELDS.posted.label} (UTC), ${describe(i, row.url)}`}
-                  title="When the file was posted at this link (UTC)"
-                  value={row.postedAt}
-                  onChange={(e) => updateLink({ ...row, postedAt: e.target.value })}
-                />
-              ),
-            },
+            ...(showPosted
+              ? [
+                  {
+                    header: `${SOURCE_FIELDS.posted.label} (UTC)`,
+                    width: "13rem",
+                    cell: ({ index: i, row, update: updateLink }: LinkListRow<LinkDraft>) => (
+                      <DateTimeInput
+                        type="datetime-local"
+                        variant="compact"
+                        aria-label={`${SOURCE_FIELDS.posted.label} (UTC), ${describe(i, row.url)}`}
+                        title="When the file was posted at this link (UTC)"
+                        value={row.postedAt}
+                        onChange={(e) => updateLink({ ...row, postedAt: e.target.value })}
+                      />
+                    ),
+                  },
+                ]
+              : []),
             {
               header: "Archive",
               width: "auto",

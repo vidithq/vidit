@@ -434,6 +434,8 @@ test.describe("submit", () => {
     const first = page.getByRole("region", { name: "Source 1" });
     await first.getByRole("button", { name: "Add a link to source 1" }).click();
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
+    // The post time column waits for a value or for Capture details.
+    await first.getByRole("button", { name: "Capture details" }).click();
 
     // URL, post time, archive box, remove: one line, in that order, under their headers.
     const row = [

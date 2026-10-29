@@ -185,11 +185,12 @@ function LinksRow({
 const postedText = (postedAt: string | null): string =>
   postedAt ? formatInstantOrDate(postedAt) : "Unknown";
 
-/** When the file went up at each link, apart from the capture time under it. Links posted at the
- *  same time read as one value; otherwise each line names its link's host. */
+/** When the file went up at each link, apart from the capture time under it, once one link has a
+ *  time. Links posted at the same time read as one value; otherwise each line names its link's
+ *  host. */
 function PostedRow({ source, compact }: { source: Source; compact: boolean }) {
   const links = source.links;
-  if (links.length === 0) return null;
+  if (!links.some((link) => link.posted_at)) return null;
   const times = new Set(links.map((link) => link.posted_at));
   if (times.size === 1) {
     return <DetailRow {...SOURCE_FIELDS.posted} compact={compact} value={postedText(links[0].posted_at)} />;

@@ -205,12 +205,30 @@ describe("SourceEditor", () => {
     expect(screen.getByText("Links (0)").parentElement!.className).not.toContain("text-red-400");
   });
 
-  it("archives a link from the archive box in its row, beside its post time", () => {
+  it("shows the post time of a link once a link holds one or Capture details opens", () => {
     render(<Host initial={newSourceDraft()} />);
     fireEvent.change(screen.getByLabelText("Source 1 link 1"), {
       target: { value: "https://t.me/c/1" },
     });
+    expect(screen.queryByLabelText("Posted (UTC), source 1, t.me")).toBeNull();
+    openDetails();
     expect(screen.getByLabelText("Posted (UTC), source 1, t.me")).toBeInTheDocument();
+  });
+
+  it("shows the post time a stored link holds", () => {
+    const stored = source({
+      links: [{ url: "https://t.me/c/1", posted_at: "2026-06-01T10:05:00Z", archived: null }],
+    });
+    render(<Host initial={sourceDraftFrom(stored)} />);
+    expect(details()).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByLabelText("Posted (UTC), source 1, t.me")).toHaveValue("2026-06-01T10:05");
+  });
+
+  it("archives a link from the archive box in its row", () => {
+    render(<Host initial={newSourceDraft()} />);
+    fireEvent.change(screen.getByLabelText("Source 1 link 1"), {
+      target: { value: "https://t.me/c/1" },
+    });
     expect(screen.queryByPlaceholderText(SNAPSHOT_PLACEHOLDER)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Archive source 1, t.me" }));

@@ -110,6 +110,7 @@ describe("SourceBlock", () => {
       captured_at: "2026-06-01T09:30:00Z",
       capture_position: { lat: 48.02, lng: 37.79 },
       tags: [{ id: "t1", name: "armor" }],
+      links: [{ url: "https://t.me/channel/12345", posted_at: "2026-06-01T10:05:00Z", archived: null }],
     });
     // The table's order, less the file (the lead slot) and the graphic flag (the gate).
     const { file: _file, is_graphic: _graphic, ...rows } = SOURCE_FIELDS;
@@ -147,10 +148,9 @@ describe("SourceBlock", () => {
     expect(rowValue(block, "Posted")).toBe("13 Jan 2026");
   });
 
-  it("gives an unknown post time its own Posted row, apart from Captured", () => {
+  it("drops the Posted row while no link has a post time, and keeps Captured", () => {
     const block = renderBlock({ captured_at: "2026-05-22T09:00:00Z" });
-    expect(rowLabels(block)).toEqual(["Level", "Links (1)", "Posted", "Captured"]);
-    expect(rowValue(block, "Posted")).toBe("Unknown");
+    expect(rowLabels(block)).toEqual(["Level", "Links (1)", "Captured"]);
     expect(rowValue(block, "Captured")).toBe("22 May 2026, 09:00 UTC");
   });
 
@@ -176,13 +176,14 @@ describe("SourceBlock", () => {
   });
 
   it("reads links posted at the same time as one value", () => {
+    const at = "2026-06-01T10:05:00Z";
     const block = renderBlock({
       links: [
-        { url: "https://t.me/channel/12345", posted_at: null, archived: null },
-        { url: "https://www.youtube.com/watch?v=abc", posted_at: null, archived: null },
+        { url: "https://t.me/channel/12345", posted_at: at, archived: null },
+        { url: "https://www.youtube.com/watch?v=abc", posted_at: at, archived: null },
       ],
     });
-    expect(rowValue(block, "Posted")).toBe("Unknown");
+    expect(rowValue(block, "Posted")).toBe("1 Jun 2026, 10:05 UTC");
   });
 });
 

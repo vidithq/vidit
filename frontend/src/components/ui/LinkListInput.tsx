@@ -19,7 +19,7 @@ import { Input } from "./Input";
 // Blank rows stay in state while typing; callers drop them from the payload.
 
 /** One row, as the caller's slots see it. */
-interface LinkListRow<R> {
+export interface LinkListRow<R> {
   index: number;
   row: R;
   update: (next: R) => void;

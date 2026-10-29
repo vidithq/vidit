@@ -18,6 +18,7 @@ from app.models.upload import Upload
 from app.schemas.media import MediaRead
 from app.services import uploads as uploads_service
 from app.services.storage import get_storage
+from app.services.tweet_ingest.urls import x_status_posted_at
 from tests._fixtures import TINY_JPEG, gif_bytes, stored_bytes, stored_keys, stored_path
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -574,6 +575,27 @@ def test_a_link_carries_its_archived_copy(author, conflict):
     archived = response.json()["sources"][0]["links"][0]["archived"]
     assert archived["url"] == SNAPSHOT and archived["provider"] == "wayback"
     assert archived["archived_at"] is not None
+
+
+def test_an_x_link_without_a_post_time_takes_the_one_its_status_id_carries(author, conflict):
+    """The write fills the post time of an X status link left blank; a typed time and a link
+    that names no X status keep what was posted."""
+    x_url = "https://x.com/analyst/status/1790000000000000000"
+    typed_url = "https://x.com/analyst/status/1790000000000000001"
+    links = [
+        {"url": x_url, "posted_at": None},
+        {"url": typed_url, "posted_at": "2026-05-01T12:00"},
+        {"url": "https://t.me/channel/12345", "posted_at": None},
+    ]
+    sources = sources_field(source_spec(links=links, upload_id=stage_file(author)))
+    response = _create(author, conflict, sources)
+    assert response.status_code == 201, response.text
+    posted = {link["url"]: link["posted_at"] for link in response.json()["sources"][0]["links"]}
+    expected = x_status_posted_at(x_url)
+    assert expected is not None
+    assert datetime.fromisoformat(posted[x_url]) == expected
+    assert datetime.fromisoformat(posted[typed_url]) == datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    assert posted["https://t.me/channel/12345"] is None
 
 
 def test_a_paste_that_is_not_a_snapshot_is_refused(author, conflict):

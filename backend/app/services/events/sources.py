@@ -50,6 +50,7 @@ from app.services.imagery import LinkCheck, source_warnings
 from app.services.sanitize import safe_link_href
 from app.services.source_archive import _normalised_target, same_snapshot, validate_snapshot
 from app.services.source_archive import provider_of as snapshot_provider
+from app.services.tweet_ingest.urls import x_status_posted_at
 
 from .coordinates import _optional_point
 from .errors import (
@@ -97,6 +98,9 @@ class PlannedSource:
 def _clean_links(links: list[SourceLinkCreate]) -> list[SourceLinkCreate]:
     """Strip each URL, drop blanks and repeats, check each snapshot; at least one link left.
 
+    An X status link posted without a time takes the one its status id carries
+    (:func:`x_status_posted_at`).
+
     Raises :class:`InvalidSourceUrlError` for a URL that is not an ``http(s)`` link,
     :class:`TooManySourceLinksError` past :data:`MAX_LINKS_PER_SOURCE`,
     :class:`SourceLinkRequiredError` when none is left, and ``SnapshotRejected``.
@@ -114,7 +118,8 @@ def _clean_links(links: list[SourceLinkCreate]) -> list[SourceLinkCreate]:
         snapshot = (link.snapshot_url or "").strip() or None
         if snapshot is not None:
             validate_snapshot(snapshot)
-        cleaned.append(SourceLinkCreate(url=url, posted_at=link.posted_at, snapshot_url=snapshot))
+        posted_at = link.posted_at or x_status_posted_at(url)
+        cleaned.append(SourceLinkCreate(url=url, posted_at=posted_at, snapshot_url=snapshot))
     if len(cleaned) > MAX_LINKS_PER_SOURCE:
         raise TooManySourceLinksError(f"A source carries at most {MAX_LINKS_PER_SOURCE} URLs")
     if not cleaned:
