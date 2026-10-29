@@ -21,7 +21,7 @@ import { LEAD_BESIDE_SPLIT } from "@/components/ui/DetailRow";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { Input, Select } from "@/components/ui/Input";
 import { LinkListInput } from "@/components/ui/LinkListInput";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { OptionSearch } from "@/components/ui/OptionSearch";
 import { Switch } from "@/components/ui/Switch";
 import { TagsField } from "@/components/ui/TagPicker";
 import { cn } from "@/lib/cn";
@@ -53,6 +53,7 @@ import { SourceImageryCheck } from "./SourceImageryCheck";
 import { FieldError } from "@/components/ui/ErrorNotice";
 
 const LEVEL_OPTIONS = SOURCE_LEVELS.map((value) => ({ value, label: LEVEL_LABELS[value] }));
+const KIND_OPTIONS = SOURCE_KINDS.map((value) => ({ value, label: SOURCE_KIND_LABELS[value] }));
 
 /** Which of the editor's fields a publish attempt flagged. */
 export interface SourceEditorInvalid {
@@ -252,31 +253,32 @@ export function SourceEditor({
     <>
       <div className="space-y-1.5">
         <FieldLabel {...SOURCE_FIELDS.level} />
-        <SegmentedControl<SourceLevel>
+        <OptionSearch
+          single
+          required
           aria-label={`${name} level`}
+          placeholder="Search levels"
           options={LEVEL_OPTIONS}
-          value={draft.level}
-          onChange={(level) => update({ level })}
-          fullWidth
+          selected={[draft.level]}
+          onChange={(next) => {
+            if (next[0]) update({ level: next[0] as SourceLevel });
+          }}
         />
       </div>
 
       <div className="space-y-1.5">
         <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} invalid={invalid.kind} />
-        <Select
-          id={id("kind")}
-          value={draft.kind}
+        <OptionSearch
+          single
           required
+          id={id("kind")}
+          aria-label={`${name} kind`}
+          placeholder="Search source kinds"
+          options={KIND_OPTIONS}
+          selected={draft.kind ? [draft.kind] : []}
           invalid={invalid.kind}
-          onChange={(e) => update({ kind: e.target.value as SourceKind | "" })}
-        >
-          <option value="">Pick a kind</option>
-          {SOURCE_KINDS.map((kind) => (
-            <option key={kind} value={kind}>
-              {SOURCE_KIND_LABELS[kind]}
-            </option>
-          ))}
-        </Select>
+          onChange={(next) => update({ kind: (next[0] ?? "") as SourceKind | "" })}
+        />
       </div>
     </>
   );

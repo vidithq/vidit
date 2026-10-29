@@ -1,10 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { API_BASE_URL } from "./support/environment";
 import { CONFLICTS, EVENT_ID, ONE_PIXEL_PNG } from "./support/fixtures";
 import { answerWith, grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
 import { swipeLeft } from "./support/touch";
+
+/** Picks a kind in the source's kind field, whose list opens on the page body. */
+async function pickKind(page: Page, source: Locator, label: string) {
+  await source.getByRole("combobox", { name: /kind$/ }).click();
+  await page.getByRole("option", { name: label, exact: true }).click();
+}
 
 /**
  * Golden path 3: the submit page, its chooser and the paths it opens.
@@ -186,7 +192,7 @@ test.describe("submit", () => {
     });
     await expect(first.getByText(/^Uploading/)).toHaveCount(0);
     await expect(first.getByRole("button", { name: "View image" })).toBeVisible();
-    await expect(first.getByLabel("Kind", { exact: true })).toBeEnabled();
+    await expect(first.getByRole("combobox", { name: "Source 1 kind" })).toBeEnabled();
 
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
     await second.getByLabel("Source 2 link 1", { exact: true }).fill("https://x.com/user/status/1");
@@ -280,7 +286,7 @@ test.describe("submit", () => {
     await page.getByRole("button", { name: "Add a source" }).click();
     await page.getByRole("button", { name: "Previous source" }).click();
     const first = page.getByRole("region", { name: "Source 1" });
-    await first.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
+    await pickKind(page, first, "Smartphone");
     await first.getByLabel("Source 1 link 1", { exact: true }).fill("https://t.me/channel/12345");
     await first.getByRole("button", { name: "Capture details" }).click();
     await expect(first.getByLabel("Latitude", { exact: true })).toBeVisible();
@@ -345,7 +351,7 @@ test.describe("submit", () => {
       if (width) await page.setViewportSize({ width, height: 900 });
       await page.goto("/submit?mode=single");
       const source = page.getByRole("region", { name: "Source 1" });
-      await source.getByLabel("Kind", { exact: true }).selectOption({ label: "Smartphone" });
+      await pickKind(page, source, "Smartphone");
       // The capture position sits under the source's folded Capture details.
       await source.getByRole("button", { name: "Capture details" }).click();
       const location = page.getByRole("heading", { name: /^Location/ }).locator("xpath=ancestor::section[1]");
@@ -490,6 +496,7 @@ test.describe("submit", () => {
     await field.fill("falk");
     await expect(list.getByRole("option")).toHaveText(["Falklands War (1982)"]);
     await field.press("Enter");
+    await expect(list).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Remove Falklands War (1982)" })).toBeVisible();
 
     // The chips remove the picks, and the conflict is missing again.

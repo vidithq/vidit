@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { TitleField } from "@/components/geolocations/TitleField";
 import { Card } from "@/components/ui/Card";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { Select } from "@/components/ui/Input";
+import { OptionSearch } from "@/components/ui/OptionSearch";
 import { drawFromZone, drawReady, EMPTY_DRAW, zoneFromVertices, zoneVertices } from "@/lib/siteZone";
 import { SITE_KIND_LABELS, SITE_KINDS, SITE_NAME_MAX_LEN, type SiteKind, type Zone } from "@/lib/sites";
 import type { MapBounds } from "@/lib/viewport";
@@ -48,20 +48,17 @@ export function SiteKindCard({
     <Card dense>
       <div className="space-y-1.5">
         <FieldLabel label="Kind" concept="site_kind" htmlFor="site-kind" invalid={invalid} />
-        <Select
-          id="site-kind"
-          value={value}
+        <OptionSearch
+          single
           required
+          id="site-kind"
+          aria-label="Kind"
+          placeholder="Search site kinds"
+          options={SITE_KINDS.map((kind) => ({ value: kind, label: SITE_KIND_LABELS[kind] }))}
+          selected={value ? [value] : []}
           invalid={invalid}
-          onChange={(e) => onChange(e.target.value as SiteKind | "")}
-        >
-          {value === "" && <option value="">Pick a kind</option>}
-          {SITE_KINDS.map((kind) => (
-            <option key={kind} value={kind}>
-              {SITE_KIND_LABELS[kind]}
-            </option>
-          ))}
-        </Select>
+          onChange={(next) => onChange((next[0] ?? "") as SiteKind | "")}
+        />
       </div>
     </Card>
   );

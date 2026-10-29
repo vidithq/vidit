@@ -10,8 +10,8 @@ import { CARD_FRAME } from "@/components/ui/Card";
 import { Dot } from "@/components/ui/Dot";
 import { ItemSearch } from "@/components/ui/ItemSearch";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
-import { OptionPicker, OptionSearch } from "@/components/ui/OptionPicker";
-import { PropertyName, PropertyRow, PropertySearchRow } from "@/components/ui/PropertyRow";
+import { OptionSearch } from "@/components/ui/OptionSearch";
+import { PropertyName, PropertyRow } from "@/components/ui/PropertyRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { accountKey, analystAccount } from "@/lib/accounts";
@@ -120,30 +120,21 @@ function DimensionLine({
     const options = dimensionOptions(dimension, surface, vocabulary);
     const selected = state[control.field];
     if (options.length === 0 && selected.length === 0) return null;
-    const toggle = (value: string) =>
-      onPatch({
-        [control.field]: selected.includes(value)
-          ? selected.filter((v) => v !== value)
-          : [...selected, value],
-      });
-    if (control.search) {
-      return (
-        <PropertySearchRow
-          name={name}
-          concept={concept}
-          values={values}
-          field={<OptionSearch label={name} options={options} selected={selected} onToggle={toggle} />}
-        />
-      );
-    }
     return (
       <PropertyRow
         name={name}
         concept={concept}
         values={values}
-        editor={() => (
-          <OptionPicker label={name} options={options} selected={selected} onToggle={toggle} />
-        )}
+        field={
+          <OptionSearch
+            aria-label={name}
+            placeholder={control.placeholder}
+            options={options}
+            selected={selected}
+            onChange={(next) => onPatch({ [control.field]: next })}
+            picks={false}
+          />
+        }
       />
     );
   }
@@ -156,7 +147,7 @@ function DimensionLine({
     else onPatch({ approvedBy: analystAccount({ username: typed }) });
   };
   return (
-    <PropertySearchRow
+    <PropertyRow
       name={name}
       concept={concept}
       values={values}

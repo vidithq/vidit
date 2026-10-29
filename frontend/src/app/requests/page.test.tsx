@@ -21,6 +21,7 @@ import type { Conflict, EventListItem, Tag } from "@/types";
 
 import RequestsPage from "./page";
 import { openFilterGroups, sheetButton } from "@/test/filters";
+import { pickOption } from "@/test/options";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
 
@@ -72,24 +73,20 @@ afterEach(() => {
 });
 
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
-// A list line is a button that opens its editor; a searched one is its search field.
-const line = (name: string) =>
-  within(rail()).queryByRole("combobox", { name }) ?? within(rail()).getByRole("button", { name });
-const editor = (name: string) => screen.getByRole("dialog", { name });
+const line = (name: string) => within(rail()).queryByRole("combobox", { name });
 
 describe("RequestsPage", () => {
   it("mounts the filter panel with the status locked to requested", async () => {
     render(<RequestsPage />);
 
     expect(await screen.findByText(REQUEST.title)).toBeInTheDocument();
-    expect(within(rail()).queryByRole("button", { name: "Show" })).not.toBeInTheDocument();
+    expect(line("Show")).not.toBeInTheDocument();
     expect(within(rail()).queryByRole("switch", { name: "Approved only" })).not.toBeInTheDocument();
     for (const name of ["Conflict", "Tags", "Source kind", "Level", "Media", "Location guess", "Author"]) {
       expect(line(name)).toBeInTheDocument();
     }
 
-    fireEvent.click(line("Source kind"));
-    fireEvent.click(within(editor("Source kind")).getByRole("button", { name: "Drone" }));
+    pickOption(line("Source kind")!, "Drone");
 
     await waitFor(() => expect(lastQuery().getAll("source_kind")).toEqual(["drone"]));
     expect(lastQuery().get("view")).toBe("requested");
@@ -101,16 +98,14 @@ describe("RequestsPage", () => {
     await screen.findByText(REQUEST.title);
     expect(lastQuery().has("has_coords")).toBe(false);
 
-    fireEvent.click(line("Location guess"));
-    fireEvent.click(within(editor("Location guess")).getByRole("button", { name: "No guess" }));
+    pickOption(line("Location guess")!, "No guess");
     await waitFor(() => expect(lastQuery().get("has_coords")).toBe("false"));
 
     // Both options match every row, so the filter drops off the query.
-    fireEvent.click(within(editor("Location guess")).getByRole("button", { name: "With a guess" }));
+    pickOption(line("Location guess")!, "With a guess");
     await waitFor(() => expect(lastQuery().has("has_coords")).toBe(false));
 
-    fireEvent.click(line("Media"));
-    fireEvent.click(within(editor("Media")).getByRole("button", { name: "Video" }));
+    pickOption(line("Media")!, "Video");
     await waitFor(() => expect(lastQuery().getAll("media")).toEqual(["video"]));
   });
 

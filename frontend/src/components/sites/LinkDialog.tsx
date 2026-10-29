@@ -10,7 +10,7 @@ import { ItemSearch } from "@/components/ui/ItemSearch";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { Pill } from "@/components/ui/Pill";
 import { RemoveButton } from "@/components/ui/RemoveButton";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { OptionSearch } from "@/components/ui/OptionSearch";
 import { useMutation } from "@/hooks/useMutation";
 import { siteItem } from "@/lib/items";
 import {
@@ -130,29 +130,27 @@ export function LinkSearch({
   );
 }
 
-/** The effect of one link, unpicked until the analyst says what the event shows. `fullWidth`
- *  shares the width out equally; off, each option keeps its label's width from `sm` up, for a
- *  column narrower than the dialog. */
+/** The effect of one link, unpicked until the analyst says what the event shows. */
 export function EffectControl({
   value,
   onChange,
-  fullWidth = true,
   "aria-label": ariaLabel,
 }: {
   value: LinkEffect | "";
   onChange: (effect: LinkEffect) => void;
-  fullWidth?: boolean;
   "aria-label": string;
 }) {
   return (
-    <SegmentedControl<LinkEffect | "">
+    <OptionSearch
+      single
+      required
       aria-label={ariaLabel}
+      placeholder="Search effects"
       options={EFFECT_OPTIONS}
-      value={value}
+      selected={value ? [value] : []}
       onChange={(next) => {
-        if (next) onChange(next);
+        if (next[0]) onChange(next[0] as LinkEffect);
       }}
-      fullWidth={fullWidth}
     />
   );
 }

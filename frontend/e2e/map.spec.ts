@@ -31,15 +31,15 @@ test.describe("map", () => {
     await expect(sheet).toBeVisible();
 
     // The panel's own lines are where a phone column runs out of room, so the three checks run
-    // again with the sheet open, and again with a line's editor over it.
+    // again with the sheet open, and again with a line's list over it.
     await expectNarrowViewportLayout(page, sheet.getByRole("button", { name: "Done" }));
     await openFilterGroups(sheet);
     await expectNarrowViewportLayout(page, sheet.getByRole("button", { name: "Done" }));
-    await sheet.getByRole("button", { name: "Show", exact: true }).click();
-    const editor = page.getByRole("dialog", { name: "Show" });
-    await expect(editor).toBeInViewport({ ratio: 1 });
-    await editor.getByRole("button", { name: "Sites" }).click();
-    await editor.press("Escape");
+    await sheet.getByRole("combobox", { name: "Show", exact: true }).click();
+    const list = page.getByRole("listbox", { name: "Show" });
+    await expect(list).toBeInViewport({ ratio: 1 });
+    await list.getByRole("option", { name: "Sites" }).click();
+    await expect(list).toBeHidden();
     await sheet.getByRole("button", { name: "Done" }).click();
     await expect(page.getByTitle("Remove filter Show: Sites").filter({ visible: true })).toBeVisible();
     await expectNarrowViewportLayout(page, filters);
@@ -71,8 +71,8 @@ test.describe("map", () => {
     }
   });
 
-  // `TAP_STEP` sits on each line of the panel, so a line that opens an editor and a switch line
-  // are each a 36px target on a phone. Measured on the border box each line presents.
+  // Each line's control is a 36px target on a phone: a line's search field, and a switch line
+  // through `TAP_STEP`. Measured on the border box each control presents.
   test("a filter line is a 36px tap target", async ({ page }) => {
     await mockApi(page);
     await page.goto("/map");
@@ -80,7 +80,7 @@ test.describe("map", () => {
     await page.getByRole("button", { name: "Filters", exact: true }).click();
     const sheet = page.getByRole("dialog", { name: "Filters" });
     await openFilterGroups(sheet);
-    const lines = sheet.locator('button[aria-haspopup="dialog"], button[role="switch"]');
+    const lines = sheet.locator('input[role="combobox"], button[role="switch"]');
     await expect(lines.first()).toBeVisible();
     expect(await lines.count(), "the filter panel rendered no lines").toBeGreaterThan(1);
 

@@ -55,6 +55,7 @@ import type { Collection } from "@/lib/collections";
 import type { EventListItem } from "@/types";
 
 import CollectionPage from "./page";
+import { pickOption } from "@/test/options";
 
 const OWNER = { id: "u1", username: "ana", avatar_url: null };
 
@@ -424,9 +425,7 @@ describe("CollectionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Report" }));
     // The panel names its subject so the flag is not mistaken for a report on the player's item.
     expect(screen.getByText("Report this collection")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Reason"), {
-      target: { value: "copyright" },
-    });
+    pickOption("Reason", "Copyright");
     fireEvent.click(screen.getByRole("button", { name: "Send report" }));
 
     await waitFor(() =>

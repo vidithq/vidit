@@ -55,10 +55,11 @@ test.describe("event edit", () => {
     await page.goto(`/events/${EVENT_ID}/edit`);
 
     await page.getByRole("button", { name: /Northern fuel depot/ }).click();
-    const effect = page.getByRole("group", { name: "Effect at Northern fuel depot with a long name" });
+    const effect = page.getByRole("combobox", { name: "Effect at Northern fuel depot with a long name" });
     await expect(effect).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    await effect.getByRole("button", { name: "Destruction" }).click();
+    await effect.click();
+    await page.getByRole("option", { name: "Destruction" }).click();
     await expect(
       page.getByRole("complementary", { name: "Actions" }).getByRole("button", { name: "Save", exact: true }),
     ).toBeVisible();

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { X } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { TAP_STEP } from "./Button";
@@ -33,7 +34,7 @@ const PILL_TONE: Record<PillTone, string> = {
   warning: WARNING_CALLOUT,
 };
 
-interface PillProps {
+type PillProps = {
   tone?: PillTone;
   icon?: ReactNode;
   /** The key of a key/value pill (`Conflict: Russo-Ukrainian war`), muted before the value. */
@@ -42,9 +43,19 @@ interface PillProps {
   /** Orthogonal extras; conflicts resolve caller-wins via `cn`. */
   className?: string;
   children: ReactNode;
-  /** Makes the pill an interactive chip. The caller drives the tone. */
-  onClick?: () => void;
-}
+} & (
+  | {
+      /** Makes the pill an interactive chip. The caller drives the tone. */
+      onClick?: () => void;
+      onRemove?: never;
+    }
+  | {
+      /** Makes the pill a removable chip with a trailing cross; `title` names the removal. */
+      onRemove: () => void;
+      title: string;
+      onClick?: never;
+    }
+);
 
 export function Pill({
   tone = "neutral",
@@ -54,7 +65,9 @@ export function Pill({
   className = "",
   children,
   onClick,
+  onRemove,
 }: PillProps) {
+  const press = onClick ?? onRemove;
   const content = label ? (
     <>
       <span className="font-normal opacity-70">{label}:</span>
@@ -68,14 +81,21 @@ export function Pill({
   const cls = cn(
     BASE,
     PILL_TONE[tone],
-    onClick && `${TAP_STEP} transition-colors hover:brightness-110 cursor-pointer`,
+    press && `${TAP_STEP} transition-colors hover:brightness-110 cursor-pointer`,
     className,
   );
-  if (onClick) {
+  if (press) {
     return (
-      <button type="button" onClick={onClick} title={title} className={cls}>
+      <button
+        type="button"
+        onClick={press}
+        title={title}
+        aria-label={onRemove ? title : undefined}
+        className={cls}
+      >
         {icon}
         {content}
+        {onRemove && <X size={11} aria-hidden />}
       </button>
     );
   }

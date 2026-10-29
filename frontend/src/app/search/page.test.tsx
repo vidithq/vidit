@@ -75,6 +75,7 @@ import { ApiError } from "@/lib/api";
 import { NO_ANSWER } from "@/lib/errors";
 import SearchPage from "./page";
 import { openFilterGroups, sheetButton } from "@/test/filters";
+import { pickOption } from "@/test/options";
 
 const OWNER = { id: "u1", username: "ana", avatar_url: null };
 
@@ -178,16 +179,13 @@ const sections = (
 
 const rail = () => screen.getByRole("complementary", { name: "Filters" });
 /** A dimension's line in the rail, or null while the panel does not offer it. */
-// A list line is a button that opens its editor; a searched one is its search field.
-const line = (name: string) =>
-  within(rail()).queryByRole("combobox", { name }) ?? within(rail()).queryByRole("button", { name });
+const line = (name: string) => within(rail()).queryByRole("combobox", { name });
 const heading = (name: string) => within(rail()).queryByRole("heading", { name });
-const editor = (name: string) => screen.getByRole("dialog", { name });
-/** Toggles a Show option through the Show line's popover. */
+/** Toggles a Show option: a pick through the Show line's search, a removal from its pill. */
 function chip(name: string) {
-  fireEvent.click(line("Show")!);
-  fireEvent.click(within(editor("Show")).getByRole("button", { name }));
-  fireEvent.keyDown(editor("Show"), { key: "Escape" });
+  const pill = within(rail()).queryByRole("button", { name: `Remove ${name}` });
+  if (pill) fireEvent.click(pill);
+  else pickOption(line("Show")!, name);
 }
 const linkTo = (href: string) => document.querySelector<HTMLAnchorElement>(`a[href="${href}"]`)!;
 /** The item a link is stretched over. */
@@ -360,17 +358,13 @@ describe("the search page's URL", () => {
 });
 
 describe("the Show field", () => {
-  it("offers every kind as a chip, without counts", async () => {
+  it("offers every kind, without counts", async () => {
     searchSections.mockResolvedValue(sections([eventHit()]));
     render(<SearchPage />);
 
     await screen.findByText("Kakhovka spillway");
-    fireEvent.click(line("Show")!);
-    expect(
-      within(editor("Show"))
-        .getAllByRole("button")
-        .map((b) => b.textContent),
-    ).toEqual([
+    fireEvent.focus(line("Show")!);
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Requested",
       "Detected",
       "Geolocated",

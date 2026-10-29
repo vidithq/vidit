@@ -86,10 +86,9 @@ type ListField =
   | "mediaTypes"
   | "locationGuess";
 
-/** How a dimension is edited: a list of options, a switch, or the account picker. A `search`
- *  list takes its search field on its line; the others open a chip editor. */
+/** How a dimension is edited: a search over a list of options, a switch, or an account search. */
 export type Control =
-  | { kind: "options"; field: ListField; search?: true }
+  | { kind: "options"; field: ListField; placeholder: string }
   | { kind: "switch"; field: "following" | "approved"; label: string }
   | { kind: "account"; field: "author" | "approvedBy" };
 
@@ -111,46 +110,46 @@ export const DIMENSIONS: Record<DimensionKey, DimensionSpec> = {
   show: {
     name: "Show",
     concept: "status",
-    control: { kind: "options", field: "show" },
+    control: { kind: "options", field: "show", placeholder: "Search kinds" },
     param: "status",
     surfaces: ["map", "search", "feed"],
   },
   conflict: {
     name: "Conflict",
     concept: "conflict",
-    control: { kind: "options", field: "conflicts", search: true },
+    control: { kind: "options", field: "conflicts", placeholder: "Search conflicts" },
     param: "conflict",
     surfaces: ALL,
   },
   tags: {
     name: "Tags",
-    control: { kind: "options", field: "tags", search: true },
+    control: { kind: "options", field: "tags", placeholder: "Search tags" },
     param: "tag",
     surfaces: ALL,
   },
   sourceKind: {
     name: "Source kind",
     concept: "source_kind",
-    control: { kind: "options", field: "sourceKinds" },
+    control: { kind: "options", field: "sourceKinds", placeholder: "Search source kinds" },
     param: "source_kind",
     surfaces: ALL,
   },
   level: {
     name: "Level",
     concept: "source_level",
-    control: { kind: "options", field: "levels" },
+    control: { kind: "options", field: "levels", placeholder: "Search levels" },
     param: "level",
     surfaces: ALL,
   },
   media: {
     name: "Media",
-    control: { kind: "options", field: "mediaTypes" },
+    control: { kind: "options", field: "mediaTypes", placeholder: "Search media" },
     param: "media",
     surfaces: ALL,
   },
   locationGuess: {
     name: "Location guess",
-    control: { kind: "options", field: "locationGuess" },
+    control: { kind: "options", field: "locationGuess", placeholder: "Search guesses" },
     param: "has_coords",
     surfaces: ["search", "feed", "requests"],
   },

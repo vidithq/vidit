@@ -21,6 +21,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 import type { EventDetail } from "@/types";
 import { useEventSites } from "./useEventSites";
+import { pickOption } from "@/test/options";
 
 const ALPHA = { id: "s1", name: "Site Alpha", kind: "airbase" };
 
@@ -100,7 +101,7 @@ describe("useEventSites", () => {
     expect(screen.getByText("640 m from the event")).toBeInTheDocument();
     // No effect is picked for the analyst: the link waits for one.
     expect(screen.getByRole("button", { name: "Link" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Destruction" }));
+    pickOption("Effect on the site", "Destruction");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Link" }));
     });
@@ -123,7 +124,7 @@ describe("useEventSites", () => {
       fireEvent.click(screen.getByRole("button", { name: "Link to a site" }));
     });
     fireEvent.click(screen.getByRole("button", { name: /Site Bravo/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Damage" }));
+    pickOption("Effect on the site", "Damage");
     fireEvent.click(screen.getByRole("switch", { name: "Also file source 2 on the site" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Link" }));

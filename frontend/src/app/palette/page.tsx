@@ -59,7 +59,7 @@ import {
   GitHubGlyph,
   XGlyph,
 } from "@/components/ui/BrandGlyphs";
-import { ConflictChips, TagChips, TagPicker } from "@/components/ui/TagPicker";
+import { TagPicker } from "@/components/ui/TagPicker";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { RemoveButton } from "@/components/ui/RemoveButton";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
@@ -91,9 +91,8 @@ import {
 } from "@/components/ui/MockPost";
 import { ProgressSteps } from "@/components/ui/ProgressSteps";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
-import { ChipBucket } from "@/components/ui/ChipBucket";
-import { OptionPicker, OptionSearch } from "@/components/ui/OptionPicker";
-import { PropertyRow, PropertySearchRow } from "@/components/ui/PropertyRow";
+import { OptionSearch } from "@/components/ui/OptionSearch";
+import { PropertyRow } from "@/components/ui/PropertyRow";
 import { ToggleRow } from "@/components/ui/ToggleRow";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { SwatchPicker } from "@/components/ui/SwatchPicker";
@@ -769,16 +768,12 @@ export default function PalettePage() {
             <PaletteActiveFilterPills />
           </Entry>
 
-          <Entry name="<PropertyRow>" usage="One property on one line: its name (with an optional FieldHelp ?) in the secondary text colour at the left, and its values as removable accent pills at the right, or a muted chevron while it holds none. An empty button over the whole line opens the editor, a render prop handed the close, in a PopoverPanel anchored under the line and lifted over the map's floating panel and a sheet, so nothing in the panel moves or expands in place. Escape returns focus to the line. The filter panel draws its short fixed lists through it (Show, Source kind, Level, Media, Location guess). PropertySearchRow is the line of a property picked by search (Conflict, Tags, Author, Approved by): the name at the left, the search field (OptionSearch or ItemSearch) at the right of the same line, its matches in the field's list over the page, and the picks as removable accent pills under the line. A switch dimension is a ToggleRow instead. The rows of a list carry no divider.">
+          <Entry name="<PropertyRow>" usage="One property of the filter panel on one line: its name (with an optional FieldHelp ?) at the left, its field (an OptionSearch, or an ItemSearch for an account) at the right, and its values as removable accent pills under the line. A switch dimension is a ToggleRow instead.">
             <PalettePropertyRow />
           </Entry>
 
-          <Entry name="<ChipBucket>" usage="A multi-select row of <Pill> chips for one small fixed family: every option a chip, selected ones filled accent, click toggles membership. Any-match within the bucket; combining buckets is AND on the server. <OptionPicker> draws a list of up to eight options through it (Show, Source kind, Level, Media, Location guess).">
-            <PaletteChipBucket />
-          </Entry>
-
-          <Entry name="<OptionPicker>" usage="A multi-select over a fixed option list, the popover editor of the filter panel's short fixed lists. Up to eight options show whole as a <ChipBucket>. A longer list (Source kind) is a search field, the picks as removable accent chips (PickedPills, which <TagChips> and <ConflictChips> share), then the first eight unpicked options the search matches as neutral chips, with one Show more (<LoadMoreRow>) for the rest. A picked value the list lacks (a crafted URL) still shows, by its value. OptionSearch is the same multi-select as one <Combobox> field, the search of a PropertySearchRow (Conflict, Tags): focus or typing lists the unpicked options whose label holds the text, and a pick empties the field and keeps the list open; the caller shows the picks.">
-            <PaletteOptionPicker />
+          <Entry name="<OptionSearch>" usage="The one selector over a vocabulary: the filter panel's lines and every form field that picks a kind, a level, a reason, an effect, a conflict or a tag. Focus lists every unpicked option, typing narrows them, a pick empties the field and closes the list, and the picks show under the field as removable accent pills. single keeps one pick that a new pick replaces; required keeps it from removal. creatable offers Create name, suggestions adds one-click pills, includeEnded adds a switch.">
+            <PaletteOptionSearch />
           </Entry>
 
           <Entry name="<ToggleRow>" usage="An on/off row: an empty button over the whole row is the switch (role + click), the <Switch> rendering as its visual span, and it takes the phone tap step. `concept` puts a <FieldHelp> after the label, stacked above that button, so a tap on the `?` opens its help and never toggles (the basemap control's layers and overlays). `description` picks the shape: without one the row is a line of the filter panel, its name like a <PropertyRow>'s (PropertyName, secondary text colour) beside a small switch; with one it is a settings preference, the label at reading size over a line saying what the preference does. The accessible name is the label alone (aria-label), never the paragraph under it, which is its description. `className` carries the caller's own divider and spacing. `disabled` reads the state but refuses the toggle, dimmed, with a `description` saying why (a satellite source the event form cannot file on a site). Settings lists one described row per notification kind, its Email switch.">
@@ -1145,7 +1140,7 @@ export default function PalettePage() {
             </span>
           </Entry>
 
-          <Entry name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags as <TagChips>. The conflict field shows the picked conflicts as accent chips that remove on click, over a <Combobox> named Conflict that lists nothing at rest and, on focus or typing, the ongoing conflicts whose name holds the typed text (case-insensitive), by tier then name, with Other pinned last and always offered. The Include ended conflicts switch on the label row adds the ended ones. <TagChips> shows the picked tags as accent chips that remove on click, over a <Combobox> that suggests the other tags of the one catalogue whose name holds the typed text (case-insensitive) and, when no tag bears the exact typed name, ends the list with Create &quot;name&quot;, which creates the tag and picks it. The list stays open after a pick. Under the search, neutral <Pill> chips with a plus offer the suggested tags (GET /tags/suggested: your most used tags, then the platform's), the picked ones left out; a click picks the tag. The chips wrap, the first 6 show, and one Show more shows the rest. Each source editor renders <TagChips> alone, named for its source (Source 1 tags). The conflict field is <ConflictChips>.">
+          <Entry name="<TagPicker>" usage="The classification fields of every event form, last in its Details card: the conflicts, then the tags (TagsField), each an <OptionSearch>.">
             <div className="w-full max-w-2xl space-y-4">
               <TagPicker
                 tags={tpTags}
@@ -1160,7 +1155,7 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short, following the field on every frame and kept inside the viewport. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row under the options, and a heading as a muted row over them, naming what they are (Search results in the site and event link pickers). ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <ItemSearch>, <ConflictChips>, <TagChips> and <OptionSearch> build on it.">
+          <Entry name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short, following the field on every frame and kept inside the viewport. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row under the options, and a heading as a muted row over them, naming what they are (Search results in the site and event link pickers). ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <ItemSearch> and <OptionSearch> build on it.">
             <PaletteCombobox />
           </Entry>
 
@@ -2377,6 +2372,42 @@ function PaletteDisclosure() {
   );
 }
 
+function PaletteOptionSearch() {
+  const [tags, setTags] = useState<string[]>([MOCK_TAGS[0].name]);
+  const [kind, setKind] = useState<string[]>([]);
+  const tagOptions = MOCK_TAGS.map((t) => ({ value: t.name, label: t.name }));
+  return (
+    <div className="grid w-full max-w-2xl gap-4 sm:grid-cols-2">
+      <Variant label="multi, with suggestions">
+        <OptionSearch
+          aria-label="Tags"
+          placeholder="Search tags"
+          options={tagOptions}
+          selected={tags}
+          onChange={setTags}
+          suggestions={tagOptions}
+        />
+      </Variant>
+      <Variant label="single, invalid until picked">
+        <OptionSearch
+          single
+          required
+          aria-label="Kind"
+          placeholder="Search source kinds"
+          options={[
+            { value: "video", label: "Video" },
+            { value: "photo", label: "Photo" },
+            { value: "satellite", label: "Satellite" },
+          ]}
+          selected={kind}
+          onChange={setKind}
+          invalid={kind.length === 0}
+        />
+      </Variant>
+    </div>
+  );
+}
+
 function PalettePropertyRow() {
   const [levels, setLevels] = useState<string[]>(["direct"]);
   const options = [
@@ -2384,11 +2415,6 @@ function PalettePropertyRow() {
     { value: "indirect", label: "Indirect" },
     { value: "context", label: "Context" },
   ];
-  const toggle = (value: string) =>
-    setLevels((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
-  const [tags, setTags] = useState<string[]>([MOCK_TAGS[0].name]);
-  const toggleTag = (value: string) =>
-    setTags((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   return (
     <div className="w-72 bg-neutral-900 rounded-lg border border-neutral-700 px-3">
       <PropertyRow
@@ -2397,21 +2423,16 @@ function PalettePropertyRow() {
         values={levels.map((value) => ({
           key: value,
           label: options.find((o) => o.value === value)?.label ?? value,
-          onRemove: () => toggle(value),
+          onRemove: () => setLevels((prev) => prev.filter((v) => v !== value)),
         }))}
-        editor={() => (
-          <OptionPicker label="Level" options={options} selected={levels} onToggle={toggle} />
-        )}
-      />
-      <PropertySearchRow
-        name="Tags"
-        values={tags.map((tag) => ({ key: tag, label: tag, onRemove: () => toggleTag(tag) }))}
         field={
           <OptionSearch
-            label="Tags"
-            options={MOCK_TAGS.map((t) => ({ value: t.name, label: t.name }))}
-            selected={tags}
-            onToggle={toggleTag}
+            aria-label="Level"
+            placeholder="Search levels"
+            options={options}
+            selected={levels}
+            onChange={setLevels}
+            picks={false}
           />
         }
       />
@@ -2423,22 +2444,6 @@ function PaletteEyebrowToggle() {
   const [open, setOpen] = useState(false);
   return (
     <SectionEyebrow as="h3" margin="none" title="Source" toggle={{ open, onToggle: () => setOpen((o) => !o) }} />
-  );
-}
-
-function PaletteChipBucket() {
-  const [selected, setSelected] = useState<string[]>(["Geolocated", "Sites"]);
-  return (
-    <div className="w-72 space-y-1.5">
-      <FieldLabel label="Show" concept="status" />
-      <ChipBucket
-        options={["Requested", "Detected", "Geolocated", "Sites"].map((n) => ({ id: n, name: n }))}
-        selected={selected}
-        onToggle={(n) =>
-          setSelected((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]))
-        }
-      />
-    </div>
   );
 }
 
@@ -2456,30 +2461,6 @@ function PaletteChoiceRow() {
         ]}
         value={value}
         onChange={setValue}
-      />
-    </div>
-  );
-}
-
-function PaletteOptionPicker() {
-  const [short, setShort] = useState<string[]>(["Geolocated"]);
-  const [tags, setTags] = useState<string[]>([MOCK_TAGS[0].name]);
-  const toggleIn = (set: Dispatch<SetStateAction<string[]>>) => (value: string) =>
-    set((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
-  const longList = [...MOCK_TAGS.map((t) => t.name), ...Array.from({ length: 12 }, (_, i) => `tag-${i + 1}`)];
-  return (
-    <div className="w-72 space-y-4 bg-neutral-900 rounded-lg border border-neutral-700 p-3">
-      <OptionPicker
-        label="Show"
-        options={["Requested", "Detected", "Geolocated"].map((v) => ({ value: v, label: v }))}
-        selected={short}
-        onToggle={toggleIn(setShort)}
-      />
-      <OptionPicker
-        label="Tags"
-        options={longList.map((v) => ({ value: v, label: v }))}
-        selected={tags}
-        onToggle={toggleIn(setTags)}
       />
     </div>
   );

@@ -66,6 +66,7 @@ import type { Source } from "@/lib/sources";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
+import { pickOption } from "@/test/options";
 
 const saveVersionMock = vi.mocked(saveVersion);
 const updateRequestMock = vi.mocked(updateEventRequest);
@@ -199,11 +200,8 @@ function resource(path: string) {
 
 /** Make the two picks a review makes: the conflict, and the kind the import left unknown. */
 function fillTheFloor() {
-  fireEvent.focus(screen.getByRole("combobox", { name: "Conflict" }));
-  fireEvent.click(screen.getByRole("option", { name: /Russian invasion of Ukraine/ }));
-  fireEvent.change(screen.getByRole("combobox", { name: /Kind/ }), {
-    target: { value: "drone" },
-  });
+  pickOption("Conflict", /Russian invasion of Ukraine/);
+  pickOption(/kind$/, "Drone");
 }
 
 /** Fill the floor, then publish (the first click arms, the second writes). */
@@ -720,8 +718,7 @@ describe("editing a published geolocation", () => {
     expect(linkWrites()).toEqual([]);
     expect(screen.getByRole("heading", { name: /^Linked sites/ })).toHaveClass(FORM_INVALID_LABEL);
 
-    const effect = screen.getByRole("group", { name: "Effect at Bravo" });
-    fireEvent.click(within(effect).getByRole("button", { name: "Destruction" }));
+    pickOption("Effect at Bravo", "Destruction");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(push).toHaveBeenCalled());

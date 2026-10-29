@@ -17,7 +17,8 @@ import { Button } from "@/components/ui/Button";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { FieldHelp } from "@/components/ui/FieldHelp";
-import { Select, Textarea } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Input";
+import { OptionSearch } from "@/components/ui/OptionSearch";
 import { FORM_LABEL, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 
 /**
@@ -35,8 +36,7 @@ import { FORM_LABEL, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
  * account, so the endpoint takes an anonymous write and `apiFetch` omits the CSRF header with no
  * session cookie.
  *
- * The bucket is a `<Select>`, not a `<SegmentedControl>`: five options, two long, don't fit one
- * exclusive-choice track. The reporter's words are optional, since the bucket is often the whole
+ * The bucket is the one vocabulary selector, `<OptionSearch>` in its single mode. The reporter's words are optional, since the bucket is often the whole
  * report; the details' `?` says so rather than the label.
  *
  * One hook for every reportable kind, parameterised by `kind`: the endpoints take the same
@@ -163,17 +163,18 @@ export function useReportContent(
             </label>
             <FieldHelp concept="report_reason" />
           </span>
-          <Select
+          <OptionSearch
+            single
+            required
             id="report_reason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value as ContentReportReason)}
-          >
-            {REASONS.map((value) => (
-              <option key={value} value={value}>
-                {REPORT_REASON_LABELS[value]}
-              </option>
-            ))}
-          </Select>
+            aria-label="Reason"
+            placeholder="Search reasons"
+            options={REASONS.map((value) => ({ value, label: REPORT_REASON_LABELS[value] }))}
+            selected={[reason]}
+            onChange={(next) => {
+              if (next[0]) setReason(next[0] as ContentReportReason);
+            }}
+          />
         </div>
 
         <div className="space-y-1.5 pt-1">

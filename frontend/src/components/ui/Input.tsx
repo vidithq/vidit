@@ -126,6 +126,7 @@ export function Input({
             trailing && (trailingFromSm ? TRAILING_ROOM_FROM_SM : TRAILING_ROOM),
             className,
           )}
+          aria-invalid={invalid || undefined}
           {...props}
         />
         {trailing && (
@@ -136,7 +137,13 @@ export function Input({
       </div>
     );
   }
-  return <input className={fieldClass(variant, invalid, className)} {...props} />;
+  return (
+    <input
+      className={fieldClass(variant, invalid, className)}
+      aria-invalid={invalid || undefined}
+      {...props}
+    />
+  );
 }
 
 /**
