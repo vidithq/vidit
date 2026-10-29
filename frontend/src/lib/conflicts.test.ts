@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { conflictLabel, sortConflicts } from "./conflicts";
+import { conflictLabel, conflictsByFrequency, sortConflicts } from "./conflicts";
 import type { Conflict } from "@/types";
 
 function conflict(overrides: Partial<Conflict> & Pick<Conflict, "id" | "name">): Conflict {
@@ -74,6 +74,18 @@ describe("conflictLabel", () => {
         })
       )
     ).toBe("Anglo-Turkish War (1918–1923)");
+  });
+});
+
+describe("conflictsByFrequency", () => {
+  it("ranks the conflicts of the events, the most frequent first, ties in order of appearance", () => {
+    const events = [
+      { conflicts: [{ id: "a" }] },
+      { conflicts: [{ id: "b" }, { id: "c" }] },
+      { conflicts: [{ id: "c" }] },
+      { conflicts: [] },
+    ];
+    expect(conflictsByFrequency(events)).toEqual(["c", "a", "b"]);
   });
 });
 

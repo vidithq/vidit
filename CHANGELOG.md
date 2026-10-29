@@ -6,6 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- The Conflict field of the event forms suggests, in one click, the conflicts of the published events near the coordinates, the most frequent first ([#816](https://github.com/vidithq/vidit/pull/816)).
 - A detection with no source opens its edit form with the post it came from in the source links, so the file imports in one click ([#816](https://github.com/vidithq/vidit/pull/816)).
 - `GET /feed` takes the date, media, author and location guess filters, `GET /search` takes `has_coords` and `GET /events` takes `media`; `GET /search/dates` and `GET /feed/dates` count the matching events per day ([#813](https://github.com/vidithq/vidit/pull/813)).
 - `GET /sites`, an event's site links and the site suggestions carry each site's picture in `media`, the image of its first source in source order that is not graphic; a site search hit carries the same picture ([#813](https://github.com/vidithq/vidit/pull/813)).

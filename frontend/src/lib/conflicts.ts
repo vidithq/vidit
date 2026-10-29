@@ -27,6 +27,16 @@ const TIER_RANK: Record<NonNullable<Conflict["tier"]>, number> = {
   conflict: 2,
 };
 
+/** The conflicts of a list of events, the most frequent first, ties in the order they first
+ *  show. */
+export function conflictsByFrequency(events: { conflicts: Pick<Conflict, "id">[] }[]): string[] {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    for (const { id } of event.conflicts) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return [...counts.keys()].sort((a, b) => counts.get(b)! - counts.get(a)!);
+}
+
 /**
  * Referential display order: the ongoing conflicts before the ended ones, each by tier rank
  * (major < minor < conflict < none), then name; "Other" is pinned last. Returns a new array.

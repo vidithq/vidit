@@ -26,6 +26,8 @@ interface TagPickerProps {
   conflicts: Conflict[];
   selectedConflictIds: string[];
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
+  /** The conflicts the field offers in one click, most likely first. */
+  suggestedConflictIds?: string[];
   /** Flag the conflict group blocking submit (red label + outline). */
   conflictInvalid?: boolean;
 }
@@ -43,6 +45,7 @@ export function TagPicker({
   conflicts,
   selectedConflictIds,
   setSelectedConflictIds,
+  suggestedConflictIds = [],
   conflictInvalid = false,
 }: TagPickerProps) {
   return (
@@ -52,6 +55,7 @@ export function TagPicker({
           conflicts={conflicts}
           selected={selectedConflictIds}
           setSelected={setSelectedConflictIds}
+          suggested={suggestedConflictIds}
           invalid={conflictInvalid}
         />
       )}
@@ -136,19 +140,23 @@ const tagOption = (t: Tag) => ({ value: t.id, label: t.name });
 
 /**
  * The conflicts picked from the referential, filtered client-side, in `sortConflicts` order: the
- * ongoing ones, then the ended ones, with "Other" pinned last.
+ * ongoing ones, then the ended ones, with "Other" pinned last. `suggested` shows as one-click
+ * pills under the field, in its order.
  */
 function ConflictsField({
   conflicts,
   selected,
   setSelected,
+  suggested,
   invalid,
 }: {
   conflicts: Conflict[];
   selected: string[];
   setSelected: (next: string[]) => void;
+  suggested: string[];
   invalid: boolean;
 }) {
+  const byId = new Map(conflicts.map((c) => [c.id, c]));
   return (
     <div className="space-y-1.5">
       <FieldLabel {...EVENT_FIELDS.conflicts} invalid={invalid} />
@@ -158,6 +166,10 @@ function ConflictsField({
         options={sortConflicts(conflicts).map((c) => ({ value: c.id, label: conflictLabel(c) }))}
         selected={selected}
         onChange={setSelected}
+        suggestions={suggested.flatMap((id) => {
+          const c = byId.get(id);
+          return c ? [{ value: c.id, label: conflictLabel(c) }] : [];
+        })}
         invalid={invalid}
       />
     </div>

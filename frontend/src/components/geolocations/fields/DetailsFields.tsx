@@ -2,7 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 
-import type { TaxonomyState } from "@/components/geolocations/TaxonomyFields";
+import { useNearbyConflictIds, type TaxonomyState } from "@/components/geolocations/TaxonomyFields";
 import { Card } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
@@ -31,11 +31,15 @@ interface DetailsFieldsProps {
   setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
   /** Flags the conflict a publish misses (red label and outline). */
   conflictInvalid?: boolean;
+  /** The subject point's inputs, whose neighbourhood suggests the conflicts. */
+  lat: string;
+  lng: string;
 }
 
 /** The Details card of every event form, in the order of the event page's Details card: when
- *  the event happened, the provenance link of an imported row, then the conflicts and the tags,
- *  under the conflicts' retryable load error. */
+ *  the event happened, the provenance link of an imported row, then the conflicts, suggested from
+ *  the published events near the coordinates, and the tags, under the conflicts' retryable load
+ *  error. */
 export function DetailsFields({
   eventDate,
   setEventDate,
@@ -49,7 +53,10 @@ export function DetailsFields({
   selectedConflictIds,
   setSelectedConflictIds,
   conflictInvalid = false,
+  lat,
+  lng,
 }: DetailsFieldsProps) {
+  const nearbyConflictIds = useNearbyConflictIds(lat, lng);
   return (
     <Card dense>
       {/* One line at every width: two shrinking columns, in the side column and at 320px. */}
@@ -101,6 +108,7 @@ export function DetailsFields({
         conflicts={taxonomy.conflicts}
         selectedConflictIds={selectedConflictIds}
         setSelectedConflictIds={setSelectedConflictIds}
+        suggestedConflictIds={nearbyConflictIds}
         conflictInvalid={conflictInvalid}
       />
     </Card>

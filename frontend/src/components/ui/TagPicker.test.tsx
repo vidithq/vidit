@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import { useState } from "react";
 
@@ -52,10 +52,12 @@ function Host({
   conflicts = CONFLICTS,
   initialTags = [],
   suggestedTags,
+  suggestedConflictIds,
 }: {
   conflicts?: Conflict[];
   initialTags?: Tag[];
   suggestedTags?: Tag[];
+  suggestedConflictIds?: string[];
 }) {
   const [tags, setTags] = useState<Tag[]>(initialTags);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -70,6 +72,7 @@ function Host({
       conflicts={conflicts}
       selectedConflictIds={selectedConflictIds}
       setSelectedConflictIds={setSelectedConflictIds}
+      suggestedConflictIds={suggestedConflictIds}
     />
   );
 }
@@ -124,6 +127,19 @@ describe("TagPicker conflicts", () => {
     render(<Host conflicts={withTiers} />);
     fireEvent.change(conflictField(), { target: { value: "r" } });
     expect(optionNames()).toEqual(["War C", "War D", "War A", "War B", "Other"]);
+  });
+
+  it("suggests conflicts in one click, in the order given", () => {
+    render(<Host suggestedConflictIds={["c2", "c1", "gone"]} />);
+    const group = screen.getByRole("group", { name: "Suggested conflict" });
+    expect(within(group).getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual([
+      expect.stringContaining("Sudanese civil war"),
+      expect.stringContaining("Russian invasion of Ukraine"),
+    ]);
+    fireEvent.click(within(group).getByRole("button", { name: "Add Sudanese civil war (2023-present)" }));
+    expect(
+      screen.getByRole("button", { name: "Remove Sudanese civil war (2023-present)" })
+    ).toBeInTheDocument();
   });
 
   it("finds an ended conflict by name", () => {

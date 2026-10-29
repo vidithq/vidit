@@ -416,6 +416,8 @@ function eventFormSlots(
             selectedConflictIds={form.selectedConflictIds}
             setSelectedConflictIds={form.setSelectedConflictIds}
             conflictInvalid={invalidKeys.has("conflict_tag")}
+            lat={form.lat}
+            lng={form.lng}
           />
         ),
         invalid: invalidKeys.has("conflict_tag"),
