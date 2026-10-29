@@ -1,5 +1,5 @@
 import type { DayCount, SearchHitType } from "@/types";
-import type { Account } from "@/components/ui/AccountPicker";
+import type { Account } from "@/lib/accounts";
 import type { Concept } from "@/lib/fieldHelp";
 import { showFieldScope } from "@/lib/showField";
 

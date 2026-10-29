@@ -1,7 +1,7 @@
 import type { Conflict, Tag } from "@/types";
 import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
-import { accountName } from "@/components/ui/AccountPicker";
+import { accountName } from "@/lib/accounts";
 import type { Option } from "@/components/ui/OptionPicker";
 import { conflictLabel, sortConflicts } from "@/lib/conflicts";
 import { searchTypeLabel } from "@/lib/items";

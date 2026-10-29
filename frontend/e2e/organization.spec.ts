@@ -30,7 +30,7 @@ test.describe("organization", () => {
     await page.getByLabel("Analyst").click();
     await expectControlInsideViewport(page, page.getByRole("listbox"));
     await expectNoHorizontalOverflow(page);
-    await page.getByRole("option", { name: "mutual", exact: true }).click();
-    await expect(page.getByRole("button", { name: "mutual", exact: true })).toBeVisible();
+    await page.getByRole("option", { name: /^mutual/ }).click();
+    await expect(page.getByRole("button", { name: "Remove mutual" })).toBeVisible();
   });
 });

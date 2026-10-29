@@ -4,17 +4,19 @@ import { useCallback, useId, useState } from "react";
 import { ChevronDown, Filter } from "lucide-react";
 
 import type { DayCount } from "@/types";
-import { AccountPicker, analystAccount } from "@/components/ui/AccountPicker";
 import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
 import { Button } from "@/components/ui/Button";
 import { CARD_FRAME } from "@/components/ui/Card";
 import { Dot } from "@/components/ui/Dot";
+import { ItemSearch } from "@/components/ui/ItemSearch";
 import { MediaOverlay } from "@/components/ui/MediaLightbox";
 import { OptionPicker, OptionSearch } from "@/components/ui/OptionPicker";
 import { PropertyName, PropertyRow, PropertySearchRow } from "@/components/ui/PropertyRow";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { ToggleRow } from "@/components/ui/ToggleRow";
+import { accountKey, analystAccount } from "@/lib/accounts";
 import { cn } from "@/lib/cn";
+import { accountItem } from "@/lib/items";
 import { AUTHOR_FILTER_RE, suggestApprovers, suggestAuthors } from "@/lib/search";
 import { TimelineScrubber } from "./TimelineScrubber";
 import { useOpenGroups, usePanelOpen } from "./panelState";
@@ -159,17 +161,19 @@ function DimensionLine({
       concept={concept}
       values={values}
       field={
-        <AccountPicker
+        <ItemSearch
           search={author ? suggestAuthors : suggestApprovers}
-          minQueryLength={2}
-          onSelect={(account) => {
+          minChars={2}
+          toItem={accountItem}
+          rowKey={accountKey}
+          onPick={(account) => {
             if (account.kind === "analyst" && author) onPatch({ author: account.username });
             else if (!author) onPatch({ approvedBy: account });
           }}
           onSubmitText={commit}
           placeholder="Search"
           aria-label={name}
-          emptyText={author ? "No analyst matches" : "No analyst or organization matches"}
+          emptyText={author ? "No analyst matches." : "No analyst or organization matches."}
         />
       }
     />

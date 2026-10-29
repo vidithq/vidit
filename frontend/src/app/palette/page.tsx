@@ -30,7 +30,8 @@ import {
 
 import type { Conflict, EventDetail, EventStatus, Media, Tag } from "@/types";
 import { PageShell } from "@/components/ui/PageShell";
-import { AccountPicker, analystAccount, type Account } from "@/components/ui/AccountPicker";
+import { ItemSearch } from "@/components/ui/ItemSearch";
+import { accountKey, analystAccount, type Account } from "@/lib/accounts";
 import { Popover } from "@/components/ui/Popover";
 import { MapControlButton } from "@/components/ui/MapControlButton";
 import {
@@ -64,7 +65,7 @@ import { RemoveButton } from "@/components/ui/RemoveButton";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Item, type ItemVariant } from "@/components/ui/Item";
 import { detectionItem } from "@/components/detections/detectionItem";
-import { collectionItem, eventItem, searchHitItem, siteItem } from "@/lib/items";
+import { accountItem, collectionItem, eventItem, searchHitItem, siteItem } from "@/lib/items";
 import { eventPageSlots, eventPanelContent } from "@/components/event/EventDetailBody";
 import { MapPanelBody } from "@/components/map/MapSidePanel";
 import { EventLayout } from "@/components/event/EventLayout";
@@ -697,10 +698,12 @@ export default function PalettePage() {
             <Variant label="the byline's add button: an account picker">
               <Popover label="Invite a geolocator" icon={<UserPlus size={14} />}>
                 {(close) => (
-                  <AccountPicker
+                  <ItemSearch
                     aria-label="Invite a geolocator"
                     options={[analystAccount({ username: "bo" }), analystAccount({ username: "cy" })]}
-                    onSelect={close}
+                    toItem={accountItem}
+                    rowKey={accountKey}
+                    onPick={close}
                     placeholder="Username"
                     emptyText="No analyst matches."
                     autoFocus
@@ -766,7 +769,7 @@ export default function PalettePage() {
             <PaletteActiveFilterPills />
           </Entry>
 
-          <Entry name="<PropertyRow>" usage="One property on one line: its name (with an optional FieldHelp ?) in the secondary text colour at the left, and its values as removable accent pills at the right, or a muted chevron while it holds none. An empty button over the whole line opens the editor, a render prop handed the close, in a PopoverPanel anchored under the line and lifted over the map's floating panel and a sheet, so nothing in the panel moves or expands in place. Escape returns focus to the line. The filter panel draws its short fixed lists through it (Show, Source kind, Level, Media, Location guess). PropertySearchRow is the line of a property picked by search (Conflict, Tags, Author, Approved by): the name at the left, the search field (OptionSearch or AccountPicker) at the right of the same line, its matches in the field's list over the page, and the picks as removable accent pills under the line. A switch dimension is a ToggleRow instead. The rows of a list carry no divider.">
+          <Entry name="<PropertyRow>" usage="One property on one line: its name (with an optional FieldHelp ?) in the secondary text colour at the left, and its values as removable accent pills at the right, or a muted chevron while it holds none. An empty button over the whole line opens the editor, a render prop handed the close, in a PopoverPanel anchored under the line and lifted over the map's floating panel and a sheet, so nothing in the panel moves or expands in place. Escape returns focus to the line. The filter panel draws its short fixed lists through it (Show, Source kind, Level, Media, Location guess). PropertySearchRow is the line of a property picked by search (Conflict, Tags, Author, Approved by): the name at the left, the search field (OptionSearch or ItemSearch) at the right of the same line, its matches in the field's list over the page, and the picks as removable accent pills under the line. A switch dimension is a ToggleRow instead. The rows of a list carry no divider.">
             <PalettePropertyRow />
           </Entry>
 
@@ -1157,12 +1160,12 @@ export default function PalettePage() {
             </div>
           </Entry>
 
-          <Entry name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short, following the field on every frame and kept inside the viewport. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row under the options, and a heading as a muted row over them, naming what they are (Search results in the site and event link pickers). ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <AccountPicker>, <ConflictChips>, <TagChips>, the admin event field and the collection picker's Add events build on it.">
+          <Entry name="<Combobox>" usage="The keyboard and the list of every typeahead: a role=combobox <Input> over a role=listbox list in a portal fixed to the viewport, painted with TOOLTIP_SURFACE, as wide as the field, scrolling past 15rem and opening above the field when the room below is short, following the field on every frame and kept inside the viewport. The caller owns the query, the open state, the filtered options and how a row renders; a status string shows as a muted row under the options, and a heading as a muted row over them, naming what they are (Search results in the site and event link pickers). ArrowUp and ArrowDown move and wrap, Enter picks the highlighted row or hands the text to onSubmitText, Escape or a blur closes. pillOption shows a row inside a neutral <Pill>, the chip a pick becomes: every conflict and tag row, never the Create row. <ItemSearch>, <ConflictChips>, <TagChips> and <OptionSearch> build on it.">
             <PaletteCombobox />
           </Entry>
 
-          <Entry name="<AccountPicker>" usage="The one way to pick an analyst or an organization: a combobox field (role=combobox over a role=listbox) whose rows show the picture (a circle for an analyst, a rounded square for an organization), the name and, for an organization, its slug muted. `options` filters a local list by name and handle; `search` runs the caller's request 250ms after typing stops, once the query holds `minQueryLength` characters, and a `note` it returns (why an exact match is left out) shows as a muted row. Loading, a failed search and `emptyText` are muted rows too. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up (an exact username), Escape, Tab or an outside click closes. With `selected`, the pick shows as an accent chip that `onClear` removes; without it, the field empties after each pick. The list spans the field's width and scrolls past 15rem. It renders in a portal fixed to the viewport, so a card or a scrolling rail never clips it, and it opens above the field when the room below is shorter than 15rem and the room above is larger. Consumers: the approval request, the search Author filter, the co-geolocator invite, the organization invite, the admin org manager fields and the admin analyst search.">
-            <PaletteAccountPicker />
+          <Entry name="<ItemSearch>" usage="The one field that finds an item: an event, a site, a collection, an analyst or an organization. A Combobox whose rows are compact <Item>s, fed by search (debounced by useItemSearch, from minChars characters, aborting the request a newer query replaces), by browse for the empty field, or by a loaded options list filtered by title. The status line says Searching, The search failed, the caller's emptyText, the search's note, or hiddenText when every row found is hidden. pasteId picks the row a pasted ID or link names; keepOpen keeps the text and the list after a pick. With selected, the pick shows as a compact Item that its remove button clears; without it, the field empties after each pick and the caller keeps its own list. Consumers: the filter panel's Author and Approved by, the approval request, the co-geolocator invite, the organization invite, the admin analyst, org manager and event fields, the link pickers, the collection form's Add events and the Add to collection Find a collection.">
+            <PaletteItemSearch />
           </Entry>
         </section>
 
@@ -2252,39 +2255,32 @@ function PaletteCombobox() {
   );
 }
 
-function PaletteAccountPicker() {
+function PaletteItemSearch() {
   const [picked, setPicked] = useState<Account | null>(null);
+  const shared = {
+    options: PALETTE_ACCOUNTS,
+    toItem: accountItem,
+    rowKey: accountKey,
+    placeholder: "Search analysts and organizations",
+    emptyText: "No analyst or organization matches.",
+  };
   return (
     <div className="grid w-full max-w-2xl gap-4 sm:grid-cols-2">
-      <Variant label="field resets after a pick">
-        <AccountPicker
-          aria-label="Pick an account"
-          options={PALETTE_ACCOUNTS}
-          onSelect={() => undefined}
-          placeholder="Search analysts and organizations"
-          emptyText="No analyst or organization matches"
-        />
+      <Variant label="field empties after a pick">
+        <ItemSearch {...shared} aria-label="Pick an account" onPick={() => undefined} />
       </Variant>
-      <Variant label="selected shows as a chip">
-        <AccountPicker
+      <Variant label="selected shows as a compact item">
+        <ItemSearch
+          {...shared}
           aria-label="Pick an account to keep"
-          options={PALETTE_ACCOUNTS}
           selected={picked}
-          onSelect={setPicked}
+          onPick={setPicked}
           onClear={() => setPicked(null)}
-          placeholder="Pick an analyst"
-          emptyText="No analyst or organization matches"
         />
       </Variant>
       <Variant label="inside a narrow card that clips its overflow">
         <Card className="w-56 overflow-hidden">
-          <AccountPicker
-            aria-label="Pick an account in a card"
-            options={PALETTE_ACCOUNTS}
-            onSelect={() => undefined}
-            placeholder="Search analysts and organizations"
-            emptyText="No analyst or organization matches"
-          />
+          <ItemSearch {...shared} aria-label="Pick an account in a card" onPick={() => undefined} />
         </Card>
       </Variant>
     </div>

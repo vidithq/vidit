@@ -199,7 +199,7 @@ describe("OrganizationPage", () => {
     expect(screen.getByRole("button", { name: /^Remove / }).closest("a")).toBeNull();
     expect(screen.getByText("Invites")).toBeInTheDocument();
     fireEvent.focus(screen.getByLabelText("Analyst"));
-    expect(screen.getByText("No mutual follow to invite")).toBeInTheDocument();
+    expect(screen.getByText("No mutual follow to invite.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Invite" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit profile" })).toBeInTheDocument();
   });

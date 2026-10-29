@@ -115,6 +115,8 @@ export function BulkAddToCollectionPanel({
           />
         );
       }}
+      onPick={(row) => void write.run(row.id)}
+      done={(row) => row.id in done}
       emptyHint="Open one with these geolocations below."
       status={
         <>

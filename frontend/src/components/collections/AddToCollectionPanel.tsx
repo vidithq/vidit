@@ -100,6 +100,8 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
           }
         />
       )}
+      onPick={(row) => void toggle(row)}
+      done={(row) => row.in_collection}
       emptyHint="Open one and this geolocation is its first item."
       status={write.error && <ErrorNotice error={write.error} />}
       newCollection={newCollectionHref(eventId)}

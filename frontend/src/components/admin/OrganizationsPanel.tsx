@@ -17,12 +17,9 @@ import {
   type Organization,
 } from "@/lib/organizations";
 import { searchUsers } from "@/lib/admin";
-import {
-  AccountPicker,
-  accountName,
-  analystAccount,
-  type Account,
-} from "@/components/ui/AccountPicker";
+import { accountKey, accountName, analystAccount, type Account } from "@/lib/accounts";
+import { accountItem } from "@/lib/items";
+import { ItemSearch } from "@/components/ui/ItemSearch";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -66,13 +63,14 @@ function ManagerPicker({
   onChange: (username: string) => void;
 }) {
   return (
-    <AccountPicker
+    <ItemSearch
       id={id}
       aria-label={label}
       search={searchAnalysts}
-      minQueryLength={1}
+      toItem={accountItem}
+      rowKey={accountKey}
       selected={username ? analystAccount({ username }) : null}
-      onSelect={(account) => onChange(accountName(account))}
+      onPick={(account) => onChange(accountName(account))}
       onSubmitText={onChange}
       onClear={() => onChange("")}
       placeholder="username"

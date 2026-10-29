@@ -1,4 +1,4 @@
-import type { Account } from "@/components/ui/AccountPicker";
+import type { Account } from "@/lib/accounts";
 import {
   DATE_DIMENSIONS,
   DATE_KEYS,

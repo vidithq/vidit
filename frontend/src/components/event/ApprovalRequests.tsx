@@ -21,11 +21,13 @@ import {
 } from "@/lib/approvalRequests";
 import { cn } from "@/lib/cn";
 import {
-  AccountPicker,
+  accountKey,
   accountName,
   analystAccount,
   type Account,
-} from "@/components/ui/AccountPicker";
+} from "@/lib/accounts";
+import { ItemSearch } from "@/components/ui/ItemSearch";
+import { accountItem } from "@/lib/items";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -65,7 +67,7 @@ function targetOf(account: Account): ApprovalRequestTarget {
 function searchTargets(eventId: string, query: string) {
   return apiFetch<ApprovalRequestTargets>(approvalRequestTargetsPath(eventId, query)).then(
     (targets) => ({
-      accounts: [
+      rows: [
         ...targets.analysts.map(analystAccount),
         ...targets.organizations.map((o): Account => ({ kind: "organization", ...o })),
       ],
@@ -235,11 +237,14 @@ function RequestApprovalDialog({
         <label htmlFor={TARGET_FIELD_ID} className={FORM_LABEL}>
           Ask an analyst or an organization to approve this version
         </label>
-        <AccountPicker
+        <ItemSearch
           id={TARGET_FIELD_ID}
           search={(query) => searchTargets(eventId, query)}
+          browse={() => searchTargets(eventId, "")}
+          toItem={accountItem}
+          rowKey={accountKey}
           selected={selected}
-          onSelect={setSelected}
+          onPick={setSelected}
           onClear={() => {
             setSelected(null);
             send.reset();

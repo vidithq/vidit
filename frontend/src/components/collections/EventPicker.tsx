@@ -1,16 +1,15 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useMemo, useRef, useState, type ComponentProps } from "react";
 
 import { Card } from "@/components/ui/Card";
-import { Combobox } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Item } from "@/components/ui/Item";
+import { ItemSearch } from "@/components/ui/ItemSearch";
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { RemoveButton } from "@/components/ui/RemoveButton";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { errorMessage } from "@/lib/api";
-import { errorText } from "@/lib/errors";
+import { apiFetchPage } from "@/lib/api";
 import {
   eventCountLabel,
   PICKER_ROW_LIMIT,
@@ -19,12 +18,8 @@ import {
   type PickableEvent,
 } from "@/lib/collections";
 import { eventItem } from "@/lib/items";
-import { useCursorList } from "@/hooks/useCursorList";
-import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
+import type { Found } from "@/hooks/useItemSearch";
 import type { EventListItem } from "@/types";
-
-/** Debounce before a typed query is sent, as on the search page. */
-const DEBOUNCE_MS = 300;
 
 /** The rows in the order the collection's page reads them: event date, earliest
  *  first, undated last, then id. Mirrors `services/collections.chronological_key`,
@@ -42,7 +37,7 @@ function chronological(events: PickableEvent[]): PickableEvent[] {
  * The events a collection is being written to hold, and the search that adds to
  * them. Both the create and the edit page use it.
  *
- * **Two cards.** *Add events* comes first, the way in: a `<Combobox>` that
+ * **Two cards.** *Add events* comes first, the way in: an `<ItemSearch>` that
  * lists at most `PICKER_ROW_LIMIT` rows, the analyst's most recent eligible
  * events, or the first matches once something is typed. *Events in this
  * collection* follows: what the collection holds if saved now (the rows the
@@ -85,50 +80,29 @@ export function EventPicker({
     onRemove: (eventId: string) => void;
   };
 }) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const typed = query.trim();
+  const [typed, setTyped] = useState(false);
 
-  const buildPath = useCallback(
-    (cursor: string | null) => pickerBrowsePath(username, cursor),
-    [username],
-  );
-  const browse = useCursorList<EventListItem>(buildPath);
-
-  // Carries its query: shown only while that query is still in the field.
-  const [answer, setAnswer] = useState<{
-    query: string;
-    items: PickableEvent[];
-    total: number;
-    error: string | null;
-  } | null>(null);
-
-  // The cleanup flips `live`, so an answer to an abandoned query never lands.
-  useDebouncedEffect(
-    () => {
-      if (!typed) return;
-      let live = true;
-      searchPickableEvents(username, typed)
-        .then((result) => {
-          if (live) setAnswer({ query: typed, ...result, error: null });
-        })
-        .catch((e: unknown) => {
-          if (live) {
-            setAnswer({
-              query: typed,
-              items: [],
-              total: 0,
-              error: errorMessage(e, "Failed to search your events"),
-            });
-          }
-        });
-      return () => {
-        live = false;
-      };
-    },
-    [typed, username],
-    DEBOUNCE_MS,
-  );
+  const browse = async (signal: AbortSignal): Promise<Found<PickableEvent>> => {
+    const page = await apiFetchPage<EventListItem[]>(pickerBrowsePath(username, null), { signal });
+    return {
+      rows: page.items,
+      note: page.nextCursor ? "Showing your most recent. Search to reach the rest of your catalogue." : null,
+    };
+  };
+  const searchOwn = async (q: string): Promise<Found<PickableEvent>> => {
+    const { items, total } = await searchPickableEvents(username, q);
+    const capped =
+      total > items.length
+        ? `Showing ${items.length} of ${total} matches. Refine the search to reach the rest. `
+        : "";
+    return {
+      rows: items,
+      note:
+        items.length > 0
+          ? `${capped}Search reaches your events that carry coordinates; clear the field to see the rest.`
+          : null,
+    };
+  };
 
   const heldIds = new Set(events.map((e) => e.id));
   const matchedRows = matched?.rows;
@@ -161,42 +135,6 @@ export function EventPicker({
     else matched?.onRemove(id);
   };
 
-  const searching = typed.length > 0;
-  const found = answer?.query === typed ? answer : null;
-  const results: PickableEvent[] = (
-    searching ? (found?.items ?? []) : browse.items
-  ).slice(0, PICKER_ROW_LIMIT);
-  const error = searching ? (found?.error ?? null) : browse.error && errorText(browse.error);
-  const loading = searching ? found === null : browse.loading;
-  // What the card is not showing. A search states the pre-cap count; a browse
-  // only knows another page exists. A search also cannot reach events without
-  // coordinates (see the component note).
-  const capped =
-    found !== null && found.total > results.length
-      ? `Showing ${results.length} of ${found.total} matches. Refine the search to reach the rest. `
-      : "";
-  const refine = searching
-    ? found === null
-      ? null
-      : `${capped}Search reaches your events that carry coordinates; clear the field to see the rest.`
-    : browse.hasMore
-      ? "Showing your most recent. Search to reach the rest of your catalogue."
-      : null;
-
-  const addable = results.filter((row) => !heldIds.has(row.id));
-  const empty = searching
-    ? "Nothing of yours matches those words. Try fewer words, or clear the field to see your most recent."
-    : "No geolocations to put on a collection yet. A collection holds your own geolocated and detected events.";
-  const status = loading
-    ? "Loading your geolocations…"
-    : error
-      ? error
-      : results.length === 0
-        ? empty
-        : addable.length === 0
-          ? `Every event on show is already in this collection. ${refine ?? ""}`.trim()
-          : refine;
-
   const heldHeading = (
     <div className="space-y-1">
       <SectionHeading title="Events in this collection" />
@@ -217,22 +155,24 @@ export function EventPicker({
           </p>
         </div>
 
-        <Combobox
+        <ItemSearch
           aria-label="Add events"
           placeholder="Search your geolocations by title…"
-          query={query}
-          onQueryChange={setQuery}
-          open={open}
-          onOpenChange={setOpen}
-          options={loading ? [] : addable}
-          optionKey={(row) => row.id}
-          renderOption={(row) => (
-            <div className="min-w-0 flex-1">
-              <Item variant="compact" {...eventItem(row)} href={undefined} />
-            </div>
-          )}
+          search={searchOwn}
+          browse={browse}
+          toItem={eventItem}
+          rowKey={(row) => row.id}
+          hide={(row) => heldIds.has(row.id)}
           onPick={add}
-          status={status}
+          onQueryChange={(q) => setTyped(q.trim() !== "")}
+          keepOpen
+          loadingText="Loading your geolocations…"
+          emptyText={
+            typed
+              ? "Nothing of yours matches those words. Try fewer words, or clear the field to see your most recent."
+              : "No geolocations to put on a collection yet. A collection holds your own geolocated and detected events."
+          }
+          hiddenText="Every event on show is already in this collection."
         />
       </Card>
 

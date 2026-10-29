@@ -30,7 +30,7 @@ describe("<EventActionsPanel>", () => {
       target: { value: `https://example.org/events/${ID}/v2` },
     });
 
-    expect(screen.getByTitle(`Remove ${ID}`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `Remove ${ID}` })).toBeInTheDocument();
     expect(markGraphic).toBeEnabled();
     expect(screen.getByRole("button", { name: "Soft delete" })).toBeEnabled();
   });
@@ -60,7 +60,8 @@ describe("<EventActionsPanel>", () => {
     expect(screen.getByRole("option", { name: /Requested 2 Apr 2026.*cy/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: /Undated.*bo/ }));
     expect(api.apiFetch.mock.calls[0][0]).toMatch(/^\/search\?q=depot&limit=10&type=event$/);
-    expect(screen.getByTitle("Remove Strike on the depot")).toHaveTextContent("Undated · bo");
+    expect(screen.getByRole("button", { name: "Remove Strike on the depot" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mark graphic" })).toBeEnabled();
   });
 

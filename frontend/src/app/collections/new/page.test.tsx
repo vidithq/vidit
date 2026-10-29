@@ -40,6 +40,13 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     searchPickableEvents(username, q),
 }));
 
+// The add block's first page of the analyst's events.
+const apiFetchPage = vi.fn();
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetchPage: () => apiFetchPage(),
+}));
+
 // The add block's list and a match's pages only have to render without the network (the walk is
 // tested in `useCursorList`); the mock tells them apart by their first page's path.
 const useCursorList = vi.fn();
@@ -96,7 +103,8 @@ const walkOf = (items: unknown[], more: Partial<{ hasMore: boolean; loadMore: ()
 
 /** What the add block lists. */
 function mockBrowse(items: unknown[]) {
-  useCursorList.mockReturnValue(walkOf(items));
+  useCursorList.mockReturnValue(walkOf([]));
+  apiFetchPage.mockResolvedValue({ items, nextCursor: null });
 }
 
 /** The pages of a search match so far, beside an empty add block. */
@@ -247,7 +255,7 @@ describe("NewCollectionPage", () => {
 
     fireEvent.focus(screen.getByRole("combobox", { name: "Add events" }));
     fireEvent.click(
-      screen.getByRole("option", { name: /^Strike on the rail junction/ }),
+      await screen.findByRole("option", { name: /^Strike on the rail junction/ }),
     );
     // The row moved onto the block above, which is what the create writes.
     expect(

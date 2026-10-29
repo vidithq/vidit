@@ -20,11 +20,13 @@ import {
 import { profileHref } from "@/lib/routes";
 import { suggestAuthors } from "@/lib/search";
 import {
-  AccountPicker,
+  accountKey,
   accountName,
   analystAccount,
   type Account,
-} from "@/components/ui/AccountPicker";
+} from "@/lib/accounts";
+import { ItemSearch } from "@/components/ui/ItemSearch";
+import { accountItem } from "@/lib/items";
 import { AuthorByline, BYLINE_GAP } from "@/components/ui/AuthorByline";
 import { cn } from "@/lib/cn";
 import { AvatarStack, type AvatarStackItem } from "@/components/ui/AvatarStack";
@@ -110,11 +112,13 @@ function AddGeolocator({
         };
         return (
           <>
-            <AccountPicker
+            <ItemSearch
               aria-label={ADD_LABEL}
               search={suggestAuthors}
-              minQueryLength={2}
-              onSelect={pick}
+              minChars={2}
+              toItem={accountItem}
+              rowKey={accountKey}
+              onPick={pick}
               onSubmitText={(name) => pick(analystAccount({ username: name }))}
               placeholder="Username"
               emptyText="No analyst with a published geolocation matches. Press Enter to invite this exact username."

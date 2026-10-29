@@ -209,7 +209,7 @@ describe("AddToCollectionPanel", () => {
     expect(screen.queryByText("no media")).toBeNull();
   });
 
-  it("narrows a long list by title, as the bulk add does", () => {
+  it("finds a collection by title and adds the event to it", async () => {
     const titles = ["Avdiivka", "Bakhmut", "Chasiv Yar", "Dam breach", "Kupiansk", "Pokrovsk"];
     useApiResource.mockReturnValue({
       data: {
@@ -225,13 +225,16 @@ describe("AddToCollectionPanel", () => {
     });
     render(<AddToCollectionPanel eventId="e1" />);
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "Find a collection" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Find a collection" }), {
       target: { value: "ba" },
     });
-
-    expect(screen.getAllByRole("switch").map((s) => s.getAttribute("aria-label"))).toEqual([
-      "Bakhmut",
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      expect.stringMatching(/^Bakhmut/),
     ]);
+    fireEvent.click(screen.getByRole("option", { name: /^Bakhmut/ }));
+
+    expect(await screen.findByRole("switch", { name: "Bakhmut" })).toBeChecked();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("says so when the read itself fails", () => {

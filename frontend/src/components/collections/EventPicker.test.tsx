@@ -9,18 +9,17 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     searchPickableEvents(username, q),
 }));
 
-const useCursorList = vi.fn();
-vi.mock("@/hooks/useCursorList", () => ({
-  useCursorList: (buildPath: (cursor: string | null) => string) =>
-    useCursorList(buildPath),
+const apiFetchPage = vi.fn();
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetchPage: (path: string) => apiFetchPage(path),
 }));
 
 import type { PickableEvent } from "@/lib/collections";
 
-import { EventPicker } from "./EventPicker";
+import { SEARCH_DEBOUNCE_MS as DEBOUNCE_MS } from "@/hooks/useItemSearch";
 
-/** The picker's debounce before a typed query goes out. */
-const DEBOUNCE_MS = 300;
+import { EventPicker } from "./EventPicker";
 
 const row = (
   over: Partial<PickableEvent> & Pick<PickableEvent, "id">,
@@ -35,22 +34,19 @@ const row = (
   ...over,
 });
 
-/** The browse walk's state, as `useCursorList` hands it over. */
-function mockBrowse(items: PickableEvent[], over: Record<string, unknown> = {}) {
-  useCursorList.mockReturnValue({
-    items,
-    error: null,
-    loading: false,
-    loadingMore: false,
-    hasMore: false,
-    loadMore: vi.fn(),
-    reload: vi.fn(),
-    ...over,
-  });
+/** The first page of the analyst's events, and whether another stands behind it. */
+function mockBrowse(items: PickableEvent[], { hasMore = false } = {}) {
+  apiFetchPage.mockResolvedValue({ items, nextCursor: hasMore ? "next" : null });
 }
 
 /** The add block's field. */
 const field = () => screen.getByRole("combobox", { name: "Add events" });
+
+/** Focuses the empty field and lets the browse answer land. */
+async function openList() {
+  fireEvent.focus(field());
+  await act(() => vi.advanceTimersByTimeAsync(0));
+}
 
 /** One row of the add block's open list, named by its title, date and status. */
 function addRow(title: string): HTMLElement {
@@ -64,20 +60,19 @@ function removeRow(title: string): HTMLElement {
   });
 }
 
-/** Five rows (the cap) plus a sixth the block must drop. */
-const sixRows = [
+/** A full page: the cap. */
+const fiveRows = [
   row({ id: "e1", title: "One" }),
   row({ id: "e2", title: "Two" }),
   row({ id: "e3", title: "Three" }),
   row({ id: "e4", title: "Four" }),
   row({ id: "e5", title: "Five" }),
-  row({ id: "e6", title: "Six" }),
 ];
 
 beforeEach(() => {
   vi.useFakeTimers();
   searchPickableEvents.mockReset();
-  useCursorList.mockReset();
+  apiFetchPage.mockReset();
   searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
   mockBrowse([row({ id: "e1" })]);
 });
@@ -193,7 +188,7 @@ describe("EventPicker, the held list", () => {
     expect(screen.queryByRole("region", { name: "Events in this collection" })).toBeNull();
   });
 
-  it("scrolls a picked row into view where the date order puts it", () => {
+  it("scrolls a picked row into view where the date order puts it", async () => {
     const picked = row({ id: "e1", title: "Picked strike" });
     mockBrowse([picked]);
     const scrollIntoView = vi.fn();
@@ -202,7 +197,7 @@ describe("EventPicker, the held list", () => {
     const { rerender } = render(
       <EventPicker username="ana" events={[]} onAdd={onAdd} onRemove={vi.fn()} />,
     );
-    fireEvent.focus(field());
+    await openList();
     fireEvent.click(addRow("Picked strike"));
     expect(onAdd).toHaveBeenCalledWith(picked);
 
@@ -240,7 +235,7 @@ describe("EventPicker, the held list", () => {
 });
 
 describe("EventPicker, the add block", () => {
-  it("lists the analyst's most recent on focus, with nothing typed", () => {
+  it("lists the analyst's most recent on focus, with nothing typed", async () => {
     render(
       <EventPicker
         username="ana"
@@ -250,7 +245,7 @@ describe("EventPicker, the add block", () => {
       />,
     );
     expect(screen.queryByRole("listbox")).toBeNull();
-    fireEvent.focus(field());
+    await openList();
 
     // Rows come off the browse walk; `/search` is asked nothing until something is
     // typed (the walk's spec is `pickerBrowsePath`'s, in `lib/collections.test.ts`).
@@ -258,7 +253,7 @@ describe("EventPicker, the add block", () => {
     expect(searchPickableEvents).not.toHaveBeenCalled();
   });
 
-  it("hands the whole row back on a pick, and keeps the list open", () => {
+  it("hands the whole row back on a pick, and keeps the list open", async () => {
     const onAdd = vi.fn();
     const only = row({ id: "e1" });
     mockBrowse([only, row({ id: "e2", title: "Second strike" })]);
@@ -271,7 +266,7 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.focus(field());
+    await openList();
     fireEvent.click(addRow("Strike on the rail junction"));
 
     // The row itself: the first block also renders the catalogue card for held rows.
@@ -279,7 +274,7 @@ describe("EventPicker, the add block", () => {
     expect(screen.getByRole("listbox")).toBeInTheDocument();
   });
 
-  it("moves an added row up, out of the list", () => {
+  it("moves an added row up, out of the list", async () => {
     const added = row({ id: "e1" });
     mockBrowse([added, row({ id: "e2", title: "Second strike" })]);
 
@@ -299,7 +294,7 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.focus(field());
+    await openList();
 
     expect(removeRow("Strike on the rail junction")).toBeInTheDocument();
     expect(
@@ -308,7 +303,7 @@ describe("EventPicker, the add block", () => {
     expect(addRow("Second strike")).toBeInTheDocument();
   });
 
-  it("says so when every row on show is already held", () => {
+  it("says so when every row on show is already held", async () => {
     const added = row({ id: "e1" });
     mockBrowse([added]);
 
@@ -320,15 +315,15 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.focus(field());
+    await openList();
 
     expect(
       screen.getByText("Every event on show is already in this collection."),
     ).toBeInTheDocument();
   });
 
-  it("shows five rows at most, and says how to reach the rest", () => {
-    mockBrowse(sixRows, { hasMore: true });
+  it("says how to reach the rest past the first page", async () => {
+    mockBrowse(fiveRows, { hasMore: true });
 
     render(
       <EventPicker
@@ -338,10 +333,8 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.focus(field());
+    await openList();
 
-    expect(screen.getAllByRole("option")).toHaveLength(5);
-    expect(screen.queryByText("Six")).not.toBeInTheDocument();
     expect(
       screen.getByText(
         "Showing your most recent. Search to reach the rest of your catalogue.",
@@ -381,7 +374,7 @@ describe("EventPicker, the add block", () => {
 
   it("says what a capped search left out", async () => {
     searchPickableEvents.mockResolvedValue({
-      items: sixRows.slice(0, 5),
+      items: fiveRows,
       total: 62,
     });
 
@@ -431,7 +424,7 @@ describe("EventPicker, the add block", () => {
     ).toBeInTheDocument();
   });
 
-  it("takes the highlighted row on Enter instead of submitting the collection form", () => {
+  it("takes the highlighted row on Enter instead of submitting the collection form", async () => {
     const onSubmit = vi.fn((e: FormEvent) => e.preventDefault());
     const onAdd = vi.fn();
 
@@ -445,7 +438,7 @@ describe("EventPicker, the add block", () => {
         />
       </form>,
     );
-    fireEvent.focus(field());
+    await openList();
     const defaultPrevented = !fireEvent.keyDown(field(), {
       key: "Enter",
       code: "Enter",
@@ -477,7 +470,7 @@ describe("EventPicker, the add block", () => {
     expect(screen.getByText("1 event, ordered by event date, earliest first.")).toBeInTheDocument();
   });
 
-  it("says so when the analyst has nothing a collection may hold", () => {
+  it("says so when the analyst has nothing a collection may hold", async () => {
     mockBrowse([]);
 
     render(
@@ -488,7 +481,7 @@ describe("EventPicker, the add block", () => {
         onRemove={vi.fn()}
       />,
     );
-    fireEvent.focus(field());
+    await openList();
 
     expect(
       screen.getByText(/^No geolocations to put on a collection yet\./),
