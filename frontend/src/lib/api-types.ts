@@ -1047,8 +1047,8 @@ export interface paths {
          * @description Publish the selected detections: ``detected`` → ``geolocated``.
          *
          *     JSON, not multipart: nothing uploads. The detections keep their imported
-         *     evidence; the call supplies the conflict set and one source kind per row,
-         *     which goes onto every source that carries a file.
+         *     evidence; the call supplies the conflict set and, optionally, one source
+         *     kind per row, which goes onto every source that carries a file.
          *
          *     Each row commits on its own: one that fails the floor (no proof image,
          *     coordinates, direct or indirect source file, or a source without a URL)
@@ -3564,7 +3564,7 @@ export interface components {
          * BatchCompletionCreate
          * @description Body of ``POST /events/batch-complete``.
          *
-         *     One conflict set for the whole selection; the source kind varies per row.
+         *     One conflict set for the whole selection; the optional source kind varies per row.
          */
         BatchCompletionCreate: {
             /** Conflict Ids */
@@ -3586,7 +3586,8 @@ export interface components {
         };
         /**
          * BatchCompletionRowCreate
-         * @description One detection in a batch completion and the kind of its sources that carry a file.
+         * @description One detection in a batch completion and, optionally, the kind of its sources that carry
+         *     a file. Without one, the sources keep the kind they hold.
          */
         BatchCompletionRowCreate: {
             /**
@@ -3594,11 +3595,8 @@ export interface components {
              * Format: uuid
              */
             event_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
+            /** Kind */
+            kind?: ("smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown") | null;
         };
         /**
          * BatchCompletionRowRead

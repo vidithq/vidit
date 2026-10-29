@@ -57,10 +57,10 @@ test.describe("submit", () => {
     // Every condition is unmet on an empty form: a geolocation misses the request's four and
     // its own three. Each button says so, and its count names them.
     await expect(publish).toHaveAccessibleDescription(
-      "7 missing: Title, Source file, Source URL, Source kind, Proof, Coordinates, Conflict",
+      "6 missing: Title, Source file, Source URL, Proof, Coordinates, Conflict",
     );
     await expect(request).toHaveAccessibleDescription(
-      "4 missing: Title, Source file, Source URL, Source kind",
+      "3 missing: Title, Source file, Source URL",
     );
     await expect(actions.getByRole("button", { name: /^7 missing: / })).toHaveText("7");
     await expect(actions.getByRole("button", { name: /^4 missing: / })).toHaveText("4");
@@ -114,7 +114,7 @@ test.describe("submit", () => {
 
     const rail = page.getByRole("complementary", { name: "Actions" });
     // A mouse on a count lists what is missing.
-    const label = "4 missing: Title, Source file, Source URL, Source kind";
+    const label = "3 missing: Title, Source file, Source URL";
     await rail.getByRole("button", { name: label }).hover();
     await expect(page.getByText(label, { exact: true }).and(page.locator(":visible"))).toBeVisible();
     await page.mouse.move(0, 0);
@@ -628,7 +628,7 @@ test.describe("publish counts on a touch screen", () => {
     await page.goto("/submit?mode=single");
 
     const actions = page.getByRole("complementary", { name: "Actions" });
-    const label = "4 missing: Title, Source file, Source URL, Source kind";
+    const label = "3 missing: Title, Source file, Source URL";
     const list = page.getByText(label, { exact: true }).and(page.locator(":visible"));
     const request = actions.getByRole("button", { name: "Publish request" });
     await actions.getByRole("button", { name: label }).tap();

@@ -36,8 +36,8 @@ def batch_complete_events(
     """Publish the selected detections: ``detected`` → ``geolocated``.
 
     JSON, not multipart: nothing uploads. The detections keep their imported
-    evidence; the call supplies the conflict set and one source kind per row,
-    which goes onto every source that carries a file.
+    evidence; the call supplies the conflict set and, optionally, one source
+    kind per row, which goes onto every source that carries a file.
 
     Each row commits on its own: one that fails the floor (no proof image,
     coordinates, direct or indirect source file, or a source without a URL)

@@ -68,14 +68,14 @@ def _publish_detection(
     *,
     event_id: uuid.UUID,
     current_user: User,
-    kind: SourceKind,
+    kind: SourceKind | None,
     conflicts: list[Conflict],
 ) -> None:
-    """Promote one detection to ``geolocated`` with the conflicts and source kind the batch
-    supplies.
+    """Promote one detection to ``geolocated`` with the conflicts and the optional source kind
+    the batch supplies.
 
     No other field edits, uploads or proof rewrite: the import already put the rest on the
-    row. ``kind`` goes onto every source that carries a file. The floor is the one
+    row. ``kind`` goes onto every source that carries a file; ``None`` keeps the kinds. The floor is the one
     :func:`save_version` runs on a publish, so a batch is no looser a door to ``geolocated``.
     Like that publish, it files the detection as version 0 and the row becomes version 1.
 
@@ -115,7 +115,7 @@ def _publish_detection(
     # As in ``save_version``: lazy-loading the collections would flush a half-stamped row.
     with db.no_autoflush:
         for source in geo.sources:
-            if source.media is not None:
+            if kind is not None and source.media is not None:
                 source.kind = kind
         geo.conflicts = conflicts
         geo.status = STATUS_GEOLOCATED
@@ -130,7 +130,7 @@ def complete_detections(
     *,
     current_user: User,
     conflict_ids: list[uuid.UUID],
-    rows: list[tuple[uuid.UUID, SourceKind]],
+    rows: list[tuple[uuid.UUID, SourceKind | None]],
 ) -> list[DetectionCompletion]:
     """Publish a selection of detections, one transaction per row.
 

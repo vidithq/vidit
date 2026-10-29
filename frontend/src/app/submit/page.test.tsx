@@ -90,7 +90,7 @@ describe("the submit form's gate", () => {
     render(<SubmitPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Publish request" }));
-    expect(announced()).toHaveTextContent("Title, Source file, Source URL, Source kind.");
+    expect(announced()).toHaveTextContent("Title, Source file, Source URL.");
     expect(createEventRequest).not.toHaveBeenCalled();
   });
 
@@ -99,7 +99,7 @@ describe("the submit form's gate", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Publish geolocation" }));
     expect(announced()).toHaveTextContent(
-      "Title, Source file, Source URL, Source kind, Proof, Coordinates, Conflict."
+      "Title, Source file, Source URL, Proof, Coordinates, Conflict."
     );
     expect(createEvent).not.toHaveBeenCalled();
   });

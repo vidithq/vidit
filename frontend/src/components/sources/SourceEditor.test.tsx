@@ -292,15 +292,15 @@ describe("SourceEditor", () => {
     expect(screen.getByRole("button", { name: "Archive source 1, link 2, this link" })).toBeInTheDocument();
   });
 
-  it("flags a source with no URL and no kind", () => {
+  it("flags a source with no URL, and never its kind", () => {
     render(
       <Host
         initial={{ ...newSourceDraft(), file: { state: "stored", media: FILE } }}
-        invalid={{ link: true, kind: true }}
+        invalid={{ link: true }}
       />
     );
     expect(screen.getByText("Links (0)").parentElement!.className).toContain("text-red-400");
-    expect(kindField()).toHaveAttribute("aria-invalid", "true");
+    expect(kindField()).not.toHaveAttribute("aria-invalid", "true");
   });
 
   it("picks a tag of the shared catalogue for this source and removes it", () => {

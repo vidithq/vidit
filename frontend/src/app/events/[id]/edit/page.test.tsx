@@ -194,7 +194,7 @@ function resource(path: string) {
   return null;
 }
 
-/** Make the two picks a review makes: the conflict, and the kind the import left unknown. */
+/** Make the picks a review makes: the conflict, and a kind for the source the import left unknown. */
 function fillTheFloor() {
   pickOption("Conflict", /Russian invasion of Ukraine/);
   pickOption(/kind$/, "Drone");

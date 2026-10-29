@@ -35,8 +35,8 @@ def detection_ready_predicate() -> ColumnElement[bool]:
     3. no source without a URL;
     4. a proof image (:data:`_PROOF_IMAGE_PATTERN`).
 
-    The conflict and source kind are supplied per row by the review, so they
-    are not checked here. `batchCompletionBlockers`
+    The conflict is supplied by the review and the source kind is optional, so
+    neither is checked here. `batchCompletionBlockers`
     (``frontend/src/lib/events.ts``) draws the same line; keep the three in
     step (``tests/events/test_detections_readiness.py``).
 

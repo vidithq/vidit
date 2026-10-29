@@ -172,7 +172,7 @@ export interface SourceDraft {
   id: string | null;
   title: string;
   level: SourceLevel;
-  /** `""` until the analyst picks one: the write needs a kind. */
+  /** `""` until the analyst picks one, which the write posts as `unknown`. */
   kind: SourceKind | "";
   /** `datetime-local` value, UTC. */
   capturedAt: string;
@@ -290,7 +290,6 @@ export function sourceFloor(drafts: SourceDraft[]): SourceFloorState {
   return {
     hasEvidenceFile: drafts.some((d) => isEvidenceLevel(d.level) && holdsFile(d)),
     missingLink: drafts.some((d) => draftUrls(d).length === 0),
-    missingKind: drafts.some((d) => d.kind === ""),
   };
 }
 
@@ -321,8 +320,7 @@ export function capturePositionInvalid(draft: SourceDraft): boolean {
   return coordinatePair(draft.captureLat, draft.captureLng) === null;
 }
 
-/** One editor as the write posts it. A draft with no kind yet posts `unknown`; the form's
- *  floor check holds the write until one is picked. */
+/** One editor as the write posts it. A draft with no kind posts `unknown`. */
 export function sourceCreatePayload(draft: SourceDraft): SourceCreate {
   const file = fileReference(draft.file);
   const kind = draft.kind || "unknown";

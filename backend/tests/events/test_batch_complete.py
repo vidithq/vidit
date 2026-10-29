@@ -1,7 +1,7 @@
 """Batch completion ``POST /events/batch-complete``.
 
-Same evidence floor as the single-row geolocate, with the conflicts and each row's source
-kind supplied by the call. One transaction per row: a mixed selection publishes what clears it
+Same evidence floor as the single-row geolocate, with the conflicts and each row's optional
+source kind supplied by the call. One transaction per row: a mixed selection publishes what clears it
 and leaves the rest untouched, each with a reason.
 """
 
@@ -248,21 +248,40 @@ def test_batch_complete_rejects_a_detection_listed_twice(db, author, conflict):
     assert db.query(Event).filter(Event.id == detection.id).one().status == STATUS_DETECTED
 
 
-def test_batch_complete_rejects_a_row_without_a_known_kind(db, author, conflict):
-    """The kind is a closed list, so an unlisted or missing one fails the shape."""
+def test_batch_complete_rejects_a_row_with_an_unlisted_kind(db, author, conflict):
+    """The kind is a closed list, so an unlisted one fails the shape."""
     detection = _detection(db, author)
     headers = login_as(client, author)
-    for row in (
-        {"event_id": str(detection.id), "kind": "periscope"},
-        {"event_id": str(detection.id)},
-    ):
-        response = client.post(
-            _URL, headers=headers, json={"conflict_ids": [str(conflict.id)], "rows": [row]}
-        )
-        assert response.status_code == 422
+    response = client.post(
+        _URL,
+        headers=headers,
+        json={
+            "conflict_ids": [str(conflict.id)],
+            "rows": [{"event_id": str(detection.id), "kind": "periscope"}],
+        },
+    )
+    assert response.status_code == 422
 
     db.expire_all()
     assert db.query(Event).filter(Event.id == detection.id).one().status == STATUS_DETECTED
+
+
+def test_batch_complete_without_a_kind_keeps_the_source_kinds(db, author, conflict):
+    """A row without a kind publishes, and its sources keep the kind the import gave them."""
+    detection = _detection(db, author, kind="smartphone")
+    headers = login_as(client, author)
+    response = client.post(
+        _URL,
+        headers=headers,
+        json={"conflict_ids": [str(conflict.id)], "rows": [{"event_id": str(detection.id)}]},
+    )
+    assert response.status_code == 200
+    assert response.json()["published"] == 1
+
+    db.expire_all()
+    row = db.query(Event).filter(Event.id == detection.id).one()
+    assert row.status == STATUS_GEOLOCATED
+    assert [s.kind for s in row.sources] == ["smartphone"]
 
 
 def test_batch_complete_rejects_a_selection_without_a_conflict(db, author):

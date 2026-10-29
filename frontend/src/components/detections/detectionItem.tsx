@@ -31,7 +31,7 @@ const ENTRY_LABELS: Record<DetectedVia, string> = {
  * One detection of the Detections queue as an item: the event's anatomy, with the source host and
  * the entry after the place, and a badge that describes the *evidence*, not completeness. **Ready
  * to review** means the machine found everything it could and the detection awaits the judgment a
- * review supplies (conflict, source kind), never that it is finished, so it takes the softer
+ * review supplies (the conflict), never that it is finished, so it takes the softer
  * outline tone. The queue filter's `?` explains the two states. The item opens the detection in
  * the edit form inside a review pass starting at it.
  */

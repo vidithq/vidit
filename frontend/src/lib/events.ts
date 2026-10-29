@@ -33,7 +33,6 @@ export type MissingFieldKey =
   | "coordinates"
   | "source_file"
   | "source_link"
-  | "source_kind"
   | "proof"
   | "proof_image"
   | "conflict_tag"
@@ -67,7 +66,6 @@ const FIELD_LABELS: Record<MissingFieldKey, string> = {
   coordinates: EVENT_FIELDS.coordinates.label,
   source_file: "Source file",
   source_link: "Source URL",
-  source_kind: "Source kind",
   proof: "Proof",
   proof_image: "Proof image",
   conflict_tag: EVENT_FIELDS.conflicts.label,
@@ -868,8 +866,6 @@ export interface SourceFloorState {
   hasEvidenceFile: boolean;
   /** Some source has no URL. */
   missingLink: boolean;
-  /** Some source names no kind. */
-  missingKind: boolean;
 }
 
 /** Raw input values a geolocation form validates before submit. */
@@ -911,8 +907,8 @@ export function missingSummary(missing: readonly { label: string }[]): string {
   return `${missing.length} missing: ${missing.map((m) => m.label).join(", ")}`;
 }
 
-/** Every unmet required field for a request: a title, and a direct or indirect source with a
- *  file, every source with a URL and a kind. Mirrors `POST /events/requests`. */
+/** Every unmet required field for a request: a title, a direct or indirect source with a file,
+ *  and a URL on every source. Mirrors `POST /events/requests`. */
 export function missingEventRequestFields(s: {
   title: string;
   sources: SourceFloorState;
@@ -922,6 +918,5 @@ export function missingEventRequestFields(s: {
   if (!s.title.trim()) add("title");
   if (!s.sources.hasEvidenceFile) add("source_file");
   if (s.sources.missingLink) add("source_link");
-  if (s.sources.missingKind) add("source_kind");
   return missing;
 }

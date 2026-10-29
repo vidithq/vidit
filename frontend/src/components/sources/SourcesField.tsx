@@ -343,18 +343,14 @@ function RemoveSource({ index, onRemove }: { index: number; onRemove: () => void
 function sourceGaps(draft: SourceDraft, invalidKeys: ReadonlySet<MissingFieldKey>): SourceEditorInvalid {
   return {
     link: invalidKeys.has("source_link") && draftUrls(draft).length === 0,
-    kind: invalidKeys.has("source_kind") && draft.kind === "",
   };
 }
 
-/** The first editor a publish attempt flagged: a missing link or kind, else the first direct or
- *  indirect source when none carries a file. */
+/** The first editor a publish attempt flagged: a missing link, else the first direct or indirect
+ *  source when none carries a file. */
 function firstGap(drafts: SourceDraft[], invalidKeys: ReadonlySet<MissingFieldKey>): string | null {
   const gap =
-    drafts.find((d) => {
-      const { link, kind } = sourceGaps(d, invalidKeys);
-      return link || kind;
-    }) ?? (invalidKeys.has("source_file") ? drafts.find((d) => isEvidenceLevel(d.level)) : undefined);
+    drafts.find((d) => sourceGaps(d, invalidKeys).link) ?? (invalidKeys.has("source_file") ? drafts.find((d) => isEvidenceLevel(d.level)) : undefined);
   return gap?.key ?? null;
 }
 

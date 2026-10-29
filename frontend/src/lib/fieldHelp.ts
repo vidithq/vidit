@@ -49,7 +49,7 @@ export const FIELD_HELP = {
     label: "What is the evidence level?",
   },
   source_kind: {
-    text: "Where the source comes from: what captured it (smartphone, camera, static camera such as CCTV or a webcam, drone, aircraft such as a plane or a helicopter (historical aerial photos included), satellite, dashcam, or body / helmet cam), or an article, an official statement or something else. Whether the file is a photo or a video comes from the file itself. Pick Unknown when the source does not say. Required on every source.",
+    text: "Where the source comes from: what captured it (smartphone, camera, static camera such as CCTV or a webcam, drone, aircraft such as a plane or a helicopter (historical aerial photos included), satellite, dashcam, or body / helmet cam), or an article, an official statement or something else. Whether the file is a photo or a video comes from the file itself. Leave it empty when the source does not say: it saves as Unknown.",
     label: "What is the source kind?",
   },
   graphic_content: {
@@ -117,7 +117,7 @@ export const FIELD_HELP = {
     label: "What goes in Proof?",
   },
   detection_queue_filter: {
-    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict and the source kind, then publishes it. Incomplete: the import left a required piece missing (a source URL, the coordinates, a source file, or a proof image), so it needs a manual pass on the form before it can be published.",
+    text: "Ready: the import left the detection with every piece of evidence a publish needs, so a review adds the conflict, then publishes it. Incomplete: the import left a required piece missing (a source URL, the coordinates, a source file, or a proof image), so it needs a manual pass on the form before it can be published.",
     label: "What does this filter select?",
   },
   version_note: {

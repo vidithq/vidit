@@ -1321,7 +1321,7 @@ Correct an open request in place. Owner only, and only while `requested`. **No v
 
 ### `POST /events/batch-complete` 🔒
 
-Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and one source kind per row.
+Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and an optional source kind per row.
 
 Each row runs in its own transaction against the [evidence floor](#evidence-floor). A row that fails rolls back alone and stays a detection; the rest still publish. A published row files the detection as version 0, becomes version 1, and credits you in `event_geolocators`. Owner only: every targeted detection must be yours.
 
@@ -1339,7 +1339,7 @@ Each row runs in its own transaction against the [evidence floor](#evidence-floo
 | Field | Type | Description |
 |-------|------|-------------|
 | `conflict_ids` | UUID[] | 1 to 10 [conflicts](#conflicts), applied to every row, replacing the conflicts the detections held |
-| `rows` | object[] | 1 to 100 rows, one per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own. `kind` is one of the [source kinds](#sources) and goes onto every source of the detection that carries a file; a value outside the list is a 422 |
+| `rows` | object[] | 1 to 100 rows, one per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own. `kind`, optional, is one of the [source kinds](#sources) and goes onto every source of the detection that carries a file; without it the sources keep their kind. A value outside the list is a 422 |
 
 **Response 200:** verdicts in submission order.
 ```json

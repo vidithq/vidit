@@ -139,11 +139,11 @@ describe("sourceFloor", () => {
     expect(sourceFloor([{ ...withFile, level: "context" }]).hasEvidenceFile).toBe(false);
   });
 
-  it("flags a source without a URL and a source without a kind", () => {
+  it("flags a source without a URL, and never a source without a kind", () => {
     const floor = sourceFloor([
       { ...newSourceDraft(), links: [], file: { state: "stored", media: FILE } },
     ]);
-    expect(floor).toEqual({ hasEvidenceFile: true, missingLink: true, missingKind: true });
+    expect(floor).toEqual({ hasEvidenceFile: true, missingLink: true });
   });
 });
 

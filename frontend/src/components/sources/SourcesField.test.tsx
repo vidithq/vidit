@@ -166,13 +166,13 @@ describe("SourcesField", () => {
   });
 
   it("shows the first source with a gap on a publish attempt", () => {
-    const complete = { ...withUrl("https://a.example/1"), kind: "drone" as const };
-    const { rerender } = render(<Host initial={[complete, withUrl("https://b.example/2")]} />);
+    const complete = withUrl("https://a.example/1");
+    const { rerender } = render(<Host initial={[complete, { ...newSourceDraft(), links: [] }]} />);
     expect(scrolledTo).not.toHaveBeenCalled();
     rerender(
       <Host
-        initial={[complete, withUrl("https://b.example/2")]}
-        invalidKeys={new Set(["source_kind"])}
+        initial={[complete, { ...newSourceDraft(), links: [] }]}
+        invalidKeys={new Set(["source_link"])}
         attempt={1}
       />
     );

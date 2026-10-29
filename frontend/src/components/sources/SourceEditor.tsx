@@ -57,7 +57,6 @@ const KIND_OPTIONS = SOURCE_KINDS.map((value) => ({ value, label: SOURCE_KIND_LA
 /** Which of the editor's fields a publish attempt flagged. */
 export interface SourceEditorInvalid {
   link?: boolean;
-  kind?: boolean;
   captured?: boolean;
 }
 
@@ -266,16 +265,14 @@ export function SourceEditor({
       </div>
 
       <div className="space-y-1.5">
-        <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} invalid={invalid.kind} />
+        <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} />
         <OptionSearch
           single
-          required
           id={id("kind")}
           aria-label={`${name} kind`}
           placeholder="Search source kinds"
           options={KIND_OPTIONS}
           selected={draft.kind ? [draft.kind] : []}
-          invalid={invalid.kind}
           onChange={(next) => update({ kind: (next[0] ?? "") as SourceKind | "" })}
         />
       </div>

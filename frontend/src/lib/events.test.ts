@@ -9,7 +9,7 @@ import {
   type EventFieldsState,
 } from "./events";
 
-const FULL_FLOOR = { hasEvidenceFile: true, missingLink: false, missingKind: false };
+const FULL_FLOOR = { hasEvidenceFile: true, missingLink: false };
 
 // A fully-complete detection; each test knocks one field out. The proof carries an image node
 // (`proofHasImage`).
@@ -36,14 +36,13 @@ describe("missingEventFields", () => {
         lat: "",
         lng: "",
         proof: null,
-        sources: { hasEvidenceFile: false, missingLink: true, missingKind: true },
+        sources: { hasEvidenceFile: false, missingLink: true },
         hasConflict: false,
       })
     ).toEqual([
       "Title",
       "Source file",
       "Source URL",
-      "Source kind",
       "Proof",
       "Coordinates",
       "Conflict",
@@ -81,7 +80,7 @@ describe("missingEventFields", () => {
       ...complete,
       title: "",
       proof: null,
-      sources: { hasEvidenceFile: false, missingLink: true, missingKind: false },
+      sources: { hasEvidenceFile: false, missingLink: true },
     };
     const request = missingEventRequestFields(state);
     expect(missingEventFields(state).slice(0, request.length)).toEqual(request);
@@ -186,9 +185,9 @@ describe("missingEventRequestFields", () => {
     expect(
       requestLabels({
         title: "",
-        sources: { hasEvidenceFile: false, missingLink: true, missingKind: true },
+        sources: { hasEvidenceFile: false, missingLink: true },
       })
-    ).toEqual(["Title", "Source file", "Source URL", "Source kind"]);
+    ).toEqual(["Title", "Source file", "Source URL"]);
   });
 
   it("treats a blank-string title as missing", () => {

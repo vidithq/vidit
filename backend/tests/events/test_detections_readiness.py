@@ -15,7 +15,7 @@ from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES, mak
 
 
 def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict):
-    """A review supplies the conflict and the source kind, so only the evidence floor can refuse."""
+    """A review supplies the conflict and the kind is optional: only the evidence floor refuses."""
     rows = {
         name: make_detection(db, author, overrides)
         for name, (overrides, _) in READINESS_CASES.items()

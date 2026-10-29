@@ -141,16 +141,17 @@ MAX_COMPLETION_CONFLICTS = 10
 
 
 class BatchCompletionRowCreate(BaseModel):
-    """One detection in a batch completion and the kind of its sources that carry a file."""
+    """One detection in a batch completion and, optionally, the kind of its sources that carry
+    a file. Without one, the sources keep the kind they hold."""
 
     event_id: uuid.UUID
-    kind: SourceKind
+    kind: SourceKind | None = None
 
 
 class BatchCompletionCreate(BaseModel):
     """Body of ``POST /events/batch-complete``.
 
-    One conflict set for the whole selection; the source kind varies per row.
+    One conflict set for the whole selection; the optional source kind varies per row.
     """
 
     conflict_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_COMPLETION_CONFLICTS)
