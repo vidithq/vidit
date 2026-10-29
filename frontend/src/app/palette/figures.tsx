@@ -25,10 +25,9 @@ const NARROW = "w-full max-w-xs";
 export const FIGURES: PaletteCategory = {
   id: "figures",
   title: "Figures and steps",
-  tier: "high",
   entries: [
     {
-      entry: "StatTile / StatGrid",
+      entry: "StatTile / StatGrid", tier: "high",
       demo: (
         <div className="w-full max-w-xl">
           <StatGrid>
@@ -47,7 +46,7 @@ export const FIGURES: PaletteCategory = {
       ),
     },
     {
-      entry: "SourceHostBar",
+      entry: "SourceHostBar", tier: "high",
       demo: (
         <>
           <div className={NARROW}>
@@ -81,7 +80,7 @@ export const FIGURES: PaletteCategory = {
       ),
     },
     {
-      entry: "ActivityHeatmap",
+      entry: "ActivityHeatmap", tier: "high",
       demo: (
         <>
           <div className={NARROW}>
@@ -99,7 +98,7 @@ export const FIGURES: PaletteCategory = {
       ),
     },
     {
-      entry: "NumberedSteps",
+      entry: "NumberedSteps", tier: "high",
       demo: (
         <>
           <Variant label="plain" className={NARROW}>
@@ -133,7 +132,7 @@ export const FIGURES: PaletteCategory = {
       ),
     },
     {
-      entry: "ProgressSteps",
+      entry: "ProgressSteps", tier: "high",
       demo: (
         <>
           <Variant label="progress" className={NARROW}>

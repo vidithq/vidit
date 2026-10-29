@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaGallery } from "@/components/ui/MediaGallery";
+import { VideoPlayer } from "@/components/ui/VideoPlayer";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { HOVER_REVEAL } from "@/components/ui/styles";
 import { MediaManager } from "@/components/geolocations/MediaManager";
@@ -46,10 +47,9 @@ function PaletteMediaManager() {
 export const MEDIA: PaletteCategory = {
   id: "media",
   title: "Media",
-  tier: "high",
   entries: [
     {
-      entry: "MediaGallery",
+      entry: "MediaGallery", tier: "high",
       demo: (
         <>
           <div className={TILE}>
@@ -68,7 +68,7 @@ export const MEDIA: PaletteCategory = {
       ),
     },
     {
-      entry: "TileNotice",
+      entry: "TileNotice", tier: "low",
       demo: (
         <>
           <div className={TILE}>
@@ -81,7 +81,7 @@ export const MEDIA: PaletteCategory = {
       ),
     },
     {
-      entry: "GraphicContentGate",
+      entry: "GraphicContentGate", tier: "low",
       demo: (
         <>
           <div className={TILE}>
@@ -99,9 +99,9 @@ export const MEDIA: PaletteCategory = {
         </>
       ),
     },
-    { entry: "MediaLightbox", demo: <PaletteMediaLightbox /> },
+    { entry: "MediaLightbox", tier: "low", demo: <PaletteMediaLightbox /> },
     {
-      entry: "MediaDownloadButton / FLOATING_CONTROL / HOVER_REVEAL",
+      entry: "MediaDownloadButton / FLOATING_CONTROL / HOVER_REVEAL", tier: "low",
       demo: (
         <>
           <div className={`flex size-16 items-center justify-center ${FRAME}`}>
@@ -117,6 +117,14 @@ export const MEDIA: PaletteCategory = {
         </>
       ),
     },
-    { entry: "FileManager / MediaManager", demo: <PaletteMediaManager /> },
+    { entry: "FileManager / MediaManager", tier: "high", demo: <PaletteMediaManager /> },
+    {
+      entry: "VideoPlayer", tier: "low",
+      demo: (
+        <div className="relative h-48 w-full max-w-sm overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800">
+          <VideoPlayer src={VIDEO_SRC} source={{ src: VIDEO_SRC, filename: "demo.mp4" }} title="Demo clip" />
+        </div>
+      ),
+    },
   ],
 };

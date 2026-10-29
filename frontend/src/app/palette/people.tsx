@@ -39,10 +39,9 @@ const CO_AUTHORS = [{ username: "bo" }, { username: "cy" }];
 export const PEOPLE: PaletteCategory = {
   id: "people",
   title: "Accounts and links",
-  tier: "high",
   entries: [
     {
-      entry: "Avatar",
+      entry: "Avatar", tier: "low",
       demo: (
         <>
           <Variant label="icon">
@@ -73,7 +72,7 @@ export const PEOPLE: PaletteCategory = {
       ),
     },
     {
-      entry: "AvatarStack",
+      entry: "AvatarStack", tier: "high",
       demo: (
         <>
           <AvatarStack label="Approved by" items={approvalStamps(APPROVERS.slice(0, 5))} />
@@ -125,7 +124,7 @@ export const PEOPLE: PaletteCategory = {
       ),
     },
     {
-      entry: "AuthorByline",
+      entry: "AuthorByline", tier: "high",
       demo: (
         <div className="grid gap-4 text-sm text-neutral-400 sm:grid-cols-2">
           <Variant label="avatar">
@@ -157,7 +156,7 @@ export const PEOPLE: PaletteCategory = {
       ),
     },
     {
-      entry: "OutboundLink",
+      entry: "OutboundLink", tier: "low",
       demo: (
         <>
           <Variant label="known host">
@@ -174,7 +173,7 @@ export const PEOPLE: PaletteCategory = {
       ),
     },
     {
-      entry: "SourceLabel",
+      entry: "SourceLabel", tier: "high",
       demo: (
         <>
           <SourceLabel url="https://t.me/some_channel/4242" variant="inline" />
@@ -183,9 +182,9 @@ export const PEOPLE: PaletteCategory = {
         </>
       ),
     },
-    { entry: "LegalLinks", demo: <LegalLinks /> },
+    { entry: "LegalLinks", tier: "high", demo: <LegalLinks /> },
     {
-      entry: "BrandGlyphs",
+      entry: "BrandGlyphs", tier: "high",
       demo: (
         <span className="inline-flex items-center gap-3 text-neutral-400">
           <XGlyph />

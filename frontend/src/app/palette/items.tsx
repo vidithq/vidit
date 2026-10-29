@@ -146,11 +146,10 @@ const MAYA = <Avatar username="maya" size="size-7" decorative />;
 export const ITEMS: PaletteCategory = {
   id: "items",
   title: "Items and lists",
-  tier: "high",
   entries: [
-    { entry: "Item", demo: <PaletteItems /> },
+    { entry: "Item", tier: "high", demo: <PaletteItems /> },
     {
-      entry: "LinkRow",
+      entry: "LinkRow", tier: "high",
       demo: (
         <>
           <div className="w-full max-w-md space-y-2">
@@ -220,7 +219,7 @@ export const ITEMS: PaletteCategory = {
       ),
     },
     {
-      entry: "IconTile",
+      entry: "IconTile", tier: "high",
       demo: (
         <div className="w-full max-w-3xl space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -247,7 +246,7 @@ export const ITEMS: PaletteCategory = {
       ),
     },
     {
-      entry: "LoadMoreRow / SeeAllLink",
+      entry: "LoadMoreRow / SeeAllLink", tier: "high",
       demo: (
         <>
           <Variant label="idle" className="w-full max-w-xs">

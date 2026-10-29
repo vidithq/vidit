@@ -12,7 +12,6 @@ import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ACTIONS } from "./actions";
-import { BLOCKS, LOW_TOKENS } from "./blocks";
 import { CONTAINERS } from "./containers";
 import { EVENT } from "./event";
 import { FEEDBACK } from "./feedback";
@@ -25,14 +24,36 @@ import { PEOPLE } from "./people";
 import { Entry, entryId, type PaletteCategory, type PaletteTier } from "./shared";
 import { TOKENS } from "./tokens";
 
-const TIERS: { id: PaletteTier; title: string; categories: PaletteCategory[] }[] = [
-  {
-    id: "high",
-    title: "High level",
-    categories: [CONTAINERS, ACTIONS, INPUTS, FILTERS, FEEDBACK, ITEMS, PEOPLE, FIGURES, MEDIA, EVENT, TOKENS],
-  },
-  { id: "low", title: "Low level", categories: [BLOCKS, LOW_TOKENS] },
+const CATEGORIES: PaletteCategory[] = [
+  CONTAINERS,
+  ACTIONS,
+  INPUTS,
+  FILTERS,
+  FEEDBACK,
+  ITEMS,
+  PEOPLE,
+  FIGURES,
+  MEDIA,
+  EVENT,
+  TOKENS,
 ];
+
+// Each category's entries, split by tier: Low level, a building block two or more other shared
+// components reuse; High level, what surfaces assemble.
+const TIERS: { id: PaletteTier; title: string; categories: PaletteCategory[] }[] = (
+  [
+    ["high", "High level"],
+    ["low", "Low level"],
+  ] as const
+).map(([id, title]) => ({
+  id,
+  title,
+  categories: CATEGORIES.map((category) => ({
+    ...category,
+    id: `${id}-${category.id}`,
+    entries: category.entries.filter((entry) => entry.tier === id),
+  })).filter((category) => category.entries.length > 0),
+}));
 
 type Shown = (typeof TIERS)[number];
 

@@ -7,6 +7,7 @@ import type { Conflict, Tag } from "@/types";
 import { ActionIcon, Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
+import { Combobox } from "@/components/ui/Combobox";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldHelp } from "@/components/ui/FieldHelp";
@@ -291,13 +292,41 @@ function PaletteSwatchPicker() {
   );
 }
 
+const CITIES = ["Kharkiv", "Kherson", "Kyiv", "Lviv", "Odesa"];
+
+function PaletteCombobox() {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const options = CITIES.filter((city) => city.toLowerCase().includes(query.trim().toLowerCase()));
+  return (
+    <div className="w-64 max-w-full">
+      <Combobox
+        aria-label="City"
+        placeholder="Search cities"
+        query={query}
+        onQueryChange={setQuery}
+        open={open}
+        onOpenChange={setOpen}
+        options={options}
+        optionKey={(city) => city}
+        renderOption={(city) => city}
+        pillOption={() => true}
+        onPick={() => {
+          setQuery("");
+          setOpen(false);
+        }}
+        status={options.length === 0 ? "No match." : null}
+      />
+    </div>
+  );
+}
+
 export const INPUTS: PaletteCategory = {
   id: "inputs",
   title: "Inputs, labels and search",
-  tier: "high",
   entries: [
     {
-      entry: "Input / FORM_INVALID_FIELD",
+      entry: "Input / FORM_INVALID_FIELD", tier: "low",
       demo: (
         <>
           <div className={FIELD}>
@@ -336,7 +365,7 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      entry: "Select",
+      entry: "Select", tier: "high",
       demo: (
         <>
           <div className={FIELD}>
@@ -363,7 +392,7 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      entry: "DateTimeInput",
+      entry: "DateTimeInput", tier: "high",
       demo: (
         <>
           <Variant label="date" className={FIELD}>
@@ -382,7 +411,7 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      entry: "LinkListInput",
+      entry: "LinkListInput", tier: "high",
       demo: (
         <>
           <Variant label="columns" className="w-full">
@@ -394,26 +423,33 @@ export const INPUTS: PaletteCategory = {
         </>
       ),
     },
-    { entry: "OptionSearch", demo: <PaletteOptionSearch /> },
-    { entry: "ItemSearch", demo: <PaletteItemSearch /> },
-    { entry: "TagPicker", demo: <PaletteTagPicker /> },
-    { entry: "SegmentedControl", demo: <PaletteSegmentedControl /> },
-    { entry: "Switch", demo: <PaletteSwitch /> },
-    { entry: "ChoiceRow", demo: <PaletteChoiceRow /> },
-    { entry: "SwatchPicker", demo: <PaletteSwatchPicker /> },
+    { entry: "OptionSearch", tier: "high", demo: <PaletteOptionSearch /> },
+    { entry: "ItemSearch", tier: "high", demo: <PaletteItemSearch /> },
+    { entry: "TagPicker", tier: "high", demo: <PaletteTagPicker /> },
+    { entry: "SegmentedControl", tier: "high", demo: <PaletteSegmentedControl /> },
+    { entry: "Switch", tier: "high", demo: <PaletteSwitch /> },
+    { entry: "ChoiceRow", tier: "high", demo: <PaletteChoiceRow /> },
+    { entry: "SwatchPicker", tier: "high", demo: <PaletteSwatchPicker /> },
     {
-      entry: "FORM_LABEL / FORM_LABEL_COMPACT / LABEL_TEXT / FORM_INVALID_LABEL",
+      entry: "FORM_LABEL / FORM_LABEL_COMPACT", tier: "high",
       demo: (
         <div className="space-y-2">
           <label className={FORM_LABEL}>FORM_LABEL</label>
           <label className={FORM_LABEL_COMPACT}>FORM_LABEL_COMPACT</label>
+        </div>
+      ),
+    },
+    {
+      entry: "LABEL_TEXT / FORM_INVALID_LABEL", tier: "low",
+      demo: (
+        <div className="space-y-2">
           <span className={LABEL_TEXT}>LABEL_TEXT</span>
           <label className={`${FORM_LABEL} ${FORM_INVALID_LABEL}`}>FORM_INVALID_LABEL</label>
         </div>
       ),
     },
     {
-      entry: "FieldLabel",
+      entry: "FieldLabel", tier: "high",
       demo: (
         <div className="w-full max-w-sm space-y-3">
           <FieldLabel {...EVENT_FIELDS.occurred_date} htmlFor="palette-field-label" />
@@ -423,7 +459,7 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      entry: "CharCounter",
+      entry: "CharCounter", tier: "high",
       demo: (
         <>
           <CharCounter length={120} max={500} />
@@ -432,7 +468,7 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      entry: "FieldHelp",
+      entry: "FieldHelp", tier: "low",
       demo: (
         <span className="inline-flex items-center gap-3 text-sm text-neutral-300">
           <span className="inline-flex items-center gap-1">
@@ -445,10 +481,11 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      entry: "IncompleteFormAnnouncer",
+      entry: "IncompleteFormAnnouncer", tier: "high",
       demo: (
         <IncompleteFormAnnouncer missing={["Coordinates", "Conflict", "Proof"]} attempt={1} />
       ),
     },
+    { entry: "Combobox", tier: "low", demo: <PaletteCombobox /> },
   ],
 };

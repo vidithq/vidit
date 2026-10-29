@@ -41,10 +41,9 @@ function PaletteChips() {
 export const FEEDBACK: PaletteCategory = {
   id: "feedback",
   title: "Feedback",
-  tier: "high",
   entries: [
     {
-      entry: "ErrorNotice",
+      entry: "ErrorNotice", tier: "low",
       demo: (
         <>
           <Variant label="onRetry" className="w-full max-w-sm">
@@ -60,7 +59,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      entry: "FieldError",
+      entry: "FieldError", tier: "high",
       demo: (
         <div className="w-full max-w-sm space-y-1.5">
           <FieldLabel label="Invitee's X handle" htmlFor="palette-field-error" invalid />
@@ -77,15 +76,15 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      entry: "FORM_SUCCESS_BANNER",
+      entry: "FORM_SUCCESS_BANNER", tier: "high",
       demo: <div className={`${FORM_SUCCESS_BANNER} max-w-sm`}>Saved.</div>,
     },
     {
-      entry: "WithheldBanner",
+      entry: "WithheldBanner", tier: "high",
       demo: <WithheldBanner since="2026-10-28T09:30:00Z" noun="collection" />,
     },
     {
-      entry: "EmptyState",
+      entry: "EmptyState", tier: "high",
       demo: (
         <>
           <Variant label="boxed" className="w-full max-w-sm">
@@ -128,7 +127,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      entry: "Pill",
+      entry: "Pill", tier: "low",
       demo: (
         <>
           <Variant label="tone">
@@ -154,7 +153,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      entry: "StatusBadge",
+      entry: "StatusBadge", tier: "high",
       demo: (
         <>
           <StatusBadge status="requested" />
@@ -165,7 +164,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      entry: "CountBadge",
+      entry: "CountBadge", tier: "high",
       demo: (
         <CountBadge count={2} label="2 missing: Title, Conflict">
           {(describedBy) => (
@@ -177,7 +176,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      entry: "Dot",
+      entry: "Dot", tier: "high",
       demo: (
         <>
           <Dot />
@@ -189,7 +188,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      entry: "Tooltip",
+      entry: "Tooltip", tier: "low",
       demo: (
         <Tooltip label="Wayback Machine copy of the source">
           <a

@@ -1,10 +1,12 @@
 // /palette and components/ui follow the import graph. A components/ui file or a style constant
 // (styles.ts / form-styles.ts) is:
-// - high level when a surface imports it (a page in app/ or a component outside components/ui);
-// - low level when only components/ui files import it, two or more of them;
-// - not a shared primitive when exactly one components/ui file imports it: fold it into that file.
-// Every high or low level one heads a /palette entry (`entry: "..."`) in a category of its tier
-// (`tier: "high" | "low"`). See AGENTS.md -> "Palette-first".
+// - low level when two or more other components/ui files reuse it, whatever else imports it;
+// - high level when a surface (a page in app/ or a component outside components/ui) uses it and
+//   at most one other components/ui file reuses it;
+// - not a shared primitive when exactly one components/ui file imports it and no surface does:
+//   fold it into that file.
+// Every high or low level one heads a /palette entry (`entry: "...", tier: "high" | "low"`) of
+// its tier. See AGENTS.md -> "Palette-first".
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, sep } from "node:path";
@@ -50,9 +52,9 @@ for (const file of importers) {
 const tierOf = (users) => {
   const files = [...(users ?? [])];
   const ui = files.filter((f) => f.startsWith("components/ui/"));
+  if (ui.length > 1) return "low";
   if (files.length > ui.length) return "high";
-  if (ui.length === 1) return `fold:${ui[0]}`;
-  return ui.length > 1 ? "low" : null;
+  return ui.length === 1 ? `fold:${ui[0]}` : null;
 };
 
 const shared = [];
@@ -68,14 +70,12 @@ for (const file of ["styles", "form-styles"]) {
   }
 }
 
-// The tier of each palette entry: the `tier` its category declares before its entries.
+// Each palette entry with the tier it declares.
 const entries = [];
 for (const f of readdirSync(paletteDir, { recursive: true })) {
   if (!f.endsWith(".tsx")) continue;
-  let tier = null;
-  for (const m of readFileSync(join(paletteDir, f), "utf8").matchAll(/\btier:\s*"(high|low)"|\bentry:\s*"([^"]+)"/g)) {
-    if (m[1]) tier = m[1];
-    else entries.push({ name: m[2], tier, file: f });
+  for (const m of readFileSync(join(paletteDir, f), "utf8").matchAll(/\bentry:\s*"([^"]+)"(?:,\s*tier:\s*"(high|low)")?/g)) {
+    entries.push({ name: m[1], tier: m[2] ?? null, file: f });
   }
 }
 const entryOf = (name) => entries.find((e) => new RegExp(`\\b${name}\\b`).test(e.name));
@@ -88,7 +88,7 @@ for (const [name, tier] of shared) {
   } else if (tier && !entry) {
     errors.push(`${name}: ${tier} level, but heads no /palette entry`);
   } else if (tier && entry.tier !== tier) {
-    errors.push(`${name}: ${tier} level, but its entry sits in a ${entry.tier ?? "tierless"} category (${entry.file})`);
+    errors.push(`${name}: ${tier} level, but its entry says ${entry.tier ?? "no tier"} (${entry.file})`);
   } else if (!tier && entry) {
     errors.push(`${name}: nothing imports it, yet it heads a /palette entry`);
   }

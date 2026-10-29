@@ -5,10 +5,13 @@ import { Copy, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import {
   ACCENT_SURFACE,
+  ACCENT_RAMP,
   ARMED_RING,
+  CHART_NEUTRAL,
   META_LINE,
   TAPPABLE_HOVER,
   TEXT_LINK,
+  TOOLTIP_SURFACE,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Variant, type PaletteCategory } from "./shared";
@@ -16,10 +19,9 @@ import { Variant, type PaletteCategory } from "./shared";
 export const TOKENS: PaletteCategory = {
   id: "tokens",
   title: "Tokens",
-  tier: "high",
   entries: [
     {
-      entry: "ACCENT_SURFACE",
+      entry: "ACCENT_SURFACE", tier: "low",
       demo: (
         <span className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${ACCENT_SURFACE}`}>
           Active
@@ -27,7 +29,7 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      entry: "TEXT_LINK",
+      entry: "TEXT_LINK", tier: "low",
       demo: (
         <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
           A text link
@@ -35,7 +37,7 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      entry: "META_LINE",
+      entry: "META_LINE", tier: "low",
       demo: (
         <span className={META_LINE}>
           <MapPin size={11} aria-hidden />
@@ -44,7 +46,7 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      entry: "TAPPABLE_HOVER",
+      entry: "TAPPABLE_HOVER", tier: "low",
       demo: (
         <>
           <Variant label="row">
@@ -67,7 +69,7 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      entry: "ARMED_RING",
+      entry: "ARMED_RING", tier: "high",
       demo: (
         <>
           <Button action="geolocate" variant="primary" className={ARMED_RING}>
@@ -86,12 +88,33 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      entry: "WARNING_CALLOUT",
+      entry: "WARNING_CALLOUT", tier: "low",
       demo: (
         <div className={`rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
           Heads up, check this before submitting.
         </div>
       ),
+    },
+    {
+      entry: "ACCENT_RAMP / CHART_NEUTRAL", tier: "low",
+      demo: (
+        <>
+          <Variant label="ACCENT_RAMP">
+            <span className="flex gap-1">
+              {ACCENT_RAMP.map((paint) => (
+                <span key={paint} className={`size-5 rounded-xs ${paint}`} />
+              ))}
+            </span>
+          </Variant>
+          <Variant label="CHART_NEUTRAL">
+            <span className={`block size-5 rounded-xs ${CHART_NEUTRAL}`} />
+          </Variant>
+        </>
+      ),
+    },
+    {
+      entry: "TOOLTIP_SURFACE", tier: "low",
+      demo: <span className={`inline-block rounded-md px-2 py-1 text-xs ${TOOLTIP_SURFACE}`}>maya</span>,
     },
   ],
 };

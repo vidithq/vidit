@@ -115,11 +115,10 @@ function PalettePublishActions() {
 export const EVENT: PaletteCategory = {
   id: "event",
   title: "Event",
-  tier: "high",
   entries: [
-    { entry: "EventShell", demo: <EventShellPreview /> },
+    { entry: "EventShell", tier: "high", demo: <EventShellPreview /> },
     {
-      entry: "MapPanelBody / eventPanelContent",
+      entry: "MapPanelBody / eventPanelContent", tier: "high",
       demo: (
         <div className="w-[380px] max-w-full space-y-4">
           <MapPanelBody
@@ -131,7 +130,7 @@ export const EVENT: PaletteCategory = {
         </div>
       ),
     },
-    { entry: "SourcesField / SourceEditor", demo: <PaletteSourcesField /> },
-    { entry: "PublishActions", demo: <PalettePublishActions /> },
+    { entry: "SourcesField / SourceEditor", tier: "high", demo: <PaletteSourcesField /> },
+    { entry: "PublishActions", tier: "high", demo: <PalettePublishActions /> },
   ],
 };

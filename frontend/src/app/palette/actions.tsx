@@ -133,10 +133,9 @@ function PaletteConfirmDialog() {
 export const ACTIONS: PaletteCategory = {
   id: "actions",
   title: "Actions",
-  tier: "high",
   entries: [
     {
-      entry: "Button",
+      entry: "Button", tier: "low",
       demo: (
         <>
           <Variant label="variant">
@@ -181,7 +180,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      entry: "ACTION_ICONS",
+      entry: "ACTION_ICONS", tier: "high",
       demo: (
         <div className="flex flex-wrap gap-2">
           {(Object.keys(ACTION_ICONS) as ButtonAction[]).map((action) => (
@@ -193,7 +192,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      entry: "RemoveButton",
+      entry: "RemoveButton", tier: "low",
       demo: (
         <>
           <RemoveButton label="Dismiss notification" />
@@ -204,7 +203,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      entry: "ConfirmButton",
+      entry: "ConfirmButton", tier: "high",
       demo: (
         <>
           <ConfirmButton icon label="Remove bo" onConfirm={() => {}} />
@@ -215,7 +214,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      entry: "CopyButton",
+      entry: "CopyButton", tier: "high",
       demo: (
         <>
           <PaletteCopyButton />
@@ -226,7 +225,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      entry: "ActionMenu",
+      entry: "ActionMenu", tier: "high",
       demo: (
         <>
           <ActionMenu
@@ -262,7 +261,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      entry: "Popover",
+      entry: "Popover", tier: "high",
       demo: (
         <>
           <Popover label="Invite a geolocator" icon={<UserPlus size={14} />}>
@@ -291,7 +290,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      entry: "ConfirmDialog",
+      entry: "ConfirmDialog", tier: "high",
       demo: <PaletteConfirmDialog />,
     },
   ],

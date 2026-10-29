@@ -31,10 +31,9 @@ function EyebrowToggle() {
 export const CONTAINERS: PaletteCategory = {
   id: "containers",
   title: "Containers",
-  tier: "high",
   entries: [
     {
-      entry: "PageShell",
+      entry: "PageShell", tier: "high",
       demo: (
         <div className="h-72 w-full overflow-hidden rounded-md border border-neutral-800">
           <PageShell
@@ -48,7 +47,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      entry: "PageFrame",
+      entry: "PageFrame", tier: "high",
       demo: (
         <Variant label="PageCenter" className="w-full max-w-md">
           <div className="rounded-md border border-neutral-800">
@@ -60,7 +59,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      entry: "Card",
+      entry: "Card", tier: "low",
       demo: (
         <Card className="w-48">
           <p className="text-xs text-neutral-300">Content</p>
@@ -69,7 +68,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      entry: "DetailCard / DetailRow / DetailPills",
+      entry: "DetailCard / DetailRow / DetailPills", tier: "high",
       demo: (
         <>
           <div className="w-full max-w-sm">
@@ -110,7 +109,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      entry: "LIST_TILE",
+      entry: "LIST_TILE", tier: "high",
       demo: (
         <div className={`${LIST_TILE} max-w-sm space-y-2 text-sm text-neutral-300`}>
           <p>@osint_hawk_2025</p>
@@ -119,7 +118,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      entry: "SectionEyebrow",
+      entry: "SectionEyebrow", tier: "high",
       demo: (
         <>
           <Variant label="concept">
@@ -138,11 +137,11 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      entry: "SectionHeading",
+      entry: "SectionHeading", tier: "high",
       demo: <SectionHeading title="Linked accounts" />,
     },
     {
-      entry: "HorizontalScroller",
+      entry: "HorizontalScroller", tier: "high",
       demo: (
         <div className="w-full max-w-2xl">
           <HorizontalScroller
@@ -159,7 +158,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      entry: "ProofSection",
+      entry: "ProofSection", tier: "high",
       demo: (
         <>
           <div className="w-full max-w-md">

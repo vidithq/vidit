@@ -6,12 +6,13 @@ import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/Card";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 
-export type PaletteEntry = { entry: string; demo: ReactNode };
+export type PaletteEntry = { entry: string; tier: PaletteTier; demo: ReactNode };
 
-/** `high`: what surfaces use as it is. `low`: a building block two or more components share. */
+/** `low`: a building block two or more other shared components reuse. `high`: what surfaces
+ *  assemble, which at most one other shared component reuses. */
 export type PaletteTier = "high" | "low";
 
-export type PaletteCategory = { id: string; title: string; tier: PaletteTier; entries: PaletteEntry[] };
+export type PaletteCategory = { id: string; title: string; entries: PaletteEntry[] };
 
 export const VIDEO_SRC = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
 
