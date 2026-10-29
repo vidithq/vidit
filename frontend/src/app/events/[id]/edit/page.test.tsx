@@ -742,13 +742,13 @@ describe("editing an open request", () => {
     expect(screen.queryByRole("button", { name: /Save version/ })).toBeNull();
   });
 
-  it("offers no Linked sites, since only a published event links to a site", () => {
+  it("offers Linked sites, which the publish writes", () => {
     row = requestFixture({ coords: { lat: 48.5, lng: 37.8 } });
     render(<EditEventPage />);
 
     expect(screen.getByRole("heading", { name: /^Location/ })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /^Linked sites/ })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Search a site by name" })).toBeNull();
+    expect(screen.getByRole("heading", { name: /^Linked sites/ })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Search a site by name" })).toBeInTheDocument();
   });
 
   it("publishes the request as version 1 and opens the event", async () => {

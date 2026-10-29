@@ -275,9 +275,6 @@ interface EventFormFieldsOptions {
   row?: EventDetail | null;
   /** Follows the Location block (the submit form's duplicate probe). */
   afterLocation?: ReactNode;
-  /** Shows the Linked sites field. An open request's form leaves it out: only a published
-   *  event links to a site. */
-  siteLinks?: boolean;
 }
 
 /**
@@ -353,7 +350,6 @@ function eventFormSlots(
   {
     row = null,
     afterLocation,
-    siteLinks = true,
     formId,
   }: EventFormFieldsOptions & {
     /** The body `<form>`'s id, which the Title field joins from the title section. */
@@ -437,7 +433,7 @@ function eventFormSlots(
         ),
         invalid: invalidKeys.has("coordinates"),
       },
-      sites: siteLinks && (
+      sites: (
         <LinkedSitesField
           draft={form.siteLinks}
           lat={form.lat}
