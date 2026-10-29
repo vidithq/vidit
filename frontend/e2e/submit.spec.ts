@@ -62,8 +62,8 @@ test.describe("submit", () => {
     await expect(request).toHaveAccessibleDescription(
       "3 missing: Title, Source file, Source URL",
     );
-    await expect(actions.getByRole("button", { name: /^7 missing: / })).toHaveText("7");
-    await expect(actions.getByRole("button", { name: /^4 missing: / })).toHaveText("4");
+    await expect(actions.getByRole("button", { name: /^6 missing: / })).toHaveText("6");
+    await expect(actions.getByRole("button", { name: /^3 missing: / })).toHaveText("3");
 
     const publishBox = (await publish.boundingBox())!;
     const requestBox = (await request.boundingBox())!;

@@ -95,7 +95,7 @@ describe("DetectionsPage queue filter", () => {
     });
     fireEvent.focus(help);
     const tooltip = screen.getByRole("tooltip");
-    expect(tooltip).toHaveTextContent("conflict and the source kind");
+    expect(tooltip).toHaveTextContent("a review adds the conflict");
     expect(tooltip).toHaveTextContent("a manual pass on the form");
     // The options themselves carry no native hover text: Vidit never uses it.
     for (const label of ["All", "Ready", "Incomplete"]) {
