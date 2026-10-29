@@ -38,7 +38,6 @@ export function PageShell({
   rail,
   railLabel,
   narrowRail,
-  headerInColumn = false,
   headerSide,
   column,
   children,
@@ -73,9 +72,6 @@ export function PageShell({
   rail?: ReactNode;
   railLabel?: string;
   narrowRail?: ComponentProps<typeof PageWithRail>["narrow"];
-  /** Puts the header (and `controls`) at the top of the main column, beside the rail, so the rail's
-   *  first block sits top right level with the title. Below `lg` the header comes before the rail. */
-  headerInColumn?: boolean;
   /** Heads the side column of a two-column page, beside the header (see `PageColumns`). The frame
    *  is `wide`, and the children lay out their own `PageColumns` under the header. `EventShell`
    *  sets it, `null` for an empty side. */
@@ -107,10 +103,10 @@ export function PageShell({
       <ArrowLeft size={18} />
     </Button>
   );
-  const inColumn = headerInColumn && rail !== undefined;
-  // A rail under a full-width header rests below it. Its sticky `top` is that resting top, so it
-  // never moves when the page scrolls; the header's height is only known once it renders.
-  const measureHeader = !inColumn && rail !== undefined;
+  // A rail rests under the full-width header, level with the first block of the main column. Its
+  // sticky `top` is that resting top, so it never moves when the page scrolls; the header's height
+  // is only known once it renders.
+  const measureHeader = rail !== undefined;
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState<number>();
   useEffect(() => {
@@ -288,17 +284,12 @@ export function PageShell({
             }
           />
         ) : (
-          !inColumn && header
+          header
         )}
         {rail === undefined ? (
           children
         ) : (
-          <PageWithRail
-            rail={rail}
-            railLabel={railLabel}
-            narrow={narrowRail}
-            header={inColumn ? header : undefined}
-          >
+          <PageWithRail rail={rail} railLabel={railLabel} narrow={narrowRail}>
             {children}
           </PageWithRail>
         )}

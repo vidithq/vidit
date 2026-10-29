@@ -70,6 +70,25 @@ test.describe("page width", () => {
   });
 });
 
+test.describe("rail top", () => {
+  test.beforeEach(async ({ context, page }) => {
+    await grantSession(context);
+    await mockApi(page);
+  });
+
+  test("starts the About rail level with the first block of the column", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/about");
+    const rail = page.getByRole("complementary", { name: "Links" });
+    const first = page.getByRole("heading", { name: "Commitments" }).locator("xpath=ancestor::section");
+    await expect(rail).toBeVisible();
+    const title = page.getByRole("heading", { level: 1 });
+    const railBox = (await rail.boundingBox())!;
+    expect(railBox.y).toBe((await first.boundingBox())!.y);
+    expect(railBox.y).toBeGreaterThan((await title.boundingBox())!.y);
+  });
+});
+
 /** From `lg` up the back arrow and the right rail stick at their resting place. */
 test.describe("sticky chrome", () => {
   test.beforeEach(async ({ context, page }) => {
