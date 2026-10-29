@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { HorizontalScroller } from "@/components/ui/HorizontalScroller";
 import { PageCenter } from "@/components/ui/PageFrame";
-import { PageWithRail } from "@/components/ui/PageWithRail";
+import { PageShell } from "@/components/ui/PageShell";
 import { ProofSection } from "@/components/ui/ProofSection";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -33,7 +33,21 @@ export const CONTAINERS: PaletteCategory = {
   title: "Containers",
   entries: [
     {
-      name: "PageFrame",
+      entry: "PageShell",
+      demo: (
+        <div className="h-72 w-full overflow-hidden rounded-md border border-neutral-800">
+          <PageShell
+            title="Example page"
+            rail={<Card dense>Rail</Card>}
+            railLabel="Example rail"
+          >
+            <Card dense>Body</Card>
+          </PageShell>
+        </div>
+      ),
+    },
+    {
+      entry: "PageFrame",
       demo: (
         <Variant label="PageCenter" className="w-full max-w-md">
           <div className="rounded-md border border-neutral-800">
@@ -45,26 +59,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      name: "PageWithRail",
-      demo: (
-        <div className="w-full">
-          <PageWithRail
-            railLabel="Example rail"
-            rail={
-              <Card>
-                <p className="text-xs text-neutral-300">Rail</p>
-              </Card>
-            }
-          >
-            <Card>
-              <p className="text-xs text-neutral-300">Main column</p>
-            </Card>
-          </PageWithRail>
-        </div>
-      ),
-    },
-    {
-      name: "Card",
+      entry: "Card",
       demo: (
         <Card className="w-48">
           <p className="text-xs text-neutral-300">Content</p>
@@ -73,7 +68,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      name: "DetailCard / DetailRow / DetailPills",
+      entry: "DetailCard / DetailRow / DetailPills",
       demo: (
         <>
           <div className="w-full max-w-sm">
@@ -114,7 +109,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      name: "LIST_TILE",
+      entry: "LIST_TILE",
       demo: (
         <div className={`${LIST_TILE} max-w-sm space-y-2 text-sm text-neutral-300`}>
           <p>@osint_hawk_2025</p>
@@ -123,7 +118,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      name: "SectionEyebrow",
+      entry: "SectionEyebrow",
       demo: (
         <>
           <Variant label="concept">
@@ -142,11 +137,11 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      name: "SectionHeading",
+      entry: "SectionHeading",
       demo: <SectionHeading title="Linked accounts" />,
     },
     {
-      name: "HorizontalScroller",
+      entry: "HorizontalScroller",
       demo: (
         <div className="w-full max-w-2xl">
           <HorizontalScroller
@@ -163,7 +158,7 @@ export const CONTAINERS: PaletteCategory = {
       ),
     },
     {
-      name: "ProofSection",
+      entry: "ProofSection",
       demo: (
         <>
           <div className="w-full max-w-md">

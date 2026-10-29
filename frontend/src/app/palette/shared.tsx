@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 
-import type { EventDetail, Media } from "@/types";
+import type { Conflict, EventDetail, Media } from "@/types";
 import type { Source } from "@/lib/sources";
 import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/Card";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 
-export type PaletteEntry = { name: string; demo: ReactNode };
+export type PaletteEntry = { entry: string; demo: ReactNode };
 
 export type PaletteCategory = { id: string; title: string; entries: PaletteEntry[] };
 
@@ -127,3 +127,35 @@ export const MOCK_DETAIL: EventDetail = {
   requested_by: null,
   geolocators: [],
 };
+
+// A major and a minor ongoing conflict, an ended one, and the "Other" escape row.
+export const MOCK_CONFLICTS: Conflict[] = [
+  ...MOCK_DETAIL.conflicts,
+  {
+    id: "c2",
+    name: "Sudanese civil war",
+    wikidata_id: null,
+    start_year: 2023,
+    end_year: null,
+    is_ongoing: true,
+    tier: "minor",
+  },
+  {
+    id: "c3",
+    name: "Falklands War",
+    wikidata_id: null,
+    start_year: 1982,
+    end_year: 1982,
+    is_ongoing: false,
+    tier: null,
+  },
+  {
+    id: "c4",
+    name: "Other",
+    wikidata_id: null,
+    start_year: null,
+    end_year: null,
+    is_ongoing: true,
+    tier: null,
+  },
+];

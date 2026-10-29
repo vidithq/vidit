@@ -147,9 +147,9 @@ export const ITEMS: PaletteCategory = {
   id: "items",
   title: "Items and lists",
   entries: [
-    { name: "Item", demo: <PaletteItems /> },
+    { entry: "Item", demo: <PaletteItems /> },
     {
-      name: "LinkRow",
+      entry: "LinkRow",
       demo: (
         <>
           <div className="w-full max-w-md space-y-2">
@@ -219,7 +219,7 @@ export const ITEMS: PaletteCategory = {
       ),
     },
     {
-      name: "IconTile",
+      entry: "IconTile",
       demo: (
         <div className="w-full max-w-3xl space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -246,7 +246,7 @@ export const ITEMS: PaletteCategory = {
       ),
     },
     {
-      name: "LoadMoreRow / SeeAllLink",
+      entry: "LoadMoreRow / SeeAllLink",
       demo: (
         <>
           <Variant label="idle" className="w-full max-w-xs">

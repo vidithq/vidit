@@ -1,6 +1,6 @@
 import type { Conflict, EventStatus, Media, Tag } from "@/types";
 import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
-import type { ActiveFilter } from "@/components/ui/ActiveFilterPills";
+import type { ActiveFilter } from "./ActiveFilterPills";
 import { accountName } from "@/lib/accounts";
 import { formatInstantDate } from "@/lib/format";
 import type { Option } from "@/components/ui/OptionSearch";

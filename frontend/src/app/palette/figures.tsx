@@ -27,7 +27,7 @@ export const FIGURES: PaletteCategory = {
   title: "Figures and steps",
   entries: [
     {
-      name: "StatTile / StatGrid",
+      entry: "StatTile / StatGrid",
       demo: (
         <div className="w-full max-w-xl">
           <StatGrid>
@@ -46,7 +46,7 @@ export const FIGURES: PaletteCategory = {
       ),
     },
     {
-      name: "SourceHostBar",
+      entry: "SourceHostBar",
       demo: (
         <>
           <div className={NARROW}>
@@ -80,7 +80,7 @@ export const FIGURES: PaletteCategory = {
       ),
     },
     {
-      name: "ActivityHeatmap",
+      entry: "ActivityHeatmap",
       demo: (
         <>
           <div className={NARROW}>
@@ -98,7 +98,7 @@ export const FIGURES: PaletteCategory = {
       ),
     },
     {
-      name: "NumberedSteps",
+      entry: "NumberedSteps",
       demo: (
         <>
           <Variant label="plain" className={NARROW}>
@@ -132,7 +132,7 @@ export const FIGURES: PaletteCategory = {
       ),
     },
     {
-      name: "ProgressSteps",
+      entry: "ProgressSteps",
       demo: (
         <>
           <Variant label="progress" className={NARROW}>

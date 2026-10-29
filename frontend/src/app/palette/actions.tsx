@@ -135,7 +135,7 @@ export const ACTIONS: PaletteCategory = {
   title: "Actions",
   entries: [
     {
-      name: "Button",
+      entry: "Button",
       demo: (
         <>
           <Variant label="variant">
@@ -180,7 +180,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      name: "ACTION_ICONS",
+      entry: "ACTION_ICONS",
       demo: (
         <div className="flex flex-wrap gap-2">
           {(Object.keys(ACTION_ICONS) as ButtonAction[]).map((action) => (
@@ -192,7 +192,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      name: "RemoveButton",
+      entry: "RemoveButton",
       demo: (
         <>
           <RemoveButton label="Dismiss notification" />
@@ -203,7 +203,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      name: "ConfirmButton",
+      entry: "ConfirmButton",
       demo: (
         <>
           <ConfirmButton icon label="Remove bo" onConfirm={() => {}} />
@@ -214,7 +214,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      name: "CopyButton",
+      entry: "CopyButton",
       demo: (
         <>
           <PaletteCopyButton />
@@ -225,7 +225,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      name: "ActionMenu",
+      entry: "ActionMenu",
       demo: (
         <>
           <ActionMenu
@@ -261,7 +261,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      name: "Popover",
+      entry: "Popover",
       demo: (
         <>
           <Popover label="Invite a geolocator" icon={<UserPlus size={14} />}>
@@ -290,7 +290,7 @@ export const ACTIONS: PaletteCategory = {
       ),
     },
     {
-      name: "ConfirmDialog",
+      entry: "ConfirmDialog",
       demo: <PaletteConfirmDialog />,
     },
   ],

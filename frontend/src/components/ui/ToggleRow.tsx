@@ -4,7 +4,6 @@ import { cn } from "@/lib/cn";
 import type { Concept } from "@/lib/fieldHelp";
 import { TAP_STEP } from "./Button";
 import { FieldHelp } from "./FieldHelp";
-import { PropertyName } from "./PropertyRow";
 import { Switch } from "./Switch";
 
 /** A described row's text: the label at reading size over a muted line. `<ToggleRow>` and
@@ -37,6 +36,25 @@ export function PreferenceText({
           {description}
         </span>
       )}
+    </span>
+  );
+}
+
+/** A property's name with its `?`: a filter line's, or a control's that holds its own line
+ *  under it (the filter panel's timelines). */
+export function PropertyName({
+  name,
+  concept,
+  className,
+}: {
+  name: string;
+  concept?: Concept;
+  className?: string;
+}) {
+  return (
+    <span className={cn("flex shrink-0 items-center gap-1 text-sm text-neutral-400", className)}>
+      {name}
+      {concept && <FieldHelp concept={concept} />}
     </span>
   );
 }

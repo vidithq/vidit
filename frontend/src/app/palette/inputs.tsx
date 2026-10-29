@@ -22,41 +22,11 @@ import { ArchiveBox, ArchiveSnapshotField, linkDescription } from "@/components/
 import { accountKey, type Account } from "@/lib/accounts";
 import { safeHostname } from "@/lib/format";
 import { accountItem } from "@/lib/items";
-import { MOCK_DETAIL, Variant, type PaletteCategory } from "./shared";
+import { LABEL_ENTRIES } from "./labels";
+import { MOCK_CONFLICTS, Variant, type PaletteCategory } from "./shared";
 
 const FIELD = "w-64 max-w-full";
 
-// A major and a minor ongoing conflict, an ended one, and the "Other" escape row.
-const MOCK_CONFLICTS: Conflict[] = [
-  ...MOCK_DETAIL.conflicts,
-  {
-    id: "c2",
-    name: "Sudanese civil war",
-    wikidata_id: null,
-    start_year: 2023,
-    end_year: null,
-    is_ongoing: true,
-    tier: "minor",
-  },
-  {
-    id: "c3",
-    name: "Falklands War",
-    wikidata_id: null,
-    start_year: 1982,
-    end_year: 1982,
-    is_ongoing: false,
-    tier: null,
-  },
-  {
-    id: "c4",
-    name: "Other",
-    wikidata_id: null,
-    start_year: null,
-    end_year: null,
-    is_ongoing: true,
-    tier: null,
-  },
-];
 
 const MOCK_ACCOUNTS: Account[] = [
   { kind: "analyst", username: "ana-demo" },
@@ -313,10 +283,10 @@ function PaletteSwatchPicker() {
 
 export const INPUTS: PaletteCategory = {
   id: "inputs",
-  title: "Inputs and search",
+  title: "Inputs, labels and search",
   entries: [
     {
-      name: "Input / FORM_INVALID_FIELD",
+      entry: "Input / FORM_INVALID_FIELD",
       demo: (
         <>
           <div className={FIELD}>
@@ -355,7 +325,7 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      name: "Select",
+      entry: "Select",
       demo: (
         <>
           <div className={FIELD}>
@@ -382,7 +352,7 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      name: "DateTimeInput",
+      entry: "DateTimeInput",
       demo: (
         <>
           <Variant label="date" className={FIELD}>
@@ -401,7 +371,7 @@ export const INPUTS: PaletteCategory = {
       ),
     },
     {
-      name: "LinkListInput",
+      entry: "LinkListInput",
       demo: (
         <>
           <Variant label="columns" className="w-full">
@@ -413,12 +383,13 @@ export const INPUTS: PaletteCategory = {
         </>
       ),
     },
-    { name: "OptionSearch (Combobox)", demo: <PaletteOptionSearch /> },
-    { name: "ItemSearch (Combobox)", demo: <PaletteItemSearch /> },
-    { name: "TagPicker", demo: <PaletteTagPicker /> },
-    { name: "SegmentedControl", demo: <PaletteSegmentedControl /> },
-    { name: "Switch", demo: <PaletteSwitch /> },
-    { name: "ChoiceRow", demo: <PaletteChoiceRow /> },
-    { name: "SwatchPicker", demo: <PaletteSwatchPicker /> },
+    { entry: "OptionSearch", demo: <PaletteOptionSearch /> },
+    { entry: "ItemSearch", demo: <PaletteItemSearch /> },
+    { entry: "TagPicker", demo: <PaletteTagPicker /> },
+    { entry: "SegmentedControl", demo: <PaletteSegmentedControl /> },
+    { entry: "Switch", demo: <PaletteSwitch /> },
+    { entry: "ChoiceRow", demo: <PaletteChoiceRow /> },
+    { entry: "SwatchPicker", demo: <PaletteSwatchPicker /> },
+    ...LABEL_ENTRIES,
   ],
 };

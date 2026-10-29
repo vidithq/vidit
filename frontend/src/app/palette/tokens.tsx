@@ -22,7 +22,7 @@ export const TOKENS: PaletteCategory = {
   title: "Tokens",
   entries: [
     {
-      name: "ACCENT_SURFACE",
+      entry: "ACCENT_SURFACE",
       demo: (
         <span className={`rounded-md px-2.5 py-1 text-[11px] font-medium ${ACCENT_SURFACE}`}>
           Active
@@ -30,27 +30,7 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      name: "ACCENT_RAMP / CHART_TAIL / CHART_NEUTRAL",
-      demo: (
-        <>
-          <Variant label="ACCENT_RAMP">
-            <span className="flex gap-1">
-              {ACCENT_RAMP.map((paint) => (
-                <span key={paint} className={`size-5 rounded-xs ${paint}`} />
-              ))}
-            </span>
-          </Variant>
-          <Variant label="CHART_TAIL">
-            <span className={`block size-5 rounded-xs ${CHART_TAIL}`} />
-          </Variant>
-          <Variant label="CHART_NEUTRAL">
-            <span className={`block size-5 rounded-xs ${CHART_NEUTRAL}`} />
-          </Variant>
-        </>
-      ),
-    },
-    {
-      name: "TEXT_LINK",
+      entry: "TEXT_LINK",
       demo: (
         <a href="#" className={TEXT_LINK} onClick={(e) => e.preventDefault()}>
           A text link
@@ -58,7 +38,7 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      name: "META_LINE",
+      entry: "META_LINE",
       demo: (
         <span className={META_LINE}>
           <MapPin size={11} aria-hidden />
@@ -67,7 +47,7 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      name: "TAPPABLE_HOVER",
+      entry: "TAPPABLE_HOVER",
       demo: (
         <>
           <Variant label="row">
@@ -90,7 +70,7 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      name: "ARMED_RING",
+      entry: "ARMED_RING",
       demo: (
         <>
           <Button action="geolocate" variant="primary" className={ARMED_RING}>
@@ -109,17 +89,11 @@ export const TOKENS: PaletteCategory = {
       ),
     },
     {
-      name: "WARNING_CALLOUT",
+      entry: "WARNING_CALLOUT",
       demo: (
         <div className={`rounded-md px-4 py-3 text-sm ${WARNING_CALLOUT}`}>
           Heads up, check this before submitting.
         </div>
-      ),
-    },
-    {
-      name: "TOOLTIP_SURFACE",
-      demo: (
-        <span className={`inline-block rounded-md px-2 py-1 text-xs ${TOOLTIP_SURFACE}`}>maya</span>
       ),
     },
   ],

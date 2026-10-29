@@ -1,70 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
-import { ActiveFilterPills } from "@/components/ui/ActiveFilterPills";
-import { OptionSearch } from "@/components/ui/OptionSearch";
-import { PropertyRow } from "@/components/ui/PropertyRow";
+import { FilterCard } from "@/components/filters/FilterPanel";
+import { EMPTY_FILTERS, type FilterState } from "@/components/filters/model";
 import { ToggleRow } from "@/components/ui/ToggleRow";
-import { type PaletteCategory } from "./shared";
-
-const ACTIVE_FILTERS: ReadonlyArray<[string, string]> = [
-  ["Conflict", "Russo-Ukrainian War"],
-  ["Tags", "dashcam"],
-  ["Event date", "Until 1 Jan 2025"],
-];
-
-const LEVELS = [
-  { value: "direct", label: "Direct" },
-  { value: "indirect", label: "Indirect" },
-  { value: "context", label: "Context" },
-];
+import { MOCK_CONFLICTS, type PaletteCategory } from "./shared";
 
 const PANEL = "rounded-lg border border-neutral-700 bg-neutral-900";
 
-function PaletteActiveFilterPills() {
-  const [active, setActive] = useState(ACTIVE_FILTERS);
-  if (active.length === 0)
-    return (
-      <button className="text-[11px] text-neutral-500" onClick={() => setActive(ACTIVE_FILTERS)}>
-        All removed. Reset the demo
-      </button>
-    );
-  return (
-    <ActiveFilterPills
-      filters={active.map(([filter, label]) => ({
-        key: filter + label,
-        filter,
-        label,
-        onRemove: () => setActive((prev) => prev.filter(([, l]) => l !== label)),
-      }))}
-      onClearAll={() => setActive([])}
-    />
-  );
-}
+const DAYS = ["2026-03-02", "2026-03-09", "2026-04-14", "2026-05-01", "2026-05-20", "2026-06-11"].map(
+  (date, i) => ({ date, count: [3, 8, 2, 12, 5, 9][i] }),
+);
+const TIMELINES = { eventDate: DAYS, added: DAYS };
+const VOCABULARY = {
+  tags: ["drone", "armor", "artillery", "air defence"].map((name, i) => ({ id: `t${i}`, name })),
+  conflicts: MOCK_CONFLICTS,
+};
+const STARTING: FilterState = { ...EMPTY_FILTERS, levels: ["direct"], tags: ["drone"] };
 
-function PalettePropertyRow() {
-  const [levels, setLevels] = useState<string[]>(["direct"]);
+/** The whole panel under its header: the groups, a line per dimension with its search field,
+ *  the value pills under a line, the switch lines, the timelines and the result count. */
+function PaletteFilterCard() {
+  const [state, setState] = useState<FilterState>(STARTING);
+  const onPatch = useCallback((patch: Partial<FilterState>) => setState((s) => ({ ...s, ...patch })), []);
   return (
-    <div className={`w-72 px-3 ${PANEL}`}>
-      <PropertyRow
-        name="Level"
-        concept="source_level"
-        values={levels.map((value) => ({
-          key: value,
-          label: LEVELS.find((o) => o.value === value)?.label ?? value,
-          onRemove: () => setLevels((prev) => prev.filter((v) => v !== value)),
-        }))}
-        field={
-          <OptionSearch
-            aria-label="Level"
-            placeholder="Search levels"
-            options={LEVELS}
-            selected={levels}
-            onChange={setLevels}
-            picks={false}
-          />
-        }
+    <div className="w-80 max-w-full">
+      <FilterCard
+        surface="search"
+        state={state}
+        onPatch={onPatch}
+        onClear={() => setState(EMPTY_FILTERS)}
+        vocabulary={VOCABULARY}
+        timelines={TIMELINES}
+        count={284}
       />
     </div>
   );
@@ -112,8 +81,7 @@ export const FILTERS: PaletteCategory = {
   id: "filters",
   title: "Filters",
   entries: [
-    { name: "ActiveFilterPills", demo: <PaletteActiveFilterPills /> },
-    { name: "PropertyRow", demo: <PalettePropertyRow /> },
-    { name: "ToggleRow", demo: <PaletteToggleRow /> },
+    { entry: "FilterCard / FilterPanel", demo: <PaletteFilterCard /> },
+    { entry: "ToggleRow", demo: <PaletteToggleRow /> },
   ],
 };

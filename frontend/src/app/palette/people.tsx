@@ -41,7 +41,7 @@ export const PEOPLE: PaletteCategory = {
   title: "Accounts and links",
   entries: [
     {
-      name: "Avatar",
+      entry: "Avatar",
       demo: (
         <>
           <Variant label="icon">
@@ -72,7 +72,7 @@ export const PEOPLE: PaletteCategory = {
       ),
     },
     {
-      name: "AvatarStack",
+      entry: "AvatarStack",
       demo: (
         <>
           <AvatarStack label="Approved by" items={approvalStamps(APPROVERS.slice(0, 5))} />
@@ -124,7 +124,7 @@ export const PEOPLE: PaletteCategory = {
       ),
     },
     {
-      name: "AuthorByline",
+      entry: "AuthorByline",
       demo: (
         <div className="grid gap-4 text-sm text-neutral-400 sm:grid-cols-2">
           <Variant label="avatar">
@@ -156,7 +156,7 @@ export const PEOPLE: PaletteCategory = {
       ),
     },
     {
-      name: "OutboundLink",
+      entry: "OutboundLink",
       demo: (
         <>
           <Variant label="known host">
@@ -173,7 +173,7 @@ export const PEOPLE: PaletteCategory = {
       ),
     },
     {
-      name: "SourceLabel",
+      entry: "SourceLabel",
       demo: (
         <>
           <SourceLabel url="https://t.me/some_channel/4242" variant="inline" />
@@ -182,9 +182,9 @@ export const PEOPLE: PaletteCategory = {
         </>
       ),
     },
-    { name: "LegalLinks", demo: <LegalLinks /> },
+    { entry: "LegalLinks", demo: <LegalLinks /> },
     {
-      name: "BrandGlyphs",
+      entry: "BrandGlyphs",
       demo: (
         <span className="inline-flex items-center gap-3 text-neutral-400">
           <XGlyph />

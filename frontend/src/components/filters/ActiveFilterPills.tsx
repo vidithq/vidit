@@ -1,5 +1,5 @@
-import { Button } from "./Button";
-import { Pill } from "./Pill";
+import { Button } from "@/components/ui/Button";
+import { Pill } from "@/components/ui/Pill";
 
 /** `key` must be unique across the row (e.g. `conflicts:<name>`). */
 export interface ActiveFilter {

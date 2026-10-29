@@ -43,7 +43,7 @@ export const FEEDBACK: PaletteCategory = {
   title: "Feedback",
   entries: [
     {
-      name: "ErrorNotice",
+      entry: "ErrorNotice",
       demo: (
         <>
           <Variant label="onRetry" className="w-full max-w-sm">
@@ -59,7 +59,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      name: "FieldError",
+      entry: "FieldError",
       demo: (
         <div className="w-full max-w-sm space-y-1.5">
           <FieldLabel label="Invitee's X handle" htmlFor="palette-field-error" invalid />
@@ -76,15 +76,15 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      name: "FORM_SUCCESS_BANNER",
+      entry: "FORM_SUCCESS_BANNER",
       demo: <div className={`${FORM_SUCCESS_BANNER} max-w-sm`}>Saved.</div>,
     },
     {
-      name: "WithheldBanner",
+      entry: "WithheldBanner",
       demo: <WithheldBanner since="2026-10-28T09:30:00Z" noun="collection" />,
     },
     {
-      name: "EmptyState",
+      entry: "EmptyState",
       demo: (
         <>
           <Variant label="boxed" className="w-full max-w-sm">
@@ -127,7 +127,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      name: "Pill",
+      entry: "Pill",
       demo: (
         <>
           <Variant label="tone">
@@ -153,7 +153,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      name: "StatusBadge",
+      entry: "StatusBadge",
       demo: (
         <>
           <StatusBadge status="requested" />
@@ -164,7 +164,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      name: "CountBadge",
+      entry: "CountBadge",
       demo: (
         <CountBadge count={2} label="2 missing: Title, Conflict">
           {(describedBy) => (
@@ -176,7 +176,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      name: "Dot",
+      entry: "Dot",
       demo: (
         <>
           <Dot />
@@ -188,7 +188,7 @@ export const FEEDBACK: PaletteCategory = {
       ),
     },
     {
-      name: "Tooltip",
+      entry: "Tooltip",
       demo: (
         <Tooltip label="Wayback Machine copy of the source">
           <a

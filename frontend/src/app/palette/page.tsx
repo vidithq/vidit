@@ -18,27 +18,23 @@ import { FIGURES } from "./figures";
 import { FILTERS } from "./filters";
 import { INPUTS } from "./inputs";
 import { ITEMS } from "./items";
-import { LABELS } from "./labels";
-import { MAP } from "./map";
 import { MEDIA } from "./media";
 import { PEOPLE } from "./people";
 import { Entry, entryId, type PaletteCategory } from "./shared";
 import { TOKENS } from "./tokens";
 
 const CATEGORIES: PaletteCategory[] = [
-  TOKENS,
   CONTAINERS,
   ACTIONS,
   INPUTS,
-  LABELS,
   FILTERS,
   FEEDBACK,
   ITEMS,
   PEOPLE,
   FIGURES,
   MEDIA,
-  MAP,
   EVENT,
+  TOKENS,
 ];
 
 function Contents({
@@ -69,9 +65,9 @@ function Contents({
               </a>
               <ul className="mt-1 hidden space-y-0.5 pl-3 lg:block">
                 {category.entries.map((entry) => (
-                  <li key={entry.name}>
-                    <a href={`#${entryId(entry.name)}`} className={`font-mono text-[11px] ${TEXT_LINK}`}>
-                      {entry.name}
+                  <li key={entry.entry}>
+                    <a href={`#${entryId(entry.entry)}`} className={`font-mono text-[11px] ${TEXT_LINK}`}>
+                      {entry.entry}
                     </a>
                   </li>
                 ))}
@@ -92,7 +88,7 @@ export default function PalettePage() {
   const needle = query.trim().toLowerCase();
   const shown = CATEGORIES.map((category) => ({
     ...category,
-    entries: category.entries.filter((entry) => entry.name.toLowerCase().includes(needle)),
+    entries: category.entries.filter((entry) => entry.entry.toLowerCase().includes(needle)),
   })).filter((category) => category.entries.length > 0);
 
   return (
@@ -105,7 +101,7 @@ export default function PalettePage() {
         <section key={category.id} id={category.id} className="scroll-mt-6 space-y-3">
           <SectionEyebrow title={category.title} margin="none" />
           {category.entries.map((entry) => (
-            <Entry key={entry.name} name={entry.name}>
+            <Entry key={entry.entry} name={entry.entry}>
               {entry.demo}
             </Entry>
           ))}

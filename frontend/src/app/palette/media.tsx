@@ -7,7 +7,6 @@ import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaGallery } from "@/components/ui/MediaGallery";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
-import { VideoPlayer } from "@/components/ui/VideoPlayer";
 import { HOVER_REVEAL } from "@/components/ui/styles";
 import { MediaManager } from "@/components/geolocations/MediaManager";
 import { MOCK_MEDIA, Variant, type PaletteCategory } from "./shared";
@@ -50,7 +49,7 @@ export const MEDIA: PaletteCategory = {
   title: "Media",
   entries: [
     {
-      name: "MediaGallery",
+      entry: "MediaGallery",
       demo: (
         <>
           <div className={TILE}>
@@ -59,11 +58,17 @@ export const MEDIA: PaletteCategory = {
           <Variant label="panel" className="w-64">
             <MediaGallery media={MOCK_MEDIA} alt="Strike on a depot" variant="panel" />
           </Variant>
+          <Variant label="video" className={TILE}>
+            <MediaGallery
+              media={{ ...MOCK_MEDIA, id: "v1", kind: "video", storage_url: VIDEO_SRC }}
+              alt="Footage of the strike"
+            />
+          </Variant>
         </>
       ),
     },
     {
-      name: "TileNotice",
+      entry: "TileNotice",
       demo: (
         <>
           <div className={TILE}>
@@ -76,7 +81,7 @@ export const MEDIA: PaletteCategory = {
       ),
     },
     {
-      name: "GraphicContentGate",
+      entry: "GraphicContentGate",
       demo: (
         <>
           <div className={TILE}>
@@ -94,21 +99,9 @@ export const MEDIA: PaletteCategory = {
         </>
       ),
     },
+    { entry: "MediaLightbox", demo: <PaletteMediaLightbox /> },
     {
-      name: "VideoPlayer",
-      demo: (
-        <div className={`h-48 ${TILE} ${FRAME}`}>
-          <VideoPlayer
-            src={VIDEO_SRC}
-            source={{ src: VIDEO_SRC, filename: "demo.mp4" }}
-            title="Palette demo clip"
-          />
-        </div>
-      ),
-    },
-    { name: "MediaLightbox", demo: <PaletteMediaLightbox /> },
-    {
-      name: "MediaDownloadButton / FLOATING_CONTROL / HOVER_REVEAL",
+      entry: "MediaDownloadButton / FLOATING_CONTROL / HOVER_REVEAL",
       demo: (
         <>
           <div className={`flex size-16 items-center justify-center ${FRAME}`}>
@@ -124,6 +117,6 @@ export const MEDIA: PaletteCategory = {
         </>
       ),
     },
-    { name: "FileManager / MediaManager", demo: <PaletteMediaManager /> },
+    { entry: "FileManager / MediaManager", demo: <PaletteMediaManager /> },
   ],
 };

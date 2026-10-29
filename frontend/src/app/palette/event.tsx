@@ -6,8 +6,6 @@ import type { Tag } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { RemoveButton } from "@/components/ui/RemoveButton";
-import { eventPageSlots } from "@/components/event/EventDetailBody";
-import { EventLayout } from "@/components/event/EventLayout";
 import {
   PUBLISHING_LABEL,
   PUBLISH_CONFIRM,
@@ -18,9 +16,9 @@ import {
   requestWriteButton,
   usePublishAction,
 } from "@/components/geolocations/PublishActions";
-import { SourceBlocks } from "@/components/sources/SourceBlock";
-import { SourceImageryCheck } from "@/components/sources/SourceImageryCheck";
 import { SourcesField } from "@/components/sources/SourcesField";
+import { eventPanelContent } from "@/components/event/EventDetailBody";
+import { MapPanelBody } from "@/components/map/MapSidePanel";
 import { sourceDraftFrom, type Source, type SourceDraft } from "@/lib/sources";
 import { EventShellPreview } from "./eventShellDemo";
 import { MOCK_CONTEXT_SOURCE, MOCK_DETAIL, MOCK_SOURCE, Variant, type PaletteCategory } from "./shared";
@@ -118,32 +116,21 @@ export const EVENT: PaletteCategory = {
   id: "event",
   title: "Event",
   entries: [
-    { name: "EventShell", demo: <EventShellPreview /> },
+    { entry: "EventShell", demo: <EventShellPreview /> },
     {
-      name: "eventPageSlots / EventLayout",
+      entry: "MapPanelBody / eventPanelContent",
       demo: (
-        <div className="w-full">
-          <EventLayout {...eventPageSlots(MOCK_DETAIL)} />
+        <div className="w-[380px] max-w-full space-y-4">
+          <MapPanelBody
+            content={eventPanelContent({
+              ...MOCK_DETAIL,
+              detected_from_url: "https://x.com/analyst/status/1234567890",
+            })}
+          />
         </div>
       ),
     },
-    {
-      name: "SourceBlock / SourceBlocks",
-      demo: (
-        <div className="w-full max-w-4xl">
-          <SourceBlocks sources={[MOCK_SOURCE]} alt="Strike on a depot" />
-        </div>
-      ),
-    },
-    {
-      name: "SourceImageryCheck",
-      demo: (
-        <div className="w-full max-w-md">
-          <SourceImageryCheck draft={sourceDraftFrom(MOCK_SATELLITE_SOURCE)} />
-        </div>
-      ),
-    },
-    { name: "SourcesField / SourceEditor", demo: <PaletteSourcesField /> },
-    { name: "PublishActions", demo: <PalettePublishActions /> },
+    { entry: "SourcesField / SourceEditor", demo: <PaletteSourcesField /> },
+    { entry: "PublishActions", demo: <PalettePublishActions /> },
   ],
 };
