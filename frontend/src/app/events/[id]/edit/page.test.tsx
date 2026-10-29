@@ -324,6 +324,18 @@ describe("the detection edit surface", () => {
     );
   });
 
+  it("opens a detection with no source on the post it came from, ready to import its file", () => {
+    row = detectionFixture({ sources: [] });
+    render(<EditEventPage />);
+
+    expect(screen.getByRole("textbox", { name: "Source 1 link 1" })).toHaveValue(
+      "https://x.com/analyst/status/1"
+    );
+    expect(
+      screen.getByRole("button", { name: /^Import the file of source 1, x\.com/ })
+    ).toBeInTheDocument();
+  });
+
   it("carries no queue position or Skip when it is not a review pass", () => {
     render(<EditEventPage />);
     expect(screen.queryByText(/Detection \d+ of/)).toBeNull();

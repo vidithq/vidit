@@ -109,9 +109,11 @@ export interface EventFormDraft {
   siteLinks: DraftSiteLink[];
 }
 
-/** The editors a row seeds: one per stored source, or one blank editor. */
+/** The editors a row seeds: one per stored source, or one editor whose link is the post the row
+ *  came from, if any. */
 function seedSources(row: EventDetail | null): SourceDraft[] {
-  return row && row.sources.length > 0 ? row.sources.map(sourceDraftFrom) : [newSourceDraft()];
+  if (row && row.sources.length > 0) return row.sources.map(sourceDraftFrom);
+  return [newSourceDraft(row?.detected_from_url ?? "")];
 }
 
 /**

@@ -193,8 +193,9 @@ const nextKey = () => `source-${++keyCounter}`;
 
 const blankLink = (): LinkDraft => ({ url: "", postedAt: "", snapshotUrl: "", stored: null });
 
-/** The editor a form starts with, and the one **Add a source** appends. */
-export function newSourceDraft(): SourceDraft {
+/** The editor a form starts with, and the one **Add a source** appends. `url` fills its first
+ *  link. */
+export function newSourceDraft(url = ""): SourceDraft {
   return {
     key: nextKey(),
     id: null,
@@ -207,7 +208,7 @@ export function newSourceDraft(): SourceDraft {
     captureLng: "",
     isGraphic: false,
     graphicLocked: false,
-    links: [blankLink()],
+    links: [{ ...blankLink(), url }],
     tagIds: [],
     file: null,
   };
