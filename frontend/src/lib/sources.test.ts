@@ -139,6 +139,14 @@ describe("sourceFloor", () => {
     expect(sourceFloor([{ ...withFile, level: "context" }]).hasEvidenceFile).toBe(false);
   });
 
+  it("never asks for a source tag", () => {
+    const withFile = linked("https://t.me/c/1", { file: { state: "stored", media: FILE } });
+    expect(sourceFloor([{ ...withFile, tagIds: [] }])).toEqual({
+      hasEvidenceFile: true,
+      missingLink: false,
+    });
+  });
+
   it("flags a source without a URL, and never a source without a kind", () => {
     const floor = sourceFloor([
       { ...newSourceDraft(), links: [], file: { state: "stored", media: FILE } },
