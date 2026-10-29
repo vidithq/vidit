@@ -487,20 +487,23 @@ test.describe("submit", () => {
     const publish = page.getByRole("button", { name: "Publish geolocation" });
     await expect(publish).toHaveAccessibleDescription(/Conflict$/);
 
-    // At rest the field lists nothing; focus lists the ongoing conflicts, Other last.
+    // At rest the field lists nothing; focus lists every conflict, the ongoing ones first, Other last.
     const field = page.getByRole("combobox", { name: "Conflict" });
     const list = page.getByRole("listbox", { name: "Conflict" });
     await expect(list).toHaveCount(0);
     await field.focus();
-    await expect(list.getByRole("option")).toHaveText(["Russian invasion of Ukraine (2022-present)", "Other"]);
+    await expect(list.getByRole("option")).toHaveText([
+      "Russian invasion of Ukraine (2022-present)",
+      "Falklands War (1982)",
+      "Other",
+    ]);
     await expectNoHorizontalOverflow(page);
     await list.getByRole("option", { name: "Russian invasion of Ukraine (2022-present)" }).click();
     const chip = page.getByRole("button", { name: "Remove Russian invasion of Ukraine (2022-present)" });
     await expect(chip).toBeVisible();
     await expect(publish).not.toHaveAccessibleDescription(/Conflict/);
 
-    // The switch adds the ended conflicts; the arrows and Enter pick one.
-    await page.getByRole("switch", { name: "Include ended conflicts" }).click();
+    // An ended conflict is one search away; the arrows and Enter pick one.
     await field.fill("falk");
     await expect(list.getByRole("option")).toHaveText(["Falklands War (1982)"]);
     await field.press("Enter");

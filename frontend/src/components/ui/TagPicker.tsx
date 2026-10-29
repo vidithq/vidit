@@ -2,7 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import type { Conflict, Tag } from "@/types";
-import { CONFLICT_OTHER_NAME, conflictLabel, sortConflicts } from "@/lib/conflicts";
+import { conflictLabel, sortConflicts } from "@/lib/conflicts";
 import { useMutation } from "@/hooks/useMutation";
 import { ApiError, apiFetch } from "@/lib/api";
 import { FieldLabel } from "@/components/ui/FieldLabel";
@@ -135,9 +135,8 @@ export function TagsField({
 const tagOption = (t: Tag) => ({ value: t.id, label: t.name });
 
 /**
- * The conflicts picked from the referential, filtered client-side, by tier then name
- * (`sortConflicts`), with "Other" pinned last. The list holds the ongoing conflicts and "Other"
- * whatever its state; the Include ended conflicts switch adds the ended ones.
+ * The conflicts picked from the referential, filtered client-side, in `sortConflicts` order: the
+ * ongoing ones, then the ended ones, with "Other" pinned last.
  */
 function ConflictsField({
   conflicts,
@@ -150,9 +149,6 @@ function ConflictsField({
   setSelected: (next: string[]) => void;
   invalid: boolean;
 }) {
-  const ended = new Set(
-    conflicts.filter((c) => !c.is_ongoing && c.name !== CONFLICT_OTHER_NAME).map((c) => c.id),
-  );
   return (
     <div className="space-y-1.5">
       <FieldLabel {...EVENT_FIELDS.conflicts} invalid={invalid} />
@@ -162,7 +158,6 @@ function ConflictsField({
         options={sortConflicts(conflicts).map((c) => ({ value: c.id, label: conflictLabel(c) }))}
         selected={selected}
         onChange={setSelected}
-        includeEnded={{ isEnded: (id) => ended.has(id), label: "Include ended conflicts" }}
         invalid={invalid}
       />
     </div>

@@ -5,7 +5,6 @@ import { Plus } from "lucide-react";
 
 import { Combobox } from "./Combobox";
 import { Pill } from "./Pill";
-import { ToggleRow } from "./ToggleRow";
 
 export interface Option {
   value: string;
@@ -31,7 +30,6 @@ export function OptionSearch({
   placeholder,
   creatable,
   suggestions = [],
-  includeEnded,
   picks = true,
   invalid = false,
   onQueryChange,
@@ -49,8 +47,6 @@ export function OptionSearch({
   creatable?: { onCreate: (name: string) => void; maxLength?: number };
   /** One-click neutral pills under the field, as many as fit on two lines. */
   suggestions?: Option[];
-  /** A switch under the field that adds the options `isEnded` holds back. */
-  includeEnded?: { isEnded: (value: string) => boolean; label: string };
   /** Shows the picks under the field; off where the caller shows them. */
   picks?: boolean;
   invalid?: boolean;
@@ -60,7 +56,6 @@ export function OptionSearch({
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [ended, setEnded] = useState(false);
 
   const name = query.trim();
   const needle = name.toLowerCase();
@@ -68,7 +63,6 @@ export function OptionSearch({
   const matches = options.filter(
     (o) =>
       !selected.includes(o.value) &&
-      (ended || !includeEnded?.isEnded(o.value)) &&
       o.label.toLowerCase().includes(needle),
   );
   const canCreate = !!creatable && name !== "" && !options.some((o) => o.label === name);
@@ -121,14 +115,6 @@ export function OptionSearch({
         }}
         status={rows.length === 0 ? "No match." : null}
       />
-      {includeEnded && (
-        <ToggleRow
-          label={includeEnded.label}
-          on={ended}
-          onToggle={() => setEnded((on) => !on)}
-          className="py-0"
-        />
-      )}
       {picks && selected.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {selected.map((value) =>

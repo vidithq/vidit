@@ -28,15 +28,15 @@ const TIER_RANK: Record<NonNullable<Conflict["tier"]>, number> = {
 };
 
 /**
- * Referential display order: tier rank (major < minor < conflict < none), then name; "Other"
- * is pinned last. The server orders ongoing-then-name, so this runs client side. Returns a
- * new array.
+ * Referential display order: the ongoing conflicts before the ended ones, each by tier rank
+ * (major < minor < conflict < none), then name; "Other" is pinned last. Returns a new array.
  */
 export function sortConflicts(list: Conflict[]): Conflict[] {
   return [...list].sort((a, b) => {
     const aOther = a.name === CONFLICT_OTHER_NAME;
     const bOther = b.name === CONFLICT_OTHER_NAME;
     if (aOther !== bOther) return aOther ? 1 : -1;
+    if (a.is_ongoing !== b.is_ongoing) return a.is_ongoing ? -1 : 1;
     const rank =
       (a.tier === null ? 3 : TIER_RANK[a.tier]) -
       (b.tier === null ? 3 : TIER_RANK[b.tier]);

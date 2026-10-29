@@ -36,6 +36,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The Conflict field of the event forms searches every conflict, the ongoing ones first, with no Include ended conflicts switch ([#816](https://github.com/vidithq/vidit/pull/816)).
 - The source kind is optional on the event forms, so a source with no kind saves as Unknown, and `POST /events/batch-complete` takes a row without a kind, keeping the kinds its sources hold ([#816](https://github.com/vidithq/vidit/pull/816)).
 - `/palette` shows High level and Low level primitives from the import graph, the filter panel as one demo, and its check fails on a missing entry, a wrong tier or a primitive only one component uses ([#814](https://github.com/vidithq/vidit/pull/814)).
 - `docs/design.md` names one primitive per job (show an item, pick from a vocabulary, enter a date, remove, delete, show an error...), and lint fails on a raw `<select>`, `<textarea>` or date input, `confirm()` or a retired primitive ([#814](https://github.com/vidithq/vidit/pull/814)).

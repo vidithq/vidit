@@ -96,4 +96,13 @@ describe("sortConflicts", () => {
       "Other",
     ]);
   });
+
+  it("puts the ongoing conflicts before the ended ones, Other still last", () => {
+    const sorted = sortConflicts([
+      conflict({ id: "1", name: "Ended major", tier: "major", is_ongoing: false }),
+      conflict({ id: "2", name: "Other", is_ongoing: false }),
+      conflict({ id: "3", name: "Ongoing minor", tier: "minor" }),
+    ]);
+    expect(sorted.map((c) => c.name)).toEqual(["Ongoing minor", "Ended major", "Other"]);
+  });
 });

@@ -37,7 +37,7 @@ export const FIELD_HELP = {
     label: "What makes a good collection title?",
   },
   conflict: {
-    text: "Which armed conflict this event belongs to. The list mirrors Wikipedia's list of ongoing armed conflicts (synced daily), and historical conflicts since 1914 are available via “Include ended conflicts”. Pick “Other” for anything not listed.",
+    text: "Which armed conflict this event belongs to. The list mirrors Wikipedia's list of ongoing armed conflicts (synced daily), followed by the historical conflicts since 1914. Pick “Other” for anything not listed.",
     label: "What is the conflict?",
   },
   sources: {
