@@ -35,6 +35,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- Every field that finds an event, a site, a collection, an analyst or an organization lists its matches the same way, and Find a collection now runs the collection's own action on a pick ([#814](https://github.com/vidithq/vidit/pull/814)).
 - One filter panel serves the map, search, the feed and the Requests board: collapsible groups What, When (the Event date and Added timelines), Source, Where and Who; Conflict, Tags and accounts search in their line; a phone opens it in a sheet ([#813](https://github.com/vidithq/vidit/pull/813)).
 - Search, the feed and the Requests board show the filter panel under the map's Filters header, open by default and closed on the map; each surface remembers your choice, and the map header drops its point count ([#813](https://github.com/vidithq/vidit/pull/813)).
 - The feed keeps its filters in the URL, and its Following choice is a switch in the filter panel; search lists an analyst or an organization the query names once, first in its section ([#813](https://github.com/vidithq/vidit/pull/813)).
