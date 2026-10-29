@@ -18,11 +18,12 @@ import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { useMutation } from "@/hooks/useMutation";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { cn } from "@/lib/cn";
-import { CONTOUR_REQUIREMENT, EMPTY_DRAW, drawReady, zoneFromVertices } from "@/lib/siteZone";
+import { EMPTY_DRAW, drawReady, zoneFromVertices } from "@/lib/siteZone";
 import {
   SITE_KIND_LABELS,
   checkOverlaps,
   createSite,
+  newSiteMissing,
   siteHref,
   type SiteKind,
   type SiteOverlap,
@@ -110,12 +111,7 @@ export default function NewSitePage() {
     OVERLAP_DEBOUNCE_MS,
   );
 
-  const missing = [
-    ...source.missing,
-    ...(zone ? [] : [CONTOUR_REQUIREMENT]),
-    ...(name.trim() ? [] : ["Name"]),
-    ...(kind ? [] : ["Kind"]),
-  ];
+  const missing = newSiteMissing({ name, sourceMissing: source.missing, zoneDrawn: !!zone, kind });
   const flagged = attempt > 0;
 
   const create = useMutation(

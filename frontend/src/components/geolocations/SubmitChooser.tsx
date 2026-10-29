@@ -7,6 +7,7 @@ import { IconTile } from "@/components/ui/IconTile";
 import { Pill } from "@/components/ui/Pill";
 import { cn } from "@/lib/cn";
 import { CollectionIcon, newCollectionHref } from "@/lib/collections";
+import { missingEventFields, missingEventRequestFields, type EventFieldsState } from "@/lib/events";
 import { IMPORT_GLYPH } from "@/lib/importEntries";
 import { submitHref } from "@/lib/routes";
 import { NEW_SITE_HREF } from "@/lib/sites";
@@ -164,6 +165,17 @@ const COLLECTION_PREVIEW = (
 
 const GLYPH = { size: 13, strokeWidth: 1.8 } as const;
 
+/** An empty form, whose missing fields are what a path needs. */
+const EMPTY_EVENT: EventFieldsState = {
+  title: "",
+  lat: "",
+  lng: "",
+  proof: null,
+  sources: { hasEvidenceFile: false, missingLink: true },
+  hasConflict: false,
+};
+const labels = (missing: { label: string }[]) => missing.map((m) => m.label);
+
 // Geolocation and Request open the same form: the publish actions unlock from what you fill in.
 export const SUBMIT_PATHS = [
   {
@@ -171,7 +183,7 @@ export const SUBMIT_PATHS = [
     icon: <MapPin {...GLYPH} />,
     title: "Geolocation",
     note: "You found where it happened.",
-    needs: ["Source", "Coordinates", "Proof image", "Conflict"],
+    needs: labels(missingEventFields(EMPTY_EVENT)),
     preview: GEOLOCATION_PREVIEW,
   },
   {
@@ -179,7 +191,7 @@ export const SUBMIT_PATHS = [
     icon: <Megaphone {...GLYPH} />,
     title: "Request",
     note: "You have the footage, not the place.",
-    needs: ["Source"],
+    needs: labels(missingEventRequestFields(EMPTY_EVENT)),
     preview: REQUEST_PREVIEW,
   },
   {
@@ -203,7 +215,7 @@ export const SUBMIT_PATHS = [
     icon: <MapPinPlus {...GLYPH} />,
     title: "Site",
     note: "You watch a place change over time.",
-    needs: ["Name", "Dated capture", "Contour"],
+    needs: ["Name", "Capture date", "Link", "Contour", "Kind"],
     preview: SITE_PREVIEW,
   },
   {

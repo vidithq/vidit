@@ -1,6 +1,7 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { withCursor } from "./pagination";
+import { CONTOUR_REQUIREMENT } from "./siteZone";
 import { sourceCreatePayload, draftUrls, newSourceDraft, type SourceDraft } from "./sources";
 import { sameSet, versionSteps, type VersionedRecord, type VersionEntry } from "./versions";
 import type { EventStatus } from "@/types";
@@ -310,9 +311,25 @@ export function siteSourceMissing(draft: SourceDraft, note: string, today: strin
   const missing: string[] = [];
   if (!draft.capturedAt) missing.push("Capture date");
   else if (draft.capturedAt.slice(0, 10) > today) missing.push("A capture date that is not in the future");
-  if (draftUrls(draft).length === 0) missing.push("A link");
+  if (draftUrls(draft).length === 0) missing.push("Link");
   if (note.length > SITE_SOURCE_NOTE_MAX_LEN) missing.push(`A note of at most ${SITE_SOURCE_NOTE_MAX_LEN} characters`);
   return missing;
+}
+
+/** What a new site still lacks, in page order: the name in the title, the source, the contour,
+ *  the kind. */
+export function newSiteMissing(site: {
+  name: string;
+  sourceMissing: string[];
+  zoneDrawn: boolean;
+  kind: string;
+}): string[] {
+  return [
+    ...(site.name.trim() ? [] : ["Name"]),
+    ...site.sourceMissing,
+    ...(site.zoneDrawn ? [] : [CONTOUR_REQUIREMENT]),
+    ...(site.kind ? [] : ["Kind"]),
+  ];
 }
 
 /** The source fields of a site write, from the editor and the note. A blank note is absent. */

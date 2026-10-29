@@ -235,6 +235,16 @@ describe("the submit chooser", () => {
 
     const request = screen.getByRole("link", { name: /^Request/ });
     expect(within(request).getByText("Needs")).toBeInTheDocument();
-    expect(within(request).getByText("Source")).toBeInTheDocument();
+    for (const label of ["Title", "Source file", "Source URL"]) {
+      expect(within(request).getByText(label)).toBeInTheDocument();
+    }
+    const geolocation = screen.getByRole("link", { name: /^Geolocation/ });
+    for (const label of ["Title", "Source file", "Source URL", "Proof", "Coordinates", "Conflict"]) {
+      expect(within(geolocation).getByText(label)).toBeInTheDocument();
+    }
+    const site = screen.getByRole("link", { name: /^Site/ });
+    for (const label of ["Name", "Capture date", "Link", "Contour", "Kind"]) {
+      expect(within(site).getByText(label)).toBeInTheDocument();
+    }
   });
 });

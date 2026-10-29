@@ -10,6 +10,7 @@ vi.mock("./api", async (importOriginal) => ({
 }));
 
 import { newSourceDraft } from "./sources";
+import { CONTOUR_REQUIREMENT } from "./siteZone";
 import {
   saveSiteLinks,
   siteSuggestionsNearPath,
@@ -19,6 +20,7 @@ import {
   formatDistance,
   siteSourceFromEventSource,
   latestSource,
+  newSiteMissing,
   newSiteSourceDraft,
   ownsSite,
   siteChangedFields,
@@ -198,7 +200,7 @@ describe("site source drafts", () => {
 
   it("lists the capture date and a link as missing, then a date in the future", () => {
     const draft = newSiteSourceDraft();
-    expect(siteSourceMissing(draft, "", "2026-10-25")).toEqual(["Capture date", "A link"]);
+    expect(siteSourceMissing(draft, "", "2026-10-25")).toEqual(["Capture date", "Link"]);
     const later = {
       ...draft,
       capturedAt: "2026-11-01T10:00",
@@ -208,6 +210,13 @@ describe("site source drafts", () => {
       "A capture date that is not in the future",
       "A note of at most 500 characters",
     ]);
+  });
+
+  it("lists what a new site lacks in page order", () => {
+    expect(
+      newSiteMissing({ name: " ", sourceMissing: ["Capture date", "Link"], zoneDrawn: false, kind: "" })
+    ).toEqual(["Name", "Capture date", "Link", CONTOUR_REQUIREMENT, "Kind"]);
+    expect(newSiteMissing({ name: "Depot", sourceMissing: [], zoneDrawn: true, kind: "depot" })).toEqual([]);
   });
 
   it("posts the source fields with a blank note as absent", () => {
