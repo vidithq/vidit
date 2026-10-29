@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SEARCH_DEBOUNCE_MS } from "@/hooks/useItemSearch";
+import { SEARCH_DEBOUNCE_MS } from "@/components/ui/ItemSearch";
 import { accountKey, analystAccount, type Account } from "@/lib/accounts";
 import { accountItem } from "@/lib/items";
 import { ItemSearch } from "./ItemSearch";

@@ -41,6 +41,7 @@ function PaletteChips() {
 export const FEEDBACK: PaletteCategory = {
   id: "feedback",
   title: "Feedback",
+  tier: "high",
   entries: [
     {
       entry: "ErrorNotice",

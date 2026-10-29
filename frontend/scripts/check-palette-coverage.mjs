@@ -1,40 +1,40 @@
-// /palette shows the components screens use as they are. A shared primitive (a components/ui
-// file) or a style constant (styles.ts / form-styles.ts) that a page in app/ or a component
-// outside components/ui imports must head a /palette entry (`entry: "..."` in a file under
-// src/app/palette/). One that only other components/ui files import must not: the demo of the
-// component that holds it shows it. See AGENTS.md -> "Palette-first".
+// /palette and components/ui follow the import graph. A components/ui file or a style constant
+// (styles.ts / form-styles.ts) is:
+// - high level when a surface imports it (a page in app/ or a component outside components/ui);
+// - low level when only components/ui files import it, two or more of them;
+// - not a shared primitive when exactly one components/ui file imports it: fold it into that file.
+// Every high or low level one heads a /palette entry (`entry: "..."`) in a category of its tier
+// (`tier: "high" | "low"`). See AGENTS.md -> "Palette-first".
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 
 const frontend = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = join(frontend, "src");
 const uiDir = join(src, "components/ui");
 const paletteDir = join(src, "app/palette");
 
-// The files whose imports put a primitive on a screen: not the primitives themselves, the
-// palette, the test helpers or the tests.
-const consumers = readdirSync(src, { recursive: true })
+// Every importer but the palette, the test helpers and the tests.
+const importers = readdirSync(src, { recursive: true })
   .map((f) => f.split(sep).join("/"))
-  .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f))
-  .filter((f) => !/^(components\/ui|app\/palette|test)\//.test(f))
-  .map((f) => join(src, f));
+  .filter((f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !/^(app\/palette|test)\//.test(f));
 
-const entryNames = readdirSync(paletteDir, { recursive: true })
-  .filter((f) => f.endsWith(".tsx"))
-  .flatMap((f) => [...readFileSync(join(paletteDir, f), "utf8").matchAll(/\bentry:\s*"([^"]+)"/g)])
-  .map((m) => m[1])
-  .join("\n");
-
-const named = (name) => new RegExp(`\\b${name}\\b`).test(entryNames);
-
-// What the consumers import from components/ui, by module and by name; `import type` puts
-// nothing on a screen.
-const importedModules = new Set();
-const importedNames = new Set();
-for (const file of consumers) {
-  const text = readFileSync(file, "utf8");
-  for (const m of text.matchAll(/^import (?!type\b)([^;]*?) from "@\/components\/ui\/([\w-]+)";/gms)) {
+// Module -> the files that import it, and module:name -> the files that import that name.
+// `import type` puts nothing on a screen.
+const byModule = new Map();
+const byName = new Map();
+const add = (map, key, file) => map.set(key, (map.get(key) ?? new Set()).add(file));
+for (const file of importers) {
+  const text = readFileSync(join(src, file), "utf8");
+  const fromUi = file.startsWith("components/ui/");
+  for (const m of text.matchAll(/^import (?!type\b)([^;]*?) from "([^"]+)";/gms)) {
+    const spec = m[2];
+    const mod = spec.startsWith("@/components/ui/")
+      ? spec.slice("@/components/ui/".length)
+      : fromUi && spec.startsWith("./")
+        ? spec.slice(2)
+        : null;
+    if (!mod || mod.includes("/")) continue;
     const names = m[1]
       .replace(/[{}]/g, "")
       .split(",")
@@ -42,47 +42,64 @@ for (const file of consumers) {
       .filter((n) => n && !n.startsWith("type "))
       .map((n) => n.replace(/\s+as\s+\w+$/, ""));
     if (names.length === 0) continue;
-    importedModules.add(m[2]);
-    for (const name of names) importedNames.add(`${m[2]}:${name}`);
+    add(byModule, mod, file);
+    for (const name of names) add(byName, `${mod}:${name}`, file);
   }
 }
 
-const required = [];
-const forbidden = [];
+const tierOf = (users) => {
+  const files = [...(users ?? [])];
+  const ui = files.filter((f) => f.startsWith("components/ui/"));
+  if (files.length > ui.length) return "high";
+  if (ui.length === 1) return `fold:${ui[0]}`;
+  return ui.length > 1 ? "low" : null;
+};
 
-// One primitive per component file: its siblings (DetailCard in DetailRow.tsx, PageError in
-// PageShell.tsx) show in its entry.
+const shared = [];
 for (const f of readdirSync(uiDir)) {
   if (!f.endsWith(".tsx") || f.endsWith(".test.tsx")) continue;
   const name = f.replace(/\.tsx$/, "");
-  (importedModules.has(name) ? required : forbidden).push(name);
+  shared.push([name, tierOf(byModule.get(name))]);
 }
-
 for (const file of ["styles", "form-styles"]) {
   const text = readFileSync(join(uiDir, `${file}.ts`), "utf8");
   for (const m of text.matchAll(/export const ([A-Z0-9_]+)/g)) {
-    (importedNames.has(`${file}:${m[1]}`) ? required : forbidden).push(m[1]);
+    shared.push([m[1], tierOf(byName.get(`${file}:${m[1]}`))]);
   }
 }
 
-const missing = required.filter((n) => !named(n)).sort();
-const extra = forbidden.filter((n) => named(n)).sort();
+// The tier of each palette entry: the `tier` its category declares before its entries.
+const entries = [];
+for (const f of readdirSync(paletteDir, { recursive: true })) {
+  if (!f.endsWith(".tsx")) continue;
+  let tier = null;
+  for (const m of readFileSync(join(paletteDir, f), "utf8").matchAll(/\btier:\s*"(high|low)"|\bentry:\s*"([^"]+)"/g)) {
+    if (m[1]) tier = m[1];
+    else entries.push({ name: m[2], tier, file: f });
+  }
+}
+const entryOf = (name) => entries.find((e) => new RegExp(`\\b${name}\\b`).test(e.name));
 
-if (missing.length) {
-  console.error("✖ Used by a screen but heads no /palette entry:");
-  for (const n of missing) console.error("  - " + n);
-  console.error("Add an entry with a live demo to its category file under src/app/palette/.");
+const errors = [];
+for (const [name, tier] of shared) {
+  const entry = entryOf(name);
+  if (tier?.startsWith("fold:")) {
+    errors.push(`${name}: only ${tier.slice(5)} imports it; fold it into that file`);
+  } else if (tier && !entry) {
+    errors.push(`${name}: ${tier} level, but heads no /palette entry`);
+  } else if (tier && entry.tier !== tier) {
+    errors.push(`${name}: ${tier} level, but its entry sits in a ${entry.tier ?? "tierless"} category (${entry.file})`);
+  } else if (!tier && entry) {
+    errors.push(`${name}: nothing imports it, yet it heads a /palette entry`);
+  }
 }
-if (extra.length) {
-  console.error("✖ Used only inside other components/ui files, yet heads a /palette entry:");
-  for (const n of extra) console.error("  - " + n);
-  console.error("Remove the entry: the demo of the component that holds it shows it.");
-}
-if (missing.length || extra.length) {
+
+if (errors.length) {
+  console.error("✖ /palette and components/ui disagree with the import graph:");
+  for (const e of errors.sort()) console.error("  - " + e);
   console.error("See AGENTS.md → Palette-first.");
   process.exit(1);
 }
 
-console.log(
-  `✓ /palette heads an entry for the ${required.length} primitives and constants screens use, and none for the ${forbidden.length} used only inside primitives.`,
-);
+const count = (t) => shared.filter(([, tier]) => tier === t).length;
+console.log(`✓ /palette matches the import graph: ${count("high")} high level, ${count("low")} low level.`);

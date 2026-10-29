@@ -31,6 +31,7 @@ function EyebrowToggle() {
 export const CONTAINERS: PaletteCategory = {
   id: "containers",
   title: "Containers",
+  tier: "high",
   entries: [
     {
       entry: "PageShell",

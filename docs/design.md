@@ -47,7 +47,7 @@ flowchart LR
   page["`**a page or feature component**
   composes primitives; a control defined inline is a review-blocker`"]:::spec
   catalogue["`**/palette**
-  the live catalogue of what screens use; the hygiene job fails on a missing or an inner entry`"]:::core
+  the live catalogue in two tiers; the hygiene job fails on a missing entry, a wrong tier or a single-consumer primitive`"]:::core
 
   globals --> prims
   globals --> consts
@@ -59,7 +59,7 @@ flowchart LR
   consts --> catalogue
 ```
 
-Each region of the diagram has a section below. What a reader picks is [Theme](#theme) and the [accent](#accent). What a page is built from is [Components](#components), whose class constants are named in the [accent recipe](#accent-recipe) and whose frame is [Page chrome](#page-chrome). `/palette` is the gate on that vocabulary: one file per category under `app/palette/`, each entry its name and its live demos, a table of contents and a filter by name, and the details here, and it shows only the components screens use as they are: a part used only inside a bigger component shows in that component's demo, and the exceptions decided once are [Sanctioned one-offs](#sanctioned-one-offs).
+Each region of the diagram has a section below. What a reader picks is [Theme](#theme) and the [accent](#accent). What a page is built from is [Components](#components), whose class constants are named in the [accent recipe](#accent-recipe) and whose frame is [Page chrome](#page-chrome). `/palette` is the gate on that vocabulary: one file per category under `app/palette/`, each entry its name and its live demos, a table of contents and a filter by name, and the details here, in two tiers from the import graph: High level, what a page or a feature component uses as it is, and Low level, a building block two or more components share; a component, constant or variant that only one other component uses is no shared primitive and lives in that component, and the exceptions decided once are [Sanctioned one-offs](#sanctioned-one-offs).
 
 ## Philosophy
 
@@ -142,7 +142,7 @@ There are five buckets:
 Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../frontend/src/components/ui/styles.ts) exports these paints:
 
 - `ACCENT_SURFACE`, `TAPPABLE_HOVER`, `TEXT_LINK` and `WARNING_CALLOUT` are the colour-only paints above.
-- `ACCENT_RAMP` is the five-step accent intensity ramp of the charts. `CHART_TAIL` paints a bucket of real work under no printed name, and `CHART_NEUTRAL` paints absence.
+- `ACCENT_RAMP` is the five-step accent intensity ramp of the charts. `<SourceHostBar>` paints a bucket of real work under no printed name in its own tail paint, and `CHART_NEUTRAL` paints absence.
 - `META_LINE` is a card's muted meta line: small grey text with its glyphs inline.
 - `FLOATING_CONTROL` is the plate behind an icon control that floats over media. `HOVER_REVEAL` hides a control until the pointer or focus reaches its frame, and keeps it visible on touch.
 - `ARMED_RING` is the armed half of a two-click confirm.
@@ -361,7 +361,7 @@ The vocabulary:
   - [`<Combobox>`](../frontend/src/components/ui/Combobox.tsx) is the keyboard and the list of every typeahead: a `role="combobox"` `<Input>` over a `role="listbox"` list painted with `TOOLTIP_SURFACE`, with `aria-activedescendant` on the highlighted row. The caller owns the query, the open state, the filtered options and how a row renders, and a `status` string shows as a muted row under the options. `pillOption` shows a row inside a neutral `<Pill>`, the chip a pick becomes. ArrowUp and ArrowDown move and wrap, Enter takes the highlighted row or hands the typed text to `onSubmitText` when no row is up, and Escape, Tab or an outside click closes. The list spans the field's width and scrolls past `15rem`. `useAnchoredPosition` places it against that cap, so a card or a scrolling rail never clips it. `<ItemSearch>`, `<ConflictChips>`, `<TagChips>` and `OptionSearch` build on it.
   - [`<ItemSearch>`](../frontend/src/components/ui/ItemSearch.tsx) is the one field that finds an item: an event, a site, a collection, an analyst or an organization. It builds on `<Combobox>`, and each row is a static compact [`<Item>`](#items); an account is an `analyst` or `organization` item (`accountItem` in [`lib/items.tsx`](../frontend/src/lib/items.tsx)).
     - Its rows come from one of three sources. `search` runs the caller's request once typing rests for `SEARCH_DEBOUNCE_MS` (250ms), from `minChars` characters. `browse` fills the empty field at once. `options` is a loaded list, filtered by title as you type.
-    - [`useItemSearch`](../frontend/src/hooks/useItemSearch.ts) runs the request. A newer query aborts the request in flight, and an answer shows only while its query is the current one.
+    - `useItemSearch`, inside it, runs the request. A newer query aborts the request in flight, and an answer shows only while its query is the current one.
     - The status row reads *Searching…* while a request runs, *The search failed.* on a failure, the caller's `emptyText` when nothing matches, the `note` a search returns (why a match is left out, how many more there are), or `hiddenText` when `hide` leaves out every row found.
     - `pasteId` picks the row a pasted ID or link names, and `onSubmitText` takes the typed text when Enter finds no highlighted row (an exact username).
     - With `selected`, the pick replaces the field as a compact `<Item>` with a `<RemoveButton>` that `onClear` runs. Without it, the field empties and closes after each pick, and the caller keeps its own list. `keepOpen` keeps the text and the list after a pick, for a caller that adds several rows.
@@ -792,7 +792,7 @@ flowchart TB
   sheet -->|each change| list
 ```
 
-[`<PageWithRail>`](../frontend/src/components/ui/PageWithRail.tsx) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
+`PageWithRail` (inside [`PageShell.tsx`](../frontend/src/components/ui/PageShell.tsx)) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
 
 - **From `lg` up** the rail is a `17.5rem` (280px) column right of the main column, its top level with the top of the main column's first block, under the full-width header. It sticks while the main column scrolls, at its resting top, so it never moves: `PageShell` sets `--rail-top` to the frame's `pt-10` (2.5rem), plus the header's measured height and the 1.5rem gap under it. Once the rail is taller than the viewport it scrolls on its own, so its foot stays reachable.
 - **Below `lg`** the `narrow` prop picks the shape. `stacked` (the default) puts the rail above the main column. `below` puts it under the main column, for a rail that acts on what the column holds; the rail also comes after the column in the tab order at every width. `hidden` takes the rail off the page, for a page that offers its own narrow entry to it.
@@ -1580,7 +1580,7 @@ A geolocation or a detection opens `/events/{id}` and a request opens `/requests
 
 **Show all activity** turns Following off. An empty view with Following off is a `boxed` line. A first page that fails shows its `ErrorNotice` alone.
 
-**The list walks the shared cursor and scrolls without a click.** A page is 10 rows. [`useCursorList`](../frontend/src/hooks/useCursorList.ts) holds the walk, and the foot is [`<LoadMoreRow infinite>`](../frontend/src/components/ui/LoadMoreRow.tsx), the foot every cursor list shares. Its [`useInfiniteScroll`](../frontend/src/hooks/useInfiniteScroll.ts) calls `loadMore` when the row comes within one screen of the viewport, from the render that mounts the row. While the next page loads, the button is disabled and shows a spinner with *Loading…*.
+**The list walks the shared cursor and scrolls without a click.** A page is 10 rows. [`useCursorList`](../frontend/src/hooks/useCursorList.ts) holds the walk, and the foot is [`<LoadMoreRow infinite>`](../frontend/src/components/ui/LoadMoreRow.tsx), the foot every cursor list shares. Its `useInfiniteScroll` (inside `LoadMoreRow.tsx`) calls `loadMore` when the row comes within one screen of the viewport, from the render that mounts the row. While the next page loads, the button is disabled and shows a spinner with *Loading…*.
 
 **A failed page keeps the cards.** An [`<ErrorNotice>`](#errors) with its **Retry** takes the row's place, and scrolling stops loading until the click, since the row is still in view.
 

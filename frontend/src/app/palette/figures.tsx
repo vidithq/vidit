@@ -25,6 +25,7 @@ const NARROW = "w-full max-w-xs";
 export const FIGURES: PaletteCategory = {
   id: "figures",
   title: "Figures and steps",
+  tier: "high",
   entries: [
     {
       entry: "StatTile / StatGrid",

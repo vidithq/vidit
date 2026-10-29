@@ -4,15 +4,11 @@ import { Copy, MapPin } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import {
-  ACCENT_RAMP,
   ACCENT_SURFACE,
   ARMED_RING,
-  CHART_NEUTRAL,
-  CHART_TAIL,
   META_LINE,
   TAPPABLE_HOVER,
   TEXT_LINK,
-  TOOLTIP_SURFACE,
   WARNING_CALLOUT,
 } from "@/components/ui/styles";
 import { Variant, type PaletteCategory } from "./shared";
@@ -20,6 +16,7 @@ import { Variant, type PaletteCategory } from "./shared";
 export const TOKENS: PaletteCategory = {
   id: "tokens",
   title: "Tokens",
+  tier: "high",
   entries: [
     {
       entry: "ACCENT_SURFACE",

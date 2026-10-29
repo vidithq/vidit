@@ -20,7 +20,7 @@ import {
   type FilterTally,
 } from "./FilterPanel";
 import { EMPTY_FILTERS, type FilterState, type Surface } from "./model";
-import { SEARCH_DEBOUNCE_MS } from "@/hooks/useItemSearch";
+import { SEARCH_DEBOUNCE_MS } from "@/components/ui/ItemSearch";
 import { openFilterGroups } from "@/test/filters";
 
 const TAGS: Tag[] = Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, name: `tag-${i}` }));

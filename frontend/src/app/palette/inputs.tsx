@@ -8,7 +8,10 @@ import { ActionIcon, Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ChoiceRow } from "@/components/ui/ChoiceRow";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
+import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldHelp } from "@/components/ui/FieldHelp";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 import { Input, Select } from "@/components/ui/Input";
 import { ItemSearch } from "@/components/ui/ItemSearch";
 import { LinkListInput } from "@/components/ui/LinkListInput";
@@ -17,12 +20,19 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { SwatchPicker } from "@/components/ui/SwatchPicker";
 import { Switch } from "@/components/ui/Switch";
 import { TagPicker } from "@/components/ui/TagPicker";
-import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+import {
+  FORM_INVALID_FIELD,
+  FORM_INVALID_LABEL,
+  FORM_LABEL,
+  FORM_LABEL_COMPACT,
+  LABEL_TEXT,
+} from "@/components/ui/form-styles";
 import { ArchiveBox, ArchiveSnapshotField, linkDescription } from "@/components/sources/ArchivedCopies";
 import { accountKey, type Account } from "@/lib/accounts";
 import { safeHostname } from "@/lib/format";
+import { EVENT_FIELDS } from "@/lib/events";
 import { accountItem } from "@/lib/items";
-import { LABEL_ENTRIES } from "./labels";
+import { SOURCE_FIELDS } from "@/lib/sources";
 import { MOCK_CONFLICTS, Variant, type PaletteCategory } from "./shared";
 
 const FIELD = "w-64 max-w-full";
@@ -284,6 +294,7 @@ function PaletteSwatchPicker() {
 export const INPUTS: PaletteCategory = {
   id: "inputs",
   title: "Inputs, labels and search",
+  tier: "high",
   entries: [
     {
       entry: "Input / FORM_INVALID_FIELD",
@@ -390,6 +401,54 @@ export const INPUTS: PaletteCategory = {
     { entry: "Switch", demo: <PaletteSwitch /> },
     { entry: "ChoiceRow", demo: <PaletteChoiceRow /> },
     { entry: "SwatchPicker", demo: <PaletteSwatchPicker /> },
-    ...LABEL_ENTRIES,
+    {
+      entry: "FORM_LABEL / FORM_LABEL_COMPACT / LABEL_TEXT / FORM_INVALID_LABEL",
+      demo: (
+        <div className="space-y-2">
+          <label className={FORM_LABEL}>FORM_LABEL</label>
+          <label className={FORM_LABEL_COMPACT}>FORM_LABEL_COMPACT</label>
+          <span className={LABEL_TEXT}>LABEL_TEXT</span>
+          <label className={`${FORM_LABEL} ${FORM_INVALID_LABEL}`}>FORM_INVALID_LABEL</label>
+        </div>
+      ),
+    },
+    {
+      entry: "FieldLabel",
+      demo: (
+        <div className="w-full max-w-sm space-y-3">
+          <FieldLabel {...EVENT_FIELDS.occurred_date} htmlFor="palette-field-label" />
+          <FieldLabel {...EVENT_FIELDS.coordinates} invalid />
+          <FieldLabel {...SOURCE_FIELDS.title} trailing={<CharCounter length={12} max={200} />} />
+        </div>
+      ),
+    },
+    {
+      entry: "CharCounter",
+      demo: (
+        <>
+          <CharCounter length={120} max={500} />
+          <CharCounter length={512} max={500} />
+        </>
+      ),
+    },
+    {
+      entry: "FieldHelp",
+      demo: (
+        <span className="inline-flex items-center gap-3 text-sm text-neutral-300">
+          <span className="inline-flex items-center gap-1">
+            Coordinates <FieldHelp concept="coordinates" />
+          </span>
+          <span className="inline-flex items-center gap-1">
+            Relief <FieldHelp concept="map_relief" />
+          </span>
+        </span>
+      ),
+    },
+    {
+      entry: "IncompleteFormAnnouncer",
+      demo: (
+        <IncompleteFormAnnouncer missing={["Coordinates", "Conflict", "Proof"]} attempt={1} />
+      ),
+    },
   ],
 };

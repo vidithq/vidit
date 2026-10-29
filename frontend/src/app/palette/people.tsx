@@ -39,6 +39,7 @@ const CO_AUTHORS = [{ username: "bo" }, { username: "cy" }];
 export const PEOPLE: PaletteCategory = {
   id: "people",
   title: "Accounts and links",
+  tier: "high",
   entries: [
     {
       entry: "Avatar",

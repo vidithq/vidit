@@ -80,6 +80,7 @@ function PaletteToggleRow() {
 export const FILTERS: PaletteCategory = {
   id: "filters",
   title: "Filters",
+  tier: "high",
   entries: [
     { entry: "FilterCard / FilterPanel", demo: <PaletteFilterCard /> },
     { entry: "ToggleRow", demo: <PaletteToggleRow /> },

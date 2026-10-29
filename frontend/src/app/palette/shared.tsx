@@ -8,7 +8,12 @@ import { LABEL_TEXT } from "@/components/ui/form-styles";
 
 export type PaletteEntry = { entry: string; demo: ReactNode };
 
-export type PaletteCategory = { id: string; title: string; entries: PaletteEntry[] };
+/** `high`: what surfaces use as it is. `low`: a building block two or more components share. */
+export type PaletteTier = "high" | "low";
+
+export type PaletteCategory = { id: string; title: string; tier: PaletteTier; entries: PaletteEntry[] };
+
+export const VIDEO_SRC = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
 
 export function entryId(name: string): string {
   return name.replace(/[^A-Za-z0-9_]+/g, "-").replace(/^-+|-+$/g, "");

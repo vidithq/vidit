@@ -9,12 +9,11 @@ import { MediaGallery } from "@/components/ui/MediaGallery";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { HOVER_REVEAL } from "@/components/ui/styles";
 import { MediaManager } from "@/components/geolocations/MediaManager";
-import { MOCK_MEDIA, Variant, type PaletteCategory } from "./shared";
+import { MOCK_MEDIA, Variant, type PaletteCategory, VIDEO_SRC } from "./shared";
 
 // No sample clip ships with the repo: without NEXT_PUBLIC_DEMO_VIDEO_URL (an `.mp4`, since the
 // download is named `demo.mp4`) the player gets a source it cannot fetch and shows its failure
 // notice.
-const VIDEO_SRC = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL ?? "/palette-demo-placeholder.mp4";
 
 const TILE = "w-full max-w-sm";
 const FRAME = "relative overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800";
@@ -47,6 +46,7 @@ function PaletteMediaManager() {
 export const MEDIA: PaletteCategory = {
   id: "media",
   title: "Media",
+  tier: "high",
   entries: [
     {
       entry: "MediaGallery",

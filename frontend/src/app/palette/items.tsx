@@ -146,6 +146,7 @@ const MAYA = <Avatar username="maya" size="size-7" decorative />;
 export const ITEMS: PaletteCategory = {
   id: "items",
   title: "Items and lists",
+  tier: "high",
   entries: [
     { entry: "Item", demo: <PaletteItems /> },
     {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { OptionSearch } from "./OptionSearch";
 
@@ -68,5 +68,31 @@ describe("<OptionSearch>", () => {
     pick("Drone");
     expect(screen.getByText("Drone")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove Drone" })).not.toBeInTheDocument();
+  });
+});
+
+describe("<OptionSearch> suggestions", () => {
+  it("keeps the suggestions to two lines of the field's width, hiding the rest", () => {
+    // Two pills to a 28px line: the fifth wraps onto a third line.
+    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(function (this: HTMLElement) {
+      const index = Number(this.textContent?.match(/kind (\d)/)?.[1] ?? 0);
+      return Math.floor(index / 2) * 28;
+    });
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
+    const kinds = [0, 1, 2, 3, 4].map((i) => ({ value: `k${i}`, label: `kind ${i}` }));
+    render(
+      <OptionSearch
+        aria-label="Kind"
+        placeholder="Search kinds"
+        options={kinds}
+        suggestions={kinds}
+        selected={[]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Add kind 3" })).not.toHaveClass("invisible");
+    expect(screen.getByRole("button", { name: "Add kind 4" })).toHaveClass("invisible");
+    expect(screen.getByRole("group", { name: "Suggested kind" })).toHaveStyle({ maxHeight: "48px" });
+    vi.restoreAllMocks();
   });
 });

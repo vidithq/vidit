@@ -17,7 +17,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 import type { PickableEvent } from "@/lib/collections";
 
-import { SEARCH_DEBOUNCE_MS as DEBOUNCE_MS } from "@/hooks/useItemSearch";
+import { SEARCH_DEBOUNCE_MS as DEBOUNCE_MS } from "@/components/ui/ItemSearch";
 
 import { EventPicker } from "./EventPicker";
 

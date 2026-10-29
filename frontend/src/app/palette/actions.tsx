@@ -133,6 +133,7 @@ function PaletteConfirmDialog() {
 export const ACTIONS: PaletteCategory = {
   id: "actions",
   title: "Actions",
+  tier: "high",
   entries: [
     {
       entry: "Button",

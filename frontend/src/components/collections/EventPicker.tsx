@@ -18,7 +18,7 @@ import {
   type PickableEvent,
 } from "@/lib/collections";
 import { eventItem } from "@/lib/items";
-import type { Found } from "@/hooks/useItemSearch";
+import type { Found } from "@/components/ui/ItemSearch";
 import type { EventListItem } from "@/types";
 
 /** The rows in the order the collection's page reads them: event date, earliest

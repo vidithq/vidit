@@ -1,20 +1,25 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { PageWithRail } from "./PageWithRail";
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ back: vi.fn(), push: vi.fn() }),
+  usePathname: () => "/",
+}));
 
-function railFollowsColumn(narrow?: "stacked" | "below" | "hidden"): boolean {
+import { PageShell } from "./PageShell";
+
+function railFollowsColumn(narrowRail?: "stacked" | "below" | "hidden"): boolean {
   render(
-    <PageWithRail rail={<p>Rail</p>} railLabel="Actions" narrow={narrow}>
+    <PageShell title="Page" rail={<p>Rail</p>} railLabel="Actions" narrowRail={narrowRail}>
       <p>Column</p>
-    </PageWithRail>,
+    </PageShell>,
   );
   const rail = screen.getByRole("complementary", { name: "Actions" });
   const column = screen.getByText("Column");
   return !!(column.compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
-describe("PageWithRail", () => {
+describe("PageShell's rail", () => {
   it("stacks the rail above the column by default", () => {
     expect(railFollowsColumn()).toBe(false);
   });

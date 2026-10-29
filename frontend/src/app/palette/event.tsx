@@ -115,6 +115,7 @@ function PalettePublishActions() {
 export const EVENT: PaletteCategory = {
   id: "event",
   title: "Event",
+  tier: "high",
   entries: [
     { entry: "EventShell", demo: <EventShellPreview /> },
     {
