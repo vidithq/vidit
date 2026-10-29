@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { LONG_TAG_NAME, REQUESTED_EVENT } from "./support/fixtures";
+import { openFilterGroups } from "./support/filters";
 import { grantSession, mockApi } from "./support/mockApi";
 import {
   expectControlInsideViewport,
@@ -12,8 +13,8 @@ import {
 /**
  * The filter panel on the three lists that carry it. From `lg` up the panel is a sticky right
  * rail beside the list; below `lg` it leaves the page, and a bar of the Filters button and the
- * active filters opens it in a sheet from the bottom edge. A line of the panel opens its editor in
- * a popover over the sheet, and each pick applies at once.
+ * active filters opens it in a sheet from the bottom edge. Its groups start collapsed. A searched
+ * line lists its matches under its field, over the sheet, and each pick applies at once.
  */
 const PAGES = [
   { name: "feed", path: "/feed", signedIn: true },
@@ -27,15 +28,16 @@ async function open(page: Page, path: string, signedIn: boolean) {
   await page.goto(path);
 }
 
-/** Picks the long tag through the Tags line of `panel`, whose editor is a popover on the body. */
+/** Picks the long tag through the search field of the Tags line of `panel`, whose matches list
+ *  on the body. */
 async function pickLongTag(page: Page, panel: Locator) {
-  await panel.getByRole("button", { name: "Tags", exact: true }).click();
-  const editor = page.getByRole("dialog", { name: "Tags" });
-  await expect(editor).toBeVisible();
-  await expect(editor).toBeInViewport({ ratio: 1 });
-  await editor.getByRole("button", { name: LONG_TAG_NAME }).click();
-  await editor.press("Escape");
-  await expect(editor).toBeHidden();
+  const field = panel.getByRole("combobox", { name: "Tags" });
+  await field.fill("counter");
+  const option = page.getByRole("option", { name: LONG_TAG_NAME });
+  await expect(option).toBeInViewport({ ratio: 1 });
+  await option.click();
+  await field.press("Escape");
+  await expect(page.getByRole("listbox", { name: "Tags" })).toBeHidden();
   await expect(panel.getByRole("button", { name: `Remove ${LONG_TAG_NAME}` })).toBeVisible();
 }
 
@@ -51,6 +53,7 @@ for (const target of PAGES) {
       await button.click();
       const sheet = page.getByRole("dialog", { name: "Filters" });
       await expect(sheet).toBeVisible();
+      await openFilterGroups(sheet, ["What", "When"]);
       await expect(sheet.getByRole("slider", { name: "Event date window start" })).toBeVisible();
       await expectReadableFieldText(page);
       await pickLongTag(page, sheet);
@@ -71,7 +74,8 @@ for (const target of PAGES) {
 
       const rail = page.getByRole("complementary", { name: "Filters" });
       await expect(rail.getByRole("heading", { name: "When" })).toBeVisible();
-      await expect(rail.getByRole("button", { name: "Tags", exact: true })).toBeVisible();
+      await openFilterGroups(rail, ["What", "Source"]);
+      await expect(rail.getByRole("combobox", { name: "Tags" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeHidden();
       await expect(rail).toHaveCSS("position", "sticky");
 
@@ -82,11 +86,11 @@ for (const target of PAGES) {
         columnBox.x + columnBox.width,
       );
 
-      // The editor floats over the page: nothing in the rail moves when it opens.
+      // The matches float over the page: nothing in the rail moves when they open.
       const media = rail.getByRole("button", { name: "Media", exact: true });
       const before = (await media.boundingBox())!;
-      await rail.getByRole("button", { name: "Tags", exact: true }).click();
-      await expect(page.getByRole("dialog", { name: "Tags" })).toBeVisible();
+      await rail.getByRole("combobox", { name: "Tags" }).fill("counter");
+      await expect(page.getByRole("listbox", { name: "Tags" })).toBeVisible();
       expect((await media.boundingBox())!.y).toBe(before.y);
       await expectNoHorizontalOverflow(page);
     });
@@ -98,6 +102,7 @@ test("picks and removes a tag through its line, in the URL", async ({ page }) =>
   await open(page, "/search", false);
 
   const rail = page.getByRole("complementary", { name: "Filters" });
+  await openFilterGroups(rail, ["What"]);
   await pickLongTag(page, rail);
   await expect(page).toHaveURL(/[?&]tag=/);
 

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { openFilterGroups } from "./support/filters";
 import { mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout } from "./support/narrowLayout";
 
@@ -31,6 +32,8 @@ test.describe("map", () => {
 
     // The panel's own lines are where a phone column runs out of room, so the three checks run
     // again with the sheet open, and again with a line's editor over it.
+    await expectNarrowViewportLayout(page, sheet.getByRole("button", { name: "Done" }));
+    await openFilterGroups(sheet);
     await expectNarrowViewportLayout(page, sheet.getByRole("button", { name: "Done" }));
     await sheet.getByRole("button", { name: "Show", exact: true }).click();
     const editor = page.getByRole("dialog", { name: "Show" });
@@ -76,6 +79,7 @@ test.describe("map", () => {
 
     await page.getByRole("button", { name: "Filters", exact: true }).click();
     const sheet = page.getByRole("dialog", { name: "Filters" });
+    await openFilterGroups(sheet);
     const lines = sheet.locator('button[aria-haspopup="dialog"], button[role="switch"]');
     await expect(lines.first()).toBeVisible();
     expect(await lines.count(), "the filter panel rendered no lines").toBeGreaterThan(1);
