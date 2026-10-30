@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";
 import { FieldLabel } from "@/components/ui/FieldLabel";
+import { GifSplit } from "@/components/ui/GifSplit";
 import { Card } from "@/components/ui/Card";
 import { LEAD_BESIDE_SPLIT } from "@/components/ui/DetailRow";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
@@ -159,18 +160,25 @@ export function SourceEditor({
   const fileSlot = (
     <div className="space-y-1.5">
       <FieldLabel {...SOURCE_FIELDS.file} />
-      <MediaManager
-        existing={shown ? [shown] : []}
-        onRemoveExisting={() => update({ file: null })}
-        staged={pendingFiles}
-        onRemoveStaged={() => update({ file: null })}
-        onAddFiles={hasFile ? undefined : (files) => files[0] && onPickFile(files[0])}
-        isGraphic={draft.graphicLocked}
-      />
-      {file?.state === "uploading" && (
+      {file?.state === "uploading" && file.frames ? (
+        <GifSplit name={file.file.name} frames={file.frames} />
+      ) : (
+        <MediaManager
+          existing={shown ? [shown] : []}
+          onRemoveExisting={() => update({ file: null })}
+          staged={pendingFiles}
+          onRemoveStaged={() => update({ file: null })}
+          onAddFiles={hasFile ? undefined : (files) => files[0] && onPickFile(files[0])}
+          isGraphic={draft.graphicLocked}
+        />
+      )}
+      {file?.state === "uploading" && !file.frames && (
         <p className="text-xs text-neutral-500" role="status">
           Uploading {file.file.name}…
         </p>
+      )}
+      {file?.state === "staged" && file.split && (
+        <GifSplit key={file.upload.id} done name={file.split.name} frames={file.split.frames} />
       )}
       {!hasFile && proofImages.length > 0 && (
         <Button

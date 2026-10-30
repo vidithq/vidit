@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MissingFieldKey } from "@/lib/events";
@@ -17,6 +17,7 @@ vi.mock("@/lib/sources", async (importOriginal) => ({
 }));
 
 import { newSourceDraft } from "@/lib/sources";
+import { tinyGif } from "@/test/gif";
 import { pastedSnapshotRefused, sourcesBlockWrite, SourcesField } from "./SourcesField";
 
 /** The list as the host last rendered it. */
@@ -227,6 +228,47 @@ describe("SourcesField", () => {
       ["indirect", "satellite"],
     ]);
     expect(seen.current[3].links[0].url).toBe("https://a.example/after");
+  });
+
+  describe("a GIF the server splits", () => {
+    const pickGif = (frames: number) =>
+      fireEvent.change(document.querySelector('input[type="file"]')!, {
+        target: { files: [new File([tinyGif(frames)], "villaggio.gif", { type: "image/gif" })] },
+      });
+
+    it("names the split in the slot while it runs, then says what it became", async () => {
+      let answer: (uploads: unknown[]) => void = () => {};
+      upload.mockReturnValue(new Promise((done) => (answer = done)));
+      render(<Host initial={[newSourceDraft()]} />);
+      pickGif(3);
+
+      const source = () => screen.getAllByRole("region", { name: /^Source \d$/ })[0];
+      await waitFor(() =>
+        expect(within(source()).getByRole("status")).toHaveTextContent(
+          "Splitting villaggio.gif into 3 frames…"
+        )
+      );
+
+      await act(async () => answer([stagedFile("f1"), stagedFile("f2"), stagedFile("f3")]));
+      expect(seen.current).toHaveLength(3);
+      expect(within(source()).getByRole("status")).toHaveTextContent("villaggio.gif became 3 images.");
+      expect(screen.queryByText(/^Splitting/)).toBeNull();
+    });
+
+    it("uploads a GIF past the frame cap as before and prints the server's refusal", async () => {
+      let refuse: (err: Error) => void = () => {};
+      upload.mockReturnValue(new Promise((_, fail) => (refuse = fail)));
+      render(<Host initial={[newSourceDraft()]} />);
+      pickGif(7);
+
+      await act(() => new Promise((done) => setTimeout(done)));
+      expect(screen.getByRole("status")).toHaveTextContent("Uploading villaggio.gif…");
+      expect(screen.queryByText(/^Splitting/)).toBeNull();
+
+      await act(async () => refuse(new Error("This GIF holds 7 frames.")));
+      expect(screen.getByRole("alert")).toHaveTextContent("villaggio.gif: This GIF holds 7 frames.");
+      expect(screen.queryByText(/became/)).toBeNull();
+    });
   });
 
   it("fails the pick when the frames of a GIF pass the source cap", async () => {

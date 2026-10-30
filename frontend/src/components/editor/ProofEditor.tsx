@@ -3,6 +3,7 @@
 import "@blocknote/mantine/style.css";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   BlockNoteSchema,
   createHeadingBlockSpec,
@@ -31,6 +32,7 @@ import { BlockNoteView } from "@blocknote/mantine";
 
 import { FieldError } from "@/components/ui/ErrorNotice";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
+import { GifSplit } from "@/components/ui/GifSplit";
 import { FIELD_TEXT } from "@/components/ui/Input";
 import { cn } from "@/lib/cn";
 import { ACCEPTED_EVIDENCE_IMAGE_MIME, GIF_MIME, MAX_GIF_FRAMES } from "@/lib/mediaTypes";
@@ -66,6 +68,8 @@ interface ProofEditorProps {
 }
 
 type StagedImage = { placeholder: string; previewUrl: string; file: File };
+
+type GifSplitShown = { slot: Element; name: string; frames: number; done: boolean };
 
 // A transparent pixel: what an image shows when its placeholder has no staged file.
 const BLANK_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -233,11 +237,12 @@ export default function ProofEditor({
   };
 
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [split, setSplit] = useState<GifSplitShown | null>(null);
 
   // A GIF goes in as its frames, one image block each, the way the server stores it: the first
-  // frame fills the block that picked it and the others follow it. A GIF the server refuses
-  // leaves no block and prints why. Both block edits wait a task, past BlockNote's own update of
-  // the picking block.
+  // frame fills the block that picked it and the others follow it, and the block shows the split
+  // while it runs. A GIF the server refuses leaves no block and prints why. Both block edits wait
+  // a task, past BlockNote's own update of the picking block.
   const uploadFile = async (file: File, blockId?: string) => {
     setRefusal(null);
     if (file.type !== GIF_MIME) return stageNamed(file);
@@ -248,20 +253,31 @@ export default function ProofEditor({
       if (blockId) setTimeout(() => editor.removeBlocks([blockId]));
       return "";
     }
+    const slot = frames > 1 ? slotOf(blockId) : null;
+    if (slot) setSplit({ slot, name: file.name, frames, done: false });
     const pngs = await splitGif(file, frames);
+    setSplit(null);
     if (pngs === null) return stageNamed(file);
     const [first, ...rest] = pngs.map(stageNamed);
     if (blockId && rest.length > 0) {
-      setTimeout(() =>
+      setTimeout(() => {
         editor.insertBlocks(
           rest.map((url) => ({ type: "image" as const, props: { url } })),
           blockId,
           "after",
-        ),
-      );
+        );
+        const firstSlot = slotOf(blockId);
+        if (firstSlot) setSplit({ slot: firstSlot, name: file.name, frames: pngs.length, done: true });
+      });
     }
     return first;
   };
+
+  // The image block's own box, which shows the split while it runs and the line once it lands.
+  const slotOf = (blockId?: string) =>
+    (blockId &&
+      editor.domElement?.querySelector(`[data-id="${blockId}"] .bn-file-block-content-wrapper`)) ||
+    null;
 
   const editor = useCreateBlockNote({
     schema: allowImages ? SCHEMA_WITH_IMAGES : SCHEMA_TEXT_ONLY,
@@ -337,8 +353,9 @@ export default function ProofEditor({
       <BlockNoteView
         editor={editor}
         theme={VIDIT_THEME}
-        // BlockNote pins 16px on its root; inherit the field text size instead.
-        className="[&_.bn-default-styles]:[font-size:inherit] [&_.bn-editor]:min-h-[184px]"
+        // BlockNote pins 16px on its root; inherit the field text size instead. A block showing a
+        // GIF split hides BlockNote's own upload text.
+        className="[&_.bn-default-styles]:[font-size:inherit] [&_.bn-editor]:min-h-[184px] [&_.bn-file-loading-preview:has(~[role=status])]:hidden"
         formattingToolbar={false}
         filePanel={false}
         onChange={emit}
@@ -346,6 +363,11 @@ export default function ProofEditor({
         <FormattingToolbarController formattingToolbar={ProofFormattingToolbar} />
         <FilePanelController filePanel={UploadOnlyFilePanel} />
       </BlockNoteView>
+      {split &&
+        createPortal(
+          <GifSplit name={split.name} frames={split.frames} done={split.done} />,
+          split.slot,
+        )}
       <FieldError alert>{refusal}</FieldError>
     </div>
   );

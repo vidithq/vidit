@@ -31,6 +31,7 @@ import {
   type Upload,
 } from "@/lib/sources";
 import { safeHostname } from "@/lib/format";
+import { gifSplitFrames } from "@/lib/proofImages";
 import type { Tag } from "@/types";
 import { FieldError } from "@/components/ui/ErrorNotice";
 
@@ -45,7 +46,7 @@ let uploadToken = 0;
  *
  * A picked file uploads at once, on its own request; the editor keeps the staged upload, and the
  * event write names it. A GIF stages one file per frame: the first fills the editor that picked
- * it, and each further frame opens a source after it. A file imported from a link stages the same
+ * it, and each further frame opens a source after it; the slot names the split while it runs. A file imported from a link stages the same
  * way, through the link's post. On a form that edits a stored event, an empty direct or indirect
  * editor can take a copy of one of its `proofImages` while no such source holds a file. A file
  * picked, imported, copied or removed while an upload runs drops that upload's answer.
@@ -216,6 +217,9 @@ export function sourceDraftUpdaters(
   const pickFile = (key: string) => async (file: File) => {
     const token = ++uploadToken;
     update(key)({ file: { state: "uploading", file, token } });
+    void gifSplitFrames(file).then(
+      (frames) => frames !== null && settle(key, token, { state: "uploading", file, token, frames })
+    );
     let uploads: Upload[];
     try {
       uploads = await uploadSourceFile(file);
@@ -281,9 +285,10 @@ function placeUploads(
       file: { state: "staged", upload },
     })
   );
+  const split = rest.length > 0 ? { name, frames: uploads.length } : undefined;
   return [
     ...drafts.slice(0, index),
-    { ...picked, file: { state: "staged", upload: first } },
+    { ...picked, file: { state: "staged", upload: first, split } },
     ...added,
     ...drafts.slice(index + 1),
   ];
