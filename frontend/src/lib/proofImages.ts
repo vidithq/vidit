@@ -6,6 +6,8 @@
 //    different name is a `proof_files_mismatch` 400.
 //  - `gifFrameFilename` mirrors `storage._gif_frame_filename`.
 
+import { GIF_MIME, MAX_GIF_FRAMES } from "./mediaTypes";
+
 /** Src scheme for a not-yet-uploaded proof image; intake rewrites each to the stored URL,
  *  so a persisted body never carries one. */
 export const PROOF_PLACEHOLDER_PREFIX = "placeholder://";
@@ -89,6 +91,14 @@ export function gifRefusal(frames: number | null, maxFrames: number): string | n
   if (frames === null) return "Could not read this GIF. Insert a valid GIF file.";
   if (frames <= maxFrames) return null;
   return `This GIF holds ${frames} frames, and a GIF may hold at most ${maxFrames}. Insert a GIF of ${maxFrames} frames or fewer.`;
+}
+
+/** How many frames a picked GIF splits into, when it splits into two or more within
+ *  `MAX_GIF_FRAMES`: what its media slot names while the split runs. `null` for any other file. */
+export async function gifSplitFrames(file: File): Promise<number | null> {
+  if (file.type !== GIF_MIME) return null;
+  const frames = gifFrameCount(new Uint8Array(await file.arrayBuffer()));
+  return frames !== null && frames > 1 && frames <= MAX_GIF_FRAMES ? frames : null;
 }
 
 /** `scan.gif` gives `scan-1.png`, `scan-2.png`, or `scan.png` for a lone frame. */

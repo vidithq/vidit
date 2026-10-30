@@ -140,11 +140,14 @@ export interface LinkPost {
  *  host or the proof image. */
 export type SourceFile =
   | { state: "stored"; media: Media }
-  | { state: "uploading"; file: File; token: number }
+  | { state: "uploading"; file: File; token: number; frames?: number }
   | { state: "importing"; post: LinkPost; token: number }
   | { state: "copying"; proof: string; token: number }
-  | { state: "staged"; upload: Upload; post?: LinkPost; proof?: string }
+  | { state: "staged"; upload: Upload; post?: LinkPost; proof?: string; split?: GifSplitOf }
   | { state: "failed"; name: string; error: string };
+
+/** The GIF a staged file is the first frame of, and how many frames it split into. */
+export type GifSplitOf = { name: string; frames: number };
 
 /** Whether a source file is still on its way to the server: the write waits for it. */
 export const fileRunning = (
@@ -232,6 +235,8 @@ export function restoredSourceDraft(draft: SourceDraft, now: number): SourceDraf
     restored = { state: "failed", name, error: RELOADED_UPLOAD };
   } else if (file?.state === "staged" && Date.parse(file.upload.expires_at) <= now) {
     restored = { state: "failed", name: file.upload.original_filename ?? "File", error: EXPIRED_UPLOAD };
+  } else if (file?.state === "staged") {
+    restored = { ...file, split: undefined };
   }
   return { ...draft, key: nextKey(), file: restored };
 }

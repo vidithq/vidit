@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## v0.8.2, 2026-10-30
+
+### Fixed
+
+- While a GIF splits into its frames, the proof image block or the source file slot that picked it shows *Splitting villaggio.gif into 3 frames…*, then says how many images it became ([#819](https://github.com/vidithq/vidit/pull/819)).
+
 ## v0.8.1, 2026-10-29
 
 ### Added

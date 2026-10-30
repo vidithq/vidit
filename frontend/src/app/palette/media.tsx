@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
+import { GifSplit } from "@/components/ui/GifSplit";
 import { GraphicContentGate } from "@/components/ui/GraphicContentGate";
 import { MediaDownloadButton } from "@/components/ui/MediaDownloadButton";
 import { MediaGallery } from "@/components/ui/MediaGallery";
@@ -76,6 +77,19 @@ export const MEDIA: PaletteCategory = {
           </div>
           <Variant label="compact" className="w-64">
             <MediaGallery media={null} alt="Strike on a depot" variant="panel" empty="No file" />
+          </Variant>
+        </>
+      ),
+    },
+    {
+      entry: "GifSplit", tier: "high",
+      demo: (
+        <>
+          <div className={TILE}>
+            <GifSplit name="villaggio.gif" frames={3} />
+          </div>
+          <Variant label="done" className={TILE}>
+            <GifSplit name="villaggio.gif" frames={3} done />
           </Variant>
         </>
       ),

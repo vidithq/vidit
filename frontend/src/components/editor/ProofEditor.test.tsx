@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { en } from "@blocknote/core/locales";
 import type { useCreateBlockNote } from "@blocknote/react";
@@ -191,6 +191,35 @@ describe("ProofEditor", () => {
       await waitFor(() => expect(onProofFilesChange).toHaveBeenLastCalledWith(frames));
     });
 
+    it("shows the split in the block that picked it, then says what it became", async () => {
+      let split: (files: File[]) => void = () => {};
+      splitGif.mockReturnValueOnce(new Promise((done) => (split = done)));
+      const { container } = render(<ProofEditor onChange={() => {}} />);
+      let blockId = "";
+      let url: Promise<unknown> = Promise.resolve();
+      act(() => {
+        editor.replaceBlocks(editor.document, [{ type: "image" }]);
+        blockId = editor.document[0].id;
+        url = editor.uploadFile!(gif(3), blockId) as Promise<unknown>;
+      });
+      const block = () => container.querySelector<HTMLElement>(`[data-id="${blockId}"]`)!;
+
+      await waitFor(() =>
+        expect(within(block()).getByRole("status")).toHaveTextContent(
+          "Splitting scan.gif into 3 frames…",
+        ),
+      );
+
+      await act(async () => {
+        split(["scan-1.png", "scan-2.png", "scan-3.png"].map(png));
+        editor.updateBlock(blockId, { props: { url: (await url) as string } });
+        await new Promise((done) => setTimeout(done));
+      });
+      expect(editor.document.filter((b: { type: string }) => b.type === "image")).toHaveLength(3);
+      expect(within(block()).getByRole("status")).toHaveTextContent("scan.gif became 3 images.");
+      expect(container).not.toHaveTextContent("Splitting");
+    });
+
     it("goes in whole where the browser cannot split it", async () => {
       splitGif.mockResolvedValueOnce(null);
       render(<ProofEditor onChange={() => {}} />);
@@ -199,7 +228,7 @@ describe("ProofEditor", () => {
     });
 
     it("is refused past six frames, leaving no image and saying why", async () => {
-      const { findByRole } = render(<ProofEditor onChange={() => {}} />);
+      const { findByRole, queryByText } = render(<ProofEditor onChange={() => {}} />);
       expect(await pick(gif(7))).toBe("");
 
       expect(await findByRole("alert")).toHaveTextContent(
@@ -207,6 +236,7 @@ describe("ProofEditor", () => {
       );
       expect(editor.document.some((b: { type: string }) => b.type === "image")).toBe(false);
       expect(splitGif).not.toHaveBeenCalledWith(expect.any(File), 7);
+      expect(queryByText(/Splitting|became/)).toBeNull();
     });
   });
 
