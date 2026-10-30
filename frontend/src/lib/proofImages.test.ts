@@ -6,6 +6,7 @@ import {
   gifFrameCount,
   gifFrameFilename,
   gifRefusal,
+  gifSplitFrames,
   PROOF_PLACEHOLDER_PREFIX,
   safeProofFilename,
   splitGif,
@@ -75,6 +76,23 @@ describe("gifRefusal", () => {
       "This GIF holds 7 frames, and a GIF may hold at most 6. Insert a GIF of 6 frames or fewer.",
     );
     expect(gifRefusal(null, MAX_GIF_FRAMES)).toBe("Could not read this GIF. Insert a valid GIF file.");
+  });
+});
+
+describe("gifSplitFrames", () => {
+  const file = (bytes: BlobPart, type = "image/gif") => new File([bytes], "scan.gif", { type });
+
+  it.each([2, MAX_GIF_FRAMES])("names the %i frames a GIF splits into", async (frames) => {
+    expect(await gifSplitFrames(file(tinyGif(frames)))).toBe(frames);
+  });
+
+  it.each([
+    ["a GIF of one frame", file(tinyGif(1))],
+    ["a GIF past the frame cap", file(tinyGif(MAX_GIF_FRAMES + 1))],
+    ["an unreadable GIF", file("not a gif")],
+    ["a file that is not a GIF", file(tinyGif(3), "image/png")],
+  ])("names no split for %s", async (_name, picked) => {
+    expect(await gifSplitFrames(picked)).toBeNull();
   });
 });
 
