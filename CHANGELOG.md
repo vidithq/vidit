@@ -6,7 +6,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
-- While a GIF splits into its frames, the proof image block or the source file slot that picked it shows *Splitting villaggio.gif into 3 frames…*, then says how many images it became ([#PR](https://github.com/vidithq/vidit/pull/PR)).
+- While a GIF splits into its frames, the proof image block or the source file slot that picked it shows *Splitting villaggio.gif into 3 frames…*, then says how many images it became ([#819](https://github.com/vidithq/vidit/pull/819)).
 
 ## v0.8.1, 2026-10-29
 
