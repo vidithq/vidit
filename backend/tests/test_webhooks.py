@@ -17,7 +17,7 @@ from sqlalchemy import or_
 import app.services.bot as bot_service
 from app.config import settings
 from app.main import app
-from app.models.bot_mention import BotMention
+from app.models.bot_mention import BotCatchUpCursor, BotMention
 from app.models.event import Event
 from app.models.user import User
 from app.services.bot import catch_up, drain_mentions
@@ -33,6 +33,10 @@ HANDLE = f"owl{uuid.uuid4().hex[:8]}"
 COORD_ID = "1940000000000000001"
 BARE_ID = "1940000000000000002"
 BARE2_ID = "1940000000000000003"
+# Replies under the bot's own post and under an analyst's post, each tagging only through X's prefix.
+BOT_THREAD_ID = "1940000000000000004"
+ANALYST_THREAD_ID = "1940000000000000005"
+BOT_POST_ID = "1940000000000000006"
 SOURCE_ID = "1940000000000000042"
 
 BODIES = {
@@ -73,6 +77,18 @@ BODIES = {
         "created_at": "2026-07-18T12:00:00.000Z",
         "user": {"screen_name": HANDLE},
         "text": "@viditbot still nothing here",
+    },
+    BOT_THREAD_ID: {
+        "id_str": BOT_THREAD_ID,
+        "created_at": "2026-07-18T13:00:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot thanks, that is the one",
+    },
+    ANALYST_THREAD_ID: {
+        "id_str": ANALYST_THREAD_ID,
+        "created_at": "2026-07-18T13:05:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@other_analyst @viditbot agreed",
     },
 }
 
@@ -197,6 +213,7 @@ def _cleanup():
     yield
     session = SessionLocal()
     try:
+        session.query(BotCatchUpCursor).delete(synchronize_session=False)
         session.query(BotMention).filter(
             or_(BotMention.mention_post_id.in_(list(BODIES)), BotMention.status != "done")
         ).delete(synchronize_session=False)
@@ -403,6 +420,7 @@ def test_reply_carries_both_reply_edges(db):
     # The queued payload names the parent post and author (loop guard, tag rule).
     event = _tweet_create_event(
         BARE_ID,
+        text="@viditbot one more angle @viditbot",
         in_reply_to_user_id_str=BOT_USER_ID,
         in_reply_to_status_id_str=COORD_ID,
     )
@@ -410,6 +428,30 @@ def test_reply_carries_both_reply_edges(db):
     (mention,) = _queued_mentions(db)
     assert mention["in_reply_to_user_id"] == BOT_USER_ID
     assert mention["in_reply_to_status_id"] == COORD_ID
+
+
+def test_a_prefix_tag_under_the_bots_post_writes_no_row(db):
+    event = _tweet_create_event(
+        BOT_THREAD_ID,
+        in_reply_to_user_id_str=BOT_USER_ID,
+        in_reply_to_status_id_str=BOT_POST_ID,
+    )
+    resp = _post_payload({"for_user_id": BOT_USER_ID, "tweet_create_events": [event]})
+    assert resp.json() == {"queued": 0}
+    assert db.query(BotMention).filter(BotMention.mention_post_id == BOT_THREAD_ID).count() == 0
+
+
+def test_a_prefix_tag_under_an_analysts_post_stays_queued_for_the_parent_read(db):
+    # Only the parent's text can say whether the tag was typed, so the drain decides.
+    event = _tweet_create_event(
+        ANALYST_THREAD_ID,
+        in_reply_to_user_id_str="424242",
+        in_reply_to_status_id_str=COORD_ID,
+    )
+    resp = _post_payload({"for_user_id": BOT_USER_ID, "tweet_create_events": [event]})
+    assert resp.json() == {"queued": 1}
+    (mention,) = _queued_mentions(db)
+    assert mention["tweet_id"] == ANALYST_THREAD_ID
 
 
 # ── Queue drain through the shared pipeline ────────────────────────────────
@@ -465,7 +507,7 @@ async def test_drain_unlinked_author_is_fully_silent(db):
     assert ledger.outcome == "no_account"
 
 
-async def test_webhook_then_catch_up_is_already_handled(db, linked_owner):
+async def test_webhook_then_catch_up_queues_nothing_new(db, linked_owner):
     _post_payload(
         {"for_user_id": BOT_USER_ID, "tweet_create_events": [_tweet_create_event(COORD_ID)]}
     )
@@ -484,7 +526,7 @@ async def test_webhook_then_catch_up_is_already_handled(db, linked_owner):
     with httpx.Client(transport=httpx.MockTransport(poll_handler)) as read:
         outcome = catch_up(db, x_read_client=read)
 
-    assert outcome.already_handled == 1
+    assert (outcome.mentions_seen, outcome.queued) == (1, 0)
     drained, posted, _ = await _drain(db)
     assert drained.mentions_processed == 0 and posted == []
     assert db.query(BotMention).filter(BotMention.mention_post_id == COORD_ID).count() == 1

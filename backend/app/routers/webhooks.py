@@ -8,9 +8,10 @@ that (a JSON body never fits it). No rate limiter: a signature rejection is
 one HMAC, cheaper than limiter bookkeeping.
 
 The POST does no pipeline work: it verifies, reduces the payload to the
-internal ``Mention`` shape, inserts ``queued`` ``bot_mentions`` rows and
-answers 200 (one insert batch, one commit, since X retries on slow answers).
-The import worker drains them (``services/bot``).
+internal ``Mention`` shape, inserts ``queued`` ``bot_mentions`` rows through
+``services/bot.enqueue_mentions`` (which drops the bot's own posts and the
+mentions settled without a read) and answers 200 (one insert batch, one
+commit, since X retries on slow answers). The import worker drains them.
 """
 
 from __future__ import annotations
@@ -74,11 +75,11 @@ def crc_challenge(crc_token: str) -> dict[str, str]:
 def _event_to_mention(event: object) -> Mention | None:
     """Reduce one ``tweet_create_events`` entry to the internal shape.
 
-    Drops the bot's own posts and anything not mentioning the bot (the
-    subscription also delivers timeline activity), decided by
-    ``entities.user_mentions`` ids. Legacy AAA quirk: a truncated tweet keeps
-    its full text under ``extended_tweet.full_text`` and its full entities
-    under ``extended_tweet.entities``, so both prefer the extended form.
+    Drops anything not mentioning the bot (the subscription also delivers
+    timeline activity), decided by ``entities.user_mentions`` ids. Legacy AAA
+    quirk: a truncated tweet keeps its full text under
+    ``extended_tweet.full_text`` and its full entities under
+    ``extended_tweet.entities``, so both prefer the extended form.
     """
     if not isinstance(event, dict):
         return None
@@ -89,8 +90,6 @@ def _event_to_mention(event: object) -> Mention | None:
     author_id = user.get("id_str")
     author_handle = user.get("screen_name")
     if not isinstance(author_id, str) or not isinstance(author_handle, str):
-        return None
-    if author_id == settings.x_bot_user_id:
         return None
     extended = event.get("extended_tweet")
     extended = extended if isinstance(extended, dict) else None

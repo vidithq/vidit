@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -16,7 +17,7 @@ from geoalchemy2.shape import to_shape
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models.bot_mention import BotMention
+from app.models.bot_mention import BotCatchUpCursor, BotMention
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.upload import Upload
 from app.models.user import User
@@ -25,6 +26,7 @@ from app.services.bot import (
     BotNotConfigured,
     BotRunOutcome,
     catch_up,
+    catch_up_due,
     compose_failure_reply,
     compose_reply,
     compose_request_reply,
@@ -54,7 +56,7 @@ BOT_USER_ID = "999000"
 HANDLE = f"hawk{uuid.uuid4().hex[:8]}"
 OTHER_HANDLE = f"kite{uuid.uuid4().hex[:8]}"
 
-# Mention ids sit above any snowflake X will mint this century: the poll's
+# Mention ids sit above any snowflake X will mint this century: the fallback
 # ``since_id`` is the ledger max over the whole table, so a real mention left
 # in a shared dev database would starve the cursor tests.
 FOREIGN_ID = "9100000000000000001"
@@ -84,6 +86,9 @@ UNREADABLE_PARENT_ID = "9100000000000000027"
 CUT_BARE_TAG_ID = "9100000000000000028"
 CUT_SOURCE_REPLY_ID = "9100000000000000029"
 DOWN_PARENT_ID = "9100000000000000030"
+# A reply under the bot's own post, whose only tag is X's prefix, and the bot's post.
+BOT_THREAD_REPLY_ID = "9100000000000000031"
+BOT_POST_ID = "9100000000000000032"
 SOURCE_ID = "9100000000000000042"
 # Request branch: a mirror post with footage and no coordinate. REPOST is the
 # same mirror posted twice, OTHER a second analyst mirroring the same clip.
@@ -272,6 +277,13 @@ BODIES = {
         "text": "@viditbot one more angle on it",
         "in_reply_to_status_id_str": TAGGED_ID,
     },
+    BOT_THREAD_REPLY_ID: {
+        "id_str": BOT_THREAD_REPLY_ID,
+        "created_at": "2026-03-13T08:40:00.000Z",
+        "user": {"screen_name": HANDLE},
+        "text": "@viditbot thanks, that is the one",
+        "in_reply_to_status_id_str": BOT_POST_ID,
+    },
     ORPHAN_REPLY_ID: {
         "id_str": ORPHAN_REPLY_ID,
         "created_at": "2026-03-13T08:25:00.000Z",
@@ -455,6 +467,7 @@ def _cleanup():
     yield
     session = SessionLocal()
     try:
+        session.query(BotCatchUpCursor).delete(synchronize_session=False)
         session.query(BotMention).filter(BotMention.mention_post_id.in_(list(BODIES))).delete(
             synchronize_session=False
         )
@@ -483,7 +496,7 @@ async def _pass(
     outcome = await drain_mentions(
         db, syndication_client=syndication_client, x_write_client=x_write_client
     )
-    outcome.mentions_seen, outcome.already_handled = seen.mentions_seen, seen.already_handled
+    outcome.mentions_seen, outcome.queued = seen.mentions_seen, seen.queued
     return outcome
 
 
@@ -640,25 +653,93 @@ async def test_tombstoned_tagged_post_earns_a_reply_not_a_page(db, linked_owner,
     assert ledger.reply_post_id == 777
 
 
-async def test_rerun_is_idempotent_and_advances_since_id(db, linked_owner):
-    import app.services.bot as bot_service
+def _cursor(db) -> BotCatchUpCursor | None:
+    db.expire_all()
+    return db.get(BotCatchUpCursor, 1)
 
+
+async def test_rerun_is_idempotent_and_resumes_from_the_cursor(db, linked_owner):
     await _run(db, [TAGGED_ID])
     outcome, seen_params, posted, liked = await _run(db, [TAGGED_ID])
 
-    assert outcome.already_handled == 1
+    assert outcome.queued == 0
     assert outcome.created_event_count == 0
     assert posted == []
     assert liked == []  # an already-handled mention earns no second gesture
-    # Resumed from the ledger max minus the lookback overlap.
-    expected = str(int(TAGGED_ID) - bot_service._SINCE_ID_OVERLAP)
-    assert seen_params[0]["since_id"] == expected
-    assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
+    # Resumed from the newest mention the first pull returned, with no overlap.
+    assert seen_params[0]["since_id"] == TAGGED_ID
 
 
-async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner):
-    # The webhook dropped TAGGED_ID, so the ledger max leapfrogged it; since_id
-    # sits one overlap behind the max and recovers it.
+async def test_the_cursor_advances_to_the_newest_mention_read(db, linked_owner):
+    _, seen_params, _, _ = await _run(db, [TAGGED_ID, NO_COORD_ID])
+
+    assert "since_id" not in seen_params[0]  # an empty table and no cursor: no lower bound
+    cursor = _cursor(db)
+    assert cursor is not None
+    assert cursor.newest_post_id == int(NO_COORD_ID)
+    assert datetime.now(UTC) - cursor.pulled_at < timedelta(minutes=1)
+
+
+async def test_an_empty_cursor_falls_back_to_one_interval_behind_the_table_max(db):
+    import app.services.bot as bot_service
+
+    db.add(
+        BotMention(
+            mention_post_id=NO_COORD_ID,
+            author_x_handle=HANDLE,
+            status="done",
+            outcome="no_detection",
+        )
+    )
+    db.commit()
+    fallback = str(int(NO_COORD_ID) - bot_service._FALLBACK_LOOKBACK)
+
+    _, seen_params, _, _ = await _run(db, [])
+    _, seen_again, _, _ = await _run(db, [])
+
+    assert seen_params[0]["since_id"] == fallback
+    # An empty read still stores the bound, so the fallback runs once.
+    assert seen_again[0]["since_id"] == fallback
+    cursor = _cursor(db)
+    assert cursor is not None and cursor.newest_post_id == int(fallback)
+
+
+def test_the_cursor_holds_when_the_enqueue_fails(db, monkeypatch):
+    import app.services.bot as bot_service
+
+    db.add(BotCatchUpCursor(id=1, newest_post_id=int(FOREIGN_ID), pulled_at=datetime.now(UTC)))
+    db.commit()
+
+    def broken(_db, _mentions):
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(bot_service, "enqueue_mentions", broken)
+    with _mentions_client([TAGGED_ID], []) as read, pytest.raises(RuntimeError):
+        catch_up(db, x_read_client=read)
+
+    cursor = _cursor(db)
+    assert cursor is not None and cursor.newest_post_id == int(FOREIGN_ID)
+
+
+def test_a_pull_is_due_only_once_the_interval_has_passed(db):
+    import app.services.bot as bot_service
+
+    assert catch_up_due(db) is True  # nothing stored: the first start pulls
+    with _mentions_client([], []) as read:
+        catch_up(db, x_read_client=read)
+    assert catch_up_due(db) is False  # a restart right after skips the billed read
+
+    cursor = _cursor(db)
+    assert cursor is not None
+    cursor.pulled_at = datetime.now(UTC) - bot_service.CATCH_UP_INTERVAL - timedelta(minutes=1)
+    db.commit()
+    assert catch_up_due(db) is True
+
+
+async def test_catch_up_recovers_a_mention_the_webhook_dropped(db, linked_owner):
+    # The webhook dropped TAGGED_ID but queued the newer NO_COORD_ID. The pull
+    # reads from its own cursor, not the table max, so it recovers TAGGED_ID.
+    db.add(BotCatchUpCursor(id=1, newest_post_id=int(FOREIGN_ID), pulled_at=datetime.now(UTC)))
     db.add(
         BotMention(
             mention_post_id=NO_COORD_ID,
@@ -695,7 +776,7 @@ async def test_poll_overlap_recovers_mention_dropped_by_webhook(db, linked_owner
         outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
 
     assert outcome.created_event_count == 1  # the dropped mention processed
-    assert outcome.already_handled == 1  # the ledgered one re-read, absorbed
+    assert outcome.queued == 1  # the ledgered one re-read, absorbed
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == TAGGED_ID).one()
     assert ledger.outcome == "created"
 
@@ -1202,9 +1283,7 @@ async def test_the_reply_budget_skips_the_reply_and_keeps_the_request(
     assert ledger.reply_post_id is None
 
 
-async def test_self_mention_is_ledgered_so_cursor_advances(db):
-    # The bot's own posts are ledgered, not processed: since_id is the ledger
-    # max, so an unledgered self-mention is re-fetched (re-billed) every run.
+async def test_the_bots_own_post_writes_no_row_and_the_cursor_passes_it(db):
     def handler(_req: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -1221,10 +1300,72 @@ async def test_self_mention_is_ledgered_so_cursor_advances(db):
     ):
         outcome = await _pass(db, syndication_client=syn, x_read_client=read)
 
-    assert outcome.created_event_count == 0
-    ledger = db.query(BotMention).filter(BotMention.mention_post_id == NO_COORD_ID).one()
-    assert ledger.outcome == "self"
-    assert ledger.reply_post_id is None
+    assert (outcome.mentions_seen, outcome.queued, outcome.mentions_processed) == (1, 0, 0)
+    assert db.query(BotMention).filter(BotMention.mention_post_id == NO_COORD_ID).count() == 0
+    cursor = _cursor(db)
+    assert cursor is not None and cursor.newest_post_id == int(NO_COORD_ID)
+
+
+async def test_a_prefix_tag_under_the_bots_post_writes_no_row(db, linked_owner):
+    # A thread reply under the bot's own reply: X's prefix carried the tag, and
+    # the bot's post never types one, so the text settles it with no read.
+    fetched: list[str] = []
+    outcome, _, posted, _ = await _run(
+        db,
+        [BOT_THREAD_REPLY_ID],
+        reply_to={BOT_THREAD_REPLY_ID: BOT_USER_ID},
+        parent_of={BOT_THREAD_REPLY_ID: BOT_POST_ID},
+        fetched=fetched,
+    )
+
+    assert (outcome.mentions_seen, outcome.queued, outcome.mentions_processed) == (1, 0, 0)
+    assert fetched == []
+    assert posted == []
+    assert (
+        db.query(BotMention).filter(BotMention.mention_post_id == BOT_THREAD_REPLY_ID).count() == 0
+    )
+
+
+async def test_dropped_mentions_raise_no_webhook_gap(db, linked_owner, monkeypatch):
+    import app.services.bot as bot_service
+
+    captured: list[str] = []
+    monkeypatch.setattr(settings, "x_webhook_enabled", True)
+    monkeypatch.setattr(
+        bot_service.sentry_sdk,
+        "capture_message",
+        lambda message, level=None: captured.append(message),
+    )
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"id": NO_COORD_ID, "author_id": BOT_USER_ID, "text": "own reply"},
+                    {
+                        "id": BOT_THREAD_REPLY_ID,
+                        "author_id": "u1",
+                        "text": BODIES[BOT_THREAD_REPLY_ID]["text"],
+                        "in_reply_to_user_id": BOT_USER_ID,
+                        "referenced_tweets": [{"type": "replied_to", "id": BOT_POST_ID}],
+                    },
+                ],
+                "includes": {
+                    "users": [
+                        {"id": BOT_USER_ID, "username": "viditbot"},
+                        {"id": "u1", "username": HANDLE},
+                    ]
+                },
+                "meta": {},
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as read:
+        outcome = catch_up(db, x_read_client=read)
+
+    assert (outcome.mentions_seen, outcome.queued) == (2, 0)
+    assert captured == []
 
 
 async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, monkeypatch):

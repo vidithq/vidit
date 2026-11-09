@@ -472,6 +472,12 @@ erDiagram
         TIMESTAMPTZ processed_at "nullable"
     }
 
+    bot_catch_up_cursor {
+        SMALLINT id PK "always 1"
+        BIGINT newest_post_id "nullable, the next pull's since_id"
+        TIMESTAMPTZ pulled_at
+    }
+
     archive_import_jobs {
         UUID id PK
         UUID owner_id FK
@@ -1495,7 +1501,7 @@ A source file stored ahead of the event write that references it: the first laye
 - `ix_uploads_uploader_id` on `(uploader_id)`. Serves the per-account count and the erasure.
 - `ix_uploads_expires_at` on `(expires_at)`. Backs the reaper.
 
-An account holds at most 20 unexpired rows (`MAX_PENDING_UPLOADS_PER_USER`); the 21st upload is refused with `too_many_uploads`. The import worker runs `reap_expired_uploads` once when it starts and then every hour, on the bot catch-up cadence, whether or not the bot is configured: it deletes the expired rows, then sweeps their objects through the reference count. The hard delete of a user sweeps the account's staged objects, and the foreign key cascade drops the rows.
+An account holds at most 20 unexpired rows (`MAX_PENDING_UPLOADS_PER_USER`); the 21st upload is refused with `too_many_uploads`. The import worker runs `reap_expired_uploads` once when it starts and then every hour, whether or not the bot is configured: it deletes the expired rows, then sweeps their objects through the reference count. The hard delete of a user sweeps the account's staged objects, and the foreign key cascade drops the rows.
 
 ---
 
@@ -1564,23 +1570,35 @@ Composite PK: `(event_id, conflict_id)`
 
 ### `bot_mentions`
 
-The bot's queue and ledger: one row per @-mention of the bot. The webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the hourly catch-up both insert a `queued` row with `ON CONFLICT (mention_post_id) DO NOTHING`. The import worker claims the queued rows and runs them through the shared mention pipeline, then leaves the row as the ledger of what happened, so a mention is processed, and billed, at most once. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
+The bot's queue and ledger: one row per @-mention of the bot. The webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the daily catch-up both insert a `queued` row with `ON CONFLICT (mention_post_id) DO NOTHING`, except for the mentions the text alone settles: the bot's own posts, and a reply to the bot's own post whose only tag is X's reply prefix, add no row. The import worker claims the queued rows and runs them through the shared mention pipeline, then leaves the row as the ledger of what happened, so a mention is processed, and billed, at most once. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `mention_post_id` | `BIGINT` | UNIQUE, NOT NULL. The tagged post's id: an X snowflake. The idempotency key, and the catch-up derives its `since_id` cursor from the highest value. |
+| `mention_post_id` | `BIGINT` | UNIQUE, NOT NULL. The tagged post's id: an X snowflake. The idempotency key. With no stored [`bot_catch_up_cursor`](#bot_catch_up_cursor), the catch-up starts 24 hours behind the highest value. |
 | `author_x_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized to lowercase with no leading `@`. Stored for forensics, not as a FK. Attribution resolves through the admin-linked `users.x_handle`. |
 | `payload` | `JSONB` | nullable. The internal `Mention` shape: `tweet_id`, `author_id`, `author_handle`, `text`, `in_reply_to_user_id`, `in_reply_to_status_id`. Carries everything the pipeline needs, so a drain never re-reads, and never re-bills, the paid API. The worker clears it once the row is `done`. |
 | `status` | `VARCHAR(10)` | NOT NULL, default `'queued'`, CHECK in `('queued', 'running', 'done', 'failed')` (constraint `ck_bot_mentions_status_valid`). The row moves `queued` → `running` → `done` \| `failed`. `running` marks a claimed row so a concurrent worker skips it. A row left `running` for more than an hour is claimed again, since its worker died. An exception outside the pipeline puts the row back to `queued`. `done` means the pipeline ran; the per-mention result, including `failed`, is the `outcome`. `failed` means the attempt budget is spent or the payload was malformed. |
 | `attempt_count` | `INTEGER` | NOT NULL, default 0. A claim counter. When it reaches the budget (3), the row lands `failed`, a poison-pill guard. |
-| `outcome` | `VARCHAR(20)` | nullable, CHECK in the values below (constraint `ck_bot_mentions_outcome_valid`). Set exactly when `status` is `done` (constraint `ck_bot_mentions_outcome_done`). Values: `'created'`, `'updated'` (no row created, an open detection overwritten with the newer parse, which earns the success reply as a creation does), `'requested'` (no coordinate, so a `requested` row was opened over the thread's footage instead, which earns its own success reply; see [`ingestion.md`](ingestion.md#the-bot)), `'inherited'` (the author never typed the tag, X's reply prefix carried it over from the parent, so nothing was acquired and nothing answered), `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'` (a match the pass moved nothing on), `'self'` (the bot's own post, recorded so the cursor advances past it), or `'failed'`. A row with the outcome `failed` retries only when an operator deletes it. |
+| `outcome` | `VARCHAR(20)` | nullable, CHECK in the values below (constraint `ck_bot_mentions_outcome_valid`). Set exactly when `status` is `done` (constraint `ck_bot_mentions_outcome_done`). Values: `'created'`, `'updated'` (no row created, an open detection overwritten with the newer parse, which earns the success reply as a creation does), `'requested'` (no coordinate, so a `requested` row was opened over the thread's footage instead, which earns its own success reply; see [`ingestion.md`](ingestion.md#the-bot)), `'inherited'` (the author never typed the tag, X's reply prefix carried it over from the parent, so nothing was acquired and nothing answered), `'no_detection'`, `'no_account'` (no live account carries the tagged author's admin-linked `x_handle`, so nothing is created and no reply is sent), `'skipped'` (a match the pass moved nothing on), `'self'` (the bot's own post; the enqueue writes no row for these, and the value stays valid for the rows that hold it), or `'failed'`. A row with the outcome `failed` retries only when an operator deletes it. |
 | `created_event_count` | `INTEGER` | NOT NULL, default 0. Detections only: a mention that opened a request counts 0 here and is told apart by its `outcome`. |
 | `reply_post_id` | `BIGINT` | nullable. The bot's in-thread reply: on success, an event reference plus warnings; on failure, the refusal the engine named, sent only to linked authors (see [`ingestion.md`](ingestion.md#the-bot)). NULL when no reply was earned, reply credentials are absent, or the post failed. The detection stays durable either way. |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL. When the mention was queued. |
 | `processed_at` | `TIMESTAMPTZ` | nullable. The worker's latest claim while `running`, and its finish once `done` or `failed`. |
 
 A partial index `ix_bot_mentions_claim` on `created_at`, for rows whose `status` is `queued` or `running`, matches the claim query.
+
+---
+
+### `bot_catch_up_cursor`
+
+Where the bot's mentions catch-up stands: at most one row, written after each pull. The catch-up reads the paid mentions timeline from `newest_post_id`, and the worker skips a pull while `pulled_at` is younger than 24 hours. See [`ingestion.md`](ingestion.md#the-bot).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `SMALLINT` | PK, CHECK `id = 1` (constraint `ck_bot_catch_up_cursor_single_row`). |
+| `newest_post_id` | `BIGINT` | nullable. The newest mention id a pull returned, and the next pull's `since_id`. It only moves forward, and only after the pull's mentions are queued. NULL until a pull returns a mention or starts from a lower bound. |
+| `pulled_at` | `TIMESTAMPTZ` | NOT NULL. When the last pull that queued its mentions started. |
 
 ---
 

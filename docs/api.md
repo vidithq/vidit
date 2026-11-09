@@ -4453,8 +4453,9 @@ One Account Activity delivery.
 
 - The `x-twitter-webhooks-signature` header must carry `sha256=<base64(HMAC-SHA256(consumer_secret, raw_body))>`, compared in constant time. A mismatch is a 401.
 - A body over 512 KiB is a 413, before the body is read.
-- A valid signature always answers 200, because a non-2xx makes X retry and eventually deactivate the webhook. A foreign `for_user_id`, a non-mention event, and the bot's own posts are ignored.
-- Mentions are queued as `queued` rows in [`bot_mentions`](data-model.md#bot_mentions), with `ON CONFLICT (mention_post_id) DO NOTHING`; the import worker runs the pipeline. A redelivered mention, or one the hourly catch-up already queued, adds no row.
+- A valid signature always answers 200, because a non-2xx makes X retry and eventually deactivate the webhook. A foreign `for_user_id` and a non-mention event are ignored.
+- Mentions are queued as `queued` rows in [`bot_mentions`](data-model.md#bot_mentions), with `ON CONFLICT (mention_post_id) DO NOTHING`; the import worker runs the pipeline. A redelivered mention, or one the daily catch-up already queued, adds no row.
+- The bot's own posts, and a reply to the bot's own post whose only bot tag is X's reply prefix, add no row ([`ingestion.md`](ingestion.md#the-bot)).
 
 **Response 200:**
 ```json

@@ -6,19 +6,22 @@ Two paths insert a mention as a ``queued`` ``bot_mentions`` row
 * **Webhook (nominal)**: the X Account Activity webhook delivers the mention to
   ``routers/webhooks``.
 * **Catch-up (reconciliation)**: the import worker pulls the mentions timeline
-  at start and every :data:`CATCH_UP_INTERVAL` (:func:`catch_up`). While the
-  webhook is live (``X_WEBHOOK_ENABLED``), a mention first queued here raises
-  a "webhook gap" Sentry message so a dead webhook pages.
+  once every :data:`CATCH_UP_INTERVAL` (:func:`catch_up`), from the newest
+  mention the previous pull returned (``bot_catch_up_cursor``), so the billed
+  read covers each mention once. While the webhook is live
+  (``X_WEBHOOK_ENABLED``), a mention first queued here raises a "webhook gap"
+  Sentry message so a dead webhook pages.
 
 The worker drains the ``queued`` rows (:func:`drain_mentions`), so a mention is
-processed (and billed) at most once. The catch-up's ``since_id`` derives from
-the table, one interval behind the max (``_SINCE_ID_OVERLAP``) so a mention the
-webhook dropped is re-read even after a newer one advanced the max.
+processed (and billed) at most once.
 
 A mention counts as a tag only when the author typed it. X prefixes a reply
-with the parent's author and the parent's mentions, so :func:`_tag_is_inherited`
-reads that off the text (or one syndication read of the parent); an inherited
-tag lands ``inherited`` without acquiring, answering or billing.
+with the parent's author and the parent's mentions. The enqueue drops what the
+text alone settles (:func:`_settled_before_queue`): the bot's own posts, and a
+reply to the bot's post whose only tag sits in that prefix. For any other reply
+with the tag only in the prefix, :func:`_tag_is_inherited` spends one
+syndication read of the parent; an inherited tag lands ``inherited`` without
+acquiring, answering or billing.
 
 The grammar lives in the shared engine, not here. Acquisition is
 :func:`tweet_ingest.acquire_thread` (the tagged post plus the same author's
@@ -64,7 +67,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.bot_mention import BotMention, BotMentionOutcome
+from app.models.bot_mention import BotCatchUpCursor, BotMention, BotMentionOutcome
 from app.models.user import User
 from app.services.detection import Outcome, linked_owner, open_request, persist_detections
 from app.services.tweet_ingest import (
@@ -145,13 +148,13 @@ def _within_reply_cap(text: str) -> str:
 _GESTURE_WINDOW = timedelta(hours=1)
 
 # How often the worker pulls the mentions timeline behind the webhook (:func:`catch_up`).
-CATCH_UP_INTERVAL = timedelta(hours=1)
+CATCH_UP_INTERVAL = timedelta(hours=24)
 
-# Catch-up cursor lookback in snowflake id space (timestamp is above bit 22): one
-# catch-up interval. Both paths feed the table max, so if the webhook drops A but
-# delivers newer B, a cursor at B would never re-read A. The cost is a bounded
-# number of billed re-reads per pass, absorbed by ``ON CONFLICT DO NOTHING``.
-_SINCE_ID_OVERLAP = int(CATCH_UP_INTERVAL.total_seconds() * 1000) << 22
+# With no stored cursor, the pull starts one interval behind the table's newest
+# mention, in snowflake id space (timestamp above bit 22): the webhook feeds the
+# table too, so starting at its max would skip a mention it dropped before a
+# newer one it delivered.
+_FALLBACK_LOOKBACK = int(CATCH_UP_INTERVAL.total_seconds() * 1000) << 22
 
 # Attempts per mention before it lands ``failed`` (poison-pill guard, like the
 # archive jobs). Separate from the outcome ``failed``, which means the pipeline
@@ -208,9 +211,9 @@ class GestureBudget:
 class BotRunOutcome:
     """What one catch-up or drain did, for the worker's log line."""
 
-    # Mentions the catch-up pulled, and those already in the table.
+    # Mentions the catch-up pulled, and those it inserted into the queue.
     mentions_seen: int = 0
-    already_handled: int = 0
+    queued: int = 0
     # Mentions the drain ran through the pipeline.
     mentions_processed: int = 0
     created_event_count: int = 0
@@ -261,30 +264,46 @@ def _parent_carries_tag(parent_id: str, handle: str, *, client: httpx.Client | N
     return tags_bot(parent.text, settings.x_bot_handle, inherits_prefix=False)
 
 
+def _tag_in_prefix_only(mention: Mention) -> bool:
+    """Whether the reply's only ``@ViditBot`` sits in X's reply prefix (:func:`tags_bot`).
+
+    The text decides; nothing is read. Only meaningful for a reply.
+    """
+    return not tags_bot(mention.text, settings.x_bot_handle, inherits_prefix=True)
+
+
+def _settled_before_queue(mention: Mention) -> bool:
+    """Whether the mention needs no processing, decided without a network call.
+
+    True for the bot's own post, and for a reply to the bot's post whose only
+    tag sits in X's prefix: the bot's post carried the analyst's handle, never
+    a typed tag, so the tag is inherited without reading the parent.
+    """
+    return mention.author_id == settings.x_bot_user_id or (
+        mention.in_reply_to_user_id == settings.x_bot_user_id
+        and mention.in_reply_to_status_id is not None
+        and _tag_in_prefix_only(mention)
+    )
+
+
 async def _tag_is_inherited(mention: Mention, *, client: httpx.Client | None) -> bool:
     """Whether X wrote this mention's ``@ViditBot`` rather than its author.
 
-    Checked in order, each spending only what the previous could not settle:
-
-    * not a reply: typed;
-    * the tag sits past the prefix (:func:`tags_bot`): typed;
-    * otherwise the parent decides: if it mentions the bot, the tag was
-      inherited. A reply to the bot's own post is inherited without the read.
+    A mention that is not a reply, or whose tag sits past the prefix, is typed
+    (:func:`_tag_in_prefix_only`). Otherwise the parent decides: if it mentions
+    the bot, the tag was inherited.
 
     An inherited tag is ledgered ``inherited`` with no acquisition or reply. A
     parent that mentions no bot leaves the tag typed, so a bare ``@ViditBot``
     under the analyst's own coordinate post still works.
     """
-    if mention.in_reply_to_status_id is None:
+    parent_id = mention.in_reply_to_status_id
+    if parent_id is None or not _tag_in_prefix_only(mention):
         return False
-    if tags_bot(mention.text, settings.x_bot_handle, inherits_prefix=True):
-        return False
-    if mention.in_reply_to_user_id == settings.x_bot_user_id:
-        return True
     # Blocking network I/O, offloaded like the acquisition's.
     return await asyncio.to_thread(
         _parent_carries_tag,
-        mention.in_reply_to_status_id,
+        parent_id,
         mention.author_handle,
         client=client,
     )
@@ -556,10 +575,8 @@ async def _process_claimed(
     """
     created: int = 0
     reply_id: str | None = None
-    if mention.author_id == settings.x_bot_user_id:
-        # The bot's own posts can appear in its timeline: recorded, never processed.
-        verdict: BotMentionOutcome = "self"
-    elif await _tag_is_inherited(mention, client=syndication_client):
+    verdict: BotMentionOutcome
+    if await _tag_is_inherited(mention, client=syndication_client):
         # Unanswered, since a failure reply would refuse a tag nobody made.
         verdict = "inherited"
     else:
@@ -615,10 +632,36 @@ async def _process_claimed(
     return verdict
 
 
-def _since_id(db: Session) -> str | None:
-    # The overlap re-reads the trailing interval (see _SINCE_ID_OVERLAP).
+def _since_id(db: Session) -> int | None:
+    """The stored cursor, else one interval behind the table's newest mention."""
+    cursor = db.get(BotCatchUpCursor, 1)
+    if cursor is not None and cursor.newest_post_id is not None:
+        return cursor.newest_post_id
     latest = db.query(func.max(BotMention.mention_post_id)).scalar()
-    return str(max(int(latest) - _SINCE_ID_OVERLAP, 1)) if latest is not None else None
+    return max(int(latest) - _FALLBACK_LOOKBACK, 1) if latest is not None else None
+
+
+def _advance_cursor(db: Session, newest_post_id: int | None, pulled_at: datetime) -> None:
+    stmt = insert(BotCatchUpCursor).values(id=1, newest_post_id=newest_post_id, pulled_at=pulled_at)
+    # GREATEST keeps the cursor monotonic when two workers pull concurrently.
+    db.execute(
+        stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={
+                "newest_post_id": func.greatest(
+                    BotCatchUpCursor.newest_post_id, stmt.excluded.newest_post_id
+                ),
+                "pulled_at": stmt.excluded.pulled_at,
+            },
+        )
+    )
+    db.commit()
+
+
+def catch_up_due(db: Session) -> bool:
+    """Whether no pull is stored, or the last one is :data:`CATCH_UP_INTERVAL` old."""
+    cursor = db.get(BotCatchUpCursor, 1)
+    return cursor is None or datetime.now(UTC) - cursor.pulled_at >= CATCH_UP_INTERVAL
 
 
 def is_configured() -> bool:
@@ -630,9 +673,14 @@ def enqueue_mentions(db: Session, mentions: list[Mention]) -> list[Mention]:
     """Insert each mention as a ``queued`` row unless its post is already in the table; one
     commit. Returns the mentions inserted.
 
-    Shared by the webhook, which must answer X fast, and the catch-up. ``ON CONFLICT DO
-    NOTHING`` makes a redelivery, or a mention both paths saw, a no-op.
+    Shared by the webhook, which must answer X fast, and the catch-up. A mention
+    :func:`_settled_before_queue` writes no row. ``ON CONFLICT DO NOTHING`` makes a
+    redelivery, or a mention both paths saw, a no-op.
     """
+    kept = [m for m in mentions if not _settled_before_queue(m)]
+    if len(kept) < len(mentions):
+        logger.info("Dropped %d mentions settled before the queue", len(mentions) - len(kept))
+    mentions = kept
     if not mentions:
         return []
     inserted = set(
@@ -662,28 +710,31 @@ def enqueue_mentions(db: Session, mentions: list[Mention]) -> list[Mention]:
 
 
 def catch_up(db: Session, *, x_read_client: httpx.Client | None = None) -> BotRunOutcome:
-    """Pull the mentions timeline since the last mention and queue the new ones: the net
+    """Pull the mentions timeline since the stored cursor and queue the new ones: the net
     behind the webhook, run by the worker every :data:`CATCH_UP_INTERVAL`.
 
-    While the webhook is live (``X_WEBHOOK_ENABLED``) a mention this pull queues fresh means
-    the webhook missed it, so a Sentry message fires (the gap detector).
+    The cursor advances to the newest mention returned once the enqueue has committed, so a
+    pull that fails reads the same mentions again. While the webhook is live
+    (``X_WEBHOOK_ENABLED``) a mention this pull queues fresh means the webhook missed it, so
+    a Sentry message fires (the gap detector).
     """
     if not is_configured():
         raise BotNotConfigured("X_BOT_BEARER_TOKEN and X_BOT_USER_ID must be set to run the bot")
     outcome = BotRunOutcome()
+    pulled_at = datetime.now(UTC)
+    since_id = _since_id(db)
     mentions = fetch_mentions(
         user_id=settings.x_bot_user_id,
         bearer_token=settings.x_bot_bearer_token,
-        since_id=_since_id(db),
+        since_id=str(since_id) if since_id is not None else None,
         client=x_read_client,
     )
     outcome.mentions_seen = len(mentions)
     fresh = enqueue_mentions(db, mentions)
-    outcome.already_handled = len(mentions) - len(fresh)
+    outcome.queued = len(fresh)
+    _advance_cursor(db, max((int(m.tweet_id) for m in mentions), default=since_id), pulled_at)
     if settings.x_webhook_enabled:
         for mention in fresh:
-            if mention.author_id == settings.x_bot_user_id:
-                continue
             message = f"webhook gap: mention {mention.tweet_id} arrived via the catch-up"
             logger.warning(message)
             sentry_sdk.capture_message(message, level="warning")

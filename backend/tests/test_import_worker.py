@@ -1,5 +1,6 @@
-"""The worker pass: one queue that raises never holds back the others or the jobs, and the
-mentions catch-up and the expired-upload reaper run at start and once per interval."""
+"""The worker pass: one queue that raises never holds back the others or the jobs, the
+expired-upload reaper runs at start and once an hour, and the mentions catch-up pulls on that
+tick only once the last stored pull is an interval old."""
 
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ def test_a_failing_notification_drain_leaves_the_rest_of_the_pass(monkeypatch):
     monkeypatch.setattr(worker, "_drain_both", jobs)
     monkeypatch.setattr(worker.sentry_sdk, "capture_exception", lambda: captured.append(None))
 
-    assert worker._drain(catch_up=False) == 2
+    assert worker._drain(hourly=False) == 2
     assert ran == ["jobs and mentions"]
     assert len(captured) == 1
 
@@ -44,7 +45,7 @@ def test_the_catch_up_runs_only_when_configured_and_due(monkeypatch):
 
     def catch_up(_db):
         pulled.append("pulled")
-        return worker.bot.BotRunOutcome(mentions_seen=3, already_handled=1)
+        return worker.bot.BotRunOutcome(mentions_seen=3, queued=2)
 
     async def jobs(_db):
         return 0
@@ -54,13 +55,39 @@ def test_the_catch_up_runs_only_when_configured_and_due(monkeypatch):
     monkeypatch.setattr(worker, "_drain_both", jobs)
 
     monkeypatch.setattr(worker.bot, "is_configured", lambda: False)
-    assert worker._drain(catch_up=True) == 0
+    assert worker._drain(hourly=True) == 0
     assert pulled == []
 
     monkeypatch.setattr(worker.bot, "is_configured", lambda: True)
-    assert worker._drain(catch_up=False) == 0
+    monkeypatch.setattr(worker.bot, "catch_up_due", lambda _db: True)
+    assert worker._drain(hourly=False) == 0
     assert pulled == []
-    assert worker._drain(catch_up=True) == 2
+    assert worker._drain(hourly=True) == 2
+    assert pulled == ["pulled"]
+
+
+def test_a_recent_pull_skips_the_catch_up_unless_forced(monkeypatch):
+    worker = _worker()
+    pulled: list[str] = []
+
+    def catch_up(_db):
+        pulled.append("pulled")
+        return worker.bot.BotRunOutcome(mentions_seen=1, queued=1)
+
+    async def jobs(_db):
+        return 0
+
+    monkeypatch.setattr(worker.bot, "is_configured", lambda: True)
+    monkeypatch.setattr(worker.bot, "catch_up_due", lambda _db: False)
+    monkeypatch.setattr(worker.bot, "catch_up", catch_up)
+    monkeypatch.setattr(worker, "drain_notification_emails", lambda _db: 0)
+    monkeypatch.setattr(worker, "_drain_both", jobs)
+
+    # A restart within the interval: the start-up tick reads no mentions.
+    assert worker._drain(hourly=True) == 0
+    assert pulled == []
+    # ``IMPORT_WORKER_ONCE`` forces one.
+    assert worker._drain(hourly=True, force_catch_up=True) == 1
     assert pulled == ["pulled"]
 
 
@@ -75,16 +102,17 @@ def test_a_failing_catch_up_leaves_the_rest_of_the_pass(monkeypatch):
         return 1
 
     monkeypatch.setattr(worker.bot, "is_configured", lambda: True)
+    monkeypatch.setattr(worker.bot, "catch_up_due", lambda _db: True)
     monkeypatch.setattr(worker.bot, "catch_up", broken)
     monkeypatch.setattr(worker, "drain_notification_emails", lambda _db: 0)
     monkeypatch.setattr(worker, "_drain_both", jobs)
     monkeypatch.setattr(worker.sentry_sdk, "capture_exception", lambda: captured.append(None))
 
-    assert worker._drain(catch_up=True) == 1
+    assert worker._drain(hourly=True) == 1
     assert len(captured) == 1
 
 
-def test_the_expired_uploads_are_reaped_on_the_catch_up_cadence_only(monkeypatch):
+def test_the_expired_uploads_are_reaped_on_the_hourly_tick_only(monkeypatch):
     worker = _worker()
     reaped: list[str] = []
     captured: list[BaseException | None] = []
@@ -98,15 +126,15 @@ def test_the_expired_uploads_are_reaped_on_the_catch_up_cadence_only(monkeypatch
     monkeypatch.setattr(worker, "reap_expired_uploads", lambda _db: reaped.append("reaped") or 4)
     monkeypatch.setattr(worker.sentry_sdk, "capture_exception", lambda: captured.append(None))
 
-    assert worker._drain(catch_up=False) == 1
+    assert worker._drain(hourly=False) == 1
     assert reaped == []
     # Reaped rows are not work handled: the count stays the jobs'.
-    assert worker._drain(catch_up=True) == 1
+    assert worker._drain(hourly=True) == 1
     assert reaped == ["reaped"]
 
     def broken(_db):
         raise RuntimeError("reaper broke")
 
     monkeypatch.setattr(worker, "reap_expired_uploads", broken)
-    assert worker._drain(catch_up=True) == 1
+    assert worker._drain(hourly=True) == 1
     assert len(captured) == 1

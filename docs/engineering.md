@@ -31,7 +31,7 @@ flowchart TB
   subgraph sched [Roles without a port, same image]
     direction TB
     worker["`**worker**
-    always on: notification_deliveries, archive_import_jobs, bot_mentions; hourly bot catch-up and upload reaper`"]:::shared
+    always on: notification_deliveries, archive_import_jobs, bot_mentions; daily bot catch-up, hourly upload reaper`"]:::shared
     conf["`**sync-conflicts**
     daily: sync_conflicts.py`"]:::shared
   end
@@ -801,7 +801,7 @@ The backend image runs every backend role. Its entrypoint, [`backend/entrypoint.
 |---------|------|-----------|--------------------|
 | `api` | The FastAPI server on `$PORT` (default `8000`), with the proxy-header flags in [Particularities](#particularities-non-obvious-behavior-found-during-development). | Always on; serves `/health`. | N/A |
 | `migrate` | `alembic upgrade head`, then exits. | One-shot, before each new `api` release takes traffic. A non-zero exit means the schema did not reach the head: do not start the new release. | Once per deploy |
-| `worker` | The import worker: notification emails, archive imports, the bot mention queue, the hourly bot catch-up and the hourly reaper of expired staged uploads ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
+| `worker` | The import worker: notification emails, archive imports, the bot mention queue, the daily bot catch-up and the hourly reaper of expired staged uploads ([Scheduler services](#scheduler-services)). | Always on; listens on no port. Two workers are safe. | N/A |
 | `sync-conflicts` | One pass of the ongoing-conflicts sync ([`conflicts.md`](conflicts.md)), then exits. | Scheduled. A missed run is harmless. | Once a day |
 | `update-map` | One pass that refreshes the [self-hosted map files](#self-hosted-map-files), then exits. Needs no database. | Scheduled. A failed or missed run leaves the current files. | Once a week |
 
@@ -855,7 +855,7 @@ Only `migrate` changes the schema, and a host can start these roles before it fi
 
 **`worker`**, always on. It also takes the storage variables (`STORAGE_BACKEND`, `S3_BUCKET`, `AWS_*`) and email variables (`EMAIL_*`, `RESEND_API_KEY`, `FRONTEND_URL`) the API takes, plus the six `X_*` credentials, `X_WEBHOOK_ENABLED` and the two reply caps, `BOT_MAX_REPLIES_PER_HOUR` and `BOT_MAX_REPLIES_PER_AUTHOR_PER_HOUR`, since it runs the bot (see below), the notification email caps, `NOTIFICATION_EMAIL_DAILY_CAP`, `NOTIFICATION_EMAIL_DAILY_CAP_PER_USER` and `NOTIFICATION_EMAIL_DAILY_CAP_PER_ACTOR`, `EMAIL_PROVIDER_DAILY_QUOTA`, and `API_URL`, the base of the one-click unsubscribe URLs, which `config.py` refuses as a localhost URL when `COOKIE_SECURE` is true. What it drains: the [notification queue](#email) first, then the jobs and mentions in [`ingestion.md`](ingestion.md#archive-import-worker). Once when it starts and then every hour, it also deletes the staged uploads past their expiry and their objects ([`uploads`](data-model.md#uploads)), whether or not the bot is configured. If the email queue raises, the worker reports it to Sentry and skips it for that pass, so it never holds back the jobs and mentions.
 
-The bot runs inside the worker, so no separate schedule exists for it. The worker drains the `queued` rows of `bot_mentions` that the webhook inserts. It also runs the hourly catch-up, which pulls the mentions timeline to queue what the webhook missed: once when the worker starts, then every hour. The catch-up needs `X_BOT_BEARER_TOKEN` and `X_BOT_USER_ID` (see `backend/.env.example`), and the worker skips it when either is empty. Replies need the four OAuth 1.0a values; without them, the bot processes mentions but posts nothing. A failed mentions pull is captured to Sentry and does not stop the other queues. Each pull is billed, so a worker that restarts often pays for one extra read per start. A second worker is safe: the queue claim skips rows another worker holds, but each worker runs its own catch-up. What the bot runs: [`ingestion.md`](ingestion.md#the-bot).
+The bot runs inside the worker, so no separate schedule exists for it. The worker drains the `queued` rows of `bot_mentions` that the webhook inserts. It also runs the daily catch-up, which pulls the mentions timeline to queue what the webhook missed. The worker checks once when it starts and then every hour, and pulls only when the last pull stored in [`bot_catch_up_cursor`](data-model.md#bot_catch_up_cursor) is 24 hours old, so a restart bills no read. `IMPORT_WORKER_ONCE=1` forces one pull. The catch-up needs `X_BOT_BEARER_TOKEN` and `X_BOT_USER_ID` (see `backend/.env.example`), and the worker skips it when either is empty. Replies need the four OAuth 1.0a values; without them, the bot processes mentions but posts nothing. A failed mentions pull is captured to Sentry, leaves the cursor in place and does not stop the other queues. A second worker is safe: the queue claim skips rows another worker holds, and both workers read the same stored pull time, so they skip the catch-up while it is recent. What the bot runs: [`ingestion.md`](ingestion.md#the-bot).
 
 **`sync-conflicts`**, daily. Schedule and behaviour: [`conflicts.md`](conflicts.md).
 
@@ -874,7 +874,7 @@ uv run python scripts/manage_x_webhook.py delete <webhook_id>
 
 Register the webhook **after** you deploy the endpoint: X fires a Challenge-Response Check (CRC) at register time. Once `register` and `subscribe` succeed, set `X_WEBHOOK_ENABLED=true` on the backend roles.
 
-X re-runs the CRC hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the catch-up's gap detector catches it live: a mention the catch-up queues fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via the catch-up`). For a known outage longer than the catch-up covers, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
+X re-runs the CRC hourly, and the endpoint answers it in-request, using pure HMAC with no database access. A failed check deactivates the webhook silently, and two nets catch that. `manage_x_webhook.py list` shows the webhook's `valid` flag. While `X_WEBHOOK_ENABLED=true`, the catch-up's gap detector catches it live: a mention the catch-up queues fresh logs a warning and captures a Sentry message (`webhook gap: mention <id> arrived via the catch-up`). The catch-up runs once a day, so a dead webhook pages within about a day. For a known outage that needs mentions sooner, X's replay API re-delivers up to 24 hours of events on request, manually, from the developer console or API.
 
 ### Observability: what's wired and how to turn it on
 

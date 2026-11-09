@@ -2,7 +2,16 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Index, Integer, String, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,9 +26,9 @@ from app.database import Base, literal_check
 # ``skipped``: every detection deduped and moved nothing. ``requested``: no
 # coordinate but footage and a source link, so a ``requested`` row opened
 # (``services/bot``). ``inherited``: X's reply prefix carried the tag from the
-# parent, so nothing was acquired or answered. ``self``: the bot's own post,
-# recorded so the ``since_id`` cursor advances. ``failed``: processing raised
-# (captured to Sentry).
+# parent, so nothing was acquired or answered. ``self``: the bot's own post;
+# held only by existing rows, since the enqueue drops the bot's own posts
+# (``services/bot``). ``failed``: processing raised (captured to Sentry).
 BotMentionOutcome = Literal[
     "created",
     "updated",
@@ -44,17 +53,15 @@ BotMentionStatus = Literal["queued", "running", "done", "failed"]
 class BotMention(Base):
     """One @-mention of the bot: the queue the worker drains and the ledger it leaves.
 
-    The webhook and the hourly catch-up both insert one row per mention with
+    The webhook and the daily catch-up both insert one row per mention with
     ``ON CONFLICT (mention_post_id) DO NOTHING``, so a mention seen by both is
-    processed, and billed, once. ``since_id`` derives from the max
-    ``mention_post_id`` (minus ``services/bot._SINCE_ID_OVERLAP``).
+    processed, and billed, once.
     """
 
     __tablename__ = "bot_mentions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    # The tagged post's id (X snowflake). UNIQUE is the idempotency guarantee;
-    # max() is the poll cursor.
+    # The tagged post's id (X snowflake). UNIQUE is the idempotency guarantee.
     mention_post_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
     # Normalized handle (lowercase, no @), for forensics, not a FK: attribution
     # goes through ``users.x_handle``.
@@ -92,3 +99,20 @@ class BotMention(Base):
             postgresql_where=text("status IN ('queued', 'running')"),
         ),
     )
+
+
+class BotCatchUpCursor(Base):
+    """Where the mentions catch-up stands: one row, written after each pull.
+
+    The next pull reads from ``newest_post_id``, and the worker skips a pull
+    while ``pulled_at`` is younger than ``services/bot.CATCH_UP_INTERVAL``.
+    """
+
+    __tablename__ = "bot_catch_up_cursor"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
+    # The newest mention id a pull returned: the next pull's ``since_id``.
+    newest_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    pulled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (CheckConstraint("id = 1", name="ck_bot_catch_up_cursor_single_row"),)
