@@ -31,7 +31,6 @@ async function pickKind(page: Page, source: Locator, label: string) {
  *
  * `/submit` sits behind the auth wall, so the context carries the session
  * cookie `proxy.ts` checks and `/auth/me` answers with the fixture user.
- * `/geolocations/new` redirects here, preserving its query.
  */
 test.describe("submit", () => {
   test.beforeEach(async ({ context, page }) => {
@@ -541,9 +540,7 @@ test.describe("submit", () => {
     });
   }
 
-  test("the legacy routes redirect here", async ({ page }) => {
-    await page.goto("/geolocations/new");
-    await expect(page).toHaveURL(/\/submit$/);
+  test("the legacy route redirects here", async ({ page }) => {
     await page.goto("/requests/new");
     await expect(page).toHaveURL(/\/submit\?mode=single$/);
   });
