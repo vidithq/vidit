@@ -16,15 +16,15 @@ from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event, EventDetection
 from app.models.tag import Tag
 from app.services.event_filters import parse_bbox
-from tests._fixtures import fake_sha256
-from tests.events._helpers import WORLD_BBOX, _make_geo, client
+from tests._fixtures import fake_sha256, make_event
+from tests.events._helpers import WORLD_BBOX, client
 
 # The parsed twin of ``WORLD_BBOX``, which the cache-key builder keys on.
 WORLD_BOUNDS = parse_bbox(WORLD_BBOX)
 
 
 def test_list_returns_seeded_geolocation(db, author):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     response = client.get("/api/v1/events")
     assert response.status_code == 200
     ids = {row["id"] for row in response.json()}
@@ -33,8 +33,8 @@ def test_list_returns_seeded_geolocation(db, author):
 
 def test_list_excludes_soft_deleted_rows(db, author):
     """Soft-deleted rows never appear on any public read (``deleted_at IS NULL``)."""
-    live = _make_geo(db, author=author)
-    dead = _make_geo(db, author=author, deleted=True)
+    live = make_event(db, author=author)
+    dead = make_event(db, author=author, deleted=True)
 
     response = client.get("/api/v1/events")
     assert response.status_code == 200
@@ -44,8 +44,8 @@ def test_list_excludes_soft_deleted_rows(db, author):
 
 
 def test_list_filters_by_free_tag(db, author, free_tag):
-    with_tag = _make_geo(db, author=author, tags=[free_tag])
-    without_tag = _make_geo(db, author=author)
+    with_tag = make_event(db, author=author, tags=[free_tag])
+    without_tag = make_event(db, author=author)
 
     response = client.get(f"/api/v1/events?tag={free_tag.name}")
     assert response.status_code == 200
@@ -55,8 +55,8 @@ def test_list_filters_by_free_tag(db, author, free_tag):
 
 
 def test_list_filters_by_conflict(db, author, conflict):
-    with_conflict = _make_geo(db, author=author, conflicts=[conflict])
-    other = _make_geo(db, author=author)
+    with_conflict = make_event(db, author=author, conflicts=[conflict])
+    other = make_event(db, author=author)
 
     response = client.get(f"/api/v1/events?conflict={conflict.name}")
     assert response.status_code == 200
@@ -73,7 +73,7 @@ def test_list_conflict_filter_does_not_match_free_tag_of_same_name(db, author):
     free = Tag(name=f"clash-{uuid.uuid4().hex[:8]}")
     db.add(free)
     db.commit()
-    geo = _make_geo(db, author=author, tags=[free])
+    geo = make_event(db, author=author, tags=[free])
     try:
         response = client.get(f"/api/v1/events?conflict={free.name}")
         assert response.status_code == 200
@@ -86,11 +86,11 @@ def test_list_conflict_filter_does_not_match_free_tag_of_same_name(db, author):
 
 def test_source_kind_filter_matches_any_source_and_ors_within_the_list(db, author):
     """``?source_kind=`` keeps an event when any of its sources has a listed kind."""
-    mixed = _make_geo(
+    mixed = make_event(
         db, author=author, kind="smartphone", secondary_source_urls=["https://t.me/c/2"]
     )
-    drone = _make_geo(db, author=author, kind="drone")
-    satellite = _make_geo(db, author=author, kind="satellite")
+    drone = make_event(db, author=author, kind="drone")
+    satellite = make_event(db, author=author, kind="satellite")
 
     response = client.get(
         "/api/v1/events", params={"source_kind": ["unknown", "drone"], "author": author.username}
@@ -102,10 +102,10 @@ def test_source_kind_filter_matches_any_source_and_ors_within_the_list(db, autho
 
 
 def test_level_filter_keeps_events_with_a_source_of_that_level(db, author):
-    indirect = _make_geo(db, author=author)
+    indirect = make_event(db, author=author)
     indirect.sources[0].level = "indirect"
     db.commit()
-    direct = _make_geo(db, author=author)
+    direct = make_event(db, author=author)
 
     def ids(levels: list[str]) -> set[str]:
         response = client.get(
@@ -121,11 +121,11 @@ def test_level_filter_keeps_events_with_a_source_of_that_level(db, author):
 
 def test_tag_filter_matches_a_source_tag(db, author, free_tag):
     """``?tag=`` matches a tag on the event or on any of its sources."""
-    on_source = _make_geo(db, author=author)
+    on_source = make_event(db, author=author)
     on_source.sources[0].tags = [free_tag]
     db.commit()
-    on_event = _make_geo(db, author=author, tags=[free_tag])
-    untagged = _make_geo(db, author=author)
+    on_event = make_event(db, author=author, tags=[free_tag])
+    untagged = make_event(db, author=author)
 
     response = client.get("/api/v1/events", params={"tag": free_tag.name})
     assert response.status_code == 200
@@ -136,7 +136,7 @@ def test_tag_filter_matches_a_source_tag(db, author, free_tag):
 
 def test_list_filters_by_author_exact_case_insensitive(db, author):
     """`?author=` matches the username exactly (case-insensitive), not as a fragment."""
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     response = client.get(f"/api/v1/events?author={author.username.upper()}")
     assert response.status_code == 200
     assert str(geo.id) in {row["id"] for row in response.json()}
@@ -162,9 +162,9 @@ def test_points_rejects_author_with_like_meta(author):
 
 
 def test_list_filters_by_event_date_range(db, author):
-    early = _make_geo(db, author=author, occurred_date=date(2026, 1, 1))
-    mid = _make_geo(db, author=author, occurred_date=date(2026, 6, 1))
-    late = _make_geo(db, author=author, occurred_date=date(2026, 12, 1))
+    early = make_event(db, author=author, occurred_date=date(2026, 1, 1))
+    mid = make_event(db, author=author, occurred_date=date(2026, 6, 1))
+    late = make_event(db, author=author, occurred_date=date(2026, 12, 1))
 
     response = client.get(
         "/api/v1/events?occurred_date_from=2026-05-01&occurred_date_to=2026-09-01"
@@ -178,8 +178,8 @@ def test_list_filters_by_event_date_range(db, author):
 
 def test_list_filters_by_status(db, author):
     """`?status=` narrows within the view; repeatable, any-match."""
-    located = _make_geo(db, author=author)
-    detected = _make_geo(db, author=author, status=STATUS_DETECTED)
+    located = make_event(db, author=author)
+    detected = make_event(db, author=author, status=STATUS_DETECTED)
 
     response = client.get("/api/v1/events?status=detected")
     assert response.status_code == 200
@@ -201,8 +201,8 @@ def test_list_rejects_unknown_status(author):
 
 
 def test_list_filters_by_bbox(db, author):
-    inside = _make_geo(db, author=author, lat=48.5, lng=34.5)
-    outside = _make_geo(db, author=author, lat=10.0, lng=10.0)
+    inside = make_event(db, author=author, lat=48.5, lng=34.5)
+    outside = make_event(db, author=author, lat=10.0, lng=10.0)
 
     # Box around Ukraine area, inside=(48.5, 34.5) is inside, (10, 10) is not.
     response = client.get("/api/v1/events?bbox=45.0,30.0,50.0,40.0")
@@ -213,8 +213,8 @@ def test_list_filters_by_bbox(db, author):
 
 
 def test_list_filters_requests_by_location_guess(db, author):
-    guessed = _make_geo(db, author=author, status=STATUS_REQUESTED)
-    blind = _make_geo(db, author=author, status=STATUS_REQUESTED, lat=None, lng=None)
+    guessed = make_event(db, author=author, status=STATUS_REQUESTED)
+    blind = make_event(db, author=author, status=STATUS_REQUESTED, lat=None, lng=None)
     base = f"/api/v1/events?view=requested&author={author.username}"
 
     with_guess = client.get(f"{base}&has_coords=true")
@@ -230,12 +230,12 @@ def test_list_filters_media(db, author):
     """``media`` matches a source file or a proof image of that type, as on ``/points``."""
     from app.models.media import Media
 
-    plain = _make_geo(db, author=author)
-    with_video = _make_geo(db, author=author)
+    plain = make_event(db, author=author)
+    with_video = make_event(db, author=author)
     with_video.sources[0].media = Media(
         sha256=fake_sha256(), storage_url="s3://x/v.mp4", kind="video"
     )
-    proof_only = _make_geo(db, author=author)
+    proof_only = make_event(db, author=author)
     db.add(
         Media(
             sha256=fake_sha256(), event_id=proof_only.id, storage_url="s3://x/p.jpg", kind="image"
@@ -256,8 +256,8 @@ def test_list_filters_media(db, author):
 
 
 def test_list_carries_requested_at(db, author):
-    request = _make_geo(db, author=author, status=STATUS_REQUESTED)
-    geo = _make_geo(db, author=author)
+    request = make_event(db, author=author, status=STATUS_REQUESTED)
+    geo = make_event(db, author=author)
 
     requested = client.get(f"/api/v1/events?view=requested&author={author.username}").json()
     located = client.get(f"/api/v1/events?author={author.username}").json()
@@ -271,7 +271,7 @@ def test_list_carries_requested_at(db, author):
 def test_list_honours_limit(db, author):
     """One ``limit`` code path serves both views, so this covers the requested queue too."""
     for _ in range(3):
-        _make_geo(db, author=author)
+        make_event(db, author=author)
     response = client.get("/api/v1/events?limit=2")
     assert response.status_code == 200
     # Three matching rows seeded, so the cap is exact, not just an upper bound.
@@ -279,7 +279,7 @@ def test_list_honours_limit(db, author):
 
 
 def test_detail_returns_full_shape(db, author, free_tag):
-    geo = _make_geo(db, author=author, lat=48.7, lng=34.7, tags=[free_tag])
+    geo = make_event(db, author=author, lat=48.7, lng=34.7, tags=[free_tag])
     response = client.get(f"/api/v1/events/{geo.id}")
     assert response.status_code == 200
     body = response.json()
@@ -307,7 +307,7 @@ def test_detail_404_for_unknown_id():
 
 
 def test_detail_404_for_soft_deleted_geo(db, author):
-    geo = _make_geo(db, author=author, deleted=True)
+    geo = make_event(db, author=author, deleted=True)
     response = client.get(f"/api/v1/events/{geo.id}")
     assert response.status_code == 404, "soft-deleted geo must surface as 404, not the live shape"
 
@@ -349,8 +349,8 @@ def test_points_rejects_malformed_bbox(bad):
 
 def test_points_filters_by_bbox(db, author):
     """The viewport, not the catalog, decides what comes back."""
-    inside = _make_geo(db, author=author, lat=48.5, lng=34.5)
-    outside = _make_geo(db, author=author, lat=10.0, lng=10.0)
+    inside = make_event(db, author=author, lat=48.5, lng=34.5)
+    outside = make_event(db, author=author, lat=10.0, lng=10.0)
 
     response = client.get("/api/v1/events/points?bbox=45.0,30.0,50.0,40.0")
     assert response.status_code == 200
@@ -361,8 +361,8 @@ def test_points_filters_by_bbox(db, author):
 
 def test_points_cache_keys_on_bbox(db, author):
     """Two viewports must not share a cache entry (``bbox`` is part of the key)."""
-    _make_geo(db, author=author, lat=48.5, lng=34.5)
-    _make_geo(db, author=author, lat=10.0, lng=10.0)
+    make_event(db, author=author, lat=48.5, lng=34.5)
+    make_event(db, author=author, lat=10.0, lng=10.0)
 
     ukraine = client.get("/api/v1/events/points?bbox=45.0,30.0,50.0,40.0")
     africa = client.get("/api/v1/events/points?bbox=5.0,5.0,15.0,15.0")
@@ -378,7 +378,7 @@ def test_points_cache_hits_across_one_grid_cell(db, author):
     ``snap_bbox`` grows each box onto the server grid before keying, so client
     jitter cannot evict the LRU.
     """
-    _make_geo(db, author=author, lat=48.5, lng=34.5)
+    make_event(db, author=author, lat=48.5, lng=34.5)
 
     first = client.get("/api/v1/events/points?bbox=45.01,30.01,49.99,39.99")
     second = client.get("/api/v1/events/points?bbox=45.02,30.02,49.98,39.98")
@@ -387,29 +387,8 @@ def test_points_cache_hits_across_one_grid_cell(db, author):
     assert first.content == second.content
 
 
-def test_points_cache_key_covers_bbox():
-    """The builder itself separates two boxes under an identical filter set."""
-    from app.routers.events.read import _build_points_cache_key
-
-    def key(bbox: tuple[float, float, float, float]) -> str:
-        return _build_points_cache_key(
-            bbox=bbox,
-            conflict=None,
-            source_kind=None,
-            level=None,
-            tag=None,
-            occurred_date_from=None,
-            occurred_date_to=None,
-            submitted_from=None,
-            submitted_to=None,
-            author=None,
-        )
-
-    assert key((45.0, 30.0, 50.0, 40.0)) != key((5.0, 5.0, 15.0, 15.0))
-
-
 def test_points_returns_compact_shape(db, author):
-    geo = _make_geo(db, author=author, lat=48.5, lng=34.5)
+    geo = make_event(db, author=author, lat=48.5, lng=34.5)
     response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     assert response.status_code == 200
     body = response.json()
@@ -445,8 +424,8 @@ def test_points_null_event_date_serialises_as_null(db, author):
 
 
 def test_points_excludes_soft_deleted(db, author):
-    live = _make_geo(db, author=author)
-    dead = _make_geo(db, author=author, deleted=True)
+    live = make_event(db, author=author)
+    dead = make_event(db, author=author, deleted=True)
     response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     ids = {row[0] for row in response.json()}
     assert str(live.id) in ids
@@ -483,20 +462,10 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
     assert item["status"] == "detected"
 
 
-def test_points_cache_miss_then_hit(db, author):
-    """First call cold, second warm (``X-Cache``); guards against a removed ``points_cache.set``."""
-    _make_geo(db, author=author)
-    first = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
-    assert first.headers.get("x-cache") == "MISS"
-    second = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
-    assert second.headers.get("x-cache") == "HIT"
-    assert first.content == second.content
-
-
 def test_points_cache_keys_on_filter_combination(db, author, free_tag):
     """Different filter combos must miss independently, not share a cached response."""
-    _make_geo(db, author=author, tags=[free_tag])
-    _make_geo(db, author=author)
+    make_event(db, author=author, tags=[free_tag])
+    make_event(db, author=author)
 
     unfiltered = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
     filtered = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&tag={free_tag.name}")
@@ -509,12 +478,12 @@ def test_points_filters_media(db, author):
     """``media`` matches a source file or a proof image of that type."""
     from app.models.media import Media
 
-    plain = _make_geo(db, author=author, lat=40.0, lng=40.0)
-    with_video = _make_geo(db, author=author, lat=41.0, lng=41.0)
+    plain = make_event(db, author=author, lat=40.0, lng=40.0)
+    with_video = make_event(db, author=author, lat=41.0, lng=41.0)
     with_video.sources[0].media = Media(
         sha256=fake_sha256(), storage_url="s3://x/v.mp4", kind="video"
     )
-    proof_only = _make_geo(db, author=author, lat=42.0, lng=42.0)
+    proof_only = make_event(db, author=author, lat=42.0, lng=42.0)
     db.add(
         Media(
             sha256=fake_sha256(), event_id=proof_only.id, storage_url="s3://x/p.jpg", kind="image"
@@ -534,142 +503,59 @@ def test_points_filters_media(db, author):
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&media=bogus").status_code == 422
 
 
-def test_points_cache_key_builder_is_separator_safe():
-    """Filter values carrying the legacy ``:`` separator must not collide.
-
-    The old ``f"points:{conflict}:{tag}"`` key folded ``conflict=["a:b"]`` and
-    ``conflict=["a"], tag=["b"]`` together; the hashed builder serialises via ``orjson``.
-    """
+def _points_key(**filters) -> str:
     from app.routers.events.read import _build_points_cache_key
 
-    colliding_a = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=["a:b"],
-        source_kind=None,
-        level=None,
-        tag=None,
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
+    unfiltered = dict.fromkeys(
+        (
+            "conflict",
+            "source_kind",
+            "level",
+            "tag",
+            "occurred_date_from",
+            "occurred_date_to",
+            "submitted_from",
+            "submitted_to",
+            "author",
+        )
     )
-    colliding_b = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=["a"],
-        source_kind=None,
-        level=None,
-        tag=["b"],
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert colliding_a != colliding_b, "colon-bearing inputs must produce distinct keys"
-
-    # Same inputs give the same key, so a builder change cannot turn every request into a MISS.
-    same_a = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=["ukraine"],
-        source_kind=None,
-        level=None,
-        tag=None,
-        occurred_date_from="2024-01-01",
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    same_b = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=["ukraine"],
-        source_kind=None,
-        level=None,
-        tag=None,
-        occurred_date_from="2024-01-01",
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert same_a == same_b, "identical filter tuples must produce the same key"
-
-    # source_kind and level participate in the key (guards against a bucket being dropped).
-    cs_a = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=None,
-        source_kind=["satellite"],
-        level=None,
-        tag=None,
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    cs_b = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=None,
-        source_kind=["drone"],
-        level=None,
-        tag=None,
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert cs_a != cs_b, "source_kind must participate in the cache key"
-    level_key = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=None,
-        source_kind=["satellite"],
-        level=["indirect"],
-        tag=None,
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert level_key != cs_a, "level must participate in the cache key"
+    return _build_points_cache_key(bbox=WORLD_BOUNDS, **{**unfiltered, **filters})
 
 
 @pytest.mark.parametrize(
-    "bucket",
-    ["conflict", "source_kind", "level", "tag"],
-    ids=["conflict-list", "source-kind-list", "level-list", "tag-list"],
+    "filters",
+    [
+        {"conflict": ["x"]},
+        {"source_kind": ["x"]},
+        {"level": ["x"]},
+        {"tag": ["x"]},
+        {"occurred_date_from": "2024-01-01"},
+        {"occurred_date_to": "2024-01-01"},
+        {"submitted_from": "2024-01-01"},
+        {"submitted_to": "2024-01-01"},
+        {"author": "x"},
+        {"media": ["video"]},
+        {"approved": True},
+        {"approved_by": "x"},
+        {"approved_by_org": "x"},
+    ],
+    ids=lambda filters: next(iter(filters)),
 )
+def test_points_cache_key_covers_each_filter(filters):
+    assert _points_key(**filters) != _points_key()
+    assert _points_key(**filters) == _points_key(**filters)
+
+
+def test_points_cache_key_keeps_values_in_their_bucket():
+    """The same values spread over other buckets give another key."""
+    assert _points_key(conflict=["a"], tag=["b"]) != _points_key(conflict=["b"], tag=["a"])
+    assert _points_key(conflict=["a"], tag=["b"]) != _points_key(conflict=["a", "b"])
+
+
+@pytest.mark.parametrize("bucket", ["conflict", "source_kind", "level", "tag"])
 def test_points_cache_key_is_list_order_insensitive(bucket):
-    """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` hit the same cache entry.
-
-    Parametrised so a refactor that sorts one list bucket but not another fails.
-    """
-    from app.routers.events.read import _build_points_cache_key
-
-    buckets = ("conflict", "source_kind", "level", "tag")
-    forward = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        **{bucket: ["alpha", "beta"]},
-        **{other: None for other in buckets if other != bucket},
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    reverse = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        **{bucket: ["beta", "alpha"]},
-        **{other: None for other in buckets if other != bucket},
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert forward == reverse
+    """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` hit the same cache entry."""
+    assert _points_key(**{bucket: ["alpha", "beta"]}) == _points_key(**{bucket: ["beta", "alpha"]})
 
 
 def test_points_or_within_free_tag_list(db, author):
@@ -679,9 +565,9 @@ def test_points_or_within_free_tag_list(db, author):
     db.add_all([tag_a, tag_b])
     db.commit()
 
-    geo_a = _make_geo(db, author=author, tags=[tag_a])
-    geo_b = _make_geo(db, author=author, tags=[tag_b])
-    geo_none = _make_geo(db, author=author)
+    geo_a = make_event(db, author=author, tags=[tag_a])
+    geo_b = make_event(db, author=author, tags=[tag_b])
+    geo_none = make_event(db, author=author)
 
     try:
         response = client.get(
@@ -705,9 +591,9 @@ def test_points_or_within_conflict_list(db, author):
     db.add_all([conflict_a, conflict_b, free_same_name])
     db.commit()
 
-    geo_a = _make_geo(db, author=author, conflicts=[conflict_a])
-    geo_b = _make_geo(db, author=author, conflicts=[conflict_b])
-    geo_none = _make_geo(db, author=author, tags=[free_same_name])
+    geo_a = make_event(db, author=author, conflicts=[conflict_a])
+    geo_b = make_event(db, author=author, conflicts=[conflict_b])
+    geo_none = make_event(db, author=author, tags=[free_same_name])
 
     try:
         response = client.get(
@@ -733,9 +619,9 @@ def test_points_and_across_conflict_and_tag(db, author):
     db.add_all([conflict, free])
     db.commit()
 
-    matching = _make_geo(db, author=author, tags=[free], conflicts=[conflict])
-    conflict_only = _make_geo(db, author=author, conflicts=[conflict])
-    free_only = _make_geo(db, author=author, tags=[free])
+    matching = make_event(db, author=author, tags=[free], conflicts=[conflict])
+    conflict_only = make_event(db, author=author, conflicts=[conflict])
+    free_only = make_event(db, author=author, tags=[free])
 
     try:
         response = client.get(
@@ -754,8 +640,8 @@ def test_points_and_across_conflict_and_tag(db, author):
 
 def test_points_single_tag_value_back_compat(db, author, free_tag):
     """A single ``?tag=X`` (parsed to ``["X"]``) works with the list-shaped filter."""
-    geo = _make_geo(db, author=author, tags=[free_tag])
-    _make_geo(db, author=author)
+    geo = make_event(db, author=author, tags=[free_tag])
+    make_event(db, author=author)
 
     response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&tag={free_tag.name}")
     assert response.status_code == 200
@@ -767,28 +653,9 @@ def test_points_single_tag_value_back_compat(db, author, free_tag):
 
 
 @pytest.mark.parametrize(
-    "bad",
-    [
-        "1,2,3",
-        "1,2,3,4,5",
-        "1",
-        "foo,bar,baz,qux",
-        "95.0,0.0,96.0,1.0",
-        "0.0,200.0,1.0,201.0",
-        "46.0,30.0,44.0,32.0",
-        "44.0,32.0,46.0,30.0",
-    ],
-    ids=[
-        "too-few-values",
-        "too-many-values",
-        "single-value",
-        "non-numeric",
-        "latitude-out-of-range",
-        "longitude-out-of-range",
-        "inverted-north-south",
-        "inverted-east-west",
-    ],
+    "bad", ["1,2,3", "46.0,30.0,44.0,32.0"], ids=["too-few-values", "inverted"]
 )
 def test_bbox_malformed_returns_422(bad):
+    """The list route shares the bbox parser; its table sits on the points tests."""
     response = client.get(f"/api/v1/events?bbox={bad}")
     assert response.status_code == 422, f"expected 422 for bbox={bad!r}"

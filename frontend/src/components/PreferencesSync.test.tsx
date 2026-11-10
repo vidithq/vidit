@@ -3,12 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { saveDisplay } from "@/lib/preferences";
 
-const session = vi.hoisted(() => ({
-  user: null as { id: string } | null,
-  apiFetch: vi.fn(),
-}));
+import { apiFetch } from "@/test/apiStub";
 
-vi.mock("@/lib/api", () => ({ apiFetch: session.apiFetch }));
+const session = vi.hoisted(() => ({ user: null as { id: string } | null }));
+
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: session.user, loading: false }),
 }));
@@ -22,7 +21,7 @@ function serverWith(stored: Record<string, unknown>) {
 }
 
 function patchBodies(): unknown[] {
-  return session.apiFetch.mock.calls
+  return apiFetch.mock.calls
     .filter(([, init]) => init?.method === "PATCH")
     .map(([, init]) => JSON.parse(init.body));
 }
@@ -35,18 +34,18 @@ describe("PreferencesSync", () => {
     window.localStorage.setItem("vidit:palette", "rose");
     window.localStorage.setItem("vidit:theme", "light");
     session.user = null;
-    session.apiFetch.mockReset();
+    apiFetch.mockReset();
   });
 
   it("leaves the local cache alone while signed out", () => {
     render(<PreferencesSync />);
 
-    expect(session.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
     expect(window.localStorage.getItem("vidit:palette")).toBe("rose");
   });
 
   it("lets a value the account saved win and rewrites the local cache", async () => {
-    session.apiFetch.mockResolvedValue(
+    apiFetch.mockResolvedValue(
       serverWith({ palette: "blue", theme: "dark", help_tooltips: false }),
     );
     const { rerender } = render(<PreferencesSync />);
@@ -63,7 +62,7 @@ describe("PreferencesSync", () => {
 
   it("writes the browser's own value up where the account saved none", async () => {
     window.localStorage.setItem("vidit:display-owner", "u1");
-    session.apiFetch.mockResolvedValue(serverWith({ palette: "violet" }));
+    apiFetch.mockResolvedValue(serverWith({ palette: "violet" }));
     session.user = { id: "u1" };
     render(<PreferencesSync />);
 
@@ -74,7 +73,7 @@ describe("PreferencesSync", () => {
   });
 
   it("adopts a cache that carries no owner and tags it with the account", async () => {
-    session.apiFetch.mockResolvedValue(serverWith({}));
+    apiFetch.mockResolvedValue(serverWith({}));
     session.user = { id: "u1" };
     render(<PreferencesSync />);
 
@@ -87,7 +86,7 @@ describe("PreferencesSync", () => {
   it("never uploads another account's cache, and clears it for this one", async () => {
     window.localStorage.setItem("vidit:display-owner", "someone-else");
     window.localStorage.setItem("vidit:help-hidden", "1");
-    session.apiFetch.mockResolvedValue(serverWith({ palette: "blue" }));
+    apiFetch.mockResolvedValue(serverWith({ palette: "blue" }));
     session.user = { id: "u1" };
     render(<PreferencesSync />);
 
@@ -101,11 +100,11 @@ describe("PreferencesSync", () => {
   });
 
   it("touches neither side when the payload carries no stored values", async () => {
-    session.apiFetch.mockResolvedValue([]);
+    apiFetch.mockResolvedValue([]);
     session.user = { id: "u1" };
     render(<PreferencesSync />);
 
-    await waitFor(() => expect(session.apiFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
     await flush();
     expect(patchBodies()).toEqual([]);
     expect(window.localStorage.getItem("vidit:theme")).toBe("light");
@@ -113,11 +112,11 @@ describe("PreferencesSync", () => {
 
   it("uploads nothing when neither side saved a value", async () => {
     window.localStorage.clear();
-    session.apiFetch.mockResolvedValue(serverWith({}));
+    apiFetch.mockResolvedValue(serverWith({}));
     session.user = { id: "u1" };
     render(<PreferencesSync />);
 
-    await waitFor(() => expect(session.apiFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
     await flush();
     expect(patchBodies()).toEqual([]);
     expect(window.localStorage.getItem("vidit:theme")).toBeNull();
@@ -125,7 +124,7 @@ describe("PreferencesSync", () => {
 
   it("does not undo a change made while the pull was in flight", async () => {
     let answer: (value: unknown) => void = () => {};
-    session.apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
+    apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
       init?.method === "PATCH"
         ? Promise.resolve({})
         : new Promise((resolve) => {

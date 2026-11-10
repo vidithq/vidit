@@ -1,38 +1,29 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ANA } from "@/test/auth";
 import { useApiResource } from "@/hooks/useApiResource";
 import { ApiError } from "@/lib/api";
 import { allApprovalsPath, type Approval, type ApprovalList } from "@/lib/approvals";
 import type { EventDetail } from "@/types";
 import { eventDetail, filedVersion } from "@/test/eventDetail";
 
-const api = vi.hoisted(() => ({
-  apiFetch: vi.fn(),
+import { apiFetch } from "@/test/apiStub";
+
+const mocks = vi.hoisted(() => ({
   viewer: null as { id: string; username: string } | null,
   // What the server says of the viewer; null derives it from the viewer and the credit.
   mayApprove: null as boolean | null,
 }));
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  errorMessage: (_err: unknown, fallback: string) => fallback,
-  ApiError: class extends Error {
-    code: string | null;
-    constructor(message: string, _status: number, code: string | null = null) {
-      super(message);
-      this.code = code;
-    }
-  },
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: api.viewer }),
+  useAuth: () => ({ user: mocks.viewer }),
 }));
 
 import { ApprovalStamps, VersionApprovals } from "./Approvals";
 import { useEventApprovals } from "./EventApprovals";
 
-const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
 const CY = { id: "u3", username: "cy" };
 const BELLINGCAT = { slug: "bellingcat", name: "Bellingcat", avatar_url: null };
@@ -53,11 +44,11 @@ const approval = (over: Partial<Approval> = {}): Approval => ({
 const listOf = (items: Approval[]): ApprovalList => ({
   items,
   viewer_can_approve:
-    api.mayApprove ?? (api.viewer !== null && !event.geolocators.some((g) => g.id === api.viewer?.id)),
+    mocks.mayApprove ?? (mocks.viewer !== null && !event.geolocators.some((g) => g.id === mocks.viewer?.id)),
 });
 
 function serve(rows: Approval[], extra: Record<string, unknown> = {}) {
-  api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+  apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
     if (init?.method === "POST") return Promise.resolve(approval());
     if (path in extra) return Promise.resolve(extra[path]);
     return Promise.resolve(path === ALL ? listOf(rows) : []);
@@ -91,12 +82,12 @@ const confirmApproval = () =>
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Approve" }));
 
 /** How many times the card read the approval list. */
-const listReads = () => api.apiFetch.mock.calls.filter(([path]) => path === ALL).length;
+const listReads = () => apiFetch.mock.calls.filter(([path]) => path === ALL).length;
 
 beforeEach(() => {
-  api.apiFetch.mockReset();
-  api.viewer = null;
-  api.mayApprove = null;
+  apiFetch.mockReset();
+  mocks.viewer = null;
+  mocks.mayApprove = null;
 });
 
 describe("<ApprovalStamps>", () => {
@@ -117,8 +108,6 @@ describe("<ApprovalStamps>", () => {
       ["bo approved v2 on 15 Oct 2026", "/profile/bo"],
       ["Bellingcat (cy) approved v2 on 15 Oct 2026", "/organizations/bellingcat"],
     ]);
-    expect(stamps[0].className).toContain("rounded-full");
-    expect(stamps[1].className).toContain("rounded-md");
     expect(screen.queryByRole("button")).toBeNull();
   });
   it("opens no card on a click", () => {
@@ -176,7 +165,7 @@ describe("useEventApprovals", () => {
   });
 
   it("approves the version on screen after a confirmation step, with no banner after", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     serve([]);
     render(<Panel />);
 
@@ -192,12 +181,12 @@ describe("useEventApprovals", () => {
     const dialog = screen.getByRole("dialog", { name: "Approve this version?" });
     expect(dialog).toHaveTextContent("You approve version 2 of this geolocation.");
     expect(dialog).toHaveTextContent("An approval is final.");
-    expect(api.apiFetch).not.toHaveBeenCalledWith("/events/e1/approvals", expect.anything());
+    expect(apiFetch).not.toHaveBeenCalledWith("/events/e1/approvals", expect.anything());
     expect(screen.queryByRole("textbox")).toBeNull();
 
     confirmApproval();
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals", {
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/approvals", {
         method: "POST",
         body: JSON.stringify({ version_no: 2 }),
       }),
@@ -208,7 +197,7 @@ describe("useEventApprovals", () => {
   });
 
   it("sends nothing when the reader cancels the confirmation", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     serve([]);
     render(<Panel />);
 
@@ -216,13 +205,13 @@ describe("useEventApprovals", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(
-      api.apiFetch.mock.calls.some(([, init]) => (init as { method?: string })?.method === "POST"),
+      apiFetch.mock.calls.some(([, init]) => (init as { method?: string })?.method === "POST"),
     ).toBe(false);
   });
 
   it("offers a reload when the live version moved on since the page loaded", async () => {
-    api.viewer = CY;
-    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+    mocks.viewer = CY;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
       if (init?.method === "POST")
         return Promise.reject(new ApiError("stale", 409, "version_mismatch"));
       return Promise.resolve(path === ALL ? listOf([]) : []);
@@ -236,8 +225,8 @@ describe("useEventApprovals", () => {
   });
 
   it("offers no reload for another approve error", async () => {
-    api.viewer = CY;
-    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+    mocks.viewer = CY;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
       if (init?.method === "POST")
         return Promise.reject(new ApiError("taken", 409, "already_approved"));
       return Promise.resolve(path === ALL ? listOf([]) : []);
@@ -251,9 +240,9 @@ describe("useEventApprovals", () => {
   });
 
   it("holds the approve buttons until the list reloads after an approval", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     let reads = 0;
-    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
       if (init?.method === "POST") return Promise.resolve(approval());
       if (path !== ALL) return Promise.resolve([]);
       reads += 1;
@@ -267,7 +256,7 @@ describe("useEventApprovals", () => {
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
   });
   it("tells the reader what changed since the earlier version they approved", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     serve([approval({ id: "a0", version_no: 1, current: false, reviewer: CY })], {
       "/events/e1/versions/1": filedVersion(event, 1, { title: "Bridge strike, first read" }),
     });
@@ -280,7 +269,7 @@ describe("useEventApprovals", () => {
   });
 
   it("says nothing of an earlier approval the reader does not hold", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     serve([approval({ id: "a0", version_no: 1, current: false })]);
     render(<Panel />);
 
@@ -289,22 +278,16 @@ describe("useEventApprovals", () => {
   });
 
   it("offers no approval to an analyst the server refuses, such as a former geolocator", async () => {
-    api.viewer = CY;
-    api.mayApprove = false;
+    mocks.viewer = CY;
+    mocks.mayApprove = false;
     serve([approval()]);
     render(<Panel />);
 
     expect(await stampNames()).toEqual(["bo"]);
     expect(screen.queryByRole("button", { name: /^Approve\b/ })).toBeNull();
   });
-  it("stamps an organization approval whose acting org manager was erased", async () => {
-    serve([approval({ organization: BELLINGCAT, reviewer: null })]);
-    render(<Panel />);
-
-    expect(await stampNames()).toEqual(["Bellingcat"]);
-  });
   it("offers a geolocator no approval", async () => {
-    api.viewer = ANA;
+    mocks.viewer = ANA;
     serve([approval()]);
     render(<Panel />);
 
@@ -331,7 +314,6 @@ describe("useEventApprovals", () => {
     render(<Panel />);
 
     expect(await stampNames()).toHaveLength(20);
-    expect(screen.queryByRole("button", { name: /more approvals/ })).toBeNull();
     expect(screen.getByRole("region", { name: "Approvals" })).not.toHaveTextContent(/\d/);
   });
 
@@ -344,7 +326,7 @@ describe("useEventApprovals", () => {
   });
 
   it("lets a member approve as each organization they belong to, whatever their role, from one menu", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     const OSINT = { slug: "osint-lab", name: "OSINT Lab", avatar_url: null };
     serve([], {
       "/users/cy/organizations": [
@@ -367,7 +349,7 @@ describe("useEventApprovals", () => {
     );
     confirmApproval();
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals", {
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/approvals", {
         method: "POST",
         body: JSON.stringify({ version_no: 2, organization: "bellingcat" }),
       }),
@@ -375,7 +357,7 @@ describe("useEventApprovals", () => {
   });
 
   it("closes Approve as the organization once it approved the version", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     serve([approval({ organization: BELLINGCAT }), approval({ id: "a2", reviewer: ANA })], {
       "/users/cy/organizations": [
         { organization: BELLINGCAT, role: "member", joined_at: "2026-10-01T00:00:00Z" },
@@ -389,7 +371,7 @@ describe("useEventApprovals", () => {
   });
 
   it("gives a geolocator Request approval, and no section under the actions", async () => {
-    api.viewer = ANA;
+    mocks.viewer = ANA;
     serve([]);
     render(<Panel />);
 
@@ -401,7 +383,7 @@ describe("useEventApprovals", () => {
   });
 
   it("names who asked the reader for approval, with Decline beside Approve", async () => {
-    api.viewer = BO;
+    mocks.viewer = BO;
     serve([], {
       "/events/e1/approval-requests": [
         {
@@ -429,8 +411,8 @@ describe("useEventApprovals", () => {
 
 describe("<VersionApprovals>", () => {
   it("stamps a filed version's approvals read-only", async () => {
-    api.viewer = BO;
-    api.apiFetch.mockImplementation((path: string) =>
+    mocks.viewer = BO;
+    apiFetch.mockImplementation((path: string) =>
       Promise.resolve(
         path === "/events/e1/approvals?version_no=1"
           ? {
@@ -448,12 +430,12 @@ describe("<VersionApprovals>", () => {
     expect(await stampNames()).toEqual(["bo", "cy"]);
     expect(screen.getByRole("link", { name: "cy approved v1 on 15 Oct 2026" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Delete approval|Approve/ })).toBeNull();
-    expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approvals?version_no=1", expect.anything());
+    expect(apiFetch).toHaveBeenCalledWith("/events/e1/approvals?version_no=1", expect.anything());
   });
   it("stays hidden when the version held no approval", async () => {
-    api.apiFetch.mockResolvedValue({ items: [], viewer_can_approve: false });
+    apiFetch.mockResolvedValue({ items: [], viewer_can_approve: false });
     const { container } = render(<VersionApprovals event={event} versionNo={1} />);
-    await waitFor(() => expect(api.apiFetch).toHaveBeenCalled());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
   });
 });

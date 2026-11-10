@@ -1,20 +1,16 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const push = vi.fn();
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push, replace: vi.fn(), back: vi.fn() }),
-}));
+import { push } from "@/test/navigationStub";
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
   importFromPost: vi.fn(),
 }));
 
-const useApiResource = vi.fn();
-vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => useApiResource(path),
-}));
+import { useApiResource } from "@/test/apiResourceStub";
+vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
 /** The existing row `GET /events/{id}` answers, or the error it answers instead. */
 function existingRow(row: { id: string; status: string } | "gone") {

@@ -11,22 +11,17 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import or_
 
 import app.services.bot as bot_service
 from app.config import settings
-from app.main import app
 from app.models.bot_mention import BotCatchUpCursor, BotMention
 from app.models.event import Event
 from app.models.user import User
 from app.services.bot import catch_up, drain_mentions
-from app.services.tweet_ingest.syndication import _cache_clear
-
-client = TestClient(app)
+from tests._fixtures import BOT_USER_ID, client, syndication_client, write_client
 
 WEBHOOK_PATH = "/api/v1/webhooks/x"
-BOT_USER_ID = "999000"
 CONSUMER_SECRET = "test-consumer-secret"
 HANDLE = f"owl{uuid.uuid4().hex[:8]}"
 
@@ -142,49 +137,16 @@ def _queued_mentions(db) -> list[dict]:
     return [row.payload for row in rows]
 
 
-def _syndication_client() -> httpx.Client:
-    def handler(req: httpx.Request) -> httpx.Response:
-        body = BODIES.get(req.url.params.get("id", ""))
-        if body is None:
-            return httpx.Response(404)
-        return httpx.Response(200, json=body)
-
-    return httpx.Client(transport=httpx.MockTransport(handler))
-
-
-def _write_client(posted: list[dict[str, object]], liked: list[dict[str, object]]) -> httpx.Client:
-    def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.path.endswith("/likes"):
-            liked.append(json.loads(req.content))
-            return httpx.Response(200, json={"data": {"liked": True}})
-        posted.append(json.loads(req.content))
-        return httpx.Response(201, json={"data": {"id": "888"}})
-
-    return httpx.Client(transport=httpx.MockTransport(handler))
-
-
 async def _drain(db):
     posted: list[dict[str, object]] = []
     liked: list[dict[str, object]] = []
-    with _syndication_client() as syn, _write_client(posted, liked) as write:
+    with syndication_client(BODIES) as syn, write_client(posted, liked, "888") as write:
         outcome = await drain_mentions(db, syndication_client=syn, x_write_client=write)
     return outcome, posted, liked
 
 
-@pytest.fixture
-def db():
-    from app.database import SessionLocal
-
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
 @pytest.fixture(autouse=True)
 def _webhook_settings(monkeypatch):
-    _cache_clear()
     monkeypatch.setattr(settings, "x_bot_bearer_token", "tok")
     monkeypatch.setattr(settings, "x_bot_user_id", BOT_USER_ID)
     monkeypatch.setattr(settings, "x_api_consumer_key", "ck")

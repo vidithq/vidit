@@ -18,37 +18,13 @@ from app.models.user_preferences import UserPreferences
 from app.services import admin as admin_service
 from app.services import email, geolocator_credit, notification_delivery, organizations
 from app.services import notifications as notifications_service
-from app.services.auth import hash_password
 from app.services.event_filters import published_credited_to
 from app.services.sanitize import html_from_text
+from tests._fixtures import make_event
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client, published_geo
+from tests.events._helpers import client, published_geo
 
 _EVENTS = "/api/v1/events"
-
-
-@pytest.fixture
-def make_user(db):
-    made: list[uuid.UUID] = []
-
-    def make(**kw) -> User:
-        user = User(
-            username=f"cg{uuid.uuid4().hex[:8]}",
-            email=f"cg-{uuid.uuid4().hex}@example.com",
-            password_hash=hash_password("password123"),
-            **kw,
-        )
-        db.add(user)
-        db.commit()
-        made.append(user.id)
-        return user
-
-    yield make
-    db.expire_all()
-    for user_id in made:
-        db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 def _credit(db, geo: Event, user: User, *, at: datetime | None = None) -> None:
@@ -110,7 +86,7 @@ def test_invite_refusals(db, author, second_user, make_user):
     banned = make_user(deleted_at=datetime.now(UTC))
     assert _invite(geo, author, banned.username).status_code == 404
 
-    detection = _make_geo(db, author=author, status="detected")
+    detection = make_event(db, author=author, status="detected")
     refused = _invite(detection, author, second_user.username)
     assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "invalid_state")
 
@@ -470,7 +446,7 @@ def test_published_credit_reads_match_through_the_geolocator_rows(db, author, se
     owned = published_geo(db, author)
     shared = published_geo(db, second_user)
     _credit(db, shared, author)
-    _make_geo(db, author=author, status="detected")
+    make_event(db, author=author, status="detected")
 
     predicate = published_credited_to([author.id])
     sql = str(predicate.compile(compile_kwargs={"literal_binds": True}))

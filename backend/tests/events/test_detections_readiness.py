@@ -11,13 +11,14 @@ from app.models.event import STATUS_DETECTED, Event
 from app.services.events import detection_ready_predicate
 from app.services.events.batch import _publish_detection
 from app.services.evidence_intake import EvidenceIntakeError
-from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES, make_detection
+from tests._fixtures import make_detection
+from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES
 
 
 def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict):
     """A review supplies the conflict and the source kind, so only the evidence floor can refuse."""
     rows = {
-        name: make_detection(db, author, overrides)
+        name: make_detection(db, author, **overrides)
         for name, (overrides, _) in READINESS_CASES.items()
     }
     names_by_id = {geo.id: name for name, geo in rows.items()}
@@ -53,7 +54,7 @@ def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict):
 
 def test_incomplete_is_the_exact_complement(db, author):
     """A NULL predicate leg would drop rows from both queues; every leg must be true or false."""
-    rows = [make_detection(db, author, overrides) for overrides, _ in READINESS_CASES.values()]
+    rows = [make_detection(db, author, **overrides) for overrides, _ in READINESS_CASES.values()]
     ids = [geo.id for geo in rows]
     ready = detection_ready_predicate()
 

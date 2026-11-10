@@ -1,13 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn(), apiFetchPage: vi.fn() }));
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  apiFetchPage: api.apiFetchPage,
-  errorMessage: (_err: unknown, fallback: string) => fallback,
-  ApiError: class extends Error {},
-}));
+import { apiFetch, apiFetchPage } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { ReportsPanel } from "./ReportsPanel";
 
@@ -34,13 +29,13 @@ const page = (ids: string[], pageNo: number, total: number) => ({
 });
 
 beforeEach(() => {
-  api.apiFetch.mockReset();
-  api.apiFetchPage.mockReset();
+  apiFetch.mockReset();
+  apiFetchPage.mockReset();
 });
 
 describe("<ReportsPanel>", () => {
   it("walks the offset pages with Show more", async () => {
-    api.apiFetchPage
+    apiFetchPage
       .mockResolvedValueOnce(page(["r1"], 1, 21))
       .mockResolvedValueOnce(page(["r2"], 2, 21));
     render(<ReportsPanel />);
@@ -50,7 +45,7 @@ describe("<ReportsPanel>", () => {
 
     expect(await screen.findByText("Report r2")).toBeInTheDocument();
     expect(screen.getByText("Report r1")).toBeInTheDocument();
-    expect(api.apiFetchPage.mock.calls.map((call) => call[0])).toEqual([
+    expect(apiFetchPage.mock.calls.map((call) => call[0])).toEqual([
       "/admin/reports?page=1&per_page=20",
       "/admin/reports?page=2&per_page=20",
     ]);
@@ -58,7 +53,7 @@ describe("<ReportsPanel>", () => {
   });
 
   it("names a reported event by its title and author", async () => {
-    api.apiFetchPage.mockResolvedValue(page(["r1"], 1, 1));
+    apiFetchPage.mockResolvedValue(page(["r1"], 1, 1));
     render(<ReportsPanel />);
 
     expect(await screen.findByRole("link", { name: "Strike r1" })).toHaveAttribute(
@@ -70,17 +65,17 @@ describe("<ReportsPanel>", () => {
   });
 
   it("hides the event only on the second click of its in-place confirm", async () => {
-    api.apiFetchPage.mockResolvedValue(page(["r1"], 1, 1));
-    api.apiFetch.mockResolvedValue({});
+    apiFetchPage.mockResolvedValue(page(["r1"], 1, 1));
+    apiFetch.mockResolvedValue({});
     render(<ReportsPanel />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Hide the event" }));
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Confirm hide the event" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/reports/r1/resolve", {
+      expect(apiFetch).toHaveBeenCalledWith("/admin/reports/r1/resolve", {
         method: "POST",
         body: JSON.stringify({ resolution: "hidden" }),
       }),
@@ -99,7 +94,7 @@ describe("<ReportsPanel>", () => {
         deleted_at: "2026-10-02T00:00:00Z",
       },
     };
-    api.apiFetchPage.mockResolvedValue({
+    apiFetchPage.mockResolvedValue({
       items: { items: [deleted], total: 1, page: 1, per_page: 20 },
       nextCursor: null,
     });
@@ -119,7 +114,7 @@ describe("<ReportsPanel>", () => {
       event: null,
       site: { id: "s1", name: "Kerrin Flats depot", owner: { id: "u1", username: "owner", avatar_url: null } },
     };
-    api.apiFetchPage.mockResolvedValue({
+    apiFetchPage.mockResolvedValue({
       items: { items: [site], total: 1, page: 1, per_page: 20 },
       nextCursor: null,
     });

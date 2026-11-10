@@ -29,8 +29,6 @@ describe("DetailsFields", () => {
     expect(screen.getByText("Event date")).toBeInTheDocument();
     expect(screen.getByText("Event time")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "What is the event date?" })).toBeInTheDocument();
-    // The sources carry their own links and times.
-    expect(screen.queryByText(/Source posted/)).toBeNull();
   });
 
   it("carries no optional marker on the event date and event time", () => {

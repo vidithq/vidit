@@ -3,183 +3,135 @@ from pydantic import ValidationError
 
 from app.config import Settings
 
-
-def test_settings_default_local_backend_passes(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    settings = Settings()
-    assert settings.storage_backend == "local"
-    assert settings.s3_bucket == ""
-
-
-def test_settings_s3_backend_requires_bucket_and_region(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("STORAGE_BACKEND", "s3")
-    with pytest.raises(ValidationError, match="S3_BUCKET, AWS_REGION"):
-        Settings()
+_REMOTE_DB = "postgresql://u:p@db.railway.internal:5432/db"
+_LOCAL_DB = "postgresql://u:p@localhost:5432/db"
+_DEV_CORS = r"^https?://localhost:\d+$"
+# A deployment: a real secret, secure cookies, a database off the machine.
+_DEPLOYED = {"JWT_SECRET": "a-real-secret", "COOKIE_SECURE": "true", "DATABASE_URL": _REMOTE_DB}
 
 
-def test_settings_s3_backend_requires_bucket_when_only_region_set(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("STORAGE_BACKEND", "s3")
-    monkeypatch.setenv("AWS_REGION", "us-east-1")
-    with pytest.raises(ValidationError, match="S3_BUCKET"):
-        Settings()
-
-
-def test_settings_full_s3_config_passes(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("STORAGE_BACKEND", "s3")
-    monkeypatch.setenv("AWS_REGION", "us-east-1")
-    monkeypatch.setenv("S3_BUCKET", "example-bucket")
-    settings = Settings()
-    assert settings.storage_backend == "s3"
-
-
-def test_settings_rejects_bucket_without_s3_backend(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("S3_BUCKET", "example-bucket")
-    with pytest.raises(ValidationError, match="S3_BUCKET is set"):
-        Settings()
-
-
-def test_database_url_postgres_scheme_is_normalized(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h:5432/db")
-    monkeypatch.setenv("JWT_SECRET", "test-secret")
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    settings = Settings()
-    assert settings.database_url == "postgresql://u:p@h:5432/db"
-
-
-def test_database_url_postgresql_scheme_passes_through(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h:5432/db")
-    monkeypatch.setenv("JWT_SECRET", "test-secret")
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    settings = Settings()
-    assert settings.database_url == "postgresql://u:p@h:5432/db"
-
-
-def test_default_jwt_secret_with_localhost_db_passes(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.delenv("JWT_SECRET", raising=False)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost:5432/db")
-    settings = Settings()
-    assert settings.jwt_secret == "changeme-in-production"
-
-
-def test_default_jwt_secret_with_remote_db_fails(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.delenv("JWT_SECRET", raising=False)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
-    with pytest.raises(ValidationError, match="JWT_SECRET must be set"):
-        Settings()
-
-
-def test_overridden_jwt_secret_with_remote_db_passes(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    settings = Settings()
-    assert settings.jwt_secret == "a-real-secret"
-
-
-def test_remote_db_with_cookie_secure_false_fails(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
-    monkeypatch.delenv("COOKIE_SECURE", raising=False)
-    with pytest.raises(ValidationError, match="COOKIE_SECURE must be true"):
-        Settings()
-
-
-def test_remote_db_with_cookie_secure_true_passes(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    settings = Settings()
-    assert settings.cookie_secure is True
-
-
-def test_a_deployment_refuses_a_localhost_api_url(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    monkeypatch.delenv("API_URL", raising=False)
-    with pytest.raises(ValidationError, match="API_URL must name the public API"):
-        Settings()
-
-
-def test_default_jwt_secret_with_ipv6_localhost_passes(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.delenv("JWT_SECRET", raising=False)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@[::1]:5432/db")
-    settings = Settings()
-    assert settings.jwt_secret == "changeme-in-production"
-
-
-def test_default_jwt_secret_with_unparseable_host_fails(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.delenv("JWT_SECRET", raising=False)
-    monkeypatch.setenv("DATABASE_URL", "postgresql:///db")
-    with pytest.raises(ValidationError, match="JWT_SECRET must be set"):
-        Settings()
-
-
-def test_cors_origin_regex_dropped_on_remote_db(monkeypatch):
-    """The localhost dev regex must not survive to a non-local deployment: with
-    allow_credentials it would let any localhost page read the API with credentials."""
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
-    settings = Settings()
-    assert settings.cors_origin_regex == r"^https?://localhost:\d+$"
-    assert settings.effective_cors_origin_regex == ""
-
-
-def test_cors_origin_regex_kept_on_local_db(monkeypatch):
-    """Locally the regex stands so one backend serves many frontend ports."""
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost:5432/db")
-    settings = Settings()
-    assert settings.effective_cors_origin_regex == r"^https?://localhost:\d+$"
-
-
-def test_cors_origin_regex_non_localhost_pattern_kept_on_remote_db(monkeypatch):
-    """A deliberately-set non-localhost regex (e.g. staging) is always honoured."""
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
-    monkeypatch.setenv("CORS_ORIGIN_REGEX", r"^https://.*\.staging\.vidit\.app$")
-    settings = Settings()
-    assert settings.effective_cors_origin_regex == r"^https://.*\.staging\.vidit\.app$"
-
-
-def test_cors_origin_regex_custom_localhost_substring_kept_on_remote_db(monkeypatch):
-    """Only the exact shipped default is dropped; a custom pattern containing 'localhost' stands."""
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("JWT_SECRET", "a-real-secret")
-    monkeypatch.setenv("COOKIE_SECURE", "true")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.railway.internal:5432/db")
-    monkeypatch.setenv("CORS_ORIGIN_REGEX", r"^https://localhost-preview\.vidit\.app$")
-    settings = Settings()
-    assert settings.effective_cors_origin_regex == r"^https://localhost-preview\.vidit\.app$"
-
-
-def test_email_caps_must_leave_room_for_auth_email(monkeypatch):
-    _clear_storage_env(monkeypatch)
-    monkeypatch.setenv("NOTIFICATION_EMAIL_DAILY_CAP", "100")
-    with pytest.raises(ValidationError, match="EMAIL_PROVIDER_DAILY_QUOTA"):
-        Settings()
-    monkeypatch.setenv("EMAIL_PROVIDER_DAILY_QUOTA", "3000")
-    assert Settings().notification_email_daily_cap == 100
-
-
-def _clear_storage_env(monkeypatch):
+def _settings(monkeypatch, env: dict[str, str | None]) -> Settings:
+    """``Settings()`` read from ``env`` (``None`` unsets a variable), with no storage variables
+    and a public ``API_URL`` unless ``env`` says otherwise."""
     for var in ("STORAGE_BACKEND", "AWS_REGION", "S3_BUCKET", "CLOUDFRONT_DOMAIN"):
         monkeypatch.delenv(var, raising=False)
-    # A deployment (COOKIE_SECURE) needs a public API_URL; the tests that do not probe it get it.
     monkeypatch.setenv("API_URL", "https://api.vidit.example/api/v1")
+    for var, value in env.items():
+        if value is None:
+            monkeypatch.delenv(var, raising=False)
+        else:
+            monkeypatch.setenv(var, value)
+    return Settings()
+
+
+@pytest.mark.parametrize(
+    ("env", "field", "value"),
+    [
+        pytest.param({}, "storage_backend", "local", id="local-storage-by-default"),
+        pytest.param({}, "s3_bucket", "", id="no-bucket-by-default"),
+        pytest.param(
+            {"STORAGE_BACKEND": "s3", "AWS_REGION": "us-east-1", "S3_BUCKET": "example-bucket"},
+            "storage_backend",
+            "s3",
+            id="full-s3",
+        ),
+        pytest.param(
+            {**_DEPLOYED, "DATABASE_URL": "postgres://u:p@h:5432/db"},
+            "database_url",
+            "postgresql://u:p@h:5432/db",
+            id="postgres-scheme-normalized",
+        ),
+        pytest.param(
+            {**_DEPLOYED, "DATABASE_URL": "postgresql://u:p@h:5432/db"},
+            "database_url",
+            "postgresql://u:p@h:5432/db",
+            id="postgresql-scheme-kept",
+        ),
+        pytest.param(
+            {"JWT_SECRET": None, "DATABASE_URL": _LOCAL_DB},
+            "jwt_secret",
+            "changeme-in-production",
+            id="default-secret-on-localhost",
+        ),
+        pytest.param(
+            {"JWT_SECRET": None, "DATABASE_URL": "postgresql://u:p@[::1]:5432/db"},
+            "jwt_secret",
+            "changeme-in-production",
+            id="default-secret-on-ipv6-localhost",
+        ),
+        pytest.param(_DEPLOYED, "jwt_secret", "a-real-secret", id="real-secret-deployed"),
+        pytest.param(_DEPLOYED, "cookie_secure", True, id="secure-cookies-deployed"),
+        # With allow_credentials, the dev regex would let any localhost page read the API.
+        pytest.param(_DEPLOYED, "cors_origin_regex", _DEV_CORS, id="dev-cors-regex-stored"),
+        pytest.param(_DEPLOYED, "effective_cors_origin_regex", "", id="dev-cors-regex-dropped"),
+        pytest.param(
+            {"DATABASE_URL": _LOCAL_DB},
+            "effective_cors_origin_regex",
+            _DEV_CORS,
+            id="dev-cors-local",
+        ),
+        pytest.param(
+            {**_DEPLOYED, "CORS_ORIGIN_REGEX": r"^https://.*\.staging\.vidit\.app$"},
+            "effective_cors_origin_regex",
+            r"^https://.*\.staging\.vidit\.app$",
+            id="custom-cors-deployed",
+        ),
+        # Only the exact shipped default is dropped.
+        pytest.param(
+            {**_DEPLOYED, "CORS_ORIGIN_REGEX": r"^https://localhost-preview\.vidit\.app$"},
+            "effective_cors_origin_regex",
+            r"^https://localhost-preview\.vidit\.app$",
+            id="custom-localhost-cors-deployed",
+        ),
+        pytest.param(
+            {"NOTIFICATION_EMAIL_DAILY_CAP": "100", "EMAIL_PROVIDER_DAILY_QUOTA": "3000"},
+            "notification_email_daily_cap",
+            100,
+            id="email-cap-under-quota",
+        ),
+    ],
+)
+def test_settings_accept(monkeypatch, env, field, value):
+    assert getattr(_settings(monkeypatch, env), field) == value
+
+
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        pytest.param({"STORAGE_BACKEND": "s3"}, "S3_BUCKET, AWS_REGION", id="s3-without-config"),
+        pytest.param(
+            {"STORAGE_BACKEND": "s3", "AWS_REGION": "us-east-1"},
+            "S3_BUCKET",
+            id="s3-without-bucket",
+        ),
+        pytest.param({"S3_BUCKET": "example-bucket"}, "S3_BUCKET is set", id="bucket-without-s3"),
+        pytest.param(
+            {"JWT_SECRET": None, "DATABASE_URL": _REMOTE_DB},
+            "JWT_SECRET must be set",
+            id="default-secret-on-remote-db",
+        ),
+        pytest.param(
+            {"JWT_SECRET": None, "DATABASE_URL": "postgresql:///db"},
+            "JWT_SECRET must be set",
+            id="default-secret-on-unparseable-host",
+        ),
+        pytest.param(
+            {**_DEPLOYED, "COOKIE_SECURE": None},
+            "COOKIE_SECURE must be true",
+            id="remote-db-without-secure-cookies",
+        ),
+        pytest.param(
+            {"COOKIE_SECURE": "true", "API_URL": None},
+            "API_URL must name the public API",
+            id="deployed-localhost-api-url",
+        ),
+        pytest.param(
+            {"NOTIFICATION_EMAIL_DAILY_CAP": "100"},
+            "EMAIL_PROVIDER_DAILY_QUOTA",
+            id="email-cap-over-quota",
+        ),
+    ],
+)
+def test_settings_refuse(monkeypatch, env, message):
+    with pytest.raises(ValidationError, match=message):
+        _settings(monkeypatch, env)

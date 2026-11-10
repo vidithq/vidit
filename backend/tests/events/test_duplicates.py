@@ -6,11 +6,12 @@ from datetime import UTC, date, datetime
 
 from app.models.event import Event
 from app.models.user import User
+from tests._fixtures import make_event
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import client
 
 
-def _make_geo_with_source(
+def make_event_with_source(
     db,
     *,
     author: User,
@@ -20,9 +21,9 @@ def _make_geo_with_source(
     occurred_date_value: date,
     secondary_source_urls: list[str] | None = None,
 ) -> Event:
-    """Pins the source URLs and event date, which ``_make_geo`` defaults away from the
+    """Pins the source URLs and event date, which ``make_event`` defaults away from the
     host / date legs."""
-    return _make_geo(
+    return make_event(
         db,
         author=author,
         lat=lat,
@@ -48,7 +49,7 @@ def test_possible_duplicates_requires_auth():
 
 
 def test_possible_duplicates_returns_host_match(db, author):
-    target = _make_geo_with_source(
+    target = make_event_with_source(
         db,
         author=author,
         lat=48.50000,
@@ -80,7 +81,7 @@ def test_possible_duplicates_returns_host_match(db, author):
 
 def test_possible_duplicates_matches_the_host_of_any_source(db, author):
     """The host leg reaches every source's URLs, and the hit lists them all."""
-    target = _make_geo_with_source(
+    target = make_event_with_source(
         db,
         author=author,
         lat=48.50000,
@@ -105,7 +106,7 @@ def test_possible_duplicates_matches_the_host_of_any_source(db, author):
 
 
 def test_possible_duplicates_returns_date_match(db, author):
-    target = _make_geo_with_source(
+    target = make_event_with_source(
         db,
         author=author,
         lat=48.50000,
@@ -130,7 +131,7 @@ def test_possible_duplicates_returns_date_match(db, author):
 
 def test_possible_duplicates_excludes_distant_rows(db, author):
     """Proximity is a required leg: without it every geo sharing a host would match."""
-    distant = _make_geo_with_source(
+    distant = make_event_with_source(
         db,
         author=author,
         lat=49.00000,  # ~55 km north of the probe point
@@ -161,7 +162,7 @@ def test_possible_duplicates_rejects_like_meta_characters_in_host(db, author):
     """The host whitelist ``[a-z0-9.-]+`` disarms LIKE metacharacters:
     ``https://%.com/x`` must not extract ``%.com`` and ILIKE-match every ``.com`` row.
     Regression guard for ``_HOST_SAFE_PATTERN``."""
-    unrelated = _make_geo_with_source(
+    unrelated = make_event_with_source(
         db,
         author=author,
         lat=48.50000,
@@ -187,7 +188,7 @@ def test_possible_duplicates_rejects_like_meta_characters_in_host(db, author):
 
 
 def test_possible_duplicates_excludes_soft_deleted(db, author):
-    geo = _make_geo_with_source(
+    geo = make_event_with_source(
         db,
         author=author,
         lat=48.50000,
@@ -214,7 +215,7 @@ def test_possible_duplicates_excludes_soft_deleted(db, author):
 
 def test_possible_duplicates_returns_empty_without_either_leg(db, author):
     """No usable match leg returns empty, sparing the eager frontend call a round trip."""
-    _make_geo_with_source(
+    make_event_with_source(
         db,
         author=author,
         lat=48.50000,
@@ -234,7 +235,7 @@ def test_possible_duplicates_returns_empty_without_either_leg(db, author):
 def test_possible_duplicates_tolerates_partial_source_url(db, author):
     """A scheme-less mid-form paste still yields a host; the endpoint normalises instead
     of 422-ing."""
-    target = _make_geo_with_source(
+    target = make_event_with_source(
         db,
         author=author,
         lat=48.50000,
@@ -259,7 +260,7 @@ def test_possible_duplicates_tolerates_partial_source_url(db, author):
 
 def test_possible_duplicates_orders_by_distance(db, author):
     """Closer candidates come first; the UI shows the likeliest duplicate on top."""
-    far = _make_geo_with_source(
+    far = make_event_with_source(
         db,
         author=author,
         lat=48.50300,  # ~330 m north
@@ -267,7 +268,7 @@ def test_possible_duplicates_orders_by_distance(db, author):
         source_url="https://t.me/somechannel/aaa",
         occurred_date_value=date(2026, 5, 1),
     )
-    near = _make_geo_with_source(
+    near = make_event_with_source(
         db,
         author=author,
         lat=48.50050,  # ~55 m north

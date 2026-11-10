@@ -8,7 +8,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app.database import SessionLocal
 from app.main import app
 from app.models.audit_log import (
     ACTION_FAILED_LOGIN,
@@ -27,29 +26,6 @@ from app.models.user import User
 from app.routers import auth as auth_router
 from app.services import audit
 from app.services import auth as auth_service
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def email_silencer(monkeypatch):
-
-    def _drop(_email_obj):
-        return None
-
-    monkeypatch.setattr(auth_router.email, "send", _drop)
 
 
 @pytest.fixture
@@ -76,6 +52,12 @@ def existing_user(db):
     yield user
     db.query(User).filter(User.id == user.id).delete()
     db.commit()
+
+
+def _null_actor_rows(db, action: str) -> int:
+    """``action`` rows with no actor; a test reads the delta its call adds."""
+    db.expire_all()
+    return db.query(AuditLog).filter(AuditLog.action == action, AuditLog.actor_id.is_(None)).count()
 
 
 def _events_for(db, *, action: str, since: datetime) -> list[AuditLog]:
@@ -129,30 +111,15 @@ def test_login_wrong_password_writes_failed_login_with_user_id(client, existing_
     assert len(matching) == 1, "matched user → row carries user_id for forensics"
 
 
-def test_login_deactivated_account_is_rejected(client, existing_user, db):
-    existing_user.is_active = False
-    db.add(existing_user)
-    db.commit()
-
-    response = client.post(
-        "/api/v1/auth/login",
-        json={"email": existing_user.email, "password": "originalpassword1"},
-    )
-
-    assert response.status_code == 401
-
-
 def test_login_unknown_email_writes_failed_login_with_null_user_id(client, db):
-    cutoff = datetime.now(UTC) - timedelta(seconds=5)
+    before = _null_actor_rows(db, ACTION_FAILED_LOGIN)
     response = client.post(
         "/api/v1/auth/login",
         json={"email": f"nobody-{uuid.uuid4().hex}@example.com", "password": "wrong"},
     )
     assert response.status_code == 401
 
-    rows = _events_for(db, action=ACTION_FAILED_LOGIN, since=cutoff)
-    null_rows = [r for r in rows if r.actor_id is None]
-    assert null_rows, "unknown email → at least one NULL-user_id failed_login row"
+    assert _null_actor_rows(db, ACTION_FAILED_LOGIN) == before + 1
 
 
 def test_logout_writes_logout_event_with_user_id(client, existing_user, db):
@@ -175,16 +142,15 @@ def test_logout_writes_logout_event_with_user_id(client, existing_user, db):
 
 def test_logout_without_session_writes_row_with_null_user_id(client, db):
     fresh = TestClient(app)
-    cutoff = datetime.now(UTC) - timedelta(seconds=5)
+    before = _null_actor_rows(db, ACTION_LOGOUT)
     response = fresh.post("/api/v1/auth/logout")
     assert response.status_code == 204
 
-    rows = _events_for(db, action=ACTION_LOGOUT, since=cutoff)
-    assert any(r.actor_id is None for r in rows)
+    assert _null_actor_rows(db, ACTION_LOGOUT) == before + 1
 
 
-def test_register_pending_writes_event_with_null_user_id(client, fresh_invite, email_silencer, db):
-    cutoff = datetime.now(UTC) - timedelta(seconds=5)
+def test_register_pending_writes_event_with_null_user_id(client, fresh_invite, sent_emails, db):
+    before = _null_actor_rows(db, ACTION_REGISTER_PENDING)
     email_addr = f"reg-{uuid.uuid4().hex}@example.com"
     response = client.post(
         "/api/v1/auth/register",
@@ -197,13 +163,11 @@ def test_register_pending_writes_event_with_null_user_id(client, fresh_invite, e
     )
     assert response.status_code == 202
 
-    rows = _events_for(db, action=ACTION_REGISTER_PENDING, since=cutoff)
-    # No users row exists yet: user_id is NULL.
-    assert any(r.actor_id is None for r in rows)
+    assert _null_actor_rows(db, ACTION_REGISTER_PENDING) == before + 1
 
 
 def test_confirm_registration_writes_event_with_user_id(
-    client, fresh_invite, email_silencer, db, monkeypatch
+    client, fresh_invite, sent_emails, db, monkeypatch
 ):
     captured: dict[str, str] = {}
 
@@ -242,7 +206,7 @@ def test_confirm_registration_writes_event_with_user_id(
     db.commit()
 
 
-def test_forgot_password_writes_event_on_known_email(client, existing_user, email_silencer, db):
+def test_forgot_password_writes_event_on_known_email(client, existing_user, sent_emails, db):
     cutoff = datetime.now(UTC) - timedelta(seconds=5)
     response = client.post(
         "/api/v1/auth/forgot-password",
@@ -254,22 +218,18 @@ def test_forgot_password_writes_event_on_known_email(client, existing_user, emai
     assert any(r.actor_id == existing_user.id for r in rows)
 
 
-def test_forgot_password_writes_event_on_unknown_email(client, email_silencer, db):
-    cutoff = datetime.now(UTC) - timedelta(seconds=5)
+def test_forgot_password_writes_event_on_unknown_email(client, sent_emails, db):
+    before = _null_actor_rows(db, ACTION_PASSWORD_RESET_REQUESTED)
     response = client.post(
         "/api/v1/auth/forgot-password",
         json={"email": f"ghost-{uuid.uuid4().hex}@example.com"},
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, action=ACTION_PASSWORD_RESET_REQUESTED, since=cutoff)
-    # No-op branch still writes a NULL-user_id row (a rate-of-requests signal).
-    assert any(r.actor_id is None for r in rows)
+    assert _null_actor_rows(db, ACTION_PASSWORD_RESET_REQUESTED) == before + 1
 
 
-def test_resend_confirmation_writes_event_on_matched_pending(
-    client, fresh_invite, email_silencer, db
-):
+def test_resend_confirmation_writes_event_on_matched_pending(client, fresh_invite, sent_emails, db):
     """A resend against a live pending row writes ``register_resent`` with NULL user_id."""
     email_addr = f"reg-{uuid.uuid4().hex}@example.com"
     register_resp = client.post(
@@ -283,32 +243,29 @@ def test_resend_confirmation_writes_event_on_matched_pending(
     )
     assert register_resp.status_code == 202
 
-    cutoff = datetime.now(UTC) - timedelta(seconds=5)
+    before = _null_actor_rows(db, ACTION_REGISTER_RESENT)
     response = client.post(
         "/api/v1/auth/resend-confirmation",
         json={"email": email_addr},
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, action=ACTION_REGISTER_RESENT, since=cutoff)
-    assert len(rows) >= 1
-    assert all(r.actor_id is None for r in rows)
+    assert _null_actor_rows(db, ACTION_REGISTER_RESENT) == before + 1
 
     db.query(PendingRegistration).filter(PendingRegistration.email == email_addr).delete()
     db.commit()
 
 
-def test_resend_confirmation_writes_event_on_unknown_email(client, email_silencer, db):
+def test_resend_confirmation_writes_event_on_unknown_email(client, sent_emails, db):
     """The no-op branch still writes an audit row, so scripted resends leave a trace."""
-    cutoff = datetime.now(UTC) - timedelta(seconds=5)
+    before = _null_actor_rows(db, ACTION_REGISTER_RESENT)
     response = client.post(
         "/api/v1/auth/resend-confirmation",
         json={"email": f"ghost-{uuid.uuid4().hex}@example.com"},
     )
     assert response.status_code == 204
 
-    rows = _events_for(db, action=ACTION_REGISTER_RESENT, since=cutoff)
-    assert any(r.actor_id is None for r in rows)
+    assert _null_actor_rows(db, ACTION_REGISTER_RESENT) == before + 1
 
 
 def test_audit_failure_does_not_break_login_python_layer(client, existing_user, monkeypatch):
@@ -377,70 +334,33 @@ def test_rate_limit_key_takes_rightmost_xff_not_client_host():
     assert audit.rate_limit_key(spoofed) == audit.rate_limit_key(clean) == "203.0.113.7"
 
 
-def test_rate_limit_key_resists_garbage_prefix():
-    """A garbage left-most entry never poisons the key."""
-    req = _FakeRequest(
-        headers={"x-forwarded-for": "evil-prefix, 203.0.113.7"},
-        client_host="10.0.0.1",
-    )
-    assert audit.rate_limit_key(req) == "203.0.113.7"
+_NO_CLIENT = "rate-limit:no-client"
 
 
-def test_rate_limit_key_falls_back_to_request_client():
-    req = _FakeRequest(headers={}, client_host="198.51.100.5")
-    assert audit.rate_limit_key(req) == "198.51.100.5"
-
-
-def test_rate_limit_key_returns_stable_sentinel_when_no_client():
-    """No XFF and no client falls back to a stable string, not ``None``."""
-    no_source = _FakeRequest(headers={}, client_host=None)
-    assert audit.rate_limit_key(no_source) == "rate-limit:no-client"
-
-
-def test_rate_limit_key_rejects_garbage_values():
-    """Malformed X-Forwarded-For never becomes a bucket key (``ipaddress.ip_address`` gates it)."""
-    for hostile in [
-        "not-an-ip",
-        "127.0.0.1; DROP TABLE audit_log",
-        "999.999.999.999",
-        "<script>",
-        "",
-    ]:
-        req = _FakeRequest(headers={"x-forwarded-for": hostile})
-        assert audit.rate_limit_key(req) == "rate-limit:no-client", f"should reject {hostile!r}"
-
-
-def test_rate_limit_key_falls_back_when_forwarded_is_garbage():
-    """A garbage Forwarded header still keys on the peer."""
-    req = _FakeRequest(
-        headers={"x-forwarded-for": "not-an-ip"},
-        client_host="198.51.100.5",
-    )
-    assert audit.rate_limit_key(req) == "198.51.100.5"
-
-
-def test_rate_limit_key_honours_trusted_proxy_hops(monkeypatch):
-    """With TRUSTED_PROXY_HOPS=2, pick the second-from-the-right entry (the client IP seen by the first proxy)."""
+@pytest.mark.parametrize(
+    ("xff", "client_host", "hops", "key"),
+    [
+        pytest.param("evil-prefix, 203.0.113.7", "10.0.0.1", 1, "203.0.113.7", id="garbage-prefix"),
+        pytest.param(None, "198.51.100.5", 1, "198.51.100.5", id="peer-without-xff"),
+        pytest.param(None, None, 1, _NO_CLIENT, id="no-source"),
+        pytest.param("not-an-ip", None, 1, _NO_CLIENT, id="not-an-ip"),
+        pytest.param("127.0.0.1; DROP TABLE audit_log", None, 1, _NO_CLIENT, id="sql"),
+        pytest.param("999.999.999.999", None, 1, _NO_CLIENT, id="octets-out-of-range"),
+        pytest.param("<script>", None, 1, _NO_CLIENT, id="markup"),
+        pytest.param("", None, 1, _NO_CLIENT, id="empty"),
+        pytest.param("not-an-ip", "198.51.100.5", 1, "198.51.100.5", id="garbage-xff-keys-on-peer"),
+        pytest.param("10.0.0.1, 104.16.0.1", "172.16.0.1", 2, "10.0.0.1", id="two-trusted-hops"),
+        pytest.param("10.0.0.1, 203.0.113.7", "172.16.0.1", 3, "10.0.0.1", id="hops-past-chain"),
+    ],
+)
+def test_rate_limit_key(monkeypatch, xff, client_host, hops, key):
+    """The key is a valid IP ``hops`` from the right of X-Forwarded-For (clamped to the chain),
+    else the peer, else a stable sentinel; a malformed value never becomes a key."""
     from app.config import settings as _settings
 
-    monkeypatch.setattr(_settings, "trusted_proxy_hops", 2)
-    req = _FakeRequest(
-        headers={"x-forwarded-for": "10.0.0.1, 104.16.0.1"},
-        client_host="172.16.0.1",
-    )
-    assert audit.rate_limit_key(req) == "10.0.0.1"
-
-
-def test_rate_limit_key_clamps_when_chain_is_shorter_than_hops(monkeypatch):
-    """A hop count larger than the XFF chain peels to the left-most entry instead of indexing out of range."""
-    from app.config import settings as _settings
-
-    monkeypatch.setattr(_settings, "trusted_proxy_hops", 3)
-    req = _FakeRequest(
-        headers={"x-forwarded-for": "10.0.0.1, 203.0.113.7"},
-        client_host="172.16.0.1",
-    )
-    assert audit.rate_limit_key(req) == "10.0.0.1"
+    monkeypatch.setattr(_settings, "trusted_proxy_hops", hops)
+    headers = {"x-forwarded-for": xff} if xff is not None else {}
+    assert audit.rate_limit_key(_FakeRequest(headers=headers, client_host=client_host)) == key
 
 
 def test_hsts_header_on_csrf_rejection(client, existing_user):

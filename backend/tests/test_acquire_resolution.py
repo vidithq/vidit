@@ -18,7 +18,6 @@ from app.services.tweet_ingest import (
 )
 from app.services.tweet_ingest.records import ChasedPost, ChaseResult
 from app.services.tweet_ingest.syndication import (
-    _cache_clear,
     extract_source_links,
 )
 
@@ -79,14 +78,6 @@ def _client(
         return httpx.Response(200, json=body) if body is not None else httpx.Response(404)
 
     return httpx.Client(transport=httpx.MockTransport(handler))
-
-
-@pytest.fixture(autouse=True)
-def _clear_syndication_cache():
-    # ``fetch_syndication`` caches by tweet id process-wide.
-    _cache_clear()
-    yield
-    _cache_clear()
 
 
 def test_acquire_thread_joins_the_same_authors_parent():

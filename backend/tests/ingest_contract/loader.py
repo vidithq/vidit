@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from app.services.tweet_ingest import Detection, Resolution, acquire_thread, read_tweets, stitch
 from app.services.tweet_ingest.records import TweetRecord
-from app.services.tweet_ingest.syndication import _cache_clear
 from app.services.tweet_ingest.urls import TELEGRAM_HOST_RE
 from tests._fixtures import TINY_MP4, write_archive_js
 
@@ -100,7 +100,8 @@ def secondary_sources_of(detection: Detection) -> list[dict[str, Any]]:
 def assert_resolution_matches(typology: str, path: str, resolution: Resolution) -> None:
     """Assert one entry's resolution answers the typology's expectation.
 
-    One detection per coordinate, each carrying the title, source, mirrors and context links,
+    One detection per coordinate, in order, each carrying the coordinate, the head post it
+    anchors on when the expectation names one, the title, source, mirrors and context links,
     warnings and media split the expectation names. ``paths.<path>.reason`` pins that entry's refusal.
 
     An ``expected["request"]`` block pins the second exit (the draft a coordinate-less
@@ -122,7 +123,12 @@ def assert_resolution_matches(typology: str, path: str, resolution: Resolution) 
         assert draft.title == request["title"], typology
         footage = draft.footage_candidates[0]
         assert [footage.kind, footage.origin] == list(request["footage"]), typology
-    for detection in resolution.detections:
+    for detection, (lat, lng) in zip(resolution.detections, expected["coords"], strict=True):
+        assert detection.coordinate.lat == pytest.approx(lat), typology
+        assert detection.coordinate.lng == pytest.approx(lng), typology
+        if "head_tweet_id" in expected:
+            head = f"/status/{expected['head_tweet_id']}"
+            assert detection.detected_from_url.endswith(head), typology
         assert detection.title == expected["title"], typology
         assert detection.source_url == expected["source_url"], typology
         assert secondary_sources_of(detection) == expected["secondary_sources"], typology
@@ -164,11 +170,9 @@ def syndication_client(typology: str) -> httpx.Client:
 
     An ``x.com`` read answers from the bodies, a ``t.me`` read from ``embed.html``. A 404
     is X's answer for an invisible post, so an out-of-fixture chase fails soft offline.
-    The fetch cache is cleared first so another typology's body cannot answer here.
     """
     bodies = load_bodies(typology)
     embed = load_embed(typology)
-    _cache_clear()
 
     def handler(request: httpx.Request) -> httpx.Response:
         if TELEGRAM_HOST_RE.match(request.url.host.lower()) is not None:

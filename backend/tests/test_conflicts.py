@@ -4,27 +4,14 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.conflict import Conflict
 from app.models.event import Event
 from app.models.user import User
 from app.services.auth import hash_password
-
-client = TestClient(app)
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
+from tests._fixtures import client
 
 
 @pytest.fixture

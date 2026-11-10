@@ -415,7 +415,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Duplication (jscpd)
-        run: npx --yes jscpd@4.2.5 backend/app frontend/src
+        run: npx --yes jscpd@4.2.5 backend/app backend/tests frontend/src frontend/e2e
 
       - name: Install frontend dependencies
         run: npm ci

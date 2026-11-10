@@ -8,68 +8,18 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 
-vi.mock("@/hooks/useRequireAuth", () => ({
-  useRequireAuth: () => ({ user: { id: "u1", username: "ana" }, loading: false }),
-}));
+vi.mock("@/hooks/useRequireAuth", () => import("@/test/requireAuthStub"));
 
-const useApiResource = vi.fn();
-vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => useApiResource(path),
-}));
+import { useApiResource } from "@/test/apiResourceStub";
+vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
 import type { EventDetail } from "@/types";
+import { eventDetail } from "@/test/eventDetail";
 
 import DetectionsPage from "./page";
 
-function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
-  return {
-    id: "d1",
-    title: "Strike near Bakhmut",
-    coords: { lat: 48.5, lng: 37.8 },
-    occurred_date: "2026-06-01",
-    occurred_time: null,
-    status: "detected",
-    version_no: 1,
-    is_graphic: false,
-    close_reason: null,
-    before_closed_status: null,
-    detected_from_url: "https://x.com/analyst/status/1",
-    detected_via: null,
-    owner: { id: "u1", username: "ana" },
-    tags: [],
-    conflicts: [],
-    sources: [
-      {
-        id: "s1",
-        title: "",
-        level: "direct",
-        kind: "unknown",
-        captured_at: null,
-        capture_position: null,
-        is_graphic: false,
-        links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }],
-        tags: [],
-        media: {
-          id: "m1",
-          role: "source",
-          storage_url: "/local-storage/evidence.jpg",
-          kind: "image",
-          sha256: "0".repeat(64),
-        },
-        warnings: [],
-      },
-    ],
-    proof: '<img src="https://cdn.test/p.jpg">',
-    created_at: "2026-06-02T10:00:00Z",
-    hidden_at: null,
-    geolocated_at: null,
-    closed_at: null,
-    thumbnail: null,
-    requested_by: null,
-    geolocators: [],
-    ...overrides,
-  };
-}
+const detectionFixture = (overrides: Partial<EventDetail> = {}) =>
+  eventDetail("d1", "Strike near Bakhmut", { status: "detected", geolocated_at: null, ...overrides });
 
 function payload(overrides: Record<string, unknown> = {}) {
   return {

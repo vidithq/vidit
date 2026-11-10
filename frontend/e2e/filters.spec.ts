@@ -9,6 +9,7 @@ import {
   expectNoHorizontalOverflow,
   expectReadableFieldText,
 } from "./support/narrowLayout";
+import { runAtOneWidth } from "./support/wideViewport";
 
 /**
  * The filter panel on the three lists that carry it. From `lg` up the panel is a sticky right
@@ -69,6 +70,7 @@ for (const target of PAGES) {
     });
 
     test("keeps the panel in a sticky rail beside the list on a wide screen", async ({ page }) => {
+      runAtOneWidth();
       await page.setViewportSize({ width: 1280, height: 800 });
       await open(page, target.path, target.signedIn);
 
@@ -103,6 +105,7 @@ for (const target of PAGES) {
 }
 
 test("picks and removes a tag through its line, in the URL", async ({ page }) => {
+  runAtOneWidth();
   await page.setViewportSize({ width: 1280, height: 800 });
   await open(page, "/search", false);
 

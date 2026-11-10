@@ -20,24 +20,17 @@ Contracts:
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-from geoalchemy2.shape import from_shape
 from PIL import Image
-from shapely.geometry import Point
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
-    STATUS_GEOLOCATED,
     STATUS_REQUESTED,
-    Event,
 )
 from app.models.user import User
 from app.services import storage as storage_module
@@ -48,102 +41,8 @@ from app.services.evidence_processing import (
     UNREADABLE_IMAGE_MESSAGE,
 )
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
-from tests._fixtures import TINY_JPEG, gif_bytes
+from tests._fixtures import TINY_JPEG, client, gif_bytes, make_event
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-# ── Fixtures ──────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def live_user(db):
-    user = User(
-        username=f"live{uuid.uuid4().hex[:8]}",
-        email=f"live-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def soft_deleted_user(db):
-    user = User(
-        username=f"gone{uuid.uuid4().hex[:8]}",
-        email=f"gone-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        deleted_at=datetime.now(UTC),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-def _make_geo(
-    db,
-    *,
-    author: User,
-    title: str | None = None,
-    occurred_date: date | None = None,
-    deleted: bool = False,
-    status: str = STATUS_GEOLOCATED,
-    before_closed_status: str | None = None,
-) -> Event:
-    """One event owned by ``author``, a published geolocation by default.
-
-    ``status`` / ``before_closed_status`` build the other states, with the stamps
-    the table CHECKs (``ck_events_closed_stamp``, ``ck_events_geolocated_stamp``,
-    ``ck_events_before_closed_status``) require.
-    """
-    now = datetime.now(UTC)
-    geo = Event(
-        owner_id=author.id,
-        title=title or f"Geo {uuid.uuid4().hex[:8]}",
-        coords=from_shape(Point(34.5, 48.5), srid=4326),
-        occurred_date=occurred_date or date(2026, 5, 1),
-        status=status,
-        geolocated_at=now if status == STATUS_GEOLOCATED else None,
-        detected_at=now if status == STATUS_DETECTED else None,
-        requested_at=now if status == STATUS_REQUESTED else None,
-        closed_at=now if status == STATUS_CLOSED else None,
-        before_closed_status=before_closed_status,
-    )
-    if deleted:
-        geo.deleted_at = now
-    db.add(geo)
-    db.commit()
-    db.refresh(geo)
-    return geo
-
 
 # ── GET /users/{username} — profile ───────────────────────────────────────
 
@@ -180,18 +79,12 @@ def test_profile_does_not_leak_email(db):
         db.commit()
 
 
-def test_profile_404_for_unknown_username():
-    response = client.get(f"/api/v1/users/nobody-{uuid.uuid4().hex}")
-    assert response.status_code == 404
-
-
-def test_profile_404_for_soft_deleted_user(soft_deleted_user):
-    """Same 404 as unknown: any distinguishable answer would reveal removed usernames."""
-    response = client.get(f"/api/v1/users/{soft_deleted_user.username}")
-    assert response.status_code == 404
-
-
-# ── GET /users/{username}/events — feed ─────────────────────────────
+@pytest.mark.parametrize("page", ["", "/events", "/stats", "/collections"])
+@pytest.mark.parametrize("who", ["unknown", "soft-deleted"])
+def test_user_pages_404_for_an_unknown_or_soft_deleted_user(soft_deleted_user, page, who):
+    """Same 404 for both: any distinguishable answer would reveal removed usernames."""
+    username = soft_deleted_user.username if who == "soft-deleted" else f"nobody-{uuid.uuid4().hex}"
+    assert client.get(f"/api/v1/users/{username}{page}").status_code == 404
 
 
 def test_feed_returns_pagination_envelope(live_user):
@@ -204,46 +97,21 @@ def test_feed_returns_pagination_envelope(live_user):
     assert body["per_page"] == 20
 
 
-def test_feed_excludes_soft_deleted_geos(db, live_user):
-    """The feed filters soft-deleted rows, as the rest of the site does."""
-    live = _make_geo(db, author=live_user, title="live one")
-    dead = _make_geo(db, author=live_user, title="removed", deleted=True)
-
-    response = client.get(f"/api/v1/users/{live_user.username}/events")
-    assert response.status_code == 200
-    body = response.json()
-    ids = {row["id"] for row in body["items"]}
-    assert str(live.id) in ids
-    assert str(dead.id) not in ids
-    assert body["total"] == 1
-
-
-def test_feed_count_matches_profile_count_on_published_work(db, live_user):
-    """With published work alone, `geolocations_count` and the feed `total` agree."""
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user, deleted=True)
-
-    profile = client.get(f"/api/v1/users/{live_user.username}").json()
-    feed = client.get(f"/api/v1/users/{live_user.username}/events").json()
-    assert profile["geolocations_count"] == feed["total"] == 2
-
-
 def test_feed_serves_published_work_only(db, live_user):
     """The portfolio lists only what the analyst vouched for: not a `detected` row
     (unvouched machine output), a closed-off detection, or a `requested` row.
     Detections stay reachable from the owner's queue and the coverage map."""
-    published = _make_geo(db, author=live_user, title="published")
-    detection = _make_geo(db, author=live_user, title="detection", status=STATUS_DETECTED)
-    rejected = _make_geo(
+    published = make_event(db, author=live_user, title="published")
+    detection = make_event(db, author=live_user, title="detection", status=STATUS_DETECTED)
+    rejected = make_event(
         db,
         author=live_user,
         title="rejected",
         status=STATUS_CLOSED,
         before_closed_status=STATUS_DETECTED,
     )
-    request = _make_geo(db, author=live_user, title="request", status=STATUS_REQUESTED)
-    removed = _make_geo(db, author=live_user, title="removed", deleted=True)
+    request = make_event(db, author=live_user, title="request", status=STATUS_REQUESTED)
+    removed = make_event(db, author=live_user, title="removed", deleted=True)
 
     body = client.get(f"/api/v1/users/{live_user.username}/events").json()
 
@@ -260,24 +128,24 @@ def test_profile_count_counts_published_work_only(db, live_user):
     An archive import leaves hundreds of machine detections; counting them would
     credit the analyst with claims they never made.
     """
-    _make_geo(db, author=live_user, title="published")
-    _make_geo(db, author=live_user, title="detection", status=STATUS_DETECTED)
-    _make_geo(
+    make_event(db, author=live_user, title="published")
+    make_event(db, author=live_user, title="detection", status=STATUS_DETECTED)
+    make_event(
         db,
         author=live_user,
         title="rejected",
         status=STATUS_CLOSED,
         before_closed_status=STATUS_DETECTED,
     )
-    _make_geo(db, author=live_user, title="request", status=STATUS_REQUESTED)
-    _make_geo(
+    make_event(db, author=live_user, title="request", status=STATUS_REQUESTED)
+    make_event(
         db,
         author=live_user,
         title="withdrawn",
         status=STATUS_CLOSED,
         before_closed_status=STATUS_REQUESTED,
     )
-    _make_geo(db, author=live_user, title="removed", deleted=True)
+    make_event(db, author=live_user, title="removed", deleted=True)
 
     profile = client.get(f"/api/v1/users/{live_user.username}").json()
     feed = client.get(f"/api/v1/users/{live_user.username}/events").json()
@@ -287,9 +155,9 @@ def test_profile_count_counts_published_work_only(db, live_user):
 def test_profile_count_and_stats_report_different_numbers(db, live_user):
     """`/stats` splits by status and sums to `total_events`; the profile counts the
     published part. Collapsing the two would drop the wider figure."""
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user, status=STATUS_DETECTED)
-    _make_geo(
+    make_event(db, author=live_user)
+    make_event(db, author=live_user, status=STATUS_DETECTED)
+    make_event(
         db,
         author=live_user,
         title="rejected",
@@ -307,10 +175,10 @@ def test_profile_count_and_stats_report_different_numbers(db, live_user):
 
 def test_feed_orders_published_rows_newest_event_date_first(db, live_user):
     """Order applies to the filtered set: a detection dated between two published rows takes no page slot."""
-    _make_geo(db, author=live_user, occurred_date=date(2025, 1, 1), title="old")
-    _make_geo(db, author=live_user, occurred_date=date(2026, 12, 1), title="new")
-    _make_geo(db, author=live_user, occurred_date=date(2026, 6, 1), title="mid")
-    _make_geo(
+    make_event(db, author=live_user, occurred_date=date(2025, 1, 1), title="old")
+    make_event(db, author=live_user, occurred_date=date(2026, 12, 1), title="new")
+    make_event(db, author=live_user, occurred_date=date(2026, 6, 1), title="mid")
+    make_event(
         db,
         author=live_user,
         occurred_date=date(2026, 9, 1),
@@ -328,19 +196,6 @@ def test_feed_caps_per_page_at_100(db, live_user):
     response = client.get(f"/api/v1/users/{live_user.username}/events?per_page=500")
     assert response.status_code == 200
     assert response.json()["per_page"] == 100
-
-
-def test_feed_404_for_unknown_username():
-    response = client.get(f"/api/v1/users/nobody-{uuid.uuid4().hex}/events")
-    assert response.status_code == 404
-
-
-def test_feed_404_for_soft_deleted_user(soft_deleted_user):
-    response = client.get(f"/api/v1/users/{soft_deleted_user.username}/events")
-    assert response.status_code == 404
-
-
-# ── PATCH /users/me — self-edit ────────────────────────────────────────────
 
 
 def test_patch_me_requires_auth():
@@ -477,19 +332,19 @@ def test_patch_me_empty_string_clears_bio(live_user, db):
     assert refreshed.bio is None
 
 
-def test_patch_me_cannot_set_avatar_url(live_user, db):
-    """The self-edit body has no ``avatar_url`` and forbids extras: the column may
-    only hold a server-minted URL (a writable field is a beacon)."""
-    response = client.patch(
-        "/api/v1/users/me",
-        json={"avatar_url": "https://tracker.example.com/beacon.gif"},
-        headers=login_as(client, live_user),
-    )
+@pytest.mark.parametrize(
+    "body", [{"avatar_url": "https://tracker.example.com/beacon.gif"}, {"is_admin": True}]
+)
+def test_patch_me_refuses_a_field_outside_the_self_edit(live_user, db, body):
+    """The self-edit body is ``extra=forbid`` and has no ``avatar_url``: the column may only
+    hold a server-minted URL (a writable field is a beacon)."""
+    response = client.patch("/api/v1/users/me", json=body, headers=login_as(client, live_user))
     assert response.status_code == 422
 
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
     assert refreshed.avatar_url is None
+    assert refreshed.is_admin is False
 
 
 def test_patch_me_rejects_overlong_bio(live_user):
@@ -499,19 +354,6 @@ def test_patch_me_rejects_overlong_bio(live_user):
         headers=login_as(client, live_user),
     )
     assert response.status_code == 422
-
-
-def test_patch_me_ignores_extra_fields(live_user):
-    """The schema is ``extra=forbid``: an unlisted column cannot be set via self-edit."""
-    response = client.patch(
-        "/api/v1/users/me",
-        json={"is_admin": True},
-        headers=login_as(client, live_user),
-    )
-    assert response.status_code == 422
-
-
-# ── PUT / DELETE /users/me/avatar ─────────────────────────────────────────
 
 
 @pytest.fixture

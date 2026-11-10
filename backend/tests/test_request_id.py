@@ -15,8 +15,8 @@ from app.dependencies import get_db
 from app.main import app
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.observability import RequestIdFilter
+from tests._fixtures import client
 
-client = TestClient(app)
 log = logging.getLogger(__name__)
 
 

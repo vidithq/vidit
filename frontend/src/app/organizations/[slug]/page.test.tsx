@@ -13,18 +13,11 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
-const useApiResource = vi.fn();
-vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => useApiResource(path),
-}));
+import { useApiResource } from "@/test/apiResourceStub";
+vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
-const apiFetch = vi.fn();
-const apiFetchPage = vi.fn();
-vi.mock("@/lib/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api")>()),
-  apiFetch: (...args: unknown[]) => apiFetch(...args),
-  apiFetchPage: (...args: unknown[]) => apiFetchPage(...args),
-}));
+import { apiFetch, apiFetchPage } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import OrganizationPage from "./page";
 

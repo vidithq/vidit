@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const register = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ register }) }));
 
-import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import RegisterForm from "./RegisterForm";
 
 function fill() {
@@ -41,8 +40,8 @@ describe("RegisterForm", () => {
     expect(notice).toHaveTextContent("Email");
     expect(notice).toHaveTextContent("Password");
     expect(notice).not.toHaveTextContent("Username");
-    expect(screen.getByLabelText("Email")).toHaveClass(...FORM_INVALID_FIELD.split(" "));
-    expect(screen.getByLabelText("Username")).not.toHaveClass(...FORM_INVALID_FIELD.split(" "));
+    expect(screen.getByLabelText("Email")).toBeInvalid();
+    expect(screen.getByLabelText("Username")).not.toBeInvalid();
     expect(register).not.toHaveBeenCalled();
   });
 

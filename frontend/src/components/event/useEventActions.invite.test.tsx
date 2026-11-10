@@ -1,20 +1,15 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { ANA } from "@/test/auth";
+import { apiFetch } from "@/test/apiStub";
 import { eventDetail } from "@/test/eventDetail";
 import { useEventActions } from "./useEventActions";
 
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 // The approvals read the event page makes stays in flight; these tests read the invitation only.
-const api = vi.hoisted(() => ({ apiFetch: vi.fn(() => new Promise(() => {})) }));
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  apiFetchPage: vi.fn(),
-  errorMessage: (_err: unknown, fallback: string) => fallback,
-  ApiError: class extends Error {},
-}));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}));
+apiFetch.mockImplementation(() => new Promise(() => {}));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u2", username: "bo" } }),
 }));
@@ -22,7 +17,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 function Actions({ invited }: { invited: boolean }) {
   const event = {
     ...eventDetail("e1", "Bridge strike"),
-    owner: { id: "u1", username: "ana" },
+    owner: ANA,
     viewer_invite_pending: invited,
   };
   const { actions, panels } = useEventActions({ event, surface: "event" });
@@ -42,11 +37,11 @@ describe("useEventActions invitation", () => {
     render(<Actions invited />);
 
     expect(screen.getByText("Geolocator invitation")).toBeInTheDocument();
-    expect(api.apiFetch).not.toHaveBeenCalledWith(
+    expect(apiFetch).not.toHaveBeenCalledWith(
       expect.stringContaining("geolocator-invites"),
       expect.anything(),
     );
-    expect(api.apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("geolocator-invites"));
+    expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("geolocator-invites"));
   });
 
   it("puts Accept and Decline in the actions row, and what the invitation offers under it", () => {

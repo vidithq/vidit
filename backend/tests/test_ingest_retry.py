@@ -21,13 +21,6 @@ from app.services.tweet_ingest.errors import (
 _TWEET_ID = "1657834636792287232"
 
 
-@pytest.fixture(autouse=True)
-def _clear_tweet_cache():
-    syndication._cache_clear()
-    yield
-    syndication._cache_clear()
-
-
 # ── The policy ────────────────────────────────────────────────────────────
 
 

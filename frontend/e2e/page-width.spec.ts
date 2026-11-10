@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { EVENT_ID } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
+import { runAtOneWidth } from "./support/wideViewport";
 
 /**
  * Every `PageShell` page shares one container: the title starts at one x on
@@ -10,6 +11,8 @@ import { grantSession, mockApi } from "./support/mockApi";
  * a page with a rail gives the main column the same width beside a 17.5rem
  * rail once the screen holds both.
  */
+test.beforeEach(runAtOneWidth);
+
 const READING_PX = 848;
 const RAIL_PX = 280;
 

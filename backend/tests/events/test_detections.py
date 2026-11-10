@@ -6,41 +6,29 @@ with the ``readiness`` filter and its counts.
 
 from __future__ import annotations
 
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED
+from app.models.event import STATUS_GEOLOCATED
+from tests._fixtures import make_detection, make_event
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import client
 from tests.events._readiness_cases import (
     INCOMPLETE_CASE_NAMES,
     READINESS_CASES,
     READY_CASE_NAMES,
-    make_detection,
 )
 
 _URL = "/api/v1/events/detections"
 
 
-def _detected(db, author, **kwargs):
-    """A machine ``detected`` row, born tagless unless ``tags`` is passed."""
-    kwargs.setdefault("source_url", "https://x.com/a/status/1")
-    return _make_geo(
-        db,
-        author=author,
-        status=STATUS_DETECTED,
-        detected_from_url="https://x.com/a/status/1",
-        **kwargs,
-    )
-
-
 def _mixed_queue(db, author) -> dict[str, str]:
     """One detection per shape in the shared table; returns name -> event id."""
     return {
-        name: str(make_detection(db, author, overrides).id)
+        name: str(make_detection(db, author, **overrides).id)
         for name, (overrides, _) in READINESS_CASES.items()
     }
 
 
 def test_detections_requires_authentication(db, author):
-    _detected(db, author)
+    make_detection(db, author)
     response = client.get(_URL)
     assert response.status_code == 401
 
@@ -58,12 +46,12 @@ def test_detections_empty_for_user_without_detections(author):
     }
 
 
-def test_detections_returns_only_callers_live_detected(db, author, second_user):
+def test_detections_returns_only_callers_livemake_detection(db, author, second_user):
     """Only the caller's live ``detected`` rows, not geolocated, deleted, or another's."""
-    mine = _detected(db, author)
-    _make_geo(db, author=author, status=STATUS_GEOLOCATED)  # geolocated, excluded
-    _detected(db, author, deleted=True)  # soft-deleted, excluded
-    _detected(db, second_user)  # another analyst, excluded
+    mine = make_detection(db, author)
+    make_event(db, author=author, status=STATUS_GEOLOCATED)  # geolocated, excluded
+    make_detection(db, author, deleted=True)  # soft-deleted, excluded
+    make_detection(db, second_user)  # another analyst, excluded
 
     response = client.get(_URL, headers=login_as(client, author))
     assert response.status_code == 200
@@ -76,7 +64,9 @@ def test_detections_returns_only_callers_live_detected(db, author, second_user):
 def test_detections_includes_sources_tags_and_conflicts(db, author, conflict, free_tag):
     """The queue needs the sources and their files (to judge), the tags and conflicts
     inline, plus the provenance link the card points back to."""
-    _detected(db, author, tags=[free_tag], conflicts=[conflict], with_media=True, kind="unknown")
+    make_detection(
+        db, author, tags=[free_tag], conflicts=[conflict], with_media=True, kind="unknown"
+    )
 
     response = client.get(_URL, headers=login_as(client, author))
     item = response.json()["items"][0]
@@ -89,15 +79,15 @@ def test_detections_includes_sources_tags_and_conflicts(db, author, conflict, fr
 
 
 def test_detections_ordered_newest_first(db, author):
-    older = _detected(db, author)
-    newer = _detected(db, author)
+    older = make_detection(db, author)
+    newer = make_detection(db, author)
     response = client.get(_URL, headers=login_as(client, author))
     assert [item["id"] for item in response.json()["items"]] == [str(newer.id), str(older.id)]
 
 
 def test_detections_paginates(db, author):
     for _ in range(3):
-        _detected(db, author)
+        make_detection(db, author)
 
     page1 = client.get(f"{_URL}?page=1&per_page=2", headers=login_as(client, author)).json()
     assert page1["total"] == 3

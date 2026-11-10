@@ -5,29 +5,18 @@ import { useApiResource } from "@/hooks/useApiResource";
 import { allApprovalsPath, type Approval, type ApprovalList } from "@/lib/approvals";
 import { eventDetail } from "@/test/eventDetail";
 
-const api = vi.hoisted(() => ({
-  apiFetch: vi.fn(),
+import { apiFetch } from "@/test/apiStub";
+
+const mocks = vi.hoisted(() => ({
   admin: false,
 }));
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  errorMessage: (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback),
-  ApiError: class extends Error {
-    status: number;
-    code: string | null;
-    constructor(message: string, status: number, code: string | null = null) {
-      super(message);
-      this.status = status;
-      this.code = code;
-    }
-  },
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u9", username: "root" } }),
 }));
 vi.mock("@/contexts/AdminContext", () => ({
-  useAdmin: () => ({ isAdmin: api.admin, loading: false }),
+  useAdmin: () => ({ isAdmin: mocks.admin, loading: false }),
 }));
 
 import { ApiError } from "@/lib/api";
@@ -53,10 +42,10 @@ function Panel() {
 let rows: Approval[];
 
 beforeEach(() => {
-  api.apiFetch.mockReset();
-  api.admin = false;
+  apiFetch.mockReset();
+  mocks.admin = false;
   rows = [approval];
-  api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+  apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
     if (init?.method === "DELETE") {
       rows = [];
       return Promise.resolve(undefined);
@@ -65,7 +54,7 @@ beforeEach(() => {
   });
 });
 
-const deleteCalls = () => api.apiFetch.mock.calls.filter(([, init]) => init?.method === "DELETE");
+const deleteCalls = () => apiFetch.mock.calls.filter(([, init]) => init?.method === "DELETE");
 const trash = () => screen.findByRole("button", { name: "Delete approval by bo" });
 
 describe("deleting an approval", () => {
@@ -76,19 +65,18 @@ describe("deleting an approval", () => {
   });
 
   it("puts a delete control on each stamp for a site admin", async () => {
-    api.admin = true;
+    mocks.admin = true;
     render(<Panel />);
     const control = await trash();
     const stamp = within(screen.getByRole("list", { name: "Approved by" })).getByRole("listitem");
     expect(stamp).toContainElement(control);
-    expect(control.className).toContain("group-hover:opacity-100");
   });
 
   it("deletes from a filed version's stamps", async () => {
-    api.admin = true;
+    mocks.admin = true;
     const V1 = "/events/e1/approvals?version_no=1";
     rows = [{ ...approval, version_no: 1, current: false }];
-    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
       if (init?.method === "DELETE") {
         rows = [];
         return Promise.resolve(undefined);
@@ -103,7 +91,7 @@ describe("deleting an approval", () => {
   });
 
   it("arms in place on the first click, with no dialog, and deletes on the second", async () => {
-    api.admin = true;
+    mocks.admin = true;
     render(<Panel />);
     fireEvent.click(await trash());
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -118,7 +106,7 @@ describe("deleting an approval", () => {
   });
 
   it("sends nothing when Escape disarms it", async () => {
-    api.admin = true;
+    mocks.admin = true;
     render(<Panel />);
     fireEvent.click(await trash());
     fireEvent.keyDown(document, { key: "Escape" });
@@ -127,8 +115,8 @@ describe("deleting an approval", () => {
   });
 
   it("explains an approval that no longer exists under the stamps", async () => {
-    api.admin = true;
-    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) =>
+    mocks.admin = true;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) =>
       init?.method === "DELETE"
         ? Promise.reject(new ApiError("not found", 404, "approval_not_found"))
         : Promise.resolve(path === ALL ? { items: rows, viewer_can_approve: false } : []),

@@ -1,15 +1,13 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 
 import { TagPicker } from "./TagPicker";
-import { ApiError, apiFetch } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import type { Conflict, Tag } from "@/types";
 
-vi.mock("@/lib/api", async (original) => ({
-  ...(await original<typeof import("@/lib/api")>()),
-  apiFetch: vi.fn(),
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 function conflict(overrides: Partial<Conflict> & Pick<Conflict, "id" | "name">): Conflict {
   return {
@@ -237,7 +235,7 @@ describe("TagPicker tags", () => {
   });
 
   it("creates a tag from the typed text and selects it", async () => {
-    (apiFetch as unknown as Mock).mockResolvedValueOnce({ id: "t9", name: "armour" });
+    apiFetch.mockResolvedValueOnce({ id: "t9", name: "armour" });
     render(<Host initialTags={TAGS} />);
     fireEvent.change(tagField(), { target: { value: "armour" } });
     fireEvent.click(screen.getByRole("option", { name: 'Create "armour"' }));
@@ -251,7 +249,7 @@ describe("TagPicker tags", () => {
   });
 
   it("says so when the tag already exists, until the text changes", async () => {
-    (apiFetch as unknown as Mock).mockRejectedValueOnce(new ApiError("Conflict", 409));
+    apiFetch.mockRejectedValueOnce(new ApiError("Conflict", 409));
     render(<Host initialTags={TAGS} />);
     fireEvent.change(tagField(), { target: { value: "hidden" } });
     fireEvent.keyDown(tagField(), { key: "Enter" });

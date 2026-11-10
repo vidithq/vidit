@@ -1,7 +1,6 @@
 import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 
 import { CoordinateInputs } from "./CoordinateInputs";
 
@@ -102,8 +101,8 @@ describe("CoordinateInputs", () => {
     expect(screen.getByLabelText("Latitude")).toHaveAccessibleDescription(
       "Latitude must be between -90 and 90."
     );
-    expect(screen.getByLabelText("Latitude").className).toContain(FORM_INVALID_FIELD);
-    expect(screen.getByLabelText("Longitude").className).not.toContain(FORM_INVALID_FIELD);
+    expect(screen.getByLabelText("Latitude")).toBeInvalid();
+    expect(screen.getByLabelText("Longitude")).not.toBeInvalid();
   });
 
   it("waits for the write before flagging a blank half of a required pair", () => {

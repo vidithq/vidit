@@ -109,36 +109,18 @@ describe("collection paths", () => {
 });
 
 describe("collection writes", () => {
-  it("opens a collection under a title and a description", async () => {
-    await createCollection(
-      "Kupiansk rail corridor",
-      textHtml("Three days of strikes."),
-    );
+  // One request carrying every id, empty when none were picked, so a refusal on any id rolls back
+  // the whole create.
+  it.each([[[]], [["e1", "e2"]]])("opens a collection holding the picked ids %j", async (ids) => {
+    await createCollection("March strikes", textHtml("Strikes through March."), ids);
 
     const [path, options] = lastCall();
     expect(path).toBe("/collections");
     expect(options.method).toBe("POST");
-    // Ids ride every create, empty when none were picked.
-    expect(JSON.parse(options.body as string)).toEqual({
-      title: "Kupiansk rail corridor",
-      description: textHtml("Three days of strikes."),
-      event_ids: [],
-    });
-  });
-
-  it("opens a collection holding what the picker ticked", async () => {
-    await createCollection("March strikes", textHtml("Strikes through March."), [
-      "e1",
-      "e2",
-    ]);
-
-    // One request, so a refusal on any id rolls back the whole create.
-    const [path, options] = lastCall();
-    expect(path).toBe("/collections");
     expect(JSON.parse(options.body as string)).toEqual({
       title: "March strikes",
       description: textHtml("Strikes through March."),
-      event_ids: ["e1", "e2"],
+      event_ids: ids,
     });
   });
 

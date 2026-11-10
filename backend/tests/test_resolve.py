@@ -25,6 +25,7 @@ from app.services.tweet_ingest.resolve import (
 )
 from app.services.tweet_ingest.syndication import ParsedMedia
 from app.services.tweet_ingest.urls import ContextHost, context_host, x_status_posted_at
+from tests._fixtures import single_detection
 from tests._fixtures import tweet_record as _rec
 
 _INSTAGRAM = SourceLink(
@@ -46,12 +47,6 @@ def _resolve(thread: list[TweetRecord]) -> Resolution:
 
 def _detections(thread: list[TweetRecord]) -> list[Detection]:
     return _resolve(thread).detections
-
-
-def _detection(thread: list[TweetRecord]) -> Detection:
-    """The single detection a one-coordinate thread resolves to."""
-    [detection] = _detections(thread)
-    return detection
 
 
 def _coords(thread: list[TweetRecord]):
@@ -121,7 +116,7 @@ def test_proof_keeps_a_reference_link_readable():
         text="Strike at 48.012345, 37.802411\nSource: https://t.co/fakeIG",
         external_sources=[_INSTAGRAM],
     )
-    assert _detection([record]).proof_text.splitlines()[-1] == f"Source: {_INSTAGRAM.url}"
+    assert single_detection([record]).proof_text.splitlines()[-1] == f"Source: {_INSTAGRAM.url}"
 
 
 def test_split_media_promotes_only_the_first_own_video_to_source():
@@ -142,7 +137,7 @@ def test_split_media_quote_keeps_precedence_over_an_own_video():
 
 
 def test_a_single_coordinate_resolves_to_one_detection():
-    detection = _detection([_rec(text="Strike at 48.012345, 37.802411 in Donetsk")])
+    detection = single_detection([_rec(text="Strike at 48.012345, 37.802411 in Donetsk")])
     assert detection.coordinate.lat == pytest.approx(48.012345)
     assert detection.coordinate.lng == pytest.approx(37.802411)
     assert detection.detected_from_post_id == 1
@@ -155,15 +150,15 @@ def test_a_single_coordinate_resolves_to_one_detection():
 
 def test_the_provenance_url_is_built_from_the_id_whatever_case_the_handle_carried():
     # The id is the identity, so a handle spelled two ways cannot split one post.
-    lower = _detection([_rec(text="48.012345, 37.802411", handle="analyst")])
-    upper = _detection([_rec(text="48.012345, 37.802411", handle="Analyst")])
+    lower = single_detection([_rec(text="48.012345, 37.802411", handle="analyst")])
+    upper = single_detection([_rec(text="48.012345, 37.802411", handle="Analyst")])
     assert lower.detected_from_post_id == upper.detected_from_post_id == 1
     assert upper.detected_from_url == "https://x.com/Analyst/status/1"
 
 
 def test_malformed_time_recovers_date_and_nulls_detected_post_at():
     # occurred_date is recovered from the date prefix; detected_post_at is NULL, not a false 1970.
-    detection = _detection(
+    detection = single_detection(
         [_rec(text="Strike 48.012345, 37.802411", created_at="2025-11-12T99:99:99Z")]
     )
     assert detection.occurred_date == date(2025, 11, 12)
@@ -172,14 +167,16 @@ def test_malformed_time_recovers_date_and_nulls_detected_post_at():
 
 
 def test_fully_unparseable_timestamp_yields_no_dates():
-    detection = _detection([_rec(text="Strike 48.012345, 37.802411", created_at="not-a-timestamp")])
+    detection = single_detection(
+        [_rec(text="Strike 48.012345, 37.802411", created_at="not-a-timestamp")]
+    )
     assert detection.occurred_date is None
     assert detection.source_posted_at is None
     assert detection.detected_post_at is None
 
 
 def test_several_candidate_links_warn_source_ambiguous():
-    detection = _detection(
+    detection = single_detection(
         [
             _rec(
                 text="Geolocated 48.012345, 37.802411",
@@ -290,7 +287,7 @@ def test_other_hosts_are_not_context(url):
 def test_a_context_link_settles_no_source_and_lands_as_context():
     """A footage link beside an imagery link is the sole candidate: no ambiguity."""
     earth = "https://earth.google.com/web/@48.1,37.8,50a"
-    detection = _detection(
+    detection = single_detection(
         [
             _rec(
                 text="Geolocated 48.012345, 37.802411",
@@ -307,7 +304,7 @@ def test_a_context_link_settles_no_source_and_lands_as_context():
 
 
 def test_a_thread_with_only_context_links_misses_its_source():
-    detection = _detection(
+    detection = single_detection(
         [
             _rec(
                 text="Geolocated 48.012345, 37.802411",
@@ -322,7 +319,7 @@ def test_a_thread_with_only_context_links_misses_its_source():
 
 def test_mirrors_are_dated_off_their_status_id_and_come_before_context_links():
     """Ambiguous footage keeps both candidates as direct sources, the X one dated."""
-    detection = _detection(
+    detection = single_detection(
         [
             _rec(
                 text="Geolocated 48.012345, 37.802411",
@@ -345,7 +342,7 @@ def test_mirrors_are_dated_off_their_status_id_and_come_before_context_links():
 def test_the_source_list_is_cut_to_the_cap_footage_first():
     contexts = [SourceLink(url=f"https://en.wikipedia.org/wiki/Page_{n}") for n in range(5)]
     mirrors = [SourceLink(url=f"https://t.me/chan/{n}") for n in range(8)]
-    detection = _detection(
+    detection = single_detection(
         [_rec(text="Geolocated 48.012345, 37.802411", external_sources=contexts + mirrors)]
     )
     assert [s.level for s in detection.secondary_sources] == ["direct"] * 8 + ["context"]

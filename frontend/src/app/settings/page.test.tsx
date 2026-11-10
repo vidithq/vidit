@@ -3,18 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UserPreferences } from "@/lib/preferences";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+import { apiFetch } from "@/test/apiStub";
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  ApiError: class extends Error {},
-  errorMessage: (err: unknown, fallback = "Something went wrong.") =>
-    err instanceof Error ? err.message : fallback,
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-}));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
 vi.mock("@/hooks/useRequireAuth", () => ({
   useRequireAuth: () => ({
@@ -41,7 +34,7 @@ function preferences(requestFulfilledEmail = true): UserPreferences {
 }
 
 function patchBodies(): unknown[] {
-  return api.apiFetch.mock.calls
+  return apiFetch.mock.calls
     .filter(([, init]) => init?.method === "PATCH")
     .map(([, init]) => JSON.parse(init.body));
 }
@@ -49,7 +42,7 @@ function patchBodies(): unknown[] {
 describe("SettingsPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    api.apiFetch.mockReset().mockImplementation((_path: string, init?: RequestInit) =>
+    apiFetch.mockReset().mockImplementation((_path: string, init?: RequestInit) =>
       Promise.resolve(
         init?.method === "PATCH" &&
           JSON.parse(String(init.body)).notifications?.request_fulfilled === false
@@ -124,7 +117,7 @@ describe("SettingsPage", () => {
   });
 
   it("saves who may send approval requests", async () => {
-    api.apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
+    apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
       Promise.resolve(
         init?.method === "PATCH"
           ? { ...preferences(), approval_request_audience: "everyone" }
@@ -149,10 +142,10 @@ describe("SettingsPage", () => {
   it.each([[[]], [{}], [{ notifications: [{ kind: "retired_kind" }] }]])(
     "renders without switches on a partial preferences payload (%j)",
     async (payload) => {
-      api.apiFetch.mockReset().mockResolvedValue(payload);
+      apiFetch.mockReset().mockResolvedValue(payload);
       render(<SettingsPage />);
 
-      await waitFor(() => expect(api.apiFetch).toHaveBeenCalled());
+      await waitFor(() => expect(apiFetch).toHaveBeenCalled());
       expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument();
       expect(screen.queryByRole("switch", { name: "Request fulfilled" })).toBeNull();
       expect(screen.getByRole("button", { name: "Update password" })).toBeInTheDocument();

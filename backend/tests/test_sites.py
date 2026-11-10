@@ -10,23 +10,18 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
-from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.event import STATUS_CLOSED, STATUS_GEOLOCATED, Event
 from app.models.media import Media
 from app.models.site import EventSiteLink, Site, SiteContour, SiteVersion
 from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services.auth import hash_password
-from tests._fixtures import fake_sha256
+from tests._fixtures import client, error_code, fake_sha256
 from tests.conftest import login_as
 from tests.events._helpers import stage_file
-
-client = TestClient(app)
 
 SITES = "/api/v1/sites"
 # Fictional coordinates, away from any real position.
@@ -58,22 +53,6 @@ def _square(half: float, *, lng: float = LNG, lat: float = LAT) -> dict:
 
 def _source(captured: str = "2025-01-01", url: str = COPERNICUS, **extra) -> dict:
     return {"captured_at": f"{captured}T10:00:00Z", "links": [{"url": url}], **extra}
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @pytest.fixture
@@ -200,10 +179,6 @@ def _on_map(site_id: str, as_of: str, bbox: str = BBOX) -> dict | None:
     return next((row for row in response.json() if row["id"] == site_id), None)
 
 
-def _code(response) -> str:
-    return response.json()["detail"]["code"]
-
-
 def test_create_site_with_its_first_source_and_contour(users):
     owner = users()
     body = _create_site(owner, _square(0.01), note="  Runway visible.  ", title="Pass 1")
@@ -247,13 +222,13 @@ def test_a_zone_over_the_size_caps_is_refused_wherever_a_contour_is_accepted(use
     source_id = site["sources"][0]["id"]
     headers = login_as(client, owner)
     for zone, code in ((too_large, "zone_too_large"), (too_wide, "zone_too_wide")):
-        assert _code(_post_site(owner, zone)) == code
+        assert error_code(_post_site(owner, zone)) == code
         contour = _contour(owner, site["id"], zone, source_id)
         assert contour.status_code == 400
-        assert _code(contour) == code
+        assert error_code(contour) == code
         overlaps = client.post(f"{SITES}/overlaps", json={"zone": zone}, headers=headers)
         assert overlaps.status_code == 400
-        assert _code(overlaps) == code
+        assert error_code(overlaps) == code
 
     assert _contour(owner, site["id"], just_under, source_id).status_code == 200
     assert _post_site(owner, just_under, name="Wide yard").status_code == 201
@@ -313,7 +288,7 @@ def test_create_refuses_an_invalid_site_or_a_source_no_reader_can_reopen(
     response = client.post(SITES, json=body, headers=login_as(client, owner))
     assert response.status_code == status, response.text
     if code is not None:
-        assert _code(response) == code
+        assert error_code(response) == code
     db.expire_all()
     assert db.query(Site).filter(Site.owner_id == owner.id).count() == 0
 
@@ -383,9 +358,9 @@ def test_any_analyst_files_a_source_and_a_repeat_is_flagged(users):
 
     unknown = _file(analyst, str(uuid.uuid4()), _source())
     assert unknown.status_code == 404
-    assert _code(unknown) == "site_not_found"
+    assert error_code(unknown) == "site_not_found"
     refused = _file(analyst, site["id"], _source(url=GOOGLE_MAPS))
-    assert _code(refused) == "imagery_not_reopenable"
+    assert error_code(refused) == "imagery_not_reopenable"
 
 
 def test_a_source_takes_a_staged_upload_or_the_file_of_a_published_event(db, users):
@@ -418,7 +393,7 @@ def test_a_source_takes_a_staged_upload_or_the_file_of_a_published_event(db, use
     assert copied.json()["media"]["id"] != str(media.id)
 
     missing = _file(owner, site["id"], _source(media_id=str(uuid.uuid4())))
-    assert _code(missing) == "source_media_not_found"
+    assert error_code(missing) == "source_media_not_found"
     both = _file(owner, site["id"], _source(media_id=str(media.id), upload_id=str(uuid.uuid4())))
     assert both.status_code == 422
 
@@ -431,17 +406,17 @@ def test_only_the_owner_redraws_a_contour_on_a_live_source_of_the_site(users):
 
     refused = _contour(analyst, site["id"], _square(0.02, lng=LNG + 0.9), filed["id"])
     assert refused.status_code == 403
-    assert _code(refused) == "not_site_owner"
+    assert error_code(refused) == "not_site_owner"
     foreign = _contour(owner, site["id"], _square(0.02, lng=LNG + 0.9), other["sources"][0]["id"])
     assert foreign.status_code == 404
-    assert _code(foreign) == "site_source_not_found"
+    assert error_code(foreign) == "site_source_not_found"
     invalid = _contour(
         owner,
         site["id"],
         {"type": "Polygon", "coordinates": [[[0, 0], [1, 1], [1, 0], [0, 1], [0, 0]]]},
         filed["id"],
     )
-    assert _code(invalid) == "invalid_zone"
+    assert error_code(invalid) == "invalid_zone"
 
     # The owner may draw on a source another analyst filed.
     drawn = _drawn(
@@ -494,17 +469,17 @@ def test_the_owner_saves_one_version_and_the_version_is_read_in_full(db, users):
 
     refused = _save(analyst, site["id"], name="Mine")
     assert refused.status_code == 403
-    assert _code(refused) == "not_site_owner"
+    assert error_code(refused) == "not_site_owner"
     unchanged = _save(owner, site["id"])
     assert unchanged.status_code == 409
-    assert _code(unchanged) == "nothing_changed"
+    assert error_code(unchanged) == "nothing_changed"
     stale = client.post(
         path,
         json={"version_no": 7, "name": "Depot South", "kind": "depot"},
         headers=login_as(client, owner),
     )
     assert stale.status_code == 409
-    assert _code(stale) == "version_mismatch"
+    assert error_code(stale) == "version_mismatch"
     assert _save(owner, site["id"], contours=[{"zone": None}]).status_code == 422
     assert _save(owner, site["id"], name="Depot South", note="x" * 281).status_code == 422
 
@@ -553,7 +528,7 @@ def test_the_owner_saves_one_version_and_the_version_is_read_in_full(db, users):
     for missing in (2, 0, 99):
         response = client.get(f"{path}/{missing}")
         assert response.status_code == 404
-        assert _code(response) == "site_version_not_found"
+        assert error_code(response) == "site_version_not_found"
 
 
 def test_every_write_to_the_state_files_a_version_and_a_link_files_none(db, users):
@@ -576,7 +551,7 @@ def test_every_write_to_the_state_files_a_version_and_a_link_files_none(db, user
     db.commit()
     capped = _file(analyst, site["id"], _source("2025-04-01"))
     assert capped.status_code == 409
-    assert _code(capped) == "version_limit"
+    assert error_code(capped) == "version_limit"
 
 
 def test_only_the_filer_removes_a_source_once_it_carries_no_contour(db, users):
@@ -593,13 +568,13 @@ def test_only_the_filer_removes_a_source_once_it_carries_no_contour(db, users):
 
     refused = remove(owner, theirs)
     assert refused.status_code == 403
-    assert _code(refused) == "not_source_author"
+    assert error_code(refused) == "not_source_author"
     carries = remove(owner, first)
     assert carries.status_code == 409
-    assert _code(carries) == "source_carries_contour"
-    assert _code(remove(owner, str(uuid.uuid4()))) == "site_source_not_found"
+    assert error_code(carries) == "source_carries_contour"
+    assert error_code(remove(owner, str(uuid.uuid4()))) == "site_source_not_found"
     assert remove(analyst, theirs).status_code == 204
-    assert _code(remove(analyst, theirs)) == "site_source_not_found"
+    assert error_code(remove(analyst, theirs)) == "site_source_not_found"
 
     live = _read(site["id"])
     assert theirs not in {source["id"] for source in live["sources"]}
@@ -610,9 +585,9 @@ def test_only_the_filer_removes_a_source_once_it_carries_no_contour(db, users):
 
     # The owner moves the contour off the first source and removes it in one save.
     dropped = _save(owner, site["id"], contours=[{"source_id": first, "zone": None}])
-    assert _code(dropped) == "site_contour_required"
+    assert error_code(dropped) == "site_contour_required"
     kept = _save(owner, site["id"], removed_source_ids=[first])
-    assert _code(kept) == "source_carries_contour"
+    assert error_code(kept) == "source_carries_contour"
     moved = _save(
         owner,
         site["id"],
@@ -660,7 +635,7 @@ def test_the_owner_links_their_events_on_create_and_on_save(db, users):
         json={**body, "event_links": [{"event_id": str(theirs.id), "effect": "damage"}]},
         headers=headers,
     )
-    assert _code(foreign) == "not_event_owner"
+    assert error_code(foreign) == "not_event_owner"
     created = client.post(
         SITES,
         json={**body, "event_links": [{"event_id": str(mine.id), "effect": "damage"}]},
@@ -683,7 +658,7 @@ def test_the_owner_links_their_events_on_create_and_on_save(db, users):
         (str(other.id), "destruction"),
         (str(theirs.id), "activity"),
     }
-    assert _code(
+    assert error_code(
         _save(owner, site["id"], event_links=[{"event_id": str(other.id), "effect": "destruction"}])
     ) == ("nothing_changed")
 
@@ -695,7 +670,7 @@ def test_only_the_event_owner_links_and_unlinks(db, users):
 
     refused = _link(stranger, event, site["id"])
     assert refused.status_code == 403
-    assert _code(refused) == "not_event_owner"
+    assert error_code(refused) == "not_event_owner"
     first = _link(owner, event, site["id"], "activity")
     assert first.status_code == 200
     assert first.json()["site"] == {
@@ -740,12 +715,12 @@ def test_link_refuses_an_unpublished_event_or_an_unknown_site(db, users):
     closed = _event(db, owner, status=STATUS_CLOSED)
     response = _link(owner, closed, site["id"])
     assert response.status_code == 409
-    assert _code(response) == "event_not_linkable"
+    assert error_code(response) == "event_not_linkable"
 
     published = _event(db, owner)
     response = _link(owner, published, str(uuid.uuid4()))
     assert response.status_code == 404
-    assert _code(response) == "site_not_found"
+    assert error_code(response) == "site_not_found"
     assert _link(owner, published, site["id"], "launch").status_code == 422
 
 
@@ -928,8 +903,8 @@ def test_site_suggestions_near_a_point_by_distance_and_by_name(users):
 
     lone = client.get(path, params={"lat": lat}, headers=headers)
     assert lone.status_code == 400
-    assert _code(lone) == "invalid_coordinates"
-    assert _code(client.get(path, params={"lat": 91, "lng": 0}, headers=headers)) == (
+    assert error_code(lone) == "invalid_coordinates"
+    assert error_code(client.get(path, params={"lat": 91, "lng": 0}, headers=headers)) == (
         "invalid_coordinates"
     )
     client.cookies.clear()
@@ -976,7 +951,7 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
         resolve, json={"resolution": "marked_graphic"}, headers=login_as(client, admin)
     )
     assert graphic.status_code == 409
-    assert _code(graphic) == "report_verdict_not_applicable"
+    assert error_code(graphic) == "report_verdict_not_applicable"
     hidden = client.post(resolve, json={"resolution": "hidden"}, headers=login_as(client, admin))
     assert hidden.status_code == 200, hidden.text
 
@@ -992,7 +967,7 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
     ).json()
     assert suggestions == []
     assert _file(owner, site["id"], _source()).status_code == 404
-    assert _code(_link(owner, _event(db, owner, lat=lat), site["id"])) == "site_not_found"
+    assert error_code(_link(owner, _event(db, owner, lat=lat), site["id"])) == "site_not_found"
 
     as_admin = client.get(f"{SITES}/{site['id']}", headers=login_as(client, admin))
     assert as_admin.status_code == 200
@@ -1012,7 +987,7 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
         json={"hidden": True},
         headers=login_as(client, admin),
     )
-    assert _code(unknown) == "site_not_found"
+    assert error_code(unknown) == "site_not_found"
 
 
 def test_erasing_the_owner_takes_the_site_and_sweeps_its_source_files(db, users, monkeypatch):

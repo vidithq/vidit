@@ -1,8 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const apiFetchPage = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/api", () => ({ apiFetchPage }));
+import { apiFetchPage } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { useCursorList } from "./useCursorList";
 

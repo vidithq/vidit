@@ -17,14 +17,13 @@ from app.models.follow import Follow
 from app.models.notification import Notification
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.services import email, notification_delivery
+from app.services import notification_delivery
 from app.services.approval_requests import REFUSAL_MESSAGE
-from app.services.auth import hash_password
+from tests._fixtures import error_code
 from tests.conftest import login_as
 from tests.events._helpers import (
     approve,
     client,
-    delete_user,
     notifications_of,
     published_geo,
 )
@@ -33,31 +32,17 @@ _EVENTS = "/api/v1/events"
 
 
 @pytest.fixture
-def make_user(db):
-    made: list[uuid.UUID] = []
-
+def make_analyst(db, make_user):
     def make(*, audience: str | None = None, follows: User | None = None) -> User:
-        user = User(
-            username=f"rr{uuid.uuid4().hex[:8]}",
-            email=f"rr-{uuid.uuid4().hex}@example.com",
-            password_hash=hash_password("password123"),
-        )
-        db.add(user)
-        db.flush()
+        user = make_user("rr")
         if audience is not None:
             db.add(UserPreferences(user_id=user.id, approval_request_audience=audience))
         if follows is not None:
             db.add(Follow(follower_id=user.id, followed_id=follows.id))
         db.commit()
-        made.append(user.id)
         return user
 
-    yield make
-    db.expire_all()
-    for user_id in made:
-        db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        delete_user(db, user_id)
-    db.commit()
+    return make
 
 
 def _request(geo: Event, requester: User, target: User | str):
@@ -89,10 +74,6 @@ def _targets(geo: Event, requester: User, q: str = "") -> list[str]:
     return [u["username"] for u in response.json()["analysts"]]
 
 
-def _code(response) -> str:
-    return response.json()["detail"]["code"]
-
-
 def _kinds(db, user: User) -> list[tuple[str, uuid.UUID | None, uuid.UUID | None]]:
     db.expire_all()
     rows = db.query(Notification).filter(Notification.user_id == user.id).all()
@@ -110,32 +91,32 @@ def _age_declines(db, geo: Event) -> None:
 # ── The target's audience ───────────────────────────────────────────
 
 
-def test_by_default_only_analysts_the_target_follows_can_ask(db, author, make_user):
+def test_by_default_only_analysts_the_target_follows_can_ask(db, author, make_analyst):
     geo = published_geo(db, author)
-    stranger = make_user()
+    stranger = make_analyst()
     response = _request(geo, author, stranger)
     assert response.status_code == 403
-    assert _code(response) == "requests_not_accepted"
+    assert error_code(response) == "requests_not_accepted"
     assert response.json()["detail"]["message"] == REFUSAL_MESSAGE
 
-    follower_of_author = make_user()
+    follower_of_author = make_analyst()
     db.add(Follow(follower_id=author.id, followed_id=follower_of_author.id))
     db.commit()
     # The requester following the target does not count.
-    assert _code(_request(geo, author, follower_of_author)) == "requests_not_accepted"
+    assert error_code(_request(geo, author, follower_of_author)) == "requests_not_accepted"
 
-    friend = make_user(follows=author)
+    friend = make_analyst(follows=author)
     assert _request(geo, author, friend).status_code == 201
 
 
-def test_everyone_admits_any_analyst(db, author, make_user):
+def test_everyone_admits_any_analyst(db, author, make_analyst):
     geo = published_geo(db, author)
-    assert _request(geo, author, make_user(audience="everyone")).status_code == 201
+    assert _request(geo, author, make_analyst(audience="everyone")).status_code == 201
 
 
-def test_nobody_admits_no_one_not_even_followed_analysts(db, author, make_user):
+def test_nobody_admits_no_one_not_even_followed_analysts(db, author, make_analyst):
     geo = published_geo(db, author)
-    closed = make_user(audience="nobody", follows=author)
+    closed = make_analyst(audience="nobody", follows=author)
     response = _request(geo, author, closed)
     assert response.status_code == 403
     assert response.json()["detail"] == {
@@ -144,8 +125,8 @@ def test_nobody_admits_no_one_not_even_followed_analysts(db, author, make_user):
     }
 
 
-def test_the_audience_is_a_preference_the_target_sets(db, author, make_user):
-    target = make_user()
+def test_the_audience_is_a_preference_the_target_sets(db, author, make_analyst):
+    target = make_analyst()
     headers = login_as(client, target)
     assert client.get("/api/v1/users/me/preferences").json()["approval_request_audience"] == (
         "following"
@@ -169,14 +150,14 @@ def test_the_audience_is_a_preference_the_target_sets(db, author, make_user):
 
 
 def test_the_picker_suggests_followers_and_never_reveals_an_open_audience(
-    db, author, second_user, make_user
+    db, author, second_user, make_analyst
 ):
     geo = published_geo(db, author)
-    friend = make_user(follows=author)
-    open_door = make_user(audience="everyone")
-    closed = make_user(audience="nobody", follows=author)
-    stranger = make_user()
-    co = make_user(audience="everyone")
+    friend = make_analyst(follows=author)
+    open_door = make_analyst(audience="everyone")
+    closed = make_analyst(audience="nobody", follows=author)
+    stranger = make_analyst()
+    co = make_analyst(audience="everyone")
     db.add(
         EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
     )
@@ -198,31 +179,31 @@ def test_the_picker_suggests_followers_and_never_reveals_an_open_audience(
     login_as(client, second_user)
     response = client.get(f"{_EVENTS}/{geo.id}/approval-request-targets")
     assert response.status_code == 403
-    assert _code(response) == "not_a_geolocator"
+    assert error_code(response) == "not_a_geolocator"
 
 
 # ── Eligibility ─────────────────────────────────────────────────────
 
 
-def test_only_a_geolocator_can_ask_and_a_co_geolocator_can(db, author, make_user):
+def test_only_a_geolocator_can_ask_and_a_co_geolocator_can(db, author, make_analyst):
     geo = published_geo(db, author)
-    co = make_user()
+    co = make_analyst()
     db.add(
         EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
     )
     db.commit()
-    outsider = make_user()
-    target = make_user(audience="everyone")
+    outsider = make_analyst()
+    target = make_analyst(audience="everyone")
 
     response = _request(geo, outsider, target)
     assert response.status_code == 403
-    assert _code(response) == "not_a_geolocator"
+    assert error_code(response) == "not_a_geolocator"
     assert _request(geo, co, target).status_code == 201
 
 
-def test_a_geolocator_cannot_be_asked(db, author, make_user):
+def test_a_geolocator_cannot_be_asked(db, author, make_analyst):
     geo = published_geo(db, author)
-    co = make_user(audience="everyone")
+    co = make_analyst(audience="everyone")
     db.add(
         EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
     )
@@ -230,13 +211,13 @@ def test_a_geolocator_cannot_be_asked(db, author, make_user):
     for target in (co, author):
         response = _request(geo, author, target)
         assert response.status_code == 403
-        assert _code(response) == "target_is_geolocator"
+        assert error_code(response) == "target_is_geolocator"
 
 
 @pytest.mark.parametrize("departure", ["left", "removed"])
-def test_a_former_geolocator_neither_approves_nor_is_asked(db, author, make_user, departure):
+def test_a_former_geolocator_neither_approves_nor_is_asked(db, author, make_analyst, departure):
     geo = published_geo(db, author)
-    former = make_user(audience="everyone")
+    former = make_analyst(audience="everyone")
     db.add(
         EventGeolocator(
             event_id=geo.id, user_id=former.id, state="active", joined_at=datetime.now(UTC)
@@ -250,39 +231,39 @@ def test_a_former_geolocator_neither_approves_nor_is_asked(db, author, make_user
     assert response.status_code == 204, response.text
 
     refused = approve(geo, former, 1)
-    assert (refused.status_code, _code(refused)) == (403, "geolocator_cannot_approve")
+    assert (refused.status_code, error_code(refused)) == (403, "geolocator_cannot_approve")
     asked = _request(geo, author, former)
-    assert (asked.status_code, _code(asked)) == (403, "target_is_geolocator")
+    assert (asked.status_code, error_code(asked)) == (403, "target_is_geolocator")
     assert former.username not in _targets(geo, author, q=former.username)
 
 
-def test_unknown_target_and_unpublished_event(db, author, make_user):
+def test_unknown_target_and_unpublished_event(db, author, make_analyst):
     geo = published_geo(db, author)
     response = _request(geo, author, "nobody-here")
     assert response.status_code == 404
-    assert _code(response) == "user_not_found"
+    assert error_code(response) == "user_not_found"
 
     geo.status = STATUS_CLOSED
     geo.closed_at = datetime.now(UTC)
     geo.before_closed_status = "geolocated"
     db.commit()
-    response = _request(geo, author, make_user(audience="everyone"))
+    response = _request(geo, author, make_analyst(audience="everyone"))
     assert response.status_code == 409
-    assert _code(response) == "invalid_state"
+    assert error_code(response) == "invalid_state"
 
 
-def test_an_analyst_who_reviewed_the_live_version_is_not_asked(db, author, make_user):
+def test_an_analyst_who_reviewed_the_live_version_is_not_asked(db, author, make_analyst):
     geo = published_geo(db, author)
-    reviewer = make_user(audience="everyone")
+    reviewer = make_analyst(audience="everyone")
     assert approve(geo, reviewer, 1).status_code == 201
     response = _request(geo, author, reviewer)
     assert response.status_code == 409
-    assert _code(response) == "already_approved"
+    assert error_code(response) == "already_approved"
 
 
-def test_an_exact_match_left_out_of_the_targets_carries_its_refusal(db, author, make_user):
+def test_an_exact_match_left_out_of_the_targets_carries_its_refusal(db, author, make_analyst):
     geo = published_geo(db, author)
-    reviewer = make_user(audience="nobody")
+    reviewer = make_analyst(audience="nobody")
     assert approve(geo, reviewer, 1).status_code == 201
     login_as(client, author)
     path = f"{_EVENTS}/{geo.id}/approval-request-targets"
@@ -292,7 +273,7 @@ def test_an_exact_match_left_out_of_the_targets_carries_its_refusal(db, author, 
     # The audience is never the reason: an exact match is listed whatever its audience.
     assert body["refusal"] == "This analyst already reviewed the live version"
 
-    stranger = make_user(audience="nobody")
+    stranger = make_analyst(audience="nobody")
     body = client.get(path, params={"q": stranger.username}).json()
     assert [u["username"] for u in body["analysts"]] == [stranger.username]
     assert body["refusal"] is None
@@ -302,37 +283,37 @@ def test_an_exact_match_left_out_of_the_targets_carries_its_refusal(db, author, 
 # ── Duplicates and the daily cap ────────────────────────────────────
 
 
-def test_one_open_request_per_requester_target_and_event(db, author, make_user):
+def test_one_open_request_per_requester_target_and_event(db, author, make_analyst):
     geo = published_geo(db, author)
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
     first = _request(geo, author, target)
     assert first.status_code == 201
     again = _request(geo, author, target)
     assert again.status_code == 409
-    assert _code(again) == "already_requested"
+    assert error_code(again) == "already_requested"
 
     assert _decline(geo, first.json()["id"], target).status_code == 200
     _age_declines(db, geo)
     assert _request(geo, author, target).status_code == 201
 
 
-def test_a_decline_stops_the_same_request_for_seven_days(db, author, make_user):
+def test_a_decline_stops_the_same_request_for_seven_days(db, author, make_analyst):
     geo = published_geo(db, author)
-    target = make_user(follows=author)
+    target = make_analyst(follows=author)
     first = _request(geo, author, target).json()
     assert _decline(geo, first["id"], target).status_code == 200
 
     again = _request(geo, author, target)
-    assert (again.status_code, _code(again)) == (409, "recently_declined")
+    assert (again.status_code, error_code(again)) == (409, "recently_declined")
     assert target.username not in _targets(geo, author, q=target.username)
 
     _age_declines(db, geo)
     assert _request(geo, author, target).status_code == 201
 
 
-def test_the_daily_cap_count_runs_under_a_per_requester_lock(db, author, make_user):
+def test_the_daily_cap_count_runs_under_a_per_requester_lock(db, author, make_analyst):
     geo = published_geo(db, author)
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
     statements: list[str] = []
 
     def record(_conn, _cursor, statement, _params, _context, _many):
@@ -348,10 +329,10 @@ def test_the_daily_cap_count_runs_under_a_per_requester_lock(db, author, make_us
     assert lock < count
 
 
-def test_the_daily_cap_counts_resolved_requests_too(db, author, make_user, monkeypatch):
+def test_the_daily_cap_counts_resolved_requests_too(db, author, make_analyst, monkeypatch):
     monkeypatch.setattr(settings, "approval_request_daily_cap", 2)
     geo = published_geo(db, author)
-    a, b, c = (make_user(audience="everyone") for _ in range(3))
+    a, b, c = (make_analyst(audience="everyone") for _ in range(3))
     first = _request(geo, author, a)
     assert first.status_code == 201
     assert _decline(geo, first.json()["id"], a).status_code == 200
@@ -359,7 +340,7 @@ def test_the_daily_cap_counts_resolved_requests_too(db, author, make_user, monke
 
     capped = _request(geo, author, c)
     assert capped.status_code == 429
-    assert _code(capped) == "daily_cap_reached"
+    assert error_code(capped) == "daily_cap_reached"
 
     db.query(ApprovalRequest).filter(ApprovalRequest.requester_id == author.id).update(
         {ApprovalRequest.created_at: datetime.now(UTC) - timedelta(days=1, minutes=1)}
@@ -371,9 +352,9 @@ def test_the_daily_cap_counts_resolved_requests_too(db, author, make_user, monke
 # ── Resolution and notifications ────────────────────────────────────
 
 
-def test_a_request_notifies_the_target_and_shows_in_their_feed(db, author, make_user):
+def test_a_request_notifies_the_target_and_shows_in_their_feed(db, author, make_analyst):
     geo = published_geo(db, author)
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
     created = _request(geo, author, target).json()
     assert created["status"] == "open"
     assert created["version_no"] == 1
@@ -384,14 +365,14 @@ def test_a_request_notifies_the_target_and_shows_in_their_feed(db, author, make_
     assert row["kind"] == "approval_request_received"
 
 
-def test_approving_resolves_the_request_and_tells_the_requester(db, author, make_user):
+def test_approving_resolves_the_request_and_tells_the_requester(db, author, make_analyst):
     geo = published_geo(db, author)
-    co = make_user()
+    co = make_analyst()
     db.add(
         EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
     )
     db.commit()
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
     by_owner = _request(geo, author, target).json()
     by_co = _request(geo, co, target).json()
     geo.version_no = 2
@@ -413,9 +394,9 @@ def test_approving_resolves_the_request_and_tells_the_requester(db, author, make
     assert [r["approval_request_status"] for r in rows] == ["approved", "approved"]
 
 
-def test_the_target_declines(db, author, second_user, make_user):
+def test_the_target_declines(db, author, second_user, make_analyst):
     geo = published_geo(db, author)
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
     created = _request(geo, author, target).json()
 
     assert _decline(geo, created["id"], second_user).status_code == 404
@@ -427,7 +408,7 @@ def test_the_target_declines(db, author, second_user, make_user):
     assert response.json()["resolved_at"] is not None
     again = _decline(geo, created["id"], target)
     assert again.status_code == 409
-    assert _code(again) == "already_resolved"
+    assert error_code(again) == "already_resolved"
 
     assert _open(geo, author) == []
     [row] = notifications_of(target)
@@ -435,9 +416,9 @@ def test_the_target_declines(db, author, second_user, make_user):
     assert _kinds(db, author) == [("approval_request_declined", target.id, geo.id)]
 
 
-def test_only_the_newest_row_of_a_request_reports_its_answer(db, author, make_user):
+def test_only_the_newest_row_of_a_request_reports_its_answer(db, author, make_analyst):
     geo = published_geo(db, author)
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
     first = _request(geo, author, target).json()
     assert _decline(geo, first["id"], target).status_code == 200
     _age_declines(db, geo)
@@ -450,11 +431,11 @@ def test_only_the_newest_row_of_a_request_reports_its_answer(db, author, make_us
 
 
 def test_the_open_list_shows_geolocators_everything_and_targets_their_own(
-    db, author, second_user, make_user
+    db, author, second_user, make_analyst
 ):
     geo = published_geo(db, author)
-    a = make_user(audience="everyone")
-    b = make_user(audience="everyone")
+    a = make_analyst(audience="everyone")
+    b = make_analyst(audience="everyone")
     _request(geo, author, a)
     _request(geo, author, b)
 
@@ -463,9 +444,9 @@ def test_the_open_list_shows_geolocators_everything_and_targets_their_own(
     assert _open(geo, second_user) == []
 
 
-def test_joining_the_geolocators_drops_requests_to_the_new_geolocator(db, author, make_user):
+def test_joining_the_geolocators_drops_requests_to_the_new_geolocator(db, author, make_analyst):
     geo = published_geo(db, author)
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
     assert _request(geo, author, target).status_code == 201
     db.add(
         EventGeolocator(
@@ -484,22 +465,15 @@ def test_joining_the_geolocators_drops_requests_to_the_new_geolocator(db, author
 # ── Delivery ────────────────────────────────────────────────────────
 
 
-@pytest.fixture
-def outbox(monkeypatch) -> list[email.Email]:
-    sent: list[email.Email] = []
-    monkeypatch.setattr(email, "send", sent.append)
-    return sent
-
-
 @pytest.mark.parametrize("departure", ["left", "removed"])
-def test_losing_credit_drops_the_requests_the_analyst_sent(db, author, make_user, departure):
+def test_losing_credit_drops_the_requests_the_analyst_sent(db, author, make_analyst, departure):
     geo = published_geo(db, author)
-    co = make_user()
+    co = make_analyst()
     db.add(
         EventGeolocator(event_id=geo.id, user_id=co.id, state="active", joined_at=datetime.now(UTC))
     )
     db.commit()
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
     assert _request(geo, co, target).status_code == 201
     assert _request(geo, author, target).status_code == 201
 
@@ -516,20 +490,20 @@ def test_losing_credit_drops_the_requests_the_analyst_sent(db, author, make_user
 
 
 def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
-    db, author, make_user, outbox
+    db, author, make_analyst, sent_emails
 ):
     geo = published_geo(db, author)
-    target = make_user(audience="everyone")
+    target = make_analyst(audience="everyone")
 
     created = _request(geo, author, target).json()
     notification_delivery.drain(db)
-    [asked] = [m for m in outbox if m.to == target.email]
+    [asked] = [m for m in sent_emails if m.to == target.email]
     assert author.username in asked.subject
     assert f"/events/{geo.id}" in asked.text
 
     assert _decline(geo, created["id"], target).status_code == 200
     notification_delivery.drain(db)
-    assert [m for m in outbox if m.to == author.email] == []
+    assert [m for m in sent_emails if m.to == author.email] == []
 
     db.add(
         UserPreferences(
@@ -542,5 +516,5 @@ def test_a_request_emails_the_target_and_a_decline_emails_only_on_opt_in(
     [again] = _open(geo, author)
     assert _decline(geo, again["id"], target).status_code == 200
     notification_delivery.drain(db)
-    [declined] = [m for m in outbox if m.to == author.email]
+    [declined] = [m for m in sent_emails if m.to == author.email]
     assert target.username in declined.subject

@@ -9,78 +9,16 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
-from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.audit_log import AuditLog
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event, EventDetection
+from app.models.event import STATUS_GEOLOCATED
 from app.models.password_reset_token import (
     PasswordResetToken,
 )
-from app.models.source import Source, SourceLink
-from app.models.user import User
 from app.services import maintenance as maintenance_service
-from app.services.auth import hash_password
 from app.services.email import EmailSendError
+from tests._fixtures import client, make_detection
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _clear_test_client_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        username=f"adm{uuid.uuid4().hex[:8]}",
-        email=f"admin-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def regular_user(db):
-    user = User(
-        username=f"u{uuid.uuid4().hex[:8]}",
-        email=f"u-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("p"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-# ── reap_password_reset_tokens ───────────────────────────────────────────────────
 
 
 def test_reap_password_reset_tokens_drops_expired_and_old_consumed(db, regular_user):
@@ -165,42 +103,8 @@ def test_reap_password_reset_tokens_endpoint_403_for_regular_user(regular_user):
 
 
 @pytest.fixture
-def detection_owner(db):
-    """An analyst with an address, torn down with everything that FKs to them."""
-    user = User(
-        username=f"d{uuid.uuid4().hex[:8]}",
-        email=f"detections-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("p"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-def _detection(db, owner, **kwargs) -> Event:
-    """One live machine detection owned by ``owner``."""
-    row = Event(
-        owner_id=owner.id,
-        title=f"Detection {uuid.uuid4().hex[:8]}",
-        coords=from_shape(Point(34.5, 48.5), srid=4326),
-        sources=[
-            Source(
-                level="direct", kind="unknown", links=[SourceLink(url="https://x.com/a/status/1")]
-            )
-        ],
-        detection=EventDetection(from_url="https://x.com/a/status/1"),
-        status=STATUS_DETECTED,
-        detected_at=datetime.now(UTC),
-        **kwargs,
-    )
-    db.add(row)
-    db.commit()
-    return row
+def detection_owner(make_user):
+    return make_user("d")
 
 
 def _counts(db, owner) -> int | None:
@@ -212,16 +116,16 @@ def _counts(db, owner) -> int | None:
 
 
 def test_digest_selects_analysts_by_live_detection_count(db, detection_owner):
-    _detection(db, detection_owner)
-    _detection(db, detection_owner)
+    make_detection(db, detection_owner)
+    make_detection(db, detection_owner)
     assert _counts(db, detection_owner) == 2
 
 
 def test_digest_counts_only_unpublished_real_work(db, detection_owner):
     """The count covers detections awaiting a decision; published and soft-deleted rows are out."""
-    _detection(db, detection_owner)
-    _detection(db, detection_owner, deleted_at=datetime.now(UTC))
-    published = _detection(db, detection_owner)
+    make_detection(db, detection_owner)
+    make_detection(db, detection_owner, deleted=True)
+    published = make_detection(db, detection_owner)
     published.status = STATUS_GEOLOCATED
     published.version_no = 1
     published.geolocated_at = datetime.now(UTC)
@@ -232,8 +136,8 @@ def test_digest_counts_only_unpublished_real_work(db, detection_owner):
 
 def test_digest_does_not_count_a_withheld_detection(db, detection_owner):
     """A taken-down detection is frozen for its owner, so the digest does not count it."""
-    _detection(db, detection_owner)
-    _detection(db, detection_owner, hidden_at=datetime.now(UTC))
+    make_detection(db, detection_owner)
+    make_detection(db, detection_owner, hidden=True)
     assert _counts(db, detection_owner) == 1
 
 
@@ -242,7 +146,7 @@ def test_digest_skips_an_analyst_with_no_detections(db, detection_owner):
 
 
 def test_digest_skips_a_deactivated_analyst(db, detection_owner):
-    _detection(db, detection_owner)
+    make_detection(db, detection_owner)
     detection_owner.is_active = False
     db.commit()
     assert _counts(db, detection_owner) is None
@@ -250,8 +154,8 @@ def test_digest_skips_a_deactivated_analyst(db, detection_owner):
 
 def test_digest_sends_one_email_per_analyst(db, detection_owner, monkeypatch):
     """One message per analyst, with the count and a link to their own queue."""
-    _detection(db, detection_owner)
-    _detection(db, detection_owner)
+    make_detection(db, detection_owner)
+    make_detection(db, detection_owner)
     sent: list = []
     monkeypatch.setattr(maintenance_service.email_service, "send", sent.append)
 
@@ -268,7 +172,7 @@ def test_digest_sends_one_email_per_analyst(db, detection_owner, monkeypatch):
 def test_digest_survives_a_provider_failure(db, detection_owner, monkeypatch):
     """A rejected address is counted, not raised (the digest is re-sendable), and
     ``detections_pending`` counts delivered messages only."""
-    _detection(db, detection_owner)
+    make_detection(db, detection_owner)
 
     def _boom(email):
         raise EmailSendError("provider down")
@@ -281,11 +185,15 @@ def test_digest_survives_a_provider_failure(db, detection_owner, monkeypatch):
     assert result["detections_pending"] == 0
 
 
-def test_digest_caps_the_addresses_one_click_writes_to(db, detection_owner):
-    """One click is bounded (a provider round-trip per analyst, no resume marker); the biggest backlogs are kept."""
-    _detection(db, detection_owner)
-    selected = maintenance_service.detections_awaiting_completion(db, limit=1)
-    assert len(selected) == 1
+def test_digest_caps_the_addresses_one_click_writes_to(db, make_user):
+    """One click is bounded (a provider round-trip per analyst, no resume marker); the biggest
+    backlogs are kept."""
+    small, big = make_user("d"), make_user("d")
+    make_detection(db, small)
+    make_detection(db, big)
+    make_detection(db, big)
+    [(user, _address, count)] = maintenance_service.detections_awaiting_completion(db, limit=1)
+    assert (user.id, count) == (big.id, 2)
 
 
 def test_send_completion_digests_endpoint_for_admin(admin_user, db, monkeypatch):
@@ -317,12 +225,3 @@ def test_send_completion_digests_endpoint_403_for_regular_user(regular_user):
         headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
-
-
-def test_reap_proof_orphans_endpoint_is_gone(admin_user):
-    """The orphan reaper endpoint no longer exists."""
-    response = client.post(
-        "/api/v1/admin/maintenance/reap-proof-orphans",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404

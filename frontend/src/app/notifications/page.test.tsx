@@ -4,27 +4,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Notification } from "@/lib/notifications";
 import { eventDetail, filedVersion } from "@/test/eventDetail";
 
-const api = vi.hoisted(() => ({
-  apiFetch: vi.fn(),
-  apiFetchPage: vi.fn(),
+import { apiFetch, apiFetchPage } from "@/test/apiStub";
+
+const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  apiFetchPage: api.apiFetchPage,
-  ApiError: class extends Error {},
-  errorMessage: (err: unknown, fallback = "Something went wrong.") =>
-    err instanceof Error ? err.message : fallback,
-}));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-}));
-vi.mock("@/hooks/useRequireAuth", () => ({
-  useRequireAuth: () => ({ user: { id: "u1", username: "ana" }, loading: false }),
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
+vi.mock("@/hooks/useRequireAuth", () => import("@/test/requireAuthStub"));
 vi.mock("@/contexts/NotificationsContext", () => ({
-  useUnreadNotifications: () => ({ unread: 0, refresh: api.refresh }),
+  useUnreadNotifications: () => ({ unread: 0, refresh: mocks.refresh }),
 }));
 
 import NotificationsPage from "./page";
@@ -58,14 +48,14 @@ const orgInvite: Notification = {
 };
 
 function serve(items: Notification[]) {
-  api.apiFetchPage.mockResolvedValue({ items, nextCursor: null });
+  apiFetchPage.mockResolvedValue({ items, nextCursor: null });
 }
 
 describe("NotificationsPage", () => {
   beforeEach(() => {
-    api.apiFetch.mockReset().mockResolvedValue(undefined);
-    api.apiFetchPage.mockReset();
-    api.refresh.mockReset();
+    apiFetch.mockReset().mockResolvedValue(undefined);
+    apiFetchPage.mockReset();
+    mocks.refresh.mockReset();
   });
 
   it("lists rows under New and Earlier, each linking to what it names", async () => {
@@ -99,8 +89,8 @@ describe("NotificationsPage", () => {
     serve([fulfilled, follower]);
     render(<NotificationsPage />);
 
-    await waitFor(() => expect(api.refresh).toHaveBeenCalled());
-    expect(api.apiFetch).toHaveBeenCalledWith("/notifications/read", {
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
+    expect(apiFetch).toHaveBeenCalledWith("/notifications/read", {
       method: "POST",
       body: JSON.stringify({ ids: ["n2"] }),
     });
@@ -108,16 +98,16 @@ describe("NotificationsPage", () => {
 
   it("marks a long unread feed in requests of at most 100 ids, each id once", async () => {
     const unread = Array.from({ length: 150 }, (_, i) => ({ ...fulfilled, id: `u${i}` }));
-    api.apiFetchPage
+    apiFetchPage
       .mockResolvedValueOnce({ items: unread.slice(0, 100), nextCursor: "c1" })
       .mockResolvedValueOnce({ items: unread.slice(100), nextCursor: null });
     render(<NotificationsPage />);
 
-    await waitFor(() => expect(api.refresh).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
     fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
-    await waitFor(() => expect(api.refresh).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalledTimes(2));
 
-    const posted = api.apiFetch.mock.calls
+    const posted = apiFetch.mock.calls
       .filter(([path]) => path === "/notifications/read")
       .map(([, init]) => JSON.parse(init.body).ids as string[]);
     expect(posted.map((ids) => ids.length)).toEqual([100, 50]);
@@ -129,7 +119,7 @@ describe("NotificationsPage", () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("link", { name: /cy followed you/ });
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 
   it("offers no action: an invitation or a request row only links to where you answer it", async () => {
@@ -180,21 +170,21 @@ describe("NotificationsPage", () => {
     render(<NotificationsPage />);
 
     await screen.findByRole("link", { name: /cy followed you/ });
-    const loads = api.apiFetchPage.mock.calls.length;
+    const loads = apiFetchPage.mock.calls.length;
     const dismiss = screen.getByRole("button", { name: "Dismiss notification" });
     expect(dismiss.querySelector("svg.lucide-x")).not.toBeNull();
     fireEvent.click(dismiss);
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/notifications/n1", { method: "DELETE" }),
+      expect(apiFetch).toHaveBeenCalledWith("/notifications/n1", { method: "DELETE" }),
     );
-    await waitFor(() => expect(api.apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
-    expect(api.refresh).toHaveBeenCalled();
+    await waitFor(() => expect(apiFetchPage.mock.calls.length).toBeGreaterThan(loads));
+    expect(mocks.refresh).toHaveBeenCalled();
   });
 
   it("keeps the row and says so when the dismiss fails", async () => {
     serve([follower]);
-    api.apiFetch.mockRejectedValue(new Error("boom"));
+    apiFetch.mockRejectedValue(new Error("boom"));
     render(<NotificationsPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Dismiss notification" }));

@@ -38,10 +38,9 @@ from app.services.events import (
     update_request,
 )
 from app.services.sanitize import extract_image_srcs
-from tests._fixtures import fake_sha256
+from tests._fixtures import fake_sha256, make_event
 from tests.conftest import login_as
 from tests.events._helpers import (
-    _make_geo,
     client,
     filed_source,
     proof_file_part,
@@ -134,23 +133,6 @@ def _create_request(user: User, *, files=None, **data):
     )
 
 
-def test_list_returns_seeded_request(db, author):
-    request = _make_request(db, author=author)
-    response = client.get(_LIST)
-    assert response.status_code == 200
-    ids = {row["id"] for row in response.json()}
-    assert str(request.id) in ids
-
-
-def test_list_excludes_soft_deleted(db, author):
-    live = _make_request(db, author=author)
-    dead = _make_request(db, author=author, deleted=True)
-    response = client.get(_LIST)
-    ids = {row["id"] for row in response.json()}
-    assert str(live.id) in ids
-    assert str(dead.id) not in ids
-
-
 def test_list_filters_by_status(db, author):
     open_one = _make_request(db, author=author, status=STATUS_REQUESTED)
     closed = _make_request(db, author=author, status=STATUS_CLOSED)
@@ -165,7 +147,7 @@ def test_list_filters_by_status(db, author):
 def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
     """``before_closed_status`` splits a withdrawn request from a rejected detection."""
     withdrawn = _make_request(db, author=author, status=STATUS_CLOSED)
-    rejected = _make_geo(db, author=author, status=STATUS_CLOSED)
+    rejected = make_event(db, author=author, status=STATUS_CLOSED)
     rejected.before_closed_status = "detected"
     db.commit()
 
@@ -177,7 +159,7 @@ def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
 def test_list_excludes_located_events(db, author):
     """A fulfilled request never surfaces in the requested view."""
     requested = _make_request(db, author=author)
-    located = _make_geo(db, author=author, status=STATUS_GEOLOCATED)
+    located = make_event(db, author=author, status=STATUS_GEOLOCATED)
 
     ids = {row["id"] for row in client.get(_LIST).json()}
     assert str(requested.id) in ids
@@ -186,36 +168,6 @@ def test_list_excludes_located_events(db, author):
 
 def test_list_rejects_unknown_view(author):
     assert client.get("/api/v1/events?view=bogus").status_code == 422
-
-
-def test_list_filters_by_tag(db, author, free_tag):
-    with_tag = _make_request(db, author=author, tags=[free_tag])
-    without_tag = _make_request(db, author=author)
-
-    response = client.get(f"{_LIST}&tag={free_tag.name}")
-    assert response.status_code == 200
-    ids = {row["id"] for row in response.json()}
-    assert str(with_tag.id) in ids
-    assert str(without_tag.id) not in ids
-
-
-def test_list_filters_by_author_exact(db, author):
-    """Exact case-insensitive match; a fragment matches nothing."""
-    request = _make_request(db, author=author)
-    response = client.get(f"{_LIST}&author={author.username.upper()}")
-    assert response.status_code == 200
-    assert str(request.id) in {row["id"] for row in response.json()}
-    response = client.get(f"{_LIST}&author={author.username[2:6]}")
-    assert response.status_code == 200
-    assert str(request.id) not in {row["id"] for row in response.json()}
-
-
-def test_list_honours_limit(db, author):
-    for _ in range(3):
-        _make_request(db, author=author)
-    response = client.get(f"{_LIST}&limit=2")
-    assert response.status_code == 200
-    assert len(response.json()) == 2
 
 
 def test_list_rejects_unusable_limit(author):
@@ -240,12 +192,6 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert [link["url"] for link in source["links"]] == [_POST_URL]
     assert source["media"]["id"] == str(request.sources[0].media.id)
     assert body["geolocators"] == []
-
-
-def test_detail_404_for_soft_deleted(db, author):
-    request = _make_request(db, author=author, deleted=True)
-    response = client.get(f"/api/v1/events/{request.id}")
-    assert response.status_code == 404
 
 
 def test_create_requires_authentication():
@@ -834,7 +780,7 @@ def test_edit_request_requires_authentication(db, author):
 def test_edit_request_rejects_a_row_that_left_requested(db, author):
     """Only an open request takes this write."""
     for status in (STATUS_GEOLOCATED, "detected", STATUS_CLOSED):
-        geo = _make_geo(db, author=author, status=status, with_media=True)
+        geo = make_event(db, author=author, status=status, with_media=True)
         response = _edit_request(geo, author)
         assert response.status_code == 409, f"{status}: {response.text}"
         assert response.json()["detail"]["code"] == "invalid_state"

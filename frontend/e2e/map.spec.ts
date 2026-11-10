@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { openFilterGroups } from "./support/filters";
 import { mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout } from "./support/narrowLayout";
+import { runAtOneWidth } from "./support/wideViewport";
 
 /**
  * Golden path 2: browse the map and open its filters.
@@ -48,6 +49,7 @@ test.describe("map", () => {
   // From `lg` up the panel floats under its header, and the map's bottom-left row (zoom, locate,
   // basemap) sits under it: a tall open panel stops above that row and scrolls the rest.
   test("keeps the open filter panel above the map's bottom-left controls", async ({ page }) => {
+    runAtOneWidth();
     await page.setViewportSize({ width: 1280, height: 640 });
     await mockApi(page);
     await page.goto("/map");

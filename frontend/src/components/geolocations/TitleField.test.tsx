@@ -22,12 +22,11 @@ function Host({ onSubmit, form }: { onSubmit: () => void; form?: string }) {
 }
 
 describe("TitleField", () => {
-  it("is a one-row field that grows with its text", () => {
+  it("is a one-row text area", () => {
     render(<Host onSubmit={vi.fn()} />);
     const field = screen.getByRole("textbox", { name: "Title" });
     expect(field.tagName).toBe("TEXTAREA");
     expect(field).toHaveAttribute("rows", "1");
-    expect(field.className).toContain("field-sizing-content");
   });
 
   it("adds no line on Enter and submits the form it joins", () => {

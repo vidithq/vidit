@@ -1,43 +1,39 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ANA } from "@/test/auth";
 import { useEventActions, type ActionSurface } from "./useEventActions";
 import type { Approval } from "@/lib/approvals";
 import type { BeforeClosedStatus, EventDetail, EventStatus } from "@/types";
+import { apiFetch } from "@/test/apiStub";
+import { eventDetail } from "@/test/eventDetail";
 
 type Viewer = { id: string; username: string } | null;
 
-const api = vi.hoisted(() => ({
+const mocks = vi.hoisted(() => ({
   approvals: [] as unknown[],
-  apiFetch: vi.fn(),
   viewer: null as { id: string; username: string } | null,
 }));
-vi.mock("@/lib/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api")>()),
-  apiFetch: api.apiFetch,
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: api.viewer }),
+  useAuth: () => ({ user: mocks.viewer }),
 }));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
-const OWNER = { id: "u1", username: "ana" };
 const CO_GEOLOCATOR = { id: "u2", username: "bo" };
 const ANALYST = { id: "u3", username: "cy" };
 
 beforeEach(() => {
-  api.approvals = [];
-  api.viewer = OWNER;
-  api.apiFetch.mockReset();
-  api.apiFetch.mockImplementation((path: string) =>
+  mocks.approvals = [];
+  mocks.viewer = ANA;
+  apiFetch.mockReset();
+  apiFetch.mockImplementation((path: string) =>
     Promise.resolve(
       path === "/events/e1/approvals?all_versions=true"
         ? {
-            items: api.approvals,
+            items: mocks.approvals,
             // What the server says: signed in and outside the credit.
-            viewer_can_approve: api.viewer !== null && ![OWNER.id, CO_GEOLOCATOR.id].includes(api.viewer.id),
+            viewer_can_approve: mocks.viewer !== null && ![ANA.id, CO_GEOLOCATOR.id].includes(mocks.viewer.id),
           }
         : [],
     ),
@@ -49,32 +45,13 @@ function eventFixture(
   beforeClosedStatus: BeforeClosedStatus | null = null,
   versionNo = 1,
 ): EventDetail {
-  return {
-    id: "e1",
-    title: "Strike near Bakhmut",
-    coords: { lat: 48.5, lng: 37.8 },
-    occurred_date: "2026-06-01",
-    occurred_time: null,
+  return eventDetail("e1", "Strike near Bakhmut", {
     status,
     version_no: versionNo,
-    is_graphic: false,
-    close_reason: null,
     before_closed_status: beforeClosedStatus,
-    detected_from_url: null,
-    detected_via: null,
-    owner: OWNER,
-    tags: [],
-    conflicts: [],
-    sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null, warnings: [] }],
-    proof: null,
-    created_at: "2026-06-02T10:00:00Z",
-    hidden_at: null,
     geolocated_at: null,
-    closed_at: null,
-    thumbnail: null,
-    requested_by: null,
-    geolocators: status === "geolocated" ? [OWNER, CO_GEOLOCATOR] : [],
-  };
+    geolocators: status === "geolocated" ? [ANA, CO_GEOLOCATOR] : [],
+  });
 }
 
 function Harness({
@@ -102,7 +79,7 @@ function Harness({
 }
 
 function renderAs(viewer: Viewer, props: Parameters<typeof Harness>[0]) {
-  api.viewer = viewer;
+  mocks.viewer = viewer;
   return render(<Harness {...props} />);
 }
 
@@ -111,7 +88,7 @@ const row = () => screen.getByRole("group", { name: "Event actions" });
 /** Waits until the approvals the event page reads have landed. */
 const approvalsRead = () =>
   waitFor(() =>
-    expect(api.apiFetch).toHaveBeenCalledWith(
+    expect(apiFetch).toHaveBeenCalledWith(
       "/events/e1/approvals?all_versions=true",
       expect.anything(),
     ),
@@ -138,7 +115,7 @@ const rowControls = () =>
 
 describe("the event actions per reader", () => {
   it("gives the owner the version, Edit, Share, Add to collection, Link to a site and Request approval, and no report", async () => {
-    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    renderAs(ANA, { status: "geolocated", surface: "event" });
     expect(rowControls()).toEqual([
       "v1: choose a version",
       "Edit",
@@ -192,8 +169,8 @@ describe("the event actions per reader", () => {
   });
 
   it("carries no menu, no close, no stamps and no approve control in the row", async () => {
-    api.approvals = [stamp("a1", "maya")];
-    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    mocks.approvals = [stamp("a1", "maya")];
+    renderAs(ANA, { status: "geolocated", surface: "event" });
     await screen.findByRole("link", { name: /^maya approved/ });
     expect(within(row()).queryByRole("button", { name: "More actions" })).toBeNull();
     expect(within(row()).queryByRole("button", { name: /^Close/ })).toBeNull();
@@ -206,7 +183,7 @@ describe("the owner's edit", () => {
   it.each<EventStatus>(["requested", "detected", "geolocated"])(
     "leads the owner of a %s row to the edit page, where they also close it",
     (status) => {
-      renderAs(OWNER, { status, surface: "event" });
+      renderAs(ANA, { status, surface: "event" });
       expect(within(row()).getByRole("link", { name: "Edit" })).toHaveAttribute(
         "href",
         "/events/e1/edit",
@@ -215,12 +192,12 @@ describe("the owner's edit", () => {
   );
 
   it("offers no edit on a closed row", () => {
-    renderAs(OWNER, { status: "closed", surface: "event", beforeClosedStatus: "geolocated" });
+    renderAs(ANA, { status: "closed", surface: "event", beforeClosedStatus: "geolocated" });
     expect(within(row()).queryByRole("link", { name: "Edit" })).toBeNull();
   });
 
   it("gives the asker Edit alone to the request's form, in a row with no card around it", () => {
-    renderAs(OWNER, { status: "requested", surface: "request" });
+    renderAs(ANA, { status: "requested", surface: "request" });
     expect(rowControls()).toEqual(["Edit", "Share"]);
     expect(within(row()).getByRole("link", { name: "Edit" })).toHaveAttribute(
       "href",
@@ -250,7 +227,7 @@ describe("the owner's edit", () => {
     "offers no delete for a %s row on either detail surface",
     (status) => {
       for (const surface of ["event", "request"] as const) {
-        const { unmount } = renderAs(OWNER, { status, surface });
+        const { unmount } = renderAs(ANA, { status, surface });
         expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
         unmount();
       }
@@ -261,7 +238,7 @@ describe("the owner's edit", () => {
 
 describe("panels the row opens", () => {
   it("opens the collection picker over the page and closes it on Escape", async () => {
-    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    renderAs(ANA, { status: "geolocated", surface: "event" });
     const toggle = within(row()).getByRole("button", { name: "Add to collection" });
     fireEvent.click(toggle);
     const picker = screen.getByRole("dialog", { name: "Add to collection" });
@@ -277,7 +254,7 @@ describe("panels the row opens", () => {
   });
 
   it("closes the collection picker on an outside click", () => {
-    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    renderAs(ANA, { status: "geolocated", surface: "event" });
     fireEvent.click(within(row()).getByRole("button", { name: "Add to collection" }));
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("dialog", { name: "Add to collection" })).toBeNull();
@@ -294,10 +271,10 @@ describe("panels the row opens", () => {
 
     fireEvent.click(within(panel).getByRole("button", { name: "Leave" }));
     // The first click arms in place and sends nothing.
-    expect(api.apiFetch).not.toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" });
+    expect(apiFetch).not.toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" });
     fireEvent.click(within(panel).getByRole("button", { name: "Confirm leave" }));
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" }),
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" }),
     );
   });
 
@@ -320,7 +297,7 @@ describe("panels the row opens", () => {
       });
       return <>{panels}</>;
     }
-    api.viewer = OWNER;
+    mocks.viewer = ANA;
     render(<Withheld />);
     expect(screen.getByRole("status")).toHaveTextContent(
       "Withheld since 28 Oct 2026, 09:30 UTC. Only admins read this event until it is restored.",
@@ -328,7 +305,7 @@ describe("panels the row opens", () => {
   });
 
   it("shows no withheld banner on a live event", () => {
-    renderAs(OWNER, { status: "geolocated", surface: "event" });
+    renderAs(ANA, { status: "geolocated", surface: "event" });
     expect(screen.queryByText(/Withheld since/)).toBeNull();
   });
 });
@@ -365,7 +342,7 @@ describe("the version selector", () => {
     ["closed", "requested"],
     ["closed", "detected"],
   ])("is absent from a %s row, which never published", (status, before) => {
-    renderAs(OWNER, { status, surface: "event", beforeClosedStatus: before });
+    renderAs(ANA, { status, surface: "event", beforeClosedStatus: before });
     expect(within(row()).queryByRole("button", { name: /choose a version/ })).toBeNull();
   });
 
@@ -377,7 +354,7 @@ describe("the version selector", () => {
 
 describe("the approvals beside the actions row", () => {
   it("come with the event page of a published row, in the side, not the sticky actions", async () => {
-    api.approvals = [stamp("a1", "maya")];
+    mocks.approvals = [stamp("a1", "maya")];
     renderAs(null, { status: "geolocated", surface: "event" });
     const approvals = await screen.findByRole("region", { name: "Approvals" });
     expect(row().contains(approvals)).toBe(false);
@@ -390,7 +367,7 @@ describe("the approvals beside the actions row", () => {
   ])("is absent from the %s surface of a %s row, which reads no approvals", (surface, status) => {
     renderAs(null, { status, surface });
     expect(screen.queryByRole("region", { name: "Approvals" })).toBeNull();
-    expect(api.apiFetch).not.toHaveBeenCalledWith(
+    expect(apiFetch).not.toHaveBeenCalledWith(
       "/events/e1/approvals?all_versions=true",
       expect.anything(),
     );

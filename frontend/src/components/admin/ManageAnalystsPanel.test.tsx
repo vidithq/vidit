@@ -1,12 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  errorMessage: (_err: unknown, fallback: string) => fallback,
-  ApiError: class extends Error {},
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { ManageAnalystsPanel } from "./ManageAnalystsPanel";
 
@@ -22,12 +18,12 @@ const ana = {
 };
 
 beforeEach(() => {
-  api.apiFetch.mockReset();
+  apiFetch.mockReset();
 });
 
 describe("<ManageAnalystsPanel>", () => {
   it("picks an analyst from the search and hard deletes from the dialog", async () => {
-    api.apiFetch.mockImplementation((path: string) =>
+    apiFetch.mockImplementation((path: string) =>
       Promise.resolve(
         path.startsWith("/admin/users?q=")
           ? [ana]
@@ -46,11 +42,11 @@ describe("<ManageAnalystsPanel>", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Hard delete" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("Hard delete is irreversible.");
-    expect(api.apiFetch).toHaveBeenCalledTimes(1);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
     fireEvent.click(within(dialog).getByRole("button", { name: "Hard delete" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/users/u1?hard=true", { method: "DELETE" }),
+      expect(apiFetch).toHaveBeenCalledWith("/admin/users/u1?hard=true", { method: "DELETE" }),
     );
     expect(
       await screen.findByText("Erased the account, 1 event and 2 storage objects."),

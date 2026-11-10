@@ -1,10 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const useApiResource = vi.fn();
-vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => useApiResource(path),
-}));
+import { useApiResource } from "@/test/apiResourceStub";
+vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
 const addEventToCollection = vi.fn();
 const removeEventFromCollection = vi.fn();

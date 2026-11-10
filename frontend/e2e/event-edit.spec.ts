@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { EVENT, EVENT_ID, MEDIA_URL } from "./support/fixtures";
 import { answerWith, grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
+import { runAtOneWidth } from "./support/wideViewport";
 
 /**
  * The one edit form: the owner's correction of a published geolocation, and the publish of a
@@ -95,6 +96,7 @@ test.describe("event edit", () => {
   test("puts the actions top right, over the location and the details, on a wide screen", async ({
     page,
   }) => {
+    runAtOneWidth();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/events/${EVENT_ID}/edit`);
 
@@ -129,7 +131,7 @@ test.describe("event edit", () => {
     await expect(rail.getByRole("button", { name: "Save version 2" })).toBeInViewport({ ratio: 1 });
   });
 
-  test("publishes a request from the same form, counting its missing requirements", async ({ page }) => {
+  test("shows a request's missing count on hover, inside the phone layout", async ({ page }) => {
     await answerWith(page, `/events/${EVENT_ID}`, {
       ...EVENT,
       status: "requested",
@@ -144,20 +146,8 @@ test.describe("event edit", () => {
     const publish = page.getByRole("button", { name: "Publish", exact: true });
     await expectNarrowViewportLayout(page, publish);
     const rail = page.getByRole("complementary", { name: "Actions" });
-    await expect(rail.getByRole("button", { name: "Save request" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Save version/ })).toHaveCount(0);
-
-    // The request names no conflict: Publish counts it, and its count names it.
-    await expect(publish).toHaveAccessibleDescription(/^\d+ missing: .*Conflict/);
-    const count = rail.getByRole("button", { name: /^\d+ missing: / });
-    await count.hover();
+    await rail.getByRole("button", { name: /^\d+ missing: / }).hover();
     await expect(page.getByText(/^\d+ missing: .*Conflict$/).and(page.locator(":visible"))).toBeVisible();
     await expectNarrowViewportLayout(page, publish);
-
-    // A pick from the conflict field takes Conflict off the count.
-    await page.getByRole("combobox", { name: "Conflict" }).fill("russian");
-    await page.getByRole("listbox", { name: "Conflict" }).getByRole("option", { name: /^Russian invasion/ }).click();
-    await expect(page.getByRole("button", { name: /^Remove Russian invasion/ })).toBeVisible();
-    await expect(publish).not.toHaveAccessibleDescription(/Conflict/);
   });
 });

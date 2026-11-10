@@ -1,12 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  errorMessage: (_err: unknown, fallback: string) => fallback,
-  ApiError: class extends Error {},
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { EventActionsPanel } from "./EventActionsPanel";
 
@@ -16,7 +12,7 @@ const REQUEST = "33333333-3333-3333-3333-333333333333";
 const FIELD = "Event (title, ID or link)";
 
 beforeEach(() => {
-  api.apiFetch.mockReset();
+  apiFetch.mockReset();
 });
 
 describe("<EventActionsPanel>", () => {
@@ -37,7 +33,7 @@ describe("<EventActionsPanel>", () => {
 
   it("tells apart two events with the same title by date and author", async () => {
     const event = { type: "event", title: "Strike on the depot", status: "geolocated", media: [] };
-    api.apiFetch.mockResolvedValue({
+    apiFetch.mockResolvedValue({
       hits: [
         { ...event, id: ID, occurred_date: "2026-03-01", owner: { username: "ana" } },
         { ...event, id: OTHER, occurred_date: null, owner: { username: "bo" } },
@@ -59,7 +55,7 @@ describe("<EventActionsPanel>", () => {
     expect(await screen.findByRole("option", { name: /1 Mar 2026.*ana/ })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Requested 2 Apr 2026.*cy/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: /Undated.*bo/ }));
-    expect(api.apiFetch.mock.calls[0][0]).toMatch(/^\/search\?q=depot&limit=10&type=event$/);
+    expect(apiFetch.mock.calls[0][0]).toMatch(/^\/search\?q=depot&limit=10&type=event$/);
     expect(screen.getByRole("button", { name: "Remove Strike on the depot" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mark graphic" })).toBeEnabled();
@@ -69,7 +65,7 @@ describe("<EventActionsPanel>", () => {
     ["Hide", { hidden: true }, "Hidden", "2026-10-28T09:00:00Z"],
     ["Restore", { hidden: false }, "Restored", null],
   ])("names the action on the receipt after %s", async (button, body, badge, hiddenAt) => {
-    api.apiFetch.mockResolvedValue({ id: ID, is_graphic: false, hidden_at: hiddenAt });
+    apiFetch.mockResolvedValue({ id: ID, is_graphic: false, hidden_at: hiddenAt });
     render(<EventActionsPanel />);
     fireEvent.change(screen.getByLabelText(FIELD), { target: { value: ID } });
 
@@ -78,7 +74,7 @@ describe("<EventActionsPanel>", () => {
     if (armed) fireEvent.click(armed);
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith(`/admin/events/${ID}/moderation`, {
+      expect(apiFetch).toHaveBeenCalledWith(`/admin/events/${ID}/moderation`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
@@ -89,7 +85,7 @@ describe("<EventActionsPanel>", () => {
   });
 
   it("hard deletes only on the second click of its in-place confirm", async () => {
-    api.apiFetch.mockResolvedValue({
+    apiFetch.mockResolvedValue({
       geolocation_id: ID,
       title: "Strike",
       mode: "hard",
@@ -100,12 +96,12 @@ describe("<EventActionsPanel>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hard delete (GDPR)" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Hard delete" }));
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Confirm hard delete" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith(`/admin/events/${ID}?hard=true`, {
+      expect(apiFetch).toHaveBeenCalledWith(`/admin/events/${ID}?hard=true`, {
         method: "DELETE",
       }),
     );

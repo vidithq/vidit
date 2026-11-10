@@ -25,9 +25,9 @@ from app.models.event import (
     EventGeolocator,
 )
 from app.models.source import Source, SourceLink
+from tests._fixtures import make_event
 from tests.conftest import login_as
 from tests.events._helpers import (
-    _make_geo,
     client,
     proof_file_part,
     proof_form_field,
@@ -189,7 +189,7 @@ def test_geolocated_stamp_check_rejects_geolocated_without_geolocated_at(db, aut
 )
 def test_source_checks_reject_values_outside_the_domain(db, author, field, value, constraint):
     """``level`` and ``kind`` are closed lists in Postgres, not only in the Literals."""
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     source = Source(
         event_id=geo.id, level="direct", kind="unknown", links=[SourceLink(url="https://e.com/x")]
     )
@@ -202,7 +202,7 @@ def test_source_checks_reject_values_outside_the_domain(db, author, field, value
 
 def test_source_link_archive_stamp_check_pairs_the_copy_with_its_time(db, author):
     """A snapshot URL without ``archived_at`` is rejected, so a copy always says when."""
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     db.add(
         SourceLink(
             source_id=geo.sources[0].id,
@@ -216,7 +216,7 @@ def test_source_link_archive_stamp_check_pairs_the_copy_with_its_time(db, author
 
 
 def test_a_source_holds_each_url_once(db, author):
-    geo = _make_geo(db, author=author, source_url="https://example.com/post")
+    geo = make_event(db, author=author, source_url="https://example.com/post")
     db.add(SourceLink(source_id=geo.sources[0].id, url="https://example.com/post"))
     with pytest.raises(IntegrityError, match="uq_source_links_source_url"):
         db.commit()
@@ -226,7 +226,7 @@ def test_a_source_holds_each_url_once(db, author):
 def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(db, author, conflict):
     """``lat`` / ``lng`` are required Form fields, so omitting them 422s before the
     service or the CHECK is reached."""
-    geo = _make_geo(db, author=author, status=STATUS_DETECTED, with_media=True)
+    geo = make_event(db, author=author, status=STATUS_DETECTED, with_media=True)
     [source] = geo.sources
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
@@ -250,9 +250,9 @@ def test_geolocate_rejects_missing_coordinates_at_the_form_boundary(db, author, 
 def test_event_geolocators_reverse_query_by_user(db, author, second_user):
     """Every ``EventGeolocator`` row for one user, newest first (the shape
     ``ix_event_geolocators_user_created_at`` backs)."""
-    older = _make_geo(db, author=author)
-    newer = _make_geo(db, author=author)
-    unrelated = _make_geo(db, author=author)  # second_user never geolocated this one
+    older = make_event(db, author=author)
+    newer = make_event(db, author=author)
+    unrelated = make_event(db, author=author)  # second_user never geolocated this one
 
     db.add(
         EventGeolocator(

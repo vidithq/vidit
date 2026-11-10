@@ -15,17 +15,13 @@ import uuid
 from typing import Any, NamedTuple
 
 import pytest
-from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from app.database import SessionLocal
 from app.main import (
     RATE_LIMITED_CODE,
     READ_QUOTA_EXCEEDED_CODE,
     app,
 )
-from app.models.audit_log import AuditLog
-from app.models.invite_code import InviteCode
 from app.models.tag import Tag
 from app.models.user import User
 from app.ratelimit import (
@@ -36,66 +32,12 @@ from app.ratelimit import (
 from app.services.auth import create_access_token, hash_password
 from app.services.auth_cookies import SESSION_COOKIE
 from app.services.sanitize import html_from_text
+from tests._fixtures import client
 from tests.conftest import login_as
 from tests.events._helpers import WORLD_BBOX
 
-client = TestClient(app)
-
 ME = "/api/v1/users/me"
 _ORG = "/api/v1/organizations/no-such-org"
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def user(db):
-    u = User(
-        username=f"rl{uuid.uuid4().hex[:8]}",
-        email=f"{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(u)
-    db.commit()
-    db.refresh(u)
-    yield u
-    db.query(User).filter(User.id == u.id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def admin_user(db):
-    u = User(
-        username=f"rla{uuid.uuid4().hex[:8]}",
-        email=f"admin-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(u)
-    db.commit()
-    db.refresh(u)
-    user_id = u.id
-    yield u
-    # Reap the admin audit rows and invite codes so the user row deletes
-    # without FK violations.
-    db.expire_all()
-    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 @pytest.fixture
@@ -110,10 +52,10 @@ def live_limiter():
         limiter.reset()
 
 
-def _auth(user: User, ip: str) -> dict[str, str]:
+def _auth(regular_user: User, ip: str) -> dict[str, str]:
     # The XFF IP pins this caller to its own bucket (rate_limit_key reads the
     # right-most entry).
-    return {**login_as(client, user), "X-Forwarded-For": ip}
+    return {**login_as(client, regular_user), "X-Forwarded-For": ip}
 
 
 def _assert_throttled(resp, code: str = RATE_LIMITED_CODE) -> None:
@@ -123,38 +65,38 @@ def _assert_throttled(resp, code: str = RATE_LIMITED_CODE) -> None:
     assert int(resp.headers["Retry-After"]) >= 1
 
 
-def test_write_limit_returns_429_after_quota(live_limiter, user):
-    headers = _auth(user, "203.0.113.10")  # update_my_profile is 30/minute
+def test_write_limit_returns_429_after_quota(live_limiter, regular_user):
+    headers = _auth(regular_user, "203.0.113.10")  # update_my_profile is 30/minute
     for i in range(30):
         resp = client.patch(ME, json={"bio": f"n{i}"}, headers=headers)
         assert resp.status_code == 200, f"request {i} was {resp.status_code}"
     _assert_throttled(client.patch(ME, json={"bio": "over"}, headers=headers))
 
 
-def test_limit_is_per_endpoint_not_a_global_floor(live_limiter, user):
+def test_limit_is_per_endpoint_not_a_global_floor(live_limiter, regular_user):
     # Exhaust the 30/min write bucket; another endpoint on the same IP still
     # answers (no global floor).
-    headers = _auth(user, "203.0.113.11")
+    headers = _auth(regular_user, "203.0.113.11")
     for _ in range(30):
         assert client.patch(ME, json={"bio": "x"}, headers=headers).status_code == 200
     assert client.patch(ME, json={"bio": "x"}, headers=headers).status_code == 429
-    profile = client.get(f"/api/v1/users/{user.username}", headers=headers)  # 120/min
+    profile = client.get(f"/api/v1/users/{regular_user.username}", headers=headers)  # 120/min
     assert profile.status_code == 200
 
 
-def test_disabled_limiter_never_blocks(user):
+def test_disabled_limiter_never_blocks(regular_user):
     # No `live_limiter`: the autouse fixture leaves the limiter disabled.
-    headers = _auth(user, "203.0.113.12")
+    headers = _auth(regular_user, "203.0.113.12")
     statuses = {
         client.patch(ME, json={"bio": f"n{i}"}, headers=headers).status_code for i in range(35)
     }
     assert statuses == {200}
 
 
-def test_shared_limiter_fires_on_a_second_router(live_limiter, user, db):
+def test_shared_limiter_fires_on_a_second_router(live_limiter, regular_user, db):
     # The shared limiter also enforces on the tags router. Same-name creates
     # are idempotent (first 201, then 200), so one row exists.
-    headers = _auth(user, "203.0.113.13")  # create_tag is 30/minute
+    headers = _auth(regular_user, "203.0.113.13")  # create_tag is 30/minute
     name = f"rl-{uuid.uuid4().hex[:8]}"
     try:
         for i in range(30):
@@ -214,9 +156,9 @@ def test_documented_read_limit_blocks_at_n_plus_1(live_limiter, index, path, lim
     _assert_throttled(client.get(path, headers={"X-Forwarded-For": ip}))
 
 
-def test_documented_detections_queue_limit(live_limiter, user):
+def test_documented_detections_queue_limit(live_limiter, regular_user):
     # The one non-anonymous read in the table (120/min).
-    headers = _auth(user, "198.51.100.120")
+    headers = _auth(regular_user, "198.51.100.120")
     for i in range(120):
         resp = client.get("/api/v1/events/detections", headers=headers)
         assert resp.status_code == 200, f"request {i} was {resp.status_code}"
@@ -288,8 +230,8 @@ def _rotating_ip(i: int) -> str:
     return f"198.18.{i // 256}.{i % 256}"
 
 
-def test_read_quota_walls_an_account_across_endpoints_and_ips(live_limiter, user, db):
-    headers = login_as(client, user)
+def test_read_quota_walls_an_account_across_endpoints_and_ips(live_limiter, regular_user, db):
+    headers = login_as(client, regular_user)
     for i in range(_READ_QUOTA):
         resp = client.get(
             _QUOTA_PATHS[i % 2],
@@ -320,31 +262,31 @@ def test_read_quota_walls_an_account_across_endpoints_and_ips(live_limiter, user
         db.commit()
 
 
-def _quota_remaining(user: User) -> int:
+def _quota_remaining(regular_user: User) -> int:
     """Tokens left in ``user``'s hourly read bucket, read from the store."""
     limits = app.state.limiter._route_limits["app.routers.tags.list_tags"]
     item = next(lim.limit for lim in limits if lim.scope == AUTHENTICATED_READ_SCOPE)
     _reset_at, remaining = app.state.limiter.limiter.get_window_stats(
-        item, f"user:{user.id}", AUTHENTICATED_READ_SCOPE
+        item, f"user:{regular_user.id}", AUTHENTICATED_READ_SCOPE
     )
     return remaining
 
 
-def test_per_ip_rejection_does_not_charge_the_read_quota(live_limiter, user):
+def test_per_ip_rejection_does_not_charge_the_read_quota(live_limiter, regular_user):
     # Requests rejected by the per-minute limit (`GET /tags`, 60/min per IP)
     # must not cost hourly budget.
     per_ip_limit = 60
-    headers = _auth(user, "203.0.113.20")
+    headers = _auth(regular_user, "203.0.113.20")
     for i in range(per_ip_limit):
         assert client.get("/api/v1/tags", headers=headers).status_code == 200, f"request {i}"
     for _ in range(20):
         _assert_throttled(client.get("/api/v1/tags", headers=headers))
 
-    assert _quota_remaining(user) == _READ_QUOTA - per_ip_limit
+    assert _quota_remaining(regular_user) == _READ_QUOTA - per_ip_limit
 
     fresh = {**headers, "X-Forwarded-For": "203.0.113.21"}
     assert client.get("/api/v1/tags", headers=fresh).status_code == 200
-    assert _quota_remaining(user) == _READ_QUOTA - per_ip_limit - 1
+    assert _quota_remaining(regular_user) == _READ_QUOTA - per_ip_limit - 1
 
 
 def _request_with_cookie(cookie: str | None) -> Request:
@@ -353,21 +295,21 @@ def _request_with_cookie(cookie: str | None) -> Request:
     return Request({"type": "http", "headers": headers})
 
 
-def test_read_quota_key_follows_the_account_not_the_session(user):
+def test_read_quota_key_follows_the_account_not_the_session(regular_user):
     # The key is the user id, so a second session can't reset a spent quota.
-    first = authenticated_read_key(_request_with_cookie(create_access_token(user)))
-    second = authenticated_read_key(_request_with_cookie(create_access_token(user)))
-    assert first == second == f"user:{user.id}"
+    first = authenticated_read_key(_request_with_cookie(create_access_token(regular_user)))
+    second = authenticated_read_key(_request_with_cookie(create_access_token(regular_user)))
+    assert first == second == f"user:{regular_user.id}"
 
 
-def test_read_quota_key_rejects_a_forged_token(user):
+def test_read_quota_key_rejects_a_forged_token(regular_user):
     # Unsigned, tampered, or absent cookies land on the anonymous key, so a
     # hand-written `sub` can't mint a fresh bucket.
     anonymous = authenticated_read_key(_request_with_cookie(None))
-    forged = create_access_token(user).rsplit(".", 1)[0] + ".forged-signature"
+    forged = create_access_token(regular_user).rsplit(".", 1)[0] + ".forged-signature"
     assert authenticated_read_key(_request_with_cookie(forged)) == anonymous
     assert authenticated_read_key(_request_with_cookie("not-a-jwt")) == anonymous
-    assert anonymous != f"user:{user.id}"
+    assert anonymous != f"user:{regular_user.id}"
 
 
 # N requests answer, N+1 returns 429. The N+1 assertion also proves all N
@@ -769,15 +711,17 @@ _DOCUMENTED_LIMITS = [
     list(enumerate(_DOCUMENTED_LIMITS)),
     ids=[f"{c.method.upper()} {c.path}" for c in _DOCUMENTED_LIMITS],
 )
-def test_documented_limit_blocks_at_n_plus_1(live_limiter, db, user, admin_user, index, case):
+def test_documented_limit_blocks_at_n_plus_1(
+    live_limiter, db, regular_user, admin_user, index, case
+):
     ip = f"192.0.2.{index + 1}"
     if case.role == "user_minting_off":
-        user.is_invite_minting_enabled = False
+        regular_user.is_invite_minting_enabled = False
         db.commit()
     if case.role == "anon":
         headers = {"X-Forwarded-For": ip}
     else:
-        headers = _auth(admin_user if case.role == "admin" else user, ip)
+        headers = _auth(admin_user if case.role == "admin" else regular_user, ip)
     payload = case.payload or {}
 
     for i in range(case.limit):

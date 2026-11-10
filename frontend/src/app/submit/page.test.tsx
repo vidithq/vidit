@@ -1,10 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ANA, signedInAs } from "@/test/auth";
 // jsdom cannot mount the map canvas (WebGL); it and the proof editor (its own test) keep a marker.
-vi.mock("@/components/map/Map", () => ({
-  default: () => <div data-testid="map" />,
-}));
+vi.mock("@/components/map/Map", () => import("@/test/mapStub"));
 vi.mock("@/components/editor/ProofEditor", () => ({
   default: () => <div data-testid="proof-editor" />,
 }));
@@ -17,12 +16,10 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(query),
 }));
 
-vi.mock("@/hooks/useRequireAuth", () => ({
-  useRequireAuth: () => ({ user: { id: "u1", username: "ana" }, loading: false }),
-}));
+vi.mock("@/hooks/useRequireAuth", () => import("@/test/requireAuthStub"));
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1", username: "ana" } }),
+  useAuth: () => signedInAs("ana", ANA),
 }));
 
 /** Whether `/conflicts` has answered. */
@@ -39,10 +36,8 @@ vi.mock("@/hooks/useApiResource", () => ({
   }),
 }));
 
-vi.mock("@/lib/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api")>()),
-  apiFetch: vi.fn().mockResolvedValue([]),
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
@@ -61,7 +56,6 @@ vi.mock("@/lib/drafts", () => ({
   clearDraft: vi.fn(async () => {}),
 }));
 
-import { apiFetch } from "@/lib/api";
 import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { newSourceDraft } from "@/lib/sources";
 import { newCollectionHref } from "@/lib/collections";
@@ -82,7 +76,7 @@ beforeEach(() => {
   vi.mocked(clearDraft).mockClear();
   vi.mocked(createEvent).mockReset();
   vi.mocked(createEventRequest).mockReset();
-  vi.mocked(apiFetch).mockResolvedValue([]);
+  apiFetch.mockResolvedValue([]);
 });
 
 describe("the submit form's gate", () => {
@@ -193,7 +187,7 @@ describe("the submit draft", () => {
 
 describe("the submit form's Linked sites", () => {
   it("picks a site by name, then asks what the event shows there", async () => {
-    vi.mocked(apiFetch).mockImplementation(async (path: string) =>
+    apiFetch.mockImplementation(async (path: string) =>
       path.startsWith("/sites/suggestions?q=")
         ? [{ id: "s2", name: "Bravo depot", kind: "depot", distance_m: null }]
         : [],

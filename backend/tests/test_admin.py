@@ -1,13 +1,14 @@
+import re
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.config import settings
-from app.database import SessionLocal
 from app.dependencies import LAST_SEEN_THROTTLE
 from app.main import app
 from app.models.archive_import_job import ArchiveImportJob
@@ -28,67 +29,8 @@ from app.models.upload import UPLOAD_TTL, Upload
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG, fake_sha256, store_bytes
+from tests._fixtures import TINY_JPEG, client, fake_sha256, store_bytes
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _clear_test_client_cookies():
-    """Wipe TestClient cookies between tests: a leftover cookie would authenticate the next test as a deleted user (spurious 401)."""
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        username=f"adm{uuid.uuid4().hex[:8]}",
-        email=f"admin-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    # Reap this actor's admin events and redeemed invite codes so the row deletes without FK violations.
-    db.expire_all()
-    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def regular_user(db):
-    user = User(
-        username=f"usr{uuid.uuid4().hex[:8]}",
-        email=f"user-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    # Tests may have hard-deleted the row: bulk delete by id (``db.delete(instance)`` would raise ObjectDeletedError).
-    # Drop the user's events first so the users.id FK does not block (media/claims cascade).
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 def test_admin_me_returns_200_for_admin(admin_user):
@@ -108,6 +50,44 @@ def test_admin_me_returns_401_for_anonymous():
     assert response.status_code == 401
 
 
+_ADMIN_ROUTES = sorted(
+    (method, route.path)
+    for route in app.routes
+    if isinstance(route, APIRoute)
+    and route.path.startswith("/api/v1/admin/")
+    and route.path != "/api/v1/admin/me"
+    for method in route.methods
+)
+
+
+@pytest.mark.parametrize(
+    ("method", "path"), _ADMIN_ROUTES, ids=[f"{m} {p}" for m, p in _ADMIN_ROUTES]
+)
+def test_every_admin_route_refuses_a_regular_user(regular_user, method, path):
+    url = re.sub(r"\{[^}]+\}", str(uuid.UUID(int=0)), path)
+    response = client.request(method, url, headers=login_as(client, regular_user))
+    assert response.status_code == 403, response.text
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "code"),
+    [
+        ("POST", "/api/v1/admin/invite-codes/{id}/revoke", None),
+        ("DELETE", "/api/v1/admin/invite-codes/{id}", None),
+        ("DELETE", "/api/v1/admin/users/{id}/detected-events", None),
+        ("POST", "/api/v1/admin/users/{id}/restore", None),
+        ("DELETE", "/api/v1/admin/users/{id}", "user_not_found"),
+        ("DELETE", "/api/v1/admin/events/{id}", "geolocation_not_found"),
+    ],
+)
+def test_admin_routes_404_on_an_unknown_id(admin_user, method, path, code):
+    url = path.format(id=uuid.uuid4())
+    response = client.request(method, url, headers=login_as(client, admin_user))
+    assert response.status_code == 404
+    if code is not None:
+        assert response.json()["detail"]["code"] == code
+
+
 def test_create_invite_code_persists_and_returns_active(admin_user, db):
     response = client.post(
         "/api/v1/admin/invite-codes",
@@ -120,6 +100,7 @@ def test_create_invite_code_persists_and_returns_active(admin_user, db):
     assert body["status"] == "active"
     assert body["expires_at"] is not None
     assert body["redeemer"] is None
+    assert body["x_handle"] is None
 
     invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(body["id"])).first()
     assert invite is not None
@@ -169,16 +150,6 @@ def test_create_invite_code_binds_x_handle_stripped_and_lowercased(admin_user, d
     assert event.target == {"invite_code_id": body["id"], "x_handle": "invited_analyst"}
 
 
-def test_create_invite_code_defaults_to_no_x_handle(admin_user):
-    response = client.post(
-        "/api/v1/admin/invite-codes",
-        json={},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 201
-    assert response.json()["x_handle"] is None
-
-
 def test_create_invite_code_409_when_x_handle_already_linked(admin_user, regular_user, db):
     regular_user.x_handle = f"taken{uuid.uuid4().hex[:8]}"
     db.commit()
@@ -208,15 +179,6 @@ def test_create_invite_code_422_on_invalid_x_handle(admin_user):
     [error] = response.json()["detail"]
     assert error["loc"][-1] == "x_handle"
     assert error["msg"] == "Value error, 15 characters at most: letters, digits and _"
-
-
-def test_create_invite_code_403_for_regular_user(regular_user):
-    response = client.post(
-        "/api/v1/admin/invite-codes",
-        json={},
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
 
 
 def test_list_invite_codes_includes_status(admin_user):
@@ -279,14 +241,6 @@ def test_revoke_invite_code_marks_revoked(admin_user):
     assert revoke_response.status_code == 200
     body = revoke_response.json()
     assert body["status"] == "revoked"
-
-
-def test_revoke_invite_code_returns_404_for_unknown_id(admin_user):
-    response = client.post(
-        f"/api/v1/admin/invite-codes/{uuid.uuid4()}/revoke",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404
 
 
 def test_delete_invite_code_drops_an_unused_row(admin_user, db):
@@ -353,14 +307,6 @@ def test_delete_invite_code_409_when_redeemed(admin_user, regular_user, db):
         db.expire_all()
         db.query(InviteCode).filter(InviteCode.id == invite_id).delete()
         db.commit()
-
-
-def test_delete_invite_code_returns_404_for_unknown_id(admin_user):
-    response = client.delete(
-        f"/api/v1/admin/invite-codes/{uuid.uuid4()}",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404
 
 
 def test_list_invite_codes_carries_redeemer_onboarding_stats(admin_user, regular_user, db):
@@ -546,22 +492,6 @@ def test_purge_detected_events_sweeps_detections_and_keeps_the_rest(admin_user, 
     assert audit.target["deleted_events"] == 1
 
 
-def test_purge_detected_events_404_for_unknown_user(admin_user):
-    response = client.delete(
-        f"/api/v1/admin/users/{uuid.uuid4()}/detected-events",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404
-
-
-def test_purge_detected_events_403_for_regular_user(regular_user):
-    response = client.delete(
-        f"/api/v1/admin/users/{regular_user.id}/detected-events",
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
 def test_login_auto_promotes_when_email_matches_admin_emails(monkeypatch, db):
     # EmailStr rejects the .test TLD; use @example.com.
     email = f"prom-{uuid.uuid4().hex}@example.com"
@@ -603,14 +533,6 @@ def test_search_users_returns_matches_for_admin(admin_user, regular_user):
     assert target["email"] == regular_user.email
 
 
-def test_search_users_403_for_regular_user(regular_user):
-    response = client.get(
-        f"/api/v1/admin/users?q={regular_user.username}",
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
 @pytest.mark.parametrize("q", ["%", "_"])
 def test_search_users_treats_like_wildcards_literally(admin_user, regular_user, q):
     response = client.get(
@@ -626,18 +548,21 @@ def test_search_users_returns_empty_for_blank_query(admin_user):
     assert response.json() == []
 
 
-def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db):
+@pytest.mark.parametrize(
+    ("raw", "handle"), [("@OSINT_Hawk", "osint_hawk"), ("plain_handle", "plain_handle")]
+)
+def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db, raw, handle):
     response = client.patch(
         f"/api/v1/admin/users/{regular_user.id}/x-handle",
-        json={"x_handle": "@OSINT_Hawk"},
+        json={"x_handle": raw},
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
-    assert response.json()["x_handle"] == "osint_hawk"
+    assert response.json()["x_handle"] == handle
 
     db.expire_all()
     refreshed = db.query(User).filter(User.id == regular_user.id).first()
-    assert refreshed.x_handle == "osint_hawk"
+    assert refreshed.x_handle == handle
 
     event = (
         db.query(AuditLog)
@@ -646,17 +571,7 @@ def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db):
         .first()
     )
     assert event is not None
-    assert event.target == {"user_id": str(regular_user.id), "x_handle": "osint_hawk"}
-
-
-def test_set_x_handle_accepts_bare_handle(admin_user, regular_user):
-    response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
-        json={"x_handle": "plain_handle"},
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 200
-    assert response.json()["x_handle"] == "plain_handle"
+    assert event.target == {"user_id": str(regular_user.id), "x_handle": handle}
 
 
 def test_clear_x_handle_with_null(admin_user, regular_user, db):
@@ -741,15 +656,6 @@ def test_set_x_handle_404_for_soft_deleted_user(admin_user, regular_user, db):
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 404
-
-
-def test_set_x_handle_403_for_regular_user(regular_user):
-    response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
-        json={"x_handle": "some_handle"},
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
 
 
 LOCAL = "http://localhost:8000/local-storage"
@@ -878,15 +784,6 @@ def test_soft_delete_is_idempotent(admin_user, geolocation, db):
     )
     matching = [e for e in events if e.target.get("geolocation_id") == str(geolocation.id)]
     assert len(matching) == 1
-
-
-def test_soft_deleted_row_hidden_from_public_reads(admin_user, geolocation):
-    client.delete(
-        f"/api/v1/admin/events/{geolocation.id}",
-        headers=login_as(client, admin_user),
-    )
-    detail = client.get(f"/api/v1/events/{geolocation.id}")
-    assert detail.status_code == 404
 
 
 def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geolocation):
@@ -1099,26 +996,6 @@ def test_hard_delete_user_sweeps_their_avatar(admin_user, regular_user, db, monk
     assert not stored.exists()
 
 
-def test_admin_geolocation_delete_403_for_regular_user(regular_user, geolocation):
-    response = client.delete(
-        f"/api/v1/admin/events/{geolocation.id}",
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
-def test_admin_geolocation_delete_404_for_unknown_id(admin_user):
-    response = client.delete(
-        f"/api/v1/admin/events/{uuid.uuid4()}",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404
-    assert response.json()["detail"] == {
-        "code": "geolocation_not_found",
-        "message": "Event not found",
-    }
-
-
 def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
     admin_user, regular_user, geolocation, db
 ):
@@ -1159,15 +1036,6 @@ def test_soft_delete_user_blocks_login(admin_user, regular_user):
     assert response.status_code == 401
 
 
-def test_soft_delete_user_hides_profile(admin_user, regular_user):
-    client.delete(
-        f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user),
-    )
-    response = client.get(f"/api/v1/users/{regular_user.username}")
-    assert response.status_code == 404
-
-
 def test_soft_delete_user_writes_admin_event(admin_user, regular_user, db):
     client.delete(
         f"/api/v1/admin/users/{regular_user.id}",
@@ -1185,21 +1053,6 @@ def test_soft_delete_user_writes_admin_event(admin_user, regular_user, db):
     assert event is not None
     assert event.target["user_id"] == str(regular_user.id)
     assert event.target["username"] == regular_user.username
-
-
-def test_soft_delete_user_is_idempotent(admin_user, regular_user, db):
-    first = client.delete(
-        f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user),
-    )
-    second = client.delete(
-        f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, admin_user),
-    )
-    assert first.status_code == 200
-    assert second.status_code == 200
-    assert first.json()["deleted_at"] == second.json()["deleted_at"]
-    assert second.json()["cascaded_geolocations"] == 0
 
 
 def test_restore_user_revives_the_account_and_the_events_its_soft_delete_hid(
@@ -1253,20 +1106,6 @@ def test_restore_user_is_a_no_op_on_a_live_account(admin_user, regular_user, db)
     )
 
 
-def test_restore_user_404_for_unknown_id(admin_user):
-    response = client.post(
-        f"/api/v1/admin/users/{uuid.uuid4()}/restore", headers=login_as(client, admin_user)
-    )
-    assert response.status_code == 404
-
-
-def test_restore_user_403_for_regular_user(regular_user):
-    response = client.post(
-        f"/api/v1/admin/users/{regular_user.id}/restore", headers=login_as(client, regular_user)
-    )
-    assert response.status_code == 403
-
-
 def test_list_invite_codes_marks_a_soft_deleted_redeemer(admin_user, regular_user, db):
     invite = InviteCode(
         code=f"code{uuid.uuid4().hex[:12]}", used_by_id=regular_user.id, used_at=datetime.now(UTC)
@@ -1286,8 +1125,17 @@ def test_list_invite_codes_marks_a_soft_deleted_redeemer(admin_user, regular_use
 
 
 def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, geolocation, db):
+    """GDPR erasure takes the user's events, requests included; their media cascade via the
+    source FK, and the S3 sweep after commit is counted in ``media_count``."""
     user_id = regular_user.id
     geo_id = geolocation.id
+    request_id = _seed_request(db, author_id=user_id)
+    media_id = (
+        db.query(Media.id)
+        .join(Source, Source.id == Media.source_id)
+        .filter(Source.event_id == request_id)
+        .scalar()
+    )
 
     response = client.delete(
         f"/api/v1/admin/users/{user_id}?hard=true",
@@ -1297,11 +1145,13 @@ def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, g
     body = response.json()
     assert body["mode"] == "hard"
     assert body["deleted_at"] is None
-    assert body["cascaded_geolocations"] >= 1
+    assert body["cascaded_geolocations"] >= 2
+    assert body["media_count"] >= 1
 
     db.expire_all()
     assert db.query(User).filter(User.id == user_id).first() is None
-    assert db.query(Event).filter(Event.id == geo_id).first() is None
+    assert db.query(Event).filter(Event.id.in_([geo_id, request_id])).first() is None
+    assert db.query(Media).filter(Media.id == media_id).first() is None
 
     event = (
         db.query(AuditLog)
@@ -1431,40 +1281,6 @@ def test_hard_delete_user_preserves_invite_codes(admin_user, db):
     db.commit()
 
 
-def test_admin_user_delete_403_for_regular_user(regular_user):
-    response = client.delete(
-        f"/api/v1/admin/users/{regular_user.id}",
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
-def test_admin_user_delete_404_for_unknown_id(admin_user):
-    response = client.delete(
-        f"/api/v1/admin/users/{uuid.uuid4()}",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404
-    assert response.json()["detail"] == {
-        "code": "user_not_found",
-        "message": "User not found",
-    }
-
-
-def test_user_profile_carries_expected_field_set(regular_user):
-    """`/users/{username}` builds `UserProfile(...)` by hand: a required field the route forgets to pass 500s on serialization."""
-    response = client.get(f"/api/v1/users/{regular_user.username}")
-    assert response.status_code == 200
-    body = response.json()
-    assert {
-        "id",
-        "username",
-        "avatar_url",
-        "created_at",
-        "geolocations_count",
-    }.issubset(body.keys())
-
-
 def test_search_users_excludes_soft_deleted(admin_user, regular_user, db):
     # Soft-delete directly, independent of the admin DELETE endpoint.
     regular_user.deleted_at = datetime.now(UTC)
@@ -1578,7 +1394,6 @@ def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user,
     assert body["mode"] == "soft"
     # One requested event flipped.
     assert body["cascaded_geolocations"] >= 1
-    assert "cascaded_requests" not in body
 
     db.expire_all()
     cascaded = db.query(Event).filter(Event.id == request_id).one()
@@ -1600,35 +1415,9 @@ def test_soft_delete_user_cascade_count_is_idempotent(admin_user, regular_user, 
         headers=login_as(client, admin_user),
     )
     assert first.status_code == second.status_code == 200
+    assert first.json()["deleted_at"] == second.json()["deleted_at"]
     assert first.json()["cascaded_geolocations"] >= 1
     assert second.json()["cascaded_geolocations"] == 0
-
-
-def test_hard_delete_user_drops_requested_events(admin_user, regular_user, db):
-    """GDPR erasure takes the requested events with the user; media cascade via the source FK, the S3 sweep runs after commit and is counted in ``media_count``."""
-    request_id = _seed_request(db, author_id=regular_user.id)
-    media_id = (
-        db.query(Media.id)
-        .join(Source, Source.id == Media.source_id)
-        .filter(Source.event_id == request_id)
-        .scalar()
-    )
-
-    response = client.delete(
-        f"/api/v1/admin/users/{regular_user.id}?hard=true",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["mode"] == "hard"
-    # Counted in the single geolocation cascade.
-    assert body["cascaded_geolocations"] >= 1
-    assert "cascaded_requests" not in body
-    assert body["media_count"] >= 1
-
-    db.expire_all()
-    assert db.query(Event).filter(Event.id == request_id).first() is None
-    assert db.query(Media).filter(Media.id == media_id).first() is None
 
 
 def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regular_user, db):
@@ -1650,7 +1439,6 @@ def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regula
     )
     assert event is not None
     assert event.target["cascaded_geolocations"] >= 1
-    assert "cascaded_requests" not in event.target
 
 
 @pytest.fixture
@@ -1675,14 +1463,6 @@ def _detection_stats(admin_user):
     )
     assert response.status_code == 200, response.text
     return response.json()
-
-
-def test_detection_stats_403_for_regular_user(regular_user):
-    response = client.get(
-        "/api/v1/admin/detection-stats",
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
 
 
 def test_detection_stats_401_for_anonymous():

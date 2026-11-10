@@ -5,9 +5,7 @@ import { textHtml } from "@/test/proofEditorStub";
 
 vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-}));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
 // MapLibre needs WebGL; the stub reports the pins it was handed.
 vi.mock("@/components/map/Map", () => ({
@@ -119,12 +117,12 @@ describe("CollectionDetailsForm", () => {
       "Fill in the required fields before continuing: Title, Description.",
     );
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(titleField().className).toContain("border-red-500");
+    expect(titleField()).toBeInvalid();
     expect(descriptionField()).toHaveAttribute("data-invalid", "true");
 
     // Filling a field clears its flag and its line.
     fireEvent.change(titleField(), { target: { value: "March strikes" } });
-    expect(titleField().className).not.toContain("border-red-500");
+    expect(titleField()).not.toBeInvalid();
     expect(screen.getByText(/^Fill in the required fields/)).not.toHaveTextContent("Title");
   });
 
@@ -142,7 +140,7 @@ describe("CollectionDetailsForm", () => {
       "Fill in the required fields before continuing: Description.",
     );
     expect(descriptionField()).toHaveAttribute("data-invalid", "true");
-    expect(titleField().className).not.toContain("border-red-500");
+    expect(titleField()).not.toBeInvalid();
   });
 
   it("refuses a description whose text is blank", async () => {

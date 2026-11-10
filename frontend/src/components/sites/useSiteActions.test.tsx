@@ -1,20 +1,21 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ANA } from "@/test/auth";
 import type { Site, SiteSource } from "@/lib/sites";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn(), admin: true }));
+import { apiFetch } from "@/test/apiStub";
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  errorMessage: (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback),
-  ApiError: class extends Error {},
+const mocks = vi.hoisted(() => ({
+  admin: true,
 }));
+
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u2", username: "bo" } }),
 }));
 vi.mock("@/contexts/AdminContext", () => ({
-  useAdmin: () => ({ isAdmin: api.admin, loading: false }),
+  useAdmin: () => ({ isAdmin: mocks.admin, loading: false }),
 }));
 
 import { useSiteActions } from "./useSiteActions";
@@ -47,7 +48,7 @@ const SITE: Site = {
   last_source: null,
   latest_link_effect: null,
   media: null,
-  owner: { id: "u1", username: "ana" },
+  owner: ANA,
   version_no: 1,
   hidden_at: null,
   sources: [SOURCE],
@@ -69,9 +70,9 @@ function Actions({ site, onChanged }: { site: Site; onChanged: () => void }) {
 }
 
 beforeEach(() => {
-  api.apiFetch.mockReset();
-  api.apiFetch.mockResolvedValue({});
-  api.admin = true;
+  apiFetch.mockReset();
+  apiFetch.mockResolvedValue({});
+  mocks.admin = true;
 });
 
 describe("useSiteActions", () => {
@@ -81,11 +82,11 @@ describe("useSiteActions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Withhold the site" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Confirm withhold the site" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/sites/site-1/moderation", {
+      expect(apiFetch).toHaveBeenCalledWith("/admin/sites/site-1/moderation", {
         method: "PATCH",
         body: JSON.stringify({ hidden: true }),
       }),
@@ -98,7 +99,7 @@ describe("useSiteActions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Restore the site" }));
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/sites/site-1/moderation", {
+      expect(apiFetch).toHaveBeenCalledWith("/admin/sites/site-1/moderation", {
         method: "PATCH",
         body: JSON.stringify({ hidden: false }),
       }),
@@ -106,17 +107,17 @@ describe("useSiteActions", () => {
   });
 
   it("removes its filer's source on the second click, and shows a refusal in the panels", async () => {
-    api.admin = false;
-    api.apiFetch.mockRejectedValue(new Error("The source carries a contour"));
+    mocks.admin = false;
+    apiFetch.mockRejectedValue(new Error("The source carries a contour"));
     render(<Actions site={SITE} onChanged={vi.fn()} />);
 
     const remove = screen.getByRole("button", { name: /^Remove / });
     fireEvent.click(remove);
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /^Confirm remove / }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/sites/site-1/sources/s1", { method: "DELETE" }),
+      expect(apiFetch).toHaveBeenCalledWith("/sites/site-1/sources/s1", { method: "DELETE" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("carries a contour");
   });

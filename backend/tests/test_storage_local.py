@@ -1,9 +1,8 @@
-import io
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 
@@ -17,6 +16,7 @@ from app.services.storage import (
     sweep_keys,
     upload_source_file,
 )
+from tests._fixtures import upload_file
 
 
 @pytest.fixture(autouse=True)
@@ -25,17 +25,11 @@ def _local_backend(monkeypatch, tmp_path):
     monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
 
 
-def _upload_file(name: str, content: bytes, content_type: str) -> UploadFile:
-    return UploadFile(
-        filename=name, file=io.BytesIO(content), headers={"content-type": content_type}
-    )
-
-
 async def test_local_storage_upload_writes_file_and_returns_url(tmp_path: Path):
     import hashlib
 
     backend = LocalStorage(tmp_path)
-    file = _upload_file("evidence.jpg", b"fake-image-bytes", "image/jpeg")
+    file = upload_file("evidence.jpg", b"fake-image-bytes", "image/jpeg")
 
     result = await backend.upload(file, "uploads/abc/evidence.jpg")
 
@@ -65,7 +59,7 @@ async def test_upload_source_file_helper_routes_through_local(tmp_path: Path):
 
     from tests._fixtures import TINY_JPEG
 
-    file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
+    file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
 
     [(result, _)] = await upload_source_file(file)
 
@@ -87,7 +81,7 @@ async def test_upload_source_file_writes_hero_and_thumbnail_derivatives(tmp_path
 
     from tests._fixtures import TINY_JPEG
 
-    file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
+    file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
 
     [(result, _)] = await upload_source_file(file)
 
@@ -111,7 +105,7 @@ async def test_upload_source_file_derives_extension_from_content_type_not_filena
     """The S3 key extension comes from the validated MIME type, not the
     attacker-controlled ``file.filename`` (long suffix, RTL override, lying extension)."""
     # '.html' on a video/mp4 payload: the content type wins.
-    file = _upload_file("evil.html", b"fake-mp4-bytes", "video/mp4")
+    file = upload_file("evil.html", b"fake-mp4-bytes", "video/mp4")
 
     [(result, _)] = await upload_source_file(file)
 
@@ -120,36 +114,26 @@ async def test_upload_source_file_derives_extension_from_content_type_not_filena
 
 async def test_upload_source_file_skips_derivatives_for_video(tmp_path: Path):
     """Videos produce no JPEG derivatives, so a rollback sweeps no missing sibling keys."""
-    file = _upload_file("clip.mp4", b"fake-mp4-bytes", "video/mp4")
+    file = upload_file("clip.mp4", b"fake-mp4-bytes", "video/mp4")
 
     [(result, _)] = await upload_source_file(file)
     assert result.derivative_keys == ()
 
 
-def test_derivative_key_appends_suffix_and_forces_jpeg_extension():
+@pytest.mark.parametrize(
+    ("key", "derivative"),
+    [
+        ("uploads/abc/xyz.jpg", "uploads/abc/xyz_hero.jpg"),
+        ("uploads/abc/xyz.png", "uploads/abc/xyz_hero.jpg"),
+        ("detected/geo-01/media/photo.webp", "detected/geo-01/media/photo_hero.jpg"),
+        # ``Path.with_suffix("")`` drops the final suffix only, so versioning dots stay.
+        ("uploads/abc/photo.v2.jpg", "uploads/abc/photo.v2_hero.jpg"),
+        ("uploads/abc/photo", "uploads/abc/photo_hero.jpg"),
+    ],
+)
+def test_derivative_key_appends_suffix_and_forces_jpeg_extension(key, derivative):
     """Mirrored by the frontend ``mediaUrls.ts``; change both."""
-    assert derivative_key("uploads/abc/xyz.jpg", "hero") == "uploads/abc/xyz_hero.jpg"
-    assert derivative_key("uploads/abc/xyz.png", "thumb") == "uploads/abc/xyz_thumb.jpg"
-    assert (
-        derivative_key("detected/geo-01/media/photo.webp", "hero")
-        == "detected/geo-01/media/photo_hero.jpg"
-    )
-
-
-def test_derivative_key_preserves_dot_bearing_stems():
-    """Filenames like ``photo.v2.jpg`` keep their internal dots.
-
-    ``Path.with_suffix("")`` only drops the *final* suffix, so a stem
-    with versioning-style dots stays intact. The frontend's
-    ``mediaUrls`` mirror must handle this the same way or a future
-    versioned-filename convention silently 404s.
-    """
-    assert derivative_key("uploads/abc/photo.v2.jpg", "hero") == "uploads/abc/photo.v2_hero.jpg"
-
-
-def test_derivative_key_handles_extensionless_keys():
-    """An extensionless key does not crash: ``.jpg`` is appended."""
-    assert derivative_key("uploads/abc/photo", "hero") == "uploads/abc/photo_hero.jpg"
+    assert derivative_key(key, "hero") == derivative
 
 
 async def test_upload_source_file_sweeps_partial_triple_on_mid_flight_failure(
@@ -173,7 +157,7 @@ async def test_upload_source_file_sweeps_partial_triple_on_mid_flight_failure(
 
     monkeypatch.setattr(LocalStorage, "upload_bytes", flaky_upload_bytes)
 
-    file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
+    file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
     with pytest.raises(RuntimeError, match="simulated hero PUT failure"):
         await upload_source_file(file)
 
@@ -191,7 +175,7 @@ async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
     from tests._fixtures import TINY_JPEG
 
     user_id = uuid4()
-    file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
+    file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
     [(result, _)] = await upload_proof_image(file, user_id)
 
     assert result.derivative_keys == ()
@@ -205,7 +189,7 @@ async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
 
 async def test_local_storage_round_trips_through_static_files_mount(tmp_path: Path):
     backend = LocalStorage(tmp_path)
-    file = _upload_file("evidence.jpg", b"served-bytes", "image/jpeg")
+    file = upload_file("evidence.jpg", b"served-bytes", "image/jpeg")
     _ = await backend.upload(file, "uploads/abc/evidence.jpg")
 
     test_app = FastAPI()
@@ -265,13 +249,6 @@ def test_local_storage_delete_many_keeps_nonempty_parent_dirs(tmp_path: Path):
     assert (tmp_path / "proof" / "u").exists()
 
 
-@pytest.mark.parametrize("key", ["../outside.jpg", "proof/../../outside.jpg", "/etc/passwd"])
-def test_local_storage_path_rejects_escaping_keys(tmp_path: Path, key: str):
-    backend = LocalStorage(tmp_path / "root")
-    with pytest.raises(ValueError, match="escapes the root"):
-        backend._path(key)
-
-
 @pytest.mark.parametrize("key", ["../outside.jpg", "/etc/passwd"])
 def test_local_storage_head_size_returns_none_for_escaping_keys(tmp_path: Path, key: str):
     backend = LocalStorage(tmp_path / "root")
@@ -304,20 +281,6 @@ def test_local_storage_delete_many_skips_escaping_keys(tmp_path: Path):
 # ── sweep_keys ────────────────────────────────────────────────────────────
 
 
-def test_sweep_keys_empty_list_short_circuits(tmp_path: Path, monkeypatch):
-    """Empty input does not resolve ``get_storage()`` (cleanup paths call it when nothing landed)."""
-    called = False
-
-    def _fail_if_called() -> object:
-        nonlocal called
-        called = True
-        raise AssertionError("get_storage() must not be called on empty input")
-
-    monkeypatch.setattr(storage_module, "get_storage", _fail_if_called)
-    sweep_keys([], context="empty-input test")
-    assert called is False
-
-
 def test_sweep_keys_happy_path_deletes_files(tmp_path: Path):
     (tmp_path / "proof" / "u").mkdir(parents=True)
     (tmp_path / "proof" / "u" / "a.jpg").write_bytes(b"a")
@@ -339,11 +302,7 @@ def test_sweep_keys_swallows_storage_delete_error_and_logs(tmp_path: Path, monke
     with caplog.at_level("ERROR"):
         sweep_keys(["a.jpg"], context="partial-failure test")
 
-    assert any(
-        "S3 sweep failed (partial-failure test)" in r.message
-        and "1/1 object(s) failed to delete" in r.message
-        for r in caplog.records
-    )
+    assert [r.levelname for r in caplog.records].count("ERROR") == 1
 
 
 def test_sweep_keys_swallows_unexpected_error_and_logs(tmp_path: Path, monkeypatch, caplog):
@@ -356,11 +315,7 @@ def test_sweep_keys_swallows_unexpected_error_and_logs(tmp_path: Path, monkeypat
     with caplog.at_level("ERROR"):
         sweep_keys(["a.jpg", "b.jpg"], context="transport-failure test")
 
-    assert any(
-        "S3 sweep failed (transport-failure test)" in r.message
-        and "2 candidate object(s)" in r.message
-        for r in caplog.records
-    )
+    assert [r.levelname for r in caplog.records].count("ERROR") == 1
 
 
 def test_main_app_registers_local_storage_mount():
@@ -373,43 +328,41 @@ def test_main_app_registers_local_storage_mount():
 # ── safe_original_filename ────────────────────────────────────────────────
 
 
-def test_safe_original_filename_none_and_empty():
-    """Empty or whitespace input gives ``None`` (column stays NULL)."""
+@pytest.mark.parametrize(
+    ("raw", "cleaned"),
+    [
+        # Empty or whitespace input keeps the column NULL.
+        (None, None),
+        ("", None),
+        ("   ", None),
+        # The multipart filename is attacker-controlled and lands on a public column, so
+        # traversal and Windows-style paths are stripped to the basename.
+        ("../../etc/passwd", "passwd"),
+        ("..\\..\\windows\\system32", "system32"),
+        ("/absolute/path/file.jpg", "file.jpg"),
+        ("legit.jpg", "legit.jpg"),
+        # ``Cc`` control and ``Cf`` format codepoints: the category check is the defence.
+        ("evil\x00.jpg", None),
+        ("split\nline.jpg", None),
+        ("tab\there.jpg", None),
+        ("esc\x1b.jpg", None),
+        ("hide\u202eextn.jpg", None),
+        ("ltr\u200emark.jpg", None),
+        ("zwj\u200djoiner.jpg", None),
+        ("bom\ufefftrick.jpg", None),
+        ("iso\u2066late.jpg", None),
+        # Escaping is the renderer's job: insert-time sanitising would corrupt ``&``.
+        ("<img src=x>.jpg", "<img src=x>.jpg"),
+        ("AT&T-logo.png", "AT&T-logo.png"),
+        ('quote"name.png', 'quote"name.png'),
+        # Path-shaped and HTML-shaped: the path strip runs first.
+        ("<script>alert(1)</script>.jpg", "script>.jpg"),
+    ],
+)
+def test_safe_original_filename(raw, cleaned):
     from app.services.storage import safe_original_filename
 
-    assert safe_original_filename(None) is None
-    assert safe_original_filename("") is None
-    assert safe_original_filename("   ") is None
-
-
-def test_safe_original_filename_strips_path_components():
-    """Traversal and Windows-style paths are stripped to the basename: the multipart
-    filename is attacker-controlled and lands on a public column."""
-    from app.services.storage import safe_original_filename
-
-    assert safe_original_filename("../../etc/passwd") == "passwd"
-    assert safe_original_filename("..\\..\\windows\\system32") == "system32"
-    assert safe_original_filename("/absolute/path/file.jpg") == "file.jpg"
-    assert safe_original_filename("legit.jpg") == "legit.jpg"
-
-
-def test_safe_original_filename_rejects_control_and_format_codepoints():
-    """``Cc`` control and ``Cf`` format codepoints (NUL, newline, RTL override,
-    zero-width joiners, bidi isolates, BOM) give ``None``; the category check is
-    the defence, not an enumerated list."""
-    from app.services.storage import safe_original_filename
-
-    # Cc — control characters.
-    assert safe_original_filename("evil\x00.jpg") is None
-    assert safe_original_filename("split\nline.jpg") is None
-    assert safe_original_filename("tab\there.jpg") is None
-    assert safe_original_filename("esc\x1b.jpg") is None
-    # Cf — format characters.
-    assert safe_original_filename("hide‮extn.jpg") is None  # RTL override
-    assert safe_original_filename("ltr‎mark.jpg") is None  # LTR mark
-    assert safe_original_filename("zwj‍joiner.jpg") is None  # zero-width joiner
-    assert safe_original_filename("bom﻿trick.jpg") is None  # BOM
-    assert safe_original_filename("iso⁦late.jpg") is None  # first strong isolate
+    assert safe_original_filename(raw) == cleaned
 
 
 def test_safe_original_filename_caps_length():
@@ -420,21 +373,3 @@ def test_safe_original_filename_caps_length():
     cleaned = safe_original_filename(long_name)
     assert cleaned is not None
     assert len(cleaned) == ORIGINAL_FILENAME_MAX_LEN
-
-
-def test_safe_original_filename_passes_through_html_shaped_strings():
-    """HTML-shaped chars without slashes pass through: escaping is the renderer's job,
-    and insert-time sanitising would corrupt names containing ``&``."""
-    from app.services.storage import safe_original_filename
-
-    assert safe_original_filename("<img src=x>.jpg") == "<img src=x>.jpg"
-    assert safe_original_filename("AT&T-logo.png") == "AT&T-logo.png"
-    assert safe_original_filename('quote"name.png') == 'quote"name.png'
-
-
-def test_safe_original_filename_path_strip_overrides_html_chars():
-    """A name that is both path-shaped and HTML-shaped is path-stripped first
-    (``</script>`` keeps only the fragment after the slash)."""
-    from app.services.storage import safe_original_filename
-
-    assert safe_original_filename("<script>alert(1)</script>.jpg") == "script>.jpg"

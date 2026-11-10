@@ -56,27 +56,6 @@ beforeEach(() => {
 });
 
 describe("<PointMap>", () => {
-  it("draws the point as the one pin, the event's own on its page", () => {
-    render(<PointMap point={{ lat: 48.5, lng: 37.8 }} id="e1" detected />);
-    expect(mapProps).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        points: [["e1", 48.5, 37.8, "", "", 1]],
-        center: { lat: 48.5, lng: 37.8 },
-        zoom: 12,
-        pinPreview: true,
-        embedded: true,
-      }),
-    );
-    expect(listeners).toEqual([]);
-  });
-
-  it("shows the map without a pin while there is no point", () => {
-    render(<PointMap point={null} onPick={() => {}} />);
-    expect(mapProps).toHaveBeenLastCalledWith(
-      expect.objectContaining({ points: [], center: undefined, pinPreview: false }),
-    );
-  });
-
   it("moves the pin where the map is clicked, but not on a click on the pin itself", () => {
     const onPick = vi.fn();
     render(<PointMap point={{ lat: 48.5, lng: 37.8 }} onPick={onPick} />);

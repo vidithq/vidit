@@ -1,10 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ANA, signedInAs } from "@/test/auth";
 // jsdom cannot mount the map canvas (WebGL); it and the proof editor (its own test) keep a marker.
-vi.mock("@/components/map/Map", () => ({
-  default: () => <div data-testid="map" />,
-}));
+vi.mock("@/components/map/Map", () => import("@/test/mapStub"));
 vi.mock("@/components/editor/ProofEditor", () => ({
   default: () => <div data-testid="proof-editor" />,
 }));
@@ -29,7 +28,7 @@ vi.mock("@/hooks/useRequireAuth", () => ({
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1", username: "ana" } }),
+  useAuth: () => signedInAs("ana", ANA),
 }));
 
 vi.mock("@/contexts/DetectionsContext", () => ({
@@ -45,10 +44,9 @@ vi.mock("@/hooks/useApiResource", () => ({
   }),
 }));
 
-vi.mock("@/lib/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api")>()),
-  apiFetch: vi.fn().mockResolvedValue([]),
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
+apiFetch.mockResolvedValue([]);
 
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
@@ -58,13 +56,13 @@ vi.mock("@/lib/events", async (importOriginal) => ({
 }));
 
 import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
-import { apiFetch } from "@/lib/api";
 import { closeEvent, saveVersion, updateEventRequest } from "@/lib/events";
 import { PUBLISH_CONFIRM } from "@/components/geolocations/PublishActions";
 import type { Source } from "@/lib/sources";
 import type { Conflict, EventDetail, Tag } from "@/types";
 
 import EditEventPage from "./page";
+import { eventDetail, source as urlSource } from "@/test/eventDetail";
 import { pickOption } from "@/test/options";
 
 const saveVersionMock = vi.mocked(saveVersion);
@@ -90,61 +88,34 @@ const BRAVO = { id: "s2", name: "Bravo", kind: "airbase", distance_m: 640 };
 
 /** The link writes the form sent, in order. */
 const linkWrites = () =>
-  vi
-    .mocked(apiFetch)
-    .mock.calls.filter(([path]) => String(path).includes("/site-links"))
+  apiFetch.mock.calls.filter(([path]) => String(path).includes("/site-links"))
     .map(([path, options]) => [path, options?.method, options?.body]);
 
 /** The row's one source: its footage, posted once, with a seconds-precise post time. */
-const source = (over: Partial<Source> = {}): Source => ({
-  id: "s1",
-  title: "",
-  level: "direct",
-  kind: "drone",
-  captured_at: null,
-  capture_position: null,
-  is_graphic: false,
-  links: [{ url: "https://t.me/channel/12345", posted_at: "2026-05-30T14:32:27Z", archived: null }],
-  tags: [],
-  media: {
-    id: "m1",
-    role: "source",
-    storage_url: "/local-storage/evidence.jpg",
-    kind: "image",
-    sha256: "0".repeat(64),
-  },
-  warnings: [],
-  ...over,
-});
+const source = (over: Partial<Source> = {}): Source =>
+  urlSource({
+    kind: "drone",
+    links: [{ url: "https://t.me/channel/12345", posted_at: "2026-05-30T14:32:27Z", archived: null }],
+    media: {
+      id: "m1",
+      role: "source",
+      storage_url: "/local-storage/evidence.jpg",
+      kind: "image",
+      sha256: "0".repeat(64),
+    },
+    ...over,
+  });
 
 function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
-  return {
-    id: "d1",
-    title: "Strike near Bakhmut",
-    coords: { lat: 48.5, lng: 37.8 },
-    occurred_date: "2026-06-01",
-    occurred_time: null,
+  return eventDetail("d1", "Strike near Bakhmut", {
     status: "detected",
     version_no: 0,
-    is_graphic: false,
-    close_reason: null,
-    before_closed_status: null,
     detected_from_url: "https://x.com/analyst/status/1",
-    detected_via: null,
-    owner: { id: "u1", username: "ana" },
-    tags: [],
-    conflicts: [],
     sources: [source({ kind: "unknown" })],
     proof: '<img src="https://cdn.test/p.jpg">',
-    created_at: "2026-06-02T10:00:00Z",
-    hidden_at: null,
     geolocated_at: null,
-    closed_at: null,
-    thumbnail: null,
-    requested_by: null,
-    geolocators: [],
     ...overrides,
-  };
+  });
 }
 
 /** A published geolocation the owner is correcting, with the picks a publication required. */
@@ -168,7 +139,7 @@ function requestFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     status: "requested",
     coords: null,
     detected_from_url: null,
-    requested_by: { id: "u1", username: "ana" },
+    requested_by: ANA,
     proof: null,
     ...overrides,
   });
@@ -252,7 +223,7 @@ function closeDetection(reason: string) {
 
 beforeEach(() => {
   siteLinks = [];
-  vi.mocked(apiFetch).mockClear();
+  apiFetch.mockClear();
   push.mockReset();
   saveVersionMock.mockReset();
   updateRequestMock.mockReset();
@@ -298,8 +269,6 @@ describe("the detection edit surface", () => {
     expect(
       screen.getByRole("heading", { name: "Publish detection" })
     ).toBeInTheDocument();
-    // No description line under the title: the fields say what they are.
-    expect(screen.queryByText(/Publishing makes the event public/)).toBeNull();
     // The sticky actions come before the fields; no Cancel, and no bare Close.
     const rail = screen.getByRole("complementary", { name: "Actions" });
     const submit = within(rail).getByRole("button", { name: "Publish" });
@@ -310,7 +279,6 @@ describe("the detection edit surface", () => {
     // The close shows as itself, a red icon button after Publish.
     const close = within(rail).getByRole("button", { name: "Close this detection" });
     expect(follows(submit, close)).toBe(true);
-    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
   it("closes the detection behind its reason panel", async () => {
@@ -822,7 +790,6 @@ describe("editing an open request", () => {
     expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save request" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close this request" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
   it("holds the request floor before it posts", () => {

@@ -13,80 +13,17 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 from sqlalchemy.exc import IntegrityError
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.audit_log import AuditLog
 from app.models.collection import Collection
 from app.models.content_report import ContentReport
 from app.models.event import Event
 from app.models.source import Source, SourceLink
-from app.models.user import User
-from app.services.auth import hash_password
-from tests._fixtures import collection_description
+from tests._fixtures import client, collection_description
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _clear_test_client_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        username=f"mod{uuid.uuid4().hex[:8]}",
-        email=f"mod-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    # Reap this actor's audit rows so the user row deletes cleanly.
-    db.expire_all()
-    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def regular_user(db):
-    user = User(
-        username=f"usr{uuid.uuid4().hex[:8]}",
-        email=f"usr-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    # Both id columns are SET NULL, so reap the orphaned reports.
-    db.query(ContentReport).filter(
-        ContentReport.event_id.is_(None), ContentReport.collection_id.is_(None)
-    ).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 @pytest.fixture
@@ -173,14 +110,6 @@ def test_queue_lists_open_reports_before_resolved_ones(db, admin_user, event):
     assert response.status_code == 200, response.text
     ids = [row["id"] for row in response.json()["items"]]
     assert ids.index(str(still_open.id)) < ids.index(str(resolved.id))
-
-
-def test_queue_403_for_regular_user(regular_user):
-    response = client.get("/api/v1/admin/reports", headers=login_as(client, regular_user))
-    assert response.status_code == 403
-
-
-# ── POST /admin/reports/{id}/resolve ──────────────────────────────────────
 
 
 def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_user, event):
@@ -282,19 +211,6 @@ def test_resolve_404_for_unknown_report(admin_user):
     )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "report_not_found"
-
-
-def test_resolve_403_for_regular_user(db, regular_user, event):
-    report = _report(db, event)
-    response = client.post(
-        f"/api/v1/admin/reports/{report.id}/resolve",
-        json={"resolution": "dismissed"},
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
-# ── A report outlives the target it was filed against ─────────────────────
 
 
 def _hard_delete(db, event) -> None:
@@ -475,18 +391,6 @@ def test_moderation_404_for_unknown_event(admin_user):
     )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "event_not_found"
-
-
-def test_moderation_403_for_regular_user(regular_user, event):
-    response = client.patch(
-        f"/api/v1/admin/events/{event.id}/moderation",
-        json={"hidden": True},
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
-# ── A collection is the other report target ───────────────────────────────
 
 
 def test_queue_lists_reports_of_both_kinds(db, admin_user, event, collection, regular_user):

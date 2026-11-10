@@ -1,21 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+import { ANA } from "@/test/auth";
+import { apiFetch } from "@/test/apiStub";
 const navigation = vi.hoisted(() => ({ hardNavigate: vi.fn() }));
 const cookie = vi.hoisted(() => ({ present: true }));
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  ApiError: class extends Error {
-    constructor(
-      message: string,
-      readonly status: number,
-    ) {
-      super(message);
-    }
-  },
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("@/lib/auth", () => ({ hasSessionCookie: () => cookie.present }));
 vi.mock("@/lib/navigation", () => navigation);
 
@@ -25,8 +16,8 @@ import { AuthProvider, useAuth } from "./AuthContext";
 
 describe("AuthProvider logout", () => {
   it("clears the display cache, so the next account on this browser starts clean", async () => {
-    api.apiFetch.mockImplementation((path: string) =>
-      Promise.resolve(path === "/auth/me" ? { id: "u1", username: "ana" } : undefined),
+    apiFetch.mockImplementation((path: string) =>
+      Promise.resolve(path === "/auth/me" ? ANA : undefined),
     );
     window.localStorage.setItem("vidit:palette", "rose");
     window.localStorage.setItem("vidit:theme", "light");
@@ -45,7 +36,7 @@ describe("AuthProvider logout", () => {
         <Probe />
       </AuthProvider>,
     );
-    await waitFor(() => expect(api.apiFetch).toHaveBeenCalledWith("/auth/me"));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/auth/me"));
 
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(navigation.hardNavigate).toHaveBeenCalledWith("/login"));
@@ -57,7 +48,6 @@ describe("AuthProvider logout", () => {
   });
 });
 
-const ANA = { id: "u1", username: "ana" };
 
 /** Prints the auth state the way the app reads it. */
 function State() {
@@ -69,7 +59,7 @@ function State() {
 /** `/auth/me` answers `ANA` on the first read, then each answer in `later` in turn. */
 function meAnswers(...later: (typeof ANA | number)[]) {
   let reads = 0;
-  api.apiFetch.mockImplementation((path: string) => {
+  apiFetch.mockImplementation((path: string) => {
     if (path !== "/auth/me") return Promise.resolve(undefined);
     const next = reads === 0 ? ANA : later[reads - 1];
     reads += 1;
@@ -79,10 +69,10 @@ function meAnswers(...later: (typeof ANA | number)[]) {
   });
 }
 
-const meReads = () => api.apiFetch.mock.calls.filter(([path]) => path === "/auth/me").length;
+const meReads = () => apiFetch.mock.calls.filter(([path]) => path === "/auth/me").length;
 
 describe("AuthProvider and a rejected session", () => {
-  beforeEach(() => api.apiFetch.mockReset());
+  beforeEach(() => apiFetch.mockReset());
 
   async function signedIn() {
     render(
@@ -143,7 +133,7 @@ describe("AuthProvider and a rejected session", () => {
 
 describe("AuthProvider and a session that ended between loads", () => {
   beforeEach(() => {
-    api.apiFetch.mockReset();
+    apiFetch.mockReset();
     window.localStorage.clear();
     cookie.present = true;
   });
@@ -173,7 +163,7 @@ describe("AuthProvider and a session that ended between loads", () => {
 
   it("tells it when /auth/me refuses the cookie the browser kept", async () => {
     markSessionHeld(true);
-    api.apiFetch.mockRejectedValue(new ApiError("Invalid token", 401));
+    apiFetch.mockRejectedValue(new ApiError("Invalid token", 401));
     boot();
     expect(await screen.findByText("signed out, session ended")).toBeInTheDocument();
   });

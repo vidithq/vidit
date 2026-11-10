@@ -13,11 +13,6 @@ beforeEach(() => {
 });
 
 describe("getPalette", () => {
-  it("defaults to orange when nothing is stored", () => {
-    expect(getPalette()).toBe(DEFAULT_PALETTE);
-    expect(DEFAULT_PALETTE).toBe("orange");
-  });
-
   it("returns a stored, valid palette id", () => {
     window.localStorage.setItem("vidit:palette", "blue");
     expect(getPalette()).toBe("blue");

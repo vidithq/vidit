@@ -9,21 +9,16 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(nav.query),
 }));
 
-const useApiResource = vi.fn();
-vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => useApiResource(path),
-}));
+import { useApiResource } from "@/test/apiResourceStub";
+vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
-const apiFetchPage = vi.fn();
-vi.mock("@/lib/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api")>()),
-  apiFetchPage: (path: string) => apiFetchPage(path),
-}));
+import { apiFetchPage } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import type { Conflict, EventListItem, Tag } from "@/types";
 
 import RequestsPage from "./page";
-import { histogram, openFilterGroups, sheetButton } from "@/test/filters";
+import { histogram, seedOpenFilterGroups, sheetButton } from "@/test/filters";
 import { pickOption } from "@/test/options";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
@@ -60,7 +55,7 @@ const CONFLICTS: Conflict[] = [
 const lastPath = () => apiFetchPage.mock.calls.at(-1)?.[0] as string;
 const lastQuery = () => new URLSearchParams(lastPath().split("?")[1]);
 
-beforeEach(openFilterGroups);
+beforeEach(seedOpenFilterGroups);
 
 beforeEach(() => {
   nav.query = "";

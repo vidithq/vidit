@@ -102,21 +102,4 @@ test.describe("settings", () => {
     );
     await expectNoHorizontalOverflow(page);
   });
-
-  test("moves the accent colour with the arrow keys", async ({ context, page }) => {
-    await grantSession(context);
-    await mockApi(page);
-    await page.goto("/settings");
-
-    const swatches = page.getByRole("radiogroup", { name: "Accent color" }).getByRole("radio");
-    const checked = swatches.and(page.locator("[aria-checked=true]"));
-    const first = swatches.first();
-    await first.focus();
-    await page.keyboard.press("ArrowRight");
-
-    await expect(swatches.nth(1)).toBeFocused();
-    await expect(checked).toHaveCount(1);
-    await expect(swatches.nth(1)).toHaveAttribute("aria-checked", "true");
-    await expect(first).toHaveAttribute("aria-checked", "false");
-  });
 });

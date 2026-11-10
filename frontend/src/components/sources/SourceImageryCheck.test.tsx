@@ -1,15 +1,12 @@
 import { act, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiFetch } from "@/lib/api";
 import { newSourceDraft, type SourceCheck, type SourceDraft } from "@/lib/sources";
 
 import { SourceImageryCheck } from "./SourceImageryCheck";
 
-vi.mock("@/lib/api", async (original) => ({
-  ...(await original<typeof import("@/lib/api")>()),
-  apiFetch: vi.fn(),
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 const EARTH = "https://earth.google.com/web/@47.09,37.54,50a";
 const MAPS = "https://www.google.com/maps/@47.09,37.54,500m";
@@ -58,7 +55,7 @@ async function settle() {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  (apiFetch as unknown as Mock).mockReset().mockResolvedValue(CHECK);
+  apiFetch.mockReset().mockResolvedValue(CHECK);
 });
 
 afterEach(() => {
@@ -69,7 +66,7 @@ describe("SourceImageryCheck", () => {
   it("checks a satellite source and shows each provider's help and credit", async () => {
     render(<SourceImageryCheck draft={draft({ kind: "satellite" })} />);
     await settle();
-    const [path, init] = (apiFetch as unknown as Mock).mock.calls[0];
+    const [path, init] = apiFetch.mock.calls[0];
     expect(path).toBe("/sources/check");
     expect(JSON.parse(init.body)).toEqual({
       kind: "satellite",
@@ -106,7 +103,7 @@ describe("SourceImageryCheck", () => {
   });
 
   it("shows nothing when the check fails", async () => {
-    (apiFetch as unknown as Mock).mockRejectedValue(new Error("down"));
+    apiFetch.mockRejectedValue(new Error("down"));
     const { container } = render(<SourceImageryCheck draft={draft({ kind: "satellite" })} />);
     await settle();
     expect(container.textContent).toBe("");

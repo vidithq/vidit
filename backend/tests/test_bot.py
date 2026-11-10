@@ -7,7 +7,6 @@ real. The grammar itself is pinned by ``tests/ingest_contract``.
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -48,12 +47,10 @@ from app.services.tweet_ingest import (
     WARNING_MESSAGES,
     tags_bot,
 )
-from app.services.tweet_ingest.syndication import _cache_clear
 from app.services.tweet_ingest.urls import TELEGRAM_HOST_RE
-from tests._fixtures import TINY_MP4
+from tests._fixtures import BOT_USER_ID, TINY_MP4, syndication_client, write_client
 from tests.ingest_contract.loader import load_body, load_chased, load_embed, load_expected
 
-BOT_USER_ID = "999000"
 HANDLE = f"hawk{uuid.uuid4().hex[:8]}"
 OTHER_HANDLE = f"kite{uuid.uuid4().hex[:8]}"
 
@@ -348,7 +345,7 @@ BODIES = {
 def _syndication_client(fetched: list[str] | None = None) -> httpx.Client:
     """``fetched`` records every post id syndication was asked for, in order."""
 
-    def handler(req: httpx.Request) -> httpx.Response:
+    def route(req: httpx.Request) -> httpx.Response | None:
         if TELEGRAM_HOST_RE.match(req.url.host.lower()) is not None:
             # One client carries both upstreams, as in production.
             return httpx.Response(200, text=_telegram_embed())
@@ -360,12 +357,9 @@ def _syndication_client(fetched: list[str] | None = None) -> httpx.Client:
             return httpx.Response(200, json={"__typename": "TweetTombstone", "tombstone": {}})
         if tweet_id == DOWN_PARENT_ID:
             return httpx.Response(503)
-        body = BODIES.get(tweet_id)
-        if body is None:
-            return httpx.Response(404)
-        return httpx.Response(200, json=body)
+        return None
 
-    return httpx.Client(transport=httpx.MockTransport(handler))
+    return syndication_client(BODIES, route)
 
 
 def _mentions_client(
@@ -406,31 +400,8 @@ def _mentions_client(
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _write_client(posted: list[dict[str, object]], liked: list[dict[str, object]]) -> httpx.Client:
-    """``liked`` captures calls to the likes endpoint; tests assert it stays empty."""
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.path.endswith("/likes"):
-            liked.append(json.loads(req.content))
-            return httpx.Response(200, json={"data": {"liked": True}})
-        posted.append(json.loads(req.content))
-        return httpx.Response(201, json={"data": {"id": "777"}})
-
-    return httpx.Client(transport=httpx.MockTransport(handler))
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
 @pytest.fixture(autouse=True)
 def _bot_settings(monkeypatch):
-    _cache_clear()
     monkeypatch.setattr(settings, "x_bot_bearer_token", "tok")
     monkeypatch.setattr(settings, "x_bot_user_id", BOT_USER_ID)
     monkeypatch.setattr(settings, "x_api_consumer_key", "ck")
@@ -518,7 +489,7 @@ async def _run(
     with (
         _syndication_client(fetched) as syn,
         _mentions_client(mention_ids, seen_params, reply_to, handle, parent_of) as read,
-        _write_client(posted, liked) as write,
+        write_client(posted, liked) as write,
     ):
         outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
     return outcome, seen_params, posted, liked
@@ -798,7 +769,7 @@ async def test_catch_up_recovers_a_mention_the_webhook_dropped(db, linked_owner)
     with (
         _syndication_client() as syn,
         httpx.Client(transport=httpx.MockTransport(handler)) as read,
-        _write_client(posted, liked) as write,
+        write_client(posted, liked) as write,
     ):
         outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
 
@@ -1395,8 +1366,9 @@ async def test_dropped_mentions_raise_no_webhook_gap(db, linked_owner, monkeypat
     assert captured == []
 
 
-async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, monkeypatch):
-    # While the webhook is live, a mention the poll processes fresh means the webhook missed it: page.
+async def test_poll_flags_a_webhook_gap_for_every_fresh_verdict(db, linked_owner, monkeypatch):
+    """While the webhook is live, a mention the poll handles fresh means the webhook missed it:
+    page, whether the pipeline saved a detection or raised."""
     import app.services.bot as bot_service
 
     captured: list[tuple[str, str | None]] = []
@@ -1413,18 +1385,6 @@ async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, mon
         "webhook gap" in m and TAGGED_ID in m and level == "warning" for m, level in captured
     )
 
-
-async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkeypatch):
-    # Every fresh verdict is a gap, including a mention whose pipeline raised.
-    import app.services.bot as bot_service
-
-    captured: list[tuple[str, str | None]] = []
-    monkeypatch.setattr(settings, "x_webhook_enabled", True)
-    monkeypatch.setattr(
-        bot_service.sentry_sdk,
-        "capture_message",
-        lambda message, level=None: captured.append((message, level)),
-    )
     unknown_id = "9100000000000000009"
 
     def read_handler(_req: httpx.Request) -> httpx.Response:
@@ -1447,7 +1407,7 @@ async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkey
         with (
             httpx.Client(transport=httpx.MockTransport(syn_handler)) as syn,
             httpx.Client(transport=httpx.MockTransport(read_handler)) as read,
-            _write_client(posted, liked) as write,
+            write_client(posted, liked) as write,
         ):
             outcome = await _pass(
                 db, syndication_client=syn, x_read_client=read, x_write_client=write
@@ -1483,29 +1443,9 @@ async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
         catch_up(db)
 
 
-def test_compose_reply_is_linkless_and_carries_the_warnings():
-    event_id = str(uuid.uuid4())
-    text = compose_reply(
-        event_id,
-        detections=1,
-        warnings=[SOURCE_FOOTAGE_MISSING, SOURCE_DATE_UNKNOWN, DUPLICATE_MEDIA],
-    )
-    assert text.startswith("✅ 1 detection saved")
-    assert event_id[:8] in text
-    assert event_id not in text  # the ref is shortened
-    assert "The source served no footage" in text
-    assert "post date" in text
-    assert "already on Vidit" in text
-    assert "http" not in text and "vidit.app" not in text
-    # Footer intact: ``_within_reply_cap`` truncates, so the cap check needs proof nothing was clipped.
-    assert text.endswith("Review from your profile")
-    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
-    clean = compose_reply(event_id, detections=1, warnings=[])
-    assert "⚠" not in clean
-
-
 def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
-    """One ⚠ line per raised code, in table order, and the heaviest reply fits X's cap.
+    """One ⚠ line per raised code, in table order, no link, a shortened ref, and the heaviest
+    reply fits X's cap with its footer intact (``_within_reply_cap`` truncates).
 
     Heaviest is four codes: the footage codes answer one question and the
     empty-source pair never co-occur. Both footage codes are composed because
@@ -1521,6 +1461,8 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
         ]
         text = compose_reply(event_id, detections=3, warnings=heaviest)
         assert text.startswith("✅ 3 detections saved")
+        assert event_id[:8] in text and event_id not in text
+        assert "http" not in text and "vidit.app" not in text
         assert [line for line in text.splitlines() if line.startswith("⚠")] == [
             f"⚠ {WARNING_MESSAGES[code]}" for code in heaviest
         ]
@@ -1531,6 +1473,10 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
     assert "Several source links" in ambiguous
     assert "The source served no footage" not in ambiguous and "post date" not in ambiguous
     assert reply_weighted_len(ambiguous) <= REPLY_MAX_WEIGHTED_LEN
+
+    clean = compose_reply(event_id, detections=1, warnings=[])
+    assert clean.startswith("✅ 1 detection saved")
+    assert "⚠" not in clean
 
 
 def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():

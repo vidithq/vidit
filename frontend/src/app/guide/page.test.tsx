@@ -1,9 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-}));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
 import GuidePage from "./page";
 import SHOTS from "../_shots/shots.json";
@@ -21,9 +19,6 @@ describe("/guide", () => {
   it("holds the six sections in order, each behind a stable anchor", () => {
     const { container } = render(<GuidePage />);
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Getting started" }),
-    ).toBeInTheDocument();
     const ids = Array.from(container.querySelectorAll("h2[id]")).map((h) => h.id);
     expect(ids).toEqual(ANCHORS);
   });

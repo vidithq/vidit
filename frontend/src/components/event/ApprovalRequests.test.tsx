@@ -1,22 +1,20 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ANA } from "@/test/auth";
 import type { ApprovalRequest } from "@/lib/approvalRequests";
 import { useMemberOrganizations } from "@/hooks/useMemberOrganizations";
 import { eventDetail } from "@/test/eventDetail";
 
-const api = vi.hoisted(() => ({
-  apiFetch: vi.fn(),
+import { apiFetch } from "@/test/apiStub";
+
+const mocks = vi.hoisted(() => ({
   viewer: null as { id: string; username: string } | null,
 }));
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  errorMessage: (_err: unknown, fallback: string) => fallback,
-  ApiError: class extends Error {},
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: api.viewer }),
+  useAuth: () => ({ user: mocks.viewer }),
 }));
 
 import { canRequestApproval } from "@/lib/approvalRequests";
@@ -27,7 +25,6 @@ import {
   useApprovalRequests,
 } from "./ApprovalRequests";
 
-const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
 const CY = { id: "u3", username: "cy" };
 
@@ -60,7 +57,7 @@ function serve(
   },
   managed: (typeof BELLINGCAT)[] = [],
 ) {
-  api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+  apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
     if (init?.method === "POST") return Promise.resolve(request({ status: "declined" }));
     if (path.includes("approval-request-targets")) return Promise.resolve(targets);
     if (path.endsWith("/organizations")) {
@@ -87,7 +84,7 @@ function Requests() {
       {mine.length > 0 && (
         <DeclineRequests eventId="e1" requests={mine} onAnswered={requests.requests.refetch} />
       )}
-      {canRequestApproval(event, api.viewer?.id) && (
+      {canRequestApproval(event, mocks.viewer?.id) && (
         <RequestApprovalAction event={event} requests={requests} />
       )}
     </>
@@ -98,12 +95,12 @@ const dialog = () => screen.getByRole("dialog", { name: "Request approval" });
 
 describe("<RequestApprovalAction>", () => {
   beforeEach(() => {
-    api.apiFetch.mockReset();
-    api.viewer = null;
+    apiFetch.mockReset();
+    mocks.viewer = null;
   });
 
   it("lets a geolocator pick an eligible analyst in the dialog and ask for approval", async () => {
-    api.viewer = ANA;
+    mocks.viewer = ANA;
     serve([request()]);
     render(<Requests />);
 
@@ -115,7 +112,7 @@ describe("<RequestApprovalAction>", () => {
     fireEvent.click(within(dialog()).getByRole("button", { name: "Ask cy" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests", {
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests", {
         method: "POST",
         body: JSON.stringify({ username: "cy" }),
       }),
@@ -123,14 +120,14 @@ describe("<RequestApprovalAction>", () => {
     // Sent: the dialog closes and the open requests are read again.
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     const reads = () =>
-      api.apiFetch.mock.calls.filter(
+      apiFetch.mock.calls.filter(
         ([path, init]) => path === "/events/e1/approval-requests" && init?.method !== "POST",
       );
     await waitFor(() => expect(reads()).toHaveLength(2));
   });
 
   it("opens the dialog with the focus on Cancel, and Cancel closes it", async () => {
-    api.viewer = ANA;
+    mocks.viewer = ANA;
     serve([]);
     render(<Requests />);
 
@@ -144,7 +141,7 @@ describe("<RequestApprovalAction>", () => {
   });
 
   it("lets a geolocator ask an organization", async () => {
-    api.viewer = ANA;
+    mocks.viewer = ANA;
     serve([request({ target: null, target_organization: BELLINGCAT })]);
     render(<Requests />);
 
@@ -158,7 +155,7 @@ describe("<RequestApprovalAction>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ask Bellingcat" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests", {
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests", {
         method: "POST",
         body: JSON.stringify({ organization: "bellingcat" }),
       }),
@@ -166,7 +163,7 @@ describe("<RequestApprovalAction>", () => {
   });
 
   it("says so when no analyst or organization would accept a request", async () => {
-    api.viewer = ANA;
+    mocks.viewer = ANA;
     serve([], { analysts: [], organizations: [] });
     render(<Requests />);
 
@@ -178,14 +175,14 @@ describe("<RequestApprovalAction>", () => {
   });
 
   it("shows why an exact match cannot be asked, and drops a send error once the query changes", async () => {
-    api.viewer = ANA;
+    mocks.viewer = ANA;
     serve([], {
       analysts: [CY],
       organizations: [],
       refusal: "This analyst already reviewed the live version",
     });
-    api.apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
-      if (init?.method === "POST") return Promise.reject(new Error("refused"));
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "POST") return Promise.reject(new Error());
       if (path.includes("approval-request-targets")) {
         return Promise.resolve(
           path.endsWith("q=bo")
@@ -214,7 +211,7 @@ describe("<RequestApprovalAction>", () => {
   });
 
   it("lets the analyst asked decline", async () => {
-    api.viewer = BO;
+    mocks.viewer = BO;
     serve([request()]);
     render(<Requests />);
 
@@ -224,14 +221,14 @@ describe("<RequestApprovalAction>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests/r1/decline", {
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests/r1/decline", {
         method: "POST",
       }),
     );
   });
 
   it("lets a member of the organization asked decline for it", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     serve([request({ target: null, target_organization: BELLINGCAT })], undefined, [BELLINGCAT]);
     render(<Requests />);
 
@@ -242,14 +239,14 @@ describe("<RequestApprovalAction>", () => {
     expect(screen.getByText(/for approval/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests/r1/decline", {
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/approval-requests/r1/decline", {
         method: "POST",
       }),
     );
   });
 
   it("lists every requester on one line and declines each request", async () => {
-    api.viewer = BO;
+    mocks.viewer = BO;
     serve([request(), request({ id: "r2", requester: CY })]);
     render(<Requests />);
 
@@ -259,7 +256,7 @@ describe("<RequestApprovalAction>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     await waitFor(() => {
       for (const id of ["r1", "r2"]) {
-        expect(api.apiFetch).toHaveBeenCalledWith(`/events/e1/approval-requests/${id}/decline`, {
+        expect(apiFetch).toHaveBeenCalledWith(`/events/e1/approval-requests/${id}/decline`, {
           method: "POST",
         });
       }
@@ -267,11 +264,11 @@ describe("<RequestApprovalAction>", () => {
   });
 
   it("stays hidden for a reader neither credited nor asked", async () => {
-    api.viewer = CY;
+    mocks.viewer = CY;
     serve([]);
     const { container } = render(<Requests />);
 
-    await waitFor(() => expect(api.apiFetch).toHaveBeenCalled());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
   });
 });

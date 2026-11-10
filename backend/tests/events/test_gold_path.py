@@ -9,10 +9,8 @@ unmarking, and becoming anonymously visible.
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 import uuid
-import zipfile
 
 import pytest
 
@@ -20,10 +18,9 @@ from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.invite_code import InviteCode
 from app.models.media import Media
 from app.models.pending_registration import PendingRegistration
-from app.routers import auth as auth_router
-from app.services import archive_jobs, email
+from app.services import archive_jobs
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, reap_users, zip_bytes
 from tests.events._helpers import (
     WORLD_BBOX,
     client,
@@ -32,7 +29,6 @@ from tests.events._helpers import (
     source_spec,
     sources_field,
 )
-from tests.events.conftest import _delete_user_and_events
 
 # One geo tweet like a real export entry. It declares no source URL, so the detection holds
 # no source until geolocate.
@@ -62,21 +58,6 @@ _TWEETS_JS = (
 ).encode()
 
 
-def _zip_bytes(entries: dict[str, bytes]) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        for name, data in entries.items():
-            zf.writestr(name, data)
-    return buf.getvalue()
-
-
-@pytest.fixture
-def email_recorder(monkeypatch):
-    sent: list[email.Email] = []
-    monkeypatch.setattr(auth_router.email, "send", sent.append)
-    return sent
-
-
 @pytest.fixture
 def invite_code(db):
     # The handle bound at mint copies onto the account; the provenance permalinks name
@@ -99,7 +80,7 @@ def _extract_token(text: str) -> str:
     return text[idx:end]
 
 
-def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_code, conflict):
+def test_gold_path_register_import_geolocate_publish(db, sent_emails, invite_code, conflict):
     handle = f"gold{uuid.uuid4().hex[:8]}"
     user_id = None
     try:
@@ -116,7 +97,7 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
         assert registered.status_code == 202, registered.text
         confirmed = client.post(
             "/api/v1/auth/confirm-registration",
-            json={"token": _extract_token(email_recorder[-1].text)},
+            json={"token": _extract_token(sent_emails[-1].text)},
         )
         assert confirmed.status_code == 200, confirmed.text
         user_id = uuid.UUID(confirmed.json()["id"])
@@ -125,7 +106,7 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
         auth_headers = {CSRF_HEADER: client.cookies[CSRF_COOKIE]}
 
         # ── 2. Upload the archive; the worker turns it into a detection ──
-        archive = _zip_bytes(
+        archive = zip_bytes(
             {
                 "tweets.js": _TWEETS_JS,
                 f"tweets_media/{_TWEET_ID}-GOLD1.jpg": TINY_JPEG,
@@ -167,7 +148,7 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
         }
         # The registration mailer and the worker share the email module, so
         # the recorder holds both sends: confirm link, then completion.
-        assert email_recorder[-1].subject == "Your X archive import is done"
+        assert sent_emails[-1].subject == "Your X archive import is done"
 
         row = db.query(Event).filter(Event.owner_id == user_id).one()
         assert row.status == STATUS_DETECTED
@@ -265,4 +246,4 @@ def test_gold_path_register_import_geolocate_publish(db, email_recorder, invite_
                 {InviteCode.used_by_id: None}, synchronize_session=False
             )
             db.commit()
-            _delete_user_and_events(db, user_id)
+            reap_users(db, [user_id])

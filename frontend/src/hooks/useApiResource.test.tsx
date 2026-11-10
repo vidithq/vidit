@@ -1,11 +1,9 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useApiResource } from "./useApiResource";
-import { apiFetch } from "@/lib/api";
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: vi.fn(),
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 // Each apiFetch call is captured with its signal and resolve/reject handles so tests control
 // when it settles.
@@ -20,9 +18,8 @@ let calls: CapturedCall[];
 
 beforeEach(() => {
   calls = [];
-  const mock = apiFetch as unknown as Mock;
-  mock.mockReset();
-  mock.mockImplementation(
+  apiFetch.mockReset();
+  apiFetch.mockImplementation(
     (path: string, options?: RequestInit) =>
       new Promise((resolve, reject) => {
         calls.push({ path, signal: options?.signal as AbortSignal, resolve, reject });

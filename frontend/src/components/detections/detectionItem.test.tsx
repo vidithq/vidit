@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { ANA } from "@/test/auth";
 import { Item } from "@/components/ui/Item";
 import { detectionItem } from "./detectionItem";
 import { source } from "@/test/eventDetail";
@@ -30,7 +31,7 @@ function detectionFixture(overrides: Partial<EventDetail> = {}): EventDetail {
     before_closed_status: null,
     detected_from_url: "https://x.com/analyst/status/1",
     detected_via: null,
-    owner: { id: "u1", username: "ana" },
+    owner: ANA,
     tags: [],
     conflicts: [],
     sources: [SOURCE],
