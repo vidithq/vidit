@@ -383,11 +383,7 @@ def _snap_up(value: float) -> float:
 
 
 def bbox_predicate(bounds: tuple[float, float, float, float]):
-    """PostGIS containment predicate for a bbox already through :func:`parse_bbox`.
-
-    Split from :func:`apply_filters` for callers that parse the bbox themselves (``/events/points``
-    parses once, for its cache key).
-    """
+    """PostGIS containment predicate for a bbox already through :func:`parse_bbox`."""
     south, west, north, east = bounds
     return ST_Within(
         Event.coords,
@@ -502,7 +498,6 @@ def apply_filters(
     approved: bool = False,
     approved_by: str | None = None,
     approved_by_org: str | None = None,
-    bbox: str | None = None,
     has_coords: bool | None = None,
 ) -> SAQuery:
     """Apply the standard event filter set to a query.
@@ -570,9 +565,6 @@ def apply_filters(
             approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
         )
     )
-
-    if bbox:
-        query = query.filter(bbox_predicate(parse_bbox(bbox)))
 
     if has_coords is not None:
         query = query.filter(Event.coords.isnot(None) if has_coords else Event.coords.is_(None))

@@ -511,7 +511,7 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *See all* expands a different set than the preview |
 | `components/collections/CollectionsSection.tsx` link `type=collection` | `search._TYPE_FILTERS`, where `author` narrows collections | *See all* lands on an empty list |
 | `components/filters/model.ts::KIND_DIMENSIONS` | `search._TYPE_FILTERS` | the search panel offers a filter that leaves the picked kind out, or hides one that narrows it |
-| `components/filters/model.ts::DIMENSIONS` surfaces (`media`, `has_coords` and the date windows on the feed; `media` on the Requests board) | the filter set `routers/_filters.event_filters` reads on `GET /feed`, `GET /events` and `GET /search` | the panel offers a line whose value the API ignores |
+| `components/filters/model.ts::DIMENSIONS` surfaces (`media`, `has_coords` and the date windows on the feed; `media` on the Requests board) | the filter set `routers/_filters.event_filters` reads on `GET /feed`, `GET /events`, `GET /events/points` and `GET /search` | the panel offers a line whose value the API ignores |
 | `lib/archive.ts` keep-allowlist, root discovery, `MAX_UPLOAD_BYTES` | `tweet_ingest/archive_zip.py` | client trims files the server needs, or uploads an export it refuses |
 | `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`) | a source image requests a derivative that does not exist (403) |
 | `lib/viewport.ts` | `event_filters.parse_bbox` field order and bounds | map bbox is refused or filters the wrong area |

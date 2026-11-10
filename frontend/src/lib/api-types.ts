@@ -8345,11 +8345,17 @@ export interface operations {
                 occurred_date_to?: string | null;
                 submitted_from?: string | null;
                 submitted_to?: string | null;
+                /** @description Keep the events credited to this username (exact, case-insensitive); on search, also the sites and collections it owns */
                 author?: string | null;
                 media?: string[] | null;
+                /** @description Keep events approved on their live version */
                 approved?: boolean;
+                /** @description Keep events this analyst approved on their live version (username) */
                 approved_by?: string | null;
+                /** @description Keep events this organization approved on their live version (slug) */
                 approved_by_org?: string | null;
+                /** @description true: with a location; false: without */
+                has_coords?: boolean | null;
             };
             header?: never;
             path?: never;

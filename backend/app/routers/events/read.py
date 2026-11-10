@@ -2,7 +2,7 @@
 payload, and the filter / bbox / cache-key helpers behind them."""
 
 import hashlib
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 import orjson
 from fastapi import (
@@ -34,15 +34,11 @@ from app.schemas.event import (
     PaginatedEventDetails,
 )
 from app.services.event_filters import (
-    AUTHOR_FILTER_PATTERN,
     VIEWS,
     EventFilters,
-    apply_filters,
     bbox_predicate,
     parse_bbox,
     snap_bbox,
-    validate_media_types,
-    validate_source_filters,
     validate_status_filter,
     visible_events,
 )
@@ -62,28 +58,13 @@ from app.services.thumbnails import thumbnail_loads
 router = APIRouter()
 
 
-def _build_points_cache_key(
-    *,
-    bbox: tuple[float, float, float, float],
-    conflict: list[str] | None,
-    source_kind: list[str] | None,
-    level: list[str] | None,
-    tag: list[str] | None,
-    occurred_date_from: str | None,
-    occurred_date_to: str | None,
-    submitted_from: str | None,
-    submitted_to: str | None,
-    author: str | None,
-    media: list[str] | None = None,
-    approved: bool = False,
-    approved_by: str | None = None,
-    approved_by_org: str | None = None,
-) -> str:
-    """Hash the filter tuple into a collision-safe ``points_cache`` key.
+def _points_cache_key(bbox: tuple[float, float, float, float], filters: EventFilters) -> str:
+    """Hash the snapped box and the filter set into a collision-safe ``points_cache`` key.
 
-    A structured ``orjson`` tuple makes separator collisions impossible (a
+    A structured ``orjson`` payload makes separator collisions impossible (a
     colon-join would alias ``conflict="a:b"`` with ``conflict="a", tag="b"``).
-    List filters are sorted so click order doesn't change the key.
+    List filters are sorted so click order doesn't change the key, and the
+    approver names are lower-cased since they match case-insensitively.
 
     ``bbox`` is the box already snapped onto the server-side grid
     (:func:`snap_bbox`), never the raw client box: raw boxes key near-uniquely
@@ -91,24 +72,13 @@ def _build_points_cache_key(
     predicate, so a cached payload is never served for a box it wasn't computed
     for.
     """
-    payload = orjson.dumps(
-        [
-            list(bbox),
-            sorted(conflict) if conflict else None,
-            sorted(source_kind) if source_kind else None,
-            sorted(level) if level else None,
-            sorted(tag) if tag else None,
-            occurred_date_from,
-            occurred_date_to,
-            submitted_from,
-            submitted_to,
-            author,
-            sorted(media) if media else None,
-            approved,
-            approved_by.lower() if approved_by else None,
-            approved_by_org.lower() if approved_by_org else None,
-        ]
-    )
+    normalised = asdict(filters)
+    for name, value in normalised.items():
+        if isinstance(value, list):
+            normalised[name] = sorted(value) if value else None
+        elif name in ("approved_by", "approved_by_org") and value:
+            normalised[name] = value.lower()
+    payload = orjson.dumps([list(bbox), normalised], option=orjson.OPT_SORT_KEYS)
     return f"points:{hashlib.sha256(payload).hexdigest()}"
 
 
@@ -120,21 +90,7 @@ def list_points(
     # Required so the payload tracks the asked area; missing or malformed is a
     # 422. Uncapped because the map asks for the world box at low zoom.
     bbox: str = Query(..., description="south,west,north,east, four floats"),
-    # Multi-value (``?tag=a&tag=b``); a single value parses to a one-item list.
-    conflict: list[str] | None = Query(None),
-    source_kind: list[str] | None = Query(None),
-    level: list[str] | None = Query(None),
-    tag: list[str] | None = Query(None),
-    occurred_date_from: str | None = None,
-    occurred_date_to: str | None = None,
-    submitted_from: str | None = None,
-    submitted_to: str | None = None,
-    author: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    # Multi-value; an event matches if it has any attachment of a listed type.
-    media: list[str] | None = Query(None),
-    approved: bool = False,
-    approved_by: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
-    approved_by_org: str | None = Query(None, pattern=AUTHOR_FILTER_PATTERN),
+    filters: EventFilters = Depends(event_filters),
     db: Session = Depends(get_db),
 ):
     """Return the map's events inside ``bbox`` as a compact array:
@@ -149,27 +105,10 @@ def list_points(
     status string, to keep the payload small. Cached in memory for 60s per
     snapped bbox + filter combination (:func:`snap_bbox`).
     """
-    validate_media_types(media)
-    validate_source_filters(source_kind, level)
     # Parse before any cache work so a malformed box 422s instead of being
     # cached. The snapped box feeds both the key and the predicate.
     bounds = snap_bbox(parse_bbox(bbox))
-    cache_key = _build_points_cache_key(
-        bbox=bounds,
-        conflict=conflict,
-        source_kind=source_kind,
-        level=level,
-        tag=tag,
-        occurred_date_from=occurred_date_from,
-        occurred_date_to=occurred_date_to,
-        submitted_from=submitted_from,
-        submitted_to=submitted_to,
-        author=author,
-        media=media,
-        approved=approved,
-        approved_by=approved_by,
-        approved_by_org=approved_by_org,
-    )
+    cache_key = _points_cache_key(bounds, filters)
 
     cached_bytes = points_cache.get(cache_key)
     if cached_bytes is not None:
@@ -187,22 +126,7 @@ def list_points(
         Event.created_at,
         Event.status,
     )
-    q = apply_filters(
-        q,
-        conflict=conflict,
-        source_kind=source_kind,
-        level=level,
-        tag=tag,
-        occurred_date_from=occurred_date_from,
-        occurred_date_to=occurred_date_to,
-        submitted_from=submitted_from,
-        submitted_to=submitted_to,
-        author=author,
-        media=media,
-        approved=approved,
-        approved_by=approved_by,
-        approved_by_org=approved_by_org,
-    )
+    q = filters.apply(q, view="located")
     # Map-only narrowing: a closed detection stays on the list but leaves the
     # map, and a pin needs a coordinate inside the viewport.
     q = q.filter(
