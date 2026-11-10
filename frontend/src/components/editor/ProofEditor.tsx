@@ -69,7 +69,7 @@ interface ProofEditorProps {
 
 type StagedImage = { placeholder: string; previewUrl: string; file: File };
 
-type GifSplitShown = { slot: Element; name: string; frames: number; done: boolean };
+type GifSplitShown = { host: HTMLElement; name: string; frames: number; done: boolean };
 
 // A transparent pixel: what an image shows when its placeholder has no staged file.
 const BLANK_IMAGE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -253,8 +253,7 @@ export default function ProofEditor({
       if (blockId) setTimeout(() => editor.removeBlocks([blockId]));
       return "";
     }
-    const slot = frames > 1 ? slotOf(blockId) : null;
-    if (slot) setSplit({ slot, name: file.name, frames, done: false });
+    if (frames > 1) showSplit(blockId, file.name, frames, false);
     const pngs = await splitGif(file, frames);
     setSplit(null);
     if (pngs === null) return stageNamed(file);
@@ -266,18 +265,29 @@ export default function ProofEditor({
           blockId,
           "after",
         );
-        const firstSlot = slotOf(blockId);
-        if (firstSlot) setSplit({ slot: firstSlot, name: file.name, frames: pngs.length, done: true });
+        showSplit(blockId, file.name, pngs.length, true);
       });
     }
     return first;
   };
 
-  // The image block's own box, which shows the split while it runs and the line once it lands.
-  const slotOf = (blockId?: string) =>
-    (blockId &&
-      editor.domElement?.querySelector(`[data-id="${blockId}"] .bn-file-block-content-wrapper`)) ||
-    null;
+  // The image block's own box shows the split while it runs and the line once it lands. BlockNote
+  // owns that box and replaces its children when an upload ends, so the split renders into a host
+  // of its own, which React always finds its nodes in.
+  const showSplit = (blockId: string | undefined, name: string, frames: number, done: boolean) => {
+    const slot =
+      blockId &&
+      editor.domElement?.querySelector(`[data-id="${blockId}"] .bn-file-block-content-wrapper`);
+    if (!slot) return;
+    const host = document.createElement("div");
+    slot.appendChild(host);
+    setSplit({ host, name, frames, done });
+  };
+  useEffect(() => {
+    if (!split) return;
+    const { host } = split;
+    return () => host.remove();
+  }, [split]);
 
   const editor = useCreateBlockNote({
     schema: allowImages ? SCHEMA_WITH_IMAGES : SCHEMA_TEXT_ONLY,
@@ -355,7 +365,7 @@ export default function ProofEditor({
         theme={VIDIT_THEME}
         // BlockNote pins 16px on its root; inherit the field text size instead. A block showing a
         // GIF split hides BlockNote's own upload text.
-        className="[&_.bn-default-styles]:[font-size:inherit] [&_.bn-editor]:min-h-[184px] [&_.bn-file-loading-preview:has(~[role=status])]:hidden"
+        className="[&_.bn-default-styles]:[font-size:inherit] [&_.bn-editor]:min-h-[184px] [&_.bn-file-block-content-wrapper:has([role=status])>.bn-file-loading-preview]:hidden"
         formattingToolbar={false}
         filePanel={false}
         onChange={emit}
@@ -366,7 +376,7 @@ export default function ProofEditor({
       {split &&
         createPortal(
           <GifSplit name={split.name} frames={split.frames} done={split.done} />,
-          split.slot,
+          split.host,
         )}
       <FieldError alert>{refusal}</FieldError>
     </div>
