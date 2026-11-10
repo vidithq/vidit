@@ -56,8 +56,8 @@ export const MEDIA: PaletteCategory = {
           <div className={TILE}>
             <MediaGallery media={MOCK_MEDIA} alt="Strike on a depot" />
           </div>
-          <Variant label="panel" className="w-64">
-            <MediaGallery media={MOCK_MEDIA} alt="Strike on a depot" variant="panel" />
+          <Variant label="compact" className="w-64">
+            <MediaGallery media={MOCK_MEDIA} alt="Strike on a depot" compact />
           </Variant>
           <Variant label="video" className={TILE}>
             <MediaGallery
@@ -76,7 +76,7 @@ export const MEDIA: PaletteCategory = {
             <MediaGallery media={null} alt="Strike on a depot" />
           </div>
           <Variant label="compact" className="w-64">
-            <MediaGallery media={null} alt="Strike on a depot" variant="panel" empty="No file" />
+            <MediaGallery media={null} alt="Strike on a depot" compact />
           </Variant>
         </>
       ),

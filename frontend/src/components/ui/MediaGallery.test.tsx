@@ -18,7 +18,7 @@ const VIDEO: Media = { ...IMAGE, id: "v", storage_url: "/media/a.mp4", kind: "vi
 describe("MediaGallery", () => {
   it("says so when there is no media", () => {
     render(<MediaGallery media={null} alt="T" />);
-    expect(screen.getByText("No media available")).toBeInTheDocument();
+    expect(screen.getByText("No file")).toBeInTheDocument();
   });
 
   // The tile itself opens the uncropped view.
