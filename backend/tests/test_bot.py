@@ -31,6 +31,7 @@ from app.services.bot import (
     compose_reply,
     compose_request_reply,
     drain_mentions,
+    next_catch_up_slot,
     reply_weighted_len,
 )
 from app.services.tweet_ingest import (
@@ -680,7 +681,7 @@ async def test_the_cursor_advances_to_the_newest_mention_read(db, linked_owner):
     assert datetime.now(UTC) - cursor.pulled_at < timedelta(minutes=1)
 
 
-async def test_an_empty_cursor_falls_back_to_one_interval_behind_the_table_max(db):
+async def test_an_empty_cursor_falls_back_to_one_day_behind_the_table_max(db):
     import app.services.bot as bot_service
 
     db.add(
@@ -721,19 +722,45 @@ def test_the_cursor_holds_when_the_enqueue_fails(db, monkeypatch):
     assert cursor is not None and cursor.newest_post_id == int(FOREIGN_ID)
 
 
-def test_a_pull_is_due_only_once_the_interval_has_passed(db):
-    import app.services.bot as bot_service
+def _at(day: int, hour: int, minute: int) -> datetime:
+    return datetime(2026, 11, day, hour, minute, tzinfo=UTC)
 
-    assert catch_up_due(db) is True  # nothing stored: the first start pulls
+
+def test_a_pull_is_due_with_no_cursor_row(db):
+    assert catch_up_due(db, now=_at(10, 11, 59)) is True
+    assert catch_up_due(db) is True
     with _mentions_client([], []) as read:
         catch_up(db, x_read_client=read)
-    assert catch_up_due(db) is False  # a restart right after skips the billed read
+    assert catch_up_due(db) is False  # a restart right after the pull bills nothing
 
-    cursor = _cursor(db)
-    assert cursor is not None
-    cursor.pulled_at = datetime.now(UTC) - bot_service.CATCH_UP_INTERVAL - timedelta(minutes=1)
+
+@pytest.mark.parametrize(
+    ("pulled_at", "now", "due"),
+    [
+        # Pulled after yesterday's slot: not due before today's, due from it.
+        (_at(9, 12, 1), _at(10, 11, 59), False),
+        (_at(9, 12, 1), _at(10, 12, 0), True),
+        # Pulled after today's slot: a restart later today bills nothing.
+        (_at(10, 12, 1), _at(10, 18, 0), False),
+        (_at(10, 12, 1), _at(11, 11, 59), False),
+        # Pulled exactly at the slot counts for that slot.
+        (_at(10, 12, 0), _at(10, 12, 0), False),
+        # The worker was down across the slot: due when it comes back.
+        (_at(9, 12, 1), _at(10, 17, 30), True),
+        (_at(8, 12, 1), _at(10, 9, 0), True),
+    ],
+)
+def test_a_pull_is_due_once_per_daily_slot(db, pulled_at, now, due):
+    db.add(BotCatchUpCursor(id=1, newest_post_id=int(FOREIGN_ID), pulled_at=pulled_at))
     db.commit()
-    assert catch_up_due(db) is True
+
+    assert catch_up_due(db, now=now) is due
+
+
+def test_the_next_slot_is_the_first_one_after_now():
+    assert next_catch_up_slot(_at(10, 11, 59)) == _at(10, 12, 0)
+    assert next_catch_up_slot(_at(10, 12, 0)) == _at(11, 12, 0)
+    assert next_catch_up_slot(_at(10, 23, 0)) == _at(11, 12, 0)
 
 
 async def test_catch_up_recovers_a_mention_the_webhook_dropped(db, linked_owner):

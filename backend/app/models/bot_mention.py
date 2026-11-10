@@ -105,7 +105,7 @@ class BotCatchUpCursor(Base):
     """Where the mentions catch-up stands: one row, written after each pull.
 
     The next pull reads from ``newest_post_id``, and the worker skips a pull
-    while ``pulled_at`` is younger than ``services/bot.CATCH_UP_INTERVAL``.
+    while ``pulled_at`` is at or after the latest ``services/bot.CATCH_UP_SLOT``.
     """
 
     __tablename__ = "bot_catch_up_cursor"

@@ -1570,12 +1570,12 @@ Composite PK: `(event_id, conflict_id)`
 
 ### `bot_mentions`
 
-The bot's queue and ledger: one row per @-mention of the bot. The webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the daily catch-up both insert a `queued` row with `ON CONFLICT (mention_post_id) DO NOTHING`, except for the mentions the text alone settles: the bot's own posts, and a reply to the bot's own post whose only tag is X's reply prefix, add no row. The import worker claims the queued rows and runs them through the shared mention pipeline, then leaves the row as the ledger of what happened, so a mention is processed, and billed, at most once. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
+The bot's queue and ledger: one row per @-mention of the bot. The webhook endpoint ([`POST /webhooks/x`](api.md#post-webhooksx)), which must answer X fast and therefore only inserts, and the catch-up at 12:00 UTC both insert a `queued` row with `ON CONFLICT (mention_post_id) DO NOTHING`, except for the mentions the text alone settles: the bot's own posts, and a reply to the bot's own post whose only tag is X's reply prefix, add no row. The import worker claims the queued rows and runs them through the shared mention pipeline, then leaves the row as the ledger of what happened, so a mention is processed, and billed, at most once. See [`ingestion.md`](ingestion.md#the-bot) for the pipeline.
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | `UUID` | PK, default `uuid4()` |
-| `mention_post_id` | `BIGINT` | UNIQUE, NOT NULL. The tagged post's id: an X snowflake. The idempotency key. With no stored [`bot_catch_up_cursor`](#bot_catch_up_cursor), the catch-up starts 24 hours behind the highest value. |
+| `mention_post_id` | `BIGINT` | UNIQUE, NOT NULL. The tagged post's id: an X snowflake. The idempotency key. With no stored [`bot_catch_up_cursor`](#bot_catch_up_cursor), the catch-up starts one day behind the highest value. |
 | `author_x_handle` | `VARCHAR(50)` | NOT NULL. The tagging analyst's handle, normalized to lowercase with no leading `@`. Stored for forensics, not as a FK. Attribution resolves through the admin-linked `users.x_handle`. |
 | `payload` | `JSONB` | nullable. The internal `Mention` shape: `tweet_id`, `author_id`, `author_handle`, `text`, `in_reply_to_user_id`, `in_reply_to_status_id`. Carries everything the pipeline needs, so a drain never re-reads, and never re-bills, the paid API. The worker clears it once the row is `done`. |
 | `status` | `VARCHAR(10)` | NOT NULL, default `'queued'`, CHECK in `('queued', 'running', 'done', 'failed')` (constraint `ck_bot_mentions_status_valid`). The row moves `queued` → `running` → `done` \| `failed`. `running` marks a claimed row so a concurrent worker skips it. A row left `running` for more than an hour is claimed again, since its worker died. An exception outside the pipeline puts the row back to `queued`. `done` means the pipeline ran; the per-mention result, including `failed`, is the `outcome`. `failed` means the attempt budget is spent or the payload was malformed. |
@@ -1592,7 +1592,7 @@ A partial index `ix_bot_mentions_claim` on `created_at`, for rows whose `status`
 
 ### `bot_catch_up_cursor`
 
-Where the bot's mentions catch-up stands: at most one row, written after each pull. The catch-up reads the paid mentions timeline from `newest_post_id`, and the worker skips a pull while `pulled_at` is younger than 24 hours. See [`ingestion.md`](ingestion.md#the-bot).
+Where the bot's mentions catch-up stands: at most one row, written after each pull. The catch-up reads the paid mentions timeline from `newest_post_id`, and the worker skips a pull while `pulled_at` is at or after the latest 12:00 UTC. See [`ingestion.md`](ingestion.md#the-bot).
 
 | Column | Type | Constraints |
 |--------|------|-------------|

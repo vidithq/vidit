@@ -6,7 +6,7 @@ Two paths insert a mention as a ``queued`` ``bot_mentions`` row
 * **Webhook (nominal)**: the X Account Activity webhook delivers the mention to
   ``routers/webhooks``.
 * **Catch-up (reconciliation)**: the import worker pulls the mentions timeline
-  once every :data:`CATCH_UP_INTERVAL` (:func:`catch_up`), from the newest
+  once a day at :data:`CATCH_UP_SLOT` (:func:`catch_up`), from the newest
   mention the previous pull returned (``bot_catch_up_cursor``), so the billed
   read covers each mention once. While the webhook is live
   (``X_WEBHOOK_ENABLED``), a mention first queued here raises a "webhook gap"
@@ -58,7 +58,7 @@ import logging
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 import httpx
 import sentry_sdk
@@ -147,14 +147,14 @@ def _within_reply_cap(text: str) -> str:
 # and ``bot_max_replies_per_author_per_hour``); wall-clock, read from the ledger.
 _GESTURE_WINDOW = timedelta(hours=1)
 
-# How often the worker pulls the mentions timeline behind the webhook (:func:`catch_up`).
-CATCH_UP_INTERVAL = timedelta(hours=24)
+# The time of day the worker pulls the mentions timeline behind the webhook (:func:`catch_up`).
+CATCH_UP_SLOT = time(12, tzinfo=UTC)
 
-# With no stored cursor, the pull starts one interval behind the table's newest
+# With no stored cursor, the pull starts one day behind the table's newest
 # mention, in snowflake id space (timestamp above bit 22): the webhook feeds the
 # table too, so starting at its max would skip a mention it dropped before a
 # newer one it delivered.
-_FALLBACK_LOOKBACK = int(CATCH_UP_INTERVAL.total_seconds() * 1000) << 22
+_FALLBACK_LOOKBACK = int(timedelta(days=1).total_seconds() * 1000) << 22
 
 # Attempts per mention before it lands ``failed`` (poison-pill guard, like the
 # archive jobs). Separate from the outcome ``failed``, which means the pipeline
@@ -658,10 +658,22 @@ def _advance_cursor(db: Session, newest_post_id: int | None, pulled_at: datetime
     db.commit()
 
 
-def catch_up_due(db: Session) -> bool:
-    """Whether no pull is stored, or the last one is :data:`CATCH_UP_INTERVAL` old."""
+def _latest_catch_up_slot(now: datetime) -> datetime:
+    slot = datetime.combine(now.astimezone(UTC).date(), CATCH_UP_SLOT)
+    return slot if now >= slot else slot - timedelta(days=1)
+
+
+def next_catch_up_slot(now: datetime) -> datetime:
+    """The first :data:`CATCH_UP_SLOT` strictly after ``now``."""
+    return _latest_catch_up_slot(now) + timedelta(days=1)
+
+
+def catch_up_due(db: Session, *, now: datetime | None = None) -> bool:
+    """Whether no pull is stored, or the last one started before the latest
+    :data:`CATCH_UP_SLOT` at or before ``now``."""
     cursor = db.get(BotCatchUpCursor, 1)
-    return cursor is None or datetime.now(UTC) - cursor.pulled_at >= CATCH_UP_INTERVAL
+    latest = _latest_catch_up_slot(now if now is not None else datetime.now(UTC))
+    return cursor is None or cursor.pulled_at < latest
 
 
 def is_configured() -> bool:
@@ -711,7 +723,7 @@ def enqueue_mentions(db: Session, mentions: list[Mention]) -> list[Mention]:
 
 def catch_up(db: Session, *, x_read_client: httpx.Client | None = None) -> BotRunOutcome:
     """Pull the mentions timeline since the stored cursor and queue the new ones: the net
-    behind the webhook, run by the worker every :data:`CATCH_UP_INTERVAL`.
+    behind the webhook, run by the worker once a day at :data:`CATCH_UP_SLOT`.
 
     The cursor advances to the newest mention returned once the enqueue has committed, so a
     pull that fails reads the same mentions again. While the webhook is live
