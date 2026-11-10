@@ -7,9 +7,7 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "s1" }),
 }));
 
-vi.mock("@/hooks/useRequireAuth", () => ({
-  useRequireAuth: () => ({ user: { id: "u1", username: "ana" }, loading: false }),
-}));
+vi.mock("@/hooks/useRequireAuth", () => import("@/test/requireAuthStub"));
 
 vi.mock("@/components/sites/SiteLocation", () => ({ SiteLocation: () => <div /> }));
 

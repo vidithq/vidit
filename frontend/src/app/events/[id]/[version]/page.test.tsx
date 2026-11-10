@@ -2,9 +2,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EventDetail, EventVersion } from "@/types";
+import { BOB, OWNER, eventDetail } from "@/test/eventDetail";
 
 // The map canvas needs WebGL, absent in jsdom.
-vi.mock("@/components/map/Map", () => ({ default: () => <div data-testid="map" /> }));
+vi.mock("@/components/map/Map", () => import("@/test/mapStub"));
 
 // A signed-out reader: a version page offers no control to anyone.
 const viewer: { id: string | null } = { id: null };
@@ -34,35 +35,7 @@ vi.mock("@/hooks/useApiResource", () => ({
 
 import EventVersionPage from "./page";
 
-const OWNER = { id: "u1", username: "ana", avatar_url: null };
-const BOB = { id: "u2", username: "bob", avatar_url: null };
-
-const EVENT: EventDetail = {
-  id: "e1",
-  title: "v3 title",
-  coords: { lat: 48.01, lng: 37.8 },
-  occurred_date: "2026-06-01",
-  occurred_time: null,
-  is_graphic: false,
-  status: "geolocated",
-  version_no: 3,
-  close_reason: null,
-  before_closed_status: null,
-  detected_from_url: null,
-  detected_via: null,
-  owner: OWNER,
-  tags: [],
-  conflicts: [],
-  sources: [{ id: "s1", title: "", level: "direct", kind: "unknown", captured_at: null, capture_position: null, is_graphic: false, links: [{ url: "https://t.me/channel/12345", posted_at: null, archived: null }], tags: [], media: null, warnings: [] }],
-  proof: "",
-  created_at: "2026-06-01T10:00:00Z",
-  hidden_at: null,
-  geolocated_at: "2026-06-01T10:00:00Z",
-  closed_at: null,
-  thumbnail: null,
-  requested_by: null,
-  geolocators: [],
-};
+const EVENT = eventDetail("e1", "v3 title", { version_no: 3, owner: OWNER, proof: "" });
 
 function version(
   versionNo: number,

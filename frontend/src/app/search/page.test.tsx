@@ -74,7 +74,7 @@ import type {
 import { ApiError } from "@/lib/api";
 import { NO_ANSWER } from "@/lib/errors";
 import SearchPage from "./page";
-import { openFilterGroups, sheetButton } from "@/test/filters";
+import { seedOpenFilterGroups, sheetButton } from "@/test/filters";
 import { pickOption } from "@/test/options";
 
 const OWNER = { id: "u1", username: "ana", avatar_url: null };
@@ -191,7 +191,7 @@ const linkTo = (href: string) => document.querySelector<HTMLAnchorElement>(`a[hr
 /** The item a link is stretched over. */
 const rowOf = (href: string) => linkTo(href).parentElement!;
 
-beforeEach(openFilterGroups);
+beforeEach(seedOpenFilterGroups);
 afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {

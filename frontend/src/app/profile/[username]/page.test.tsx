@@ -22,16 +22,11 @@ vi.mock("@/contexts/DetectionsContext", () => ({
   useDetectionsCount: () => useDetectionsCount(),
 }));
 
-const useApiResource = vi.fn();
-vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => useApiResource(path),
-}));
+import { useApiResource } from "@/test/apiResourceStub";
+vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
-const apiFetch = vi.fn();
-vi.mock("@/lib/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api")>()),
-  apiFetch: (path: string, init?: RequestInit) => apiFetch(path, init),
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 const getUserStats = vi.fn();
 vi.mock("@/lib/users", async (importOriginal) => ({
@@ -44,7 +39,7 @@ import { readResponse } from "@/lib/errors";
 import type { CollectionPage } from "@/lib/collections";
 import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile, UserStats } from "@/lib/users";
-import { signedInAs, signedOut } from "@/test/auth";
+import { ANA, signedInAs, signedOut } from "@/test/auth";
 import type { EventListItem, MapPoint } from "@/types";
 
 import ProfilePage from "./page";
@@ -75,7 +70,7 @@ const SUBMISSION: EventListItem = {
   conflicts: [],
   is_graphic: false,
   media: null,
-  owner: { id: "u1", username: "ana" },
+  owner: ANA,
   tags: [],
 };
 

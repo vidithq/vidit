@@ -1,29 +1,26 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ANA, signedInAs } from "@/test/auth";
 import { MAX_EVENT_GEOLOCATORS } from "@/lib/geolocatorCredit";
 import { eventDetail } from "@/test/eventDetail";
 
-const api = vi.hoisted(() => ({
-  apiFetch: vi.fn(),
+import { apiFetch } from "@/test/apiStub";
+
+const mocks = vi.hoisted(() => ({
   invites: [] as { user: { id: string; username: string }; invited_at: string }[],
 }));
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  errorMessage: (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback),
-  ApiError: class extends Error {},
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: () => ({ data: api.invites, error: null, refetch: vi.fn() }),
+  useApiResource: () => ({ data: mocks.invites, error: null, refetch: vi.fn() }),
 }));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1", username: "ana" } }),
+  useAuth: () => signedInAs("ana", ANA),
 }));
 
 import { GeolocatorsByline, useDraftGeolocatorsByline } from "./useGeolocatorsByline";
 
-const ANA = { id: "u1", username: "ana" };
 const BO = { id: "u2", username: "bo" };
 const CY = { id: "u3", username: "cy" };
 
@@ -42,9 +39,9 @@ function pick(username: string) {
 
 describe("<GeolocatorsByline>", () => {
   beforeEach(() => {
-    api.apiFetch.mockReset();
-    api.apiFetch.mockResolvedValue(undefined);
-    api.invites = [{ user: CY, invited_at: "2026-10-15T09:00:00Z" }];
+    apiFetch.mockReset();
+    apiFetch.mockResolvedValue(undefined);
+    mocks.invites = [{ user: CY, invited_at: "2026-10-15T09:00:00Z" }];
   });
 
   it("shows the owner, a co-geolocator and a pending invitation on one line", () => {
@@ -66,11 +63,11 @@ describe("<GeolocatorsByline>", () => {
     const remove = screen.getByRole("button", { name: "Remove bo" });
     expect(remove.querySelector("svg.lucide-trash-2, svg.lucide-trash2")).not.toBeNull();
     fireEvent.click(remove);
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Confirm remove bo" }));
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" }),
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/geolocators/bo", { method: "DELETE" }),
     );
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
@@ -82,14 +79,14 @@ describe("<GeolocatorsByline>", () => {
     expect(withdraw.querySelector("svg.lucide-x")).not.toBeNull();
     fireEvent.click(withdraw);
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocator-invites/cy", {
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/geolocator-invites/cy", {
         method: "DELETE",
       }),
     );
   });
 
   it("shows a refused removal under the byline", async () => {
-    api.apiFetch.mockRejectedValue(new Error("Not your event"));
+    apiFetch.mockRejectedValue(new Error("Not your event"));
     render(<GeolocatorsByline event={shared} onChanged={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Withdraw the invitation of cy" }));
@@ -110,7 +107,7 @@ describe("<GeolocatorsByline>", () => {
 
     pick("dee");
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/events/e1/geolocator-invites", {
+      expect(apiFetch).toHaveBeenCalledWith("/events/e1/geolocator-invites", {
         method: "POST",
         body: JSON.stringify({ username: "dee" }),
       }),
@@ -119,7 +116,7 @@ describe("<GeolocatorsByline>", () => {
   });
 
   it("keeps the popover open on a refusal and says why", async () => {
-    api.apiFetch.mockRejectedValue(new Error("No analyst with that username"));
+    apiFetch.mockRejectedValue(new Error("No analyst with that username"));
     render(<GeolocatorsByline event={shared} onChanged={vi.fn()} />);
 
     pick("nobody");
@@ -129,14 +126,14 @@ describe("<GeolocatorsByline>", () => {
 
   it("refuses a pick past the cap without asking the server", () => {
     // The owner, bo, cy pending, and seven more pending: ten held.
-    api.invites = [CY, ...Array.from({ length: 7 }, (_, i) => ({ id: `p${i}`, username: `p${i}` }))].map(
+    mocks.invites = [CY, ...Array.from({ length: 7 }, (_, i) => ({ id: `p${i}`, username: `p${i}` }))].map(
       (user) => ({ user, invited_at: "2026-10-15T09:00:00Z" }),
     );
     render(<GeolocatorsByline event={shared} onChanged={vi.fn()} />);
 
     pick("dee");
     expect(screen.getByRole("alert")).toHaveTextContent(`at most ${MAX_EVENT_GEOLOCATORS} geolocators`);
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 });
 
@@ -155,7 +152,7 @@ describe("useDraftGeolocatorsByline", () => {
     pick("eve");
     expect(invitees).toEqual(["dee", "eve"]);
     expect(screen.getByRole("img", { name: "dee, invited when you publish" })).toBeInTheDocument();
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove eve" }));
     expect(invitees).toEqual(["dee"]);

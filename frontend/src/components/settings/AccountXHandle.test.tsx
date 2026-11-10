@@ -3,23 +3,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { XHandleState } from "@/lib/xHandle";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+import { apiFetch } from "@/test/apiStub";
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  ApiError: class extends Error {},
-  errorMessage: (err: unknown, fallback = "Something went wrong.") =>
-    err instanceof Error ? err.message : fallback,
-}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { AccountXHandle } from "./AccountXHandle";
 
 function serve(state: XHandleState) {
-  api.apiFetch.mockReset().mockResolvedValue(state);
+  apiFetch.mockReset().mockResolvedValue(state);
 }
 
 describe("AccountXHandle", () => {
-  beforeEach(() => api.apiFetch.mockReset());
+  beforeEach(() => apiFetch.mockReset());
 
   it("shows the bound handle read-only", async () => {
     serve({ x_handle: "osint_hawk" });

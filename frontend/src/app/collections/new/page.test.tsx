@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { signedInAs, signedOut } from "@/test/auth";
+import { ANA, signedInAs, signedOut } from "@/test/auth";
 import { textHtml } from "@/test/proofEditorStub";
 
 const push = vi.fn();
@@ -18,13 +18,11 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
 // MapLibre needs WebGL; the Coverage map is `CollectionCoverage.test.tsx`'s subject.
-vi.mock("@/components/map/Map", () => ({ default: () => <div data-testid="map" /> }));
+vi.mock("@/components/map/Map", () => import("@/test/mapStub"));
 
 // The `?event=` read: the picker's first block renders the event's own row.
-const useApiResource = vi.fn();
-vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => useApiResource(path),
-}));
+import { useApiResource } from "@/test/apiResourceStub";
+vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
 const createCollection = vi.fn();
 const addEventsToCollection = vi.fn();
@@ -42,11 +40,8 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
 }));
 
 // The add block's first page of the analyst's events.
-const apiFetchPage = vi.fn();
-vi.mock("@/lib/api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/api")>()),
-  apiFetchPage: () => apiFetchPage(),
-}));
+import { apiFetchPage } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 // The add block's list and a match's pages only have to render without the network (the walk is
 // tested in `useCursorList`); the mock tells them apart by their first page's path.
@@ -70,7 +65,6 @@ import {
 
 import NewCollectionPage from "./page";
 
-const USER = { id: "u1", username: "ana" };
 
 /** One of the analyst's own events, as listed and as the `?event=` read answers. */
 const EVENT = {
@@ -82,7 +76,7 @@ const EVENT = {
   occurred_date: "2026-03-14",
   coords: { lat: 49.71, lng: 37.616 },
   tags: [],
-  owner: USER,
+  owner: ANA,
   conflicts: [],
   before_closed_status: null,
 };

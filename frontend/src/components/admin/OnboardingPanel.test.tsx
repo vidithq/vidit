@@ -1,13 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn(), apiFetchPage: vi.fn() }));
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  apiFetchPage: api.apiFetchPage,
-  errorMessage: (_err: unknown, fallback: string) => fallback,
-  ApiError: class extends Error {},
-}));
+import { apiFetch, apiFetchPage } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { OnboardingPanel } from "./OnboardingPanel";
 
@@ -24,9 +19,9 @@ const code = {
 };
 
 beforeEach(() => {
-  api.apiFetch.mockReset();
-  api.apiFetchPage.mockReset();
-  api.apiFetchPage.mockResolvedValue({ items: [code], nextCursor: null });
+  apiFetch.mockReset();
+  apiFetchPage.mockReset();
+  apiFetchPage.mockResolvedValue({ items: [code], nextCursor: null });
 });
 
 const deletedCode = {
@@ -50,7 +45,7 @@ const deletedCode = {
 };
 
 async function manageDeletedAccount() {
-  api.apiFetchPage.mockResolvedValue({ items: [deletedCode], nextCursor: null });
+  apiFetchPage.mockResolvedValue({ items: [deletedCode], nextCursor: null });
   render(<OnboardingPanel />);
   fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
   fireEvent.click(screen.getByRole("button", { name: "Actions for ana" }));
@@ -64,19 +59,19 @@ async function openItem(name: string) {
 
 describe("<OnboardingPanel>", () => {
   it("revokes a code only from the confirm dialog", async () => {
-    api.apiFetch.mockResolvedValue({ ...code, status: "revoked" });
+    apiFetch.mockResolvedValue({ ...code, status: "revoked" });
     render(<OnboardingPanel />);
 
     const dialog = await openItem("Revoke");
-    expect(api.apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/invite-codes/c1/revoke", {
+      expect(apiFetch).toHaveBeenCalledWith("/admin/invite-codes/c1/revoke", {
         method: "POST",
       }),
     );
-    await waitFor(() => expect(api.apiFetchPage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiFetchPage).toHaveBeenCalledTimes(2));
   });
 
   it("marks a soft-deleted account and offers only Restore and Hard delete", async () => {
@@ -92,14 +87,14 @@ describe("<OnboardingPanel>", () => {
   });
 
   it("restores a soft-deleted account from the confirm dialog", async () => {
-    api.apiFetch.mockResolvedValue({ user_id: "u1", username: "ana", restored_events: 3 });
+    apiFetch.mockResolvedValue({ user_id: "u1", username: "ana", restored_events: 3 });
     await manageDeletedAccount();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Restore" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Restore" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/users/u1/restore", { method: "POST" }),
+      expect(apiFetch).toHaveBeenCalledWith("/admin/users/u1/restore", { method: "POST" }),
     );
     expect(
       await screen.findByText(
@@ -109,7 +104,7 @@ describe("<OnboardingPanel>", () => {
   });
 
   it("sums up what a hard delete erased", async () => {
-    api.apiFetch.mockResolvedValue({
+    apiFetch.mockResolvedValue({
       user_id: "u1",
       username: "ana",
       mode: "hard",
@@ -128,11 +123,11 @@ describe("<OnboardingPanel>", () => {
         "Erased the account, 3 events and 7 storage objects. Handed 1 event to a co-geolocator.",
       ),
     ).toBeInTheDocument();
-    expect(api.apiFetch).toHaveBeenCalledWith("/admin/users/u1?hard=true", { method: "DELETE" });
+    expect(apiFetch).toHaveBeenCalledWith("/admin/users/u1?hard=true", { method: "DELETE" });
   });
 
   it("keeps the dialog open with the refusal when a delete fails", async () => {
-    api.apiFetch.mockRejectedValue(new Error("nope"));
+    apiFetch.mockRejectedValue(new Error());
     render(<OnboardingPanel />);
 
     const dialog = await openItem("Delete");
@@ -141,6 +136,6 @@ describe("<OnboardingPanel>", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Failed to delete invite code",
     );
-    expect(api.apiFetch).toHaveBeenCalledWith("/admin/invite-codes/c1", { method: "DELETE" });
+    expect(apiFetch).toHaveBeenCalledWith("/admin/invite-codes/c1", { method: "DELETE" });
   });
 });

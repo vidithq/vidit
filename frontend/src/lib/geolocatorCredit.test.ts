@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { ANA as ana } from "@/test/auth";
 import { creditProps, creditedAuthors } from "./geolocatorCredit";
 
-const ana = { id: "u1", username: "ana" };
 const bo = { id: "u2", username: "bo" };
 const cy = { id: "u3", username: "cy" };
 

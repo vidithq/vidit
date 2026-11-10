@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { ANA } from "@/test/auth";
 import type { Site, SiteSource } from "@/lib/sites";
 import { SitePanel } from "./SitePanel";
 
@@ -46,7 +47,7 @@ const SITE: Site = {
   last_source: null,
   latest_link_effect: null,
   media: null,
-  owner: { id: "u1", username: "ana" },
+  owner: ANA,
   version_no: 1,
   hidden_at: null,
   // Served oldest capture first; the panel shows the newest, as the site page opens on it.

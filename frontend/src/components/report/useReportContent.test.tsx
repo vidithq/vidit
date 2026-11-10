@@ -16,9 +16,7 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   reportCollection: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u1", username: "me" } }),

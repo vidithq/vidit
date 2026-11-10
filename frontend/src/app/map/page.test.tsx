@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { signedOut } from "@/test/auth";
 import { MapStateProvider } from "@/contexts/MapStateContext";
 import { ApiError } from "@/lib/api";
 import type { Site, SiteListItem } from "@/lib/sites";
@@ -61,10 +62,8 @@ vi.mock("next/dynamic", () => ({
     },
 }));
 
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: null }) }));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-}));
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => signedOut() }));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
 // Each read waits for the test to settle it; the filter taxonomies stay pending (the panel is what is measured).
 interface Read {
@@ -84,7 +83,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 }));
 
 import HomePage from "./page";
-import { openFilterGroups } from "@/test/filters";
+import { seedOpenFilterGroups } from "@/test/filters";
 import { pickOption } from "@/test/options";
 
 function readOf(id: string): Read {
@@ -107,7 +106,7 @@ function renderMap() {
   );
 }
 
-beforeEach(openFilterGroups);
+beforeEach(seedOpenFilterGroups);
 
 beforeEach(() => {
   reads = [];

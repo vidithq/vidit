@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const apiFetch = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/api", async (actual) => ({ ...(await actual<typeof import("@/lib/api")>()), apiFetch }));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 const refresh = vi.hoisted(() => vi.fn());
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ refresh }) }));

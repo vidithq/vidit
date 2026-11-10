@@ -5,9 +5,7 @@ import { textHtml } from "@/test/proofEditorStub";
 
 vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-}));
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
 // MapLibre needs WebGL; the stub reports the pins it was handed.
 vi.mock("@/components/map/Map", () => ({

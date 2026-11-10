@@ -4,10 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // jsdom cannot mount the draw canvas (WebGL).
 vi.mock("@/components/map/ZoneDrawMap", () => ({ default: () => <div data-testid="draw-map" /> }));
 
-const push = vi.fn();
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push, replace: vi.fn(), back: vi.fn() }),
-}));
+import { push } from "@/test/navigationStub";
+vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
 vi.mock("@/lib/sites", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/sites")>()),

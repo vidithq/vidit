@@ -1,21 +1,11 @@
 import { act, render, screen } from "@testing-library/react";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  type Mock,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DuplicateProbe } from "./DuplicateProbe";
-import { apiFetch } from "@/lib/api";
 import type { PossibleDuplicate } from "@/types";
 
-vi.mock("@/lib/api", () => ({
-  apiFetch: vi.fn(),
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 // Capture each apiFetch call with its abort signal and resolve/reject handles.
 interface CapturedCall {
@@ -30,9 +20,8 @@ let calls: CapturedCall[];
 beforeEach(() => {
   vi.useFakeTimers();
   calls = [];
-  const mock = apiFetch as unknown as Mock;
-  mock.mockReset();
-  mock.mockImplementation(
+  apiFetch.mockReset();
+  apiFetch.mockImplementation(
     (path: string, options?: RequestInit) =>
       new Promise((resolve, reject) => {
         calls.push({

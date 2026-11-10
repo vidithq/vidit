@@ -1,12 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const apiFetch = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/api", () => ({
-  apiFetch,
-  errorMessage: (err: unknown, fallback = "Something went wrong.") =>
-    err instanceof Error ? err.message : fallback,
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { SingleEmailFlow } from "./SingleEmailFlow";

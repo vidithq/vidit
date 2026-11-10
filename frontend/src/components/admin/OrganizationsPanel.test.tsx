@@ -1,12 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ apiFetch: vi.fn() }));
-vi.mock("@/lib/api", () => ({
-  apiFetch: api.apiFetch,
-  errorMessage: (_err: unknown, fallback: string) => fallback,
-  ApiError: class extends Error {},
-}));
+import { ANA } from "@/test/auth";
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { OrganizationsPanel } from "./OrganizationsPanel";
 
@@ -20,7 +17,7 @@ const row = (slug: string, managers: number) => ({
 
 describe("<OrganizationsPanel>", () => {
   it("deletes an organization only once its slug is typed", async () => {
-    api.apiFetch.mockImplementation((path: string) =>
+    apiFetch.mockImplementation((path: string) =>
       Promise.resolve(path === "/admin/organizations" ? [row("osw", 1)] : undefined),
     );
     render(<OrganizationsPanel />);
@@ -39,17 +36,17 @@ describe("<OrganizationsPanel>", () => {
     fireEvent.click(confirm);
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/organizations/osw", { method: "DELETE" }),
+      expect(apiFetch).toHaveBeenCalledWith("/admin/organizations/osw", { method: "DELETE" }),
     );
   });
 
   it("offers to name an org manager on an organization flagged without one only", async () => {
-    api.apiFetch.mockImplementation((path: string) =>
+    apiFetch.mockImplementation((path: string) =>
       Promise.resolve(
         path === "/admin/organizations"
           ? [row("orphan", 0), row("osw", 1)]
           : path.startsWith("/admin/users")
-            ? [{ id: "u1", username: "ana" }]
+            ? [ANA]
             : {},
       ),
     );
@@ -62,7 +59,7 @@ describe("<OrganizationsPanel>", () => {
     fireEvent.click(screen.getByRole("button", { name: "Name org manager" }));
 
     await waitFor(() =>
-      expect(api.apiFetch).toHaveBeenCalledWith("/admin/organizations/orphan/managers", {
+      expect(apiFetch).toHaveBeenCalledWith("/admin/organizations/orphan/managers", {
         method: "POST",
         body: JSON.stringify({ username: "ana" }),
       }),

@@ -21,7 +21,7 @@ import {
 } from "./FilterPanel";
 import { EMPTY_FILTERS, type FilterState, type Surface } from "./model";
 import { SEARCH_DEBOUNCE_MS } from "@/components/ui/ItemSearch";
-import { openFilterGroups } from "@/test/filters";
+import { seedOpenFilterGroups } from "@/test/filters";
 
 const TAGS: Tag[] = Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, name: `tag-${i}` }));
 const CONFLICTS: Conflict[] = [
@@ -132,7 +132,7 @@ describe("<FilterPanel> groups", () => {
 });
 
 describe("<FilterPanel>", () => {
-  beforeEach(openFilterGroups);
+  beforeEach(seedOpenFilterGroups);
 
   it("draws one line per dimension under its heading, the timelines under When", () => {
     render(<Harness surface="feed" />);
@@ -289,7 +289,7 @@ describe("<FilterCard>", () => {
 });
 
 describe("<FilterSheetBar>", () => {
-  beforeEach(openFilterGroups);
+  beforeEach(seedOpenFilterGroups);
 
   it("shows the active filters as pills and opens the panel in a sheet", () => {
     render(<Harness surface="feed" shape="sheet" initial={{ ...EMPTY_FILTERS, following: true }} />);

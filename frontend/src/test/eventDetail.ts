@@ -1,5 +1,10 @@
 import type { Source } from "@/lib/sources";
+import { ANA } from "./auth";
 import type { EventDetail, EventVersion } from "@/types";
+
+/** The default event's owner, and a second analyst, as a version's editor carries them. */
+export const OWNER = { id: "u1", username: "ana", avatar_url: null };
+export const BOB = { id: "u2", username: "bob", avatar_url: null };
 
 /** A direct source with one link and no file, changed by `overrides`. */
 export const source = (overrides: Partial<Source> = {}): Source => ({
@@ -17,9 +22,13 @@ export const source = (overrides: Partial<Source> = {}): Source => ({
   ...overrides,
 });
 
-/** A geolocated event with every optional field empty and one URL-only source, for detail-panel
- *  tests. */
-export const eventDetail = (id: string, title: string): EventDetail => ({
+/** A geolocated event with every optional field empty and one URL-only source, changed by
+ *  `overrides`. */
+export const eventDetail = (
+  id: string,
+  title: string,
+  overrides: Partial<EventDetail> = {},
+): EventDetail => ({
   id,
   title,
   coords: { lat: 49.71, lng: 37.616 },
@@ -32,7 +41,7 @@ export const eventDetail = (id: string, title: string): EventDetail => ({
   before_closed_status: null,
   detected_from_url: null,
   detected_via: null,
-  owner: { id: "u1", username: "ana" },
+  owner: ANA,
   tags: [],
   conflicts: [],
   sources: [source()],
@@ -44,6 +53,7 @@ export const eventDetail = (id: string, title: string): EventDetail => ({
   thumbnail: null,
   requested_by: null,
   geolocators: [],
+  ...overrides,
 });
 
 /** One source as `services/versions.source_entry` files it in a snapshot. */

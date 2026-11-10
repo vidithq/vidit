@@ -7,14 +7,10 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ username: "ana" }),
 }));
 
-vi.mock("@/hooks/useRequireAuth", () => ({
-  useRequireAuth: () => ({ user: { id: "u1", username: "ana" }, loading: false }),
-}));
+vi.mock("@/hooks/useRequireAuth", () => import("@/test/requireAuthStub"));
 
-const useApiResource = vi.fn();
-vi.mock("@/hooks/useApiResource", () => ({
-  useApiResource: (path: string | null) => useApiResource(path),
-}));
+import { useApiResource } from "@/test/apiResourceStub";
+vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
 import { recordNavigation } from "@/lib/navigation";
 import type { EventDetail } from "@/types";

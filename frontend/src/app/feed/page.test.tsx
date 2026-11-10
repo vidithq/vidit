@@ -75,7 +75,7 @@ vi.mock("@/hooks/useCursorList", () => ({
 }));
 
 import FeedPage from "./page";
-import { histogram, openFilterGroups, sheetButton } from "@/test/filters";
+import { histogram, seedOpenFilterGroups, sheetButton } from "@/test/filters";
 
 const ANA = { id: "u1", username: "ana", avatar_url: null };
 const BOB = { id: "u2", username: "bob", avatar_url: null };
@@ -102,7 +102,7 @@ function item(extra: Partial<FeedItem>): FeedItem {
 
 const lastPath = () => walk.paths[walk.paths.length - 1];
 
-beforeEach(openFilterGroups);
+beforeEach(seedOpenFilterGroups);
 
 beforeEach(() => {
   walk.items = [];

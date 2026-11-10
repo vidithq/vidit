@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { apiFetch } from "@/lib/api";
 import {
   newSourceDraft,
   SOURCE_FIELDS,
@@ -17,10 +16,8 @@ import { SourceEditor, type SourceEditorInvalid } from "./SourceEditor";
 import { pickOption } from "@/test/options";
 import { SOURCE_KIND_LABELS, type SourceKind } from "@/lib/sources";
 
-vi.mock("@/lib/api", async (original) => ({
-  ...(await original<typeof import("@/lib/api")>()),
-  apiFetch: vi.fn(),
-}));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 const SNAPSHOT_PLACEHOLDER =
   "Paste a snapshot link (web.archive.org, archive.today, ghostarchive.org)";
@@ -94,7 +91,7 @@ describe("SourceEditor", () => {
   it("shows the provider's reopening help and credit as a satellite link is typed", async () => {
     vi.useFakeTimers();
     const earth = "https://earth.google.com/web/@47.09,37.54,50a";
-    (apiFetch as unknown as Mock).mockResolvedValue({
+    apiFetch.mockResolvedValue({
       links: [
         {
           url: earth,

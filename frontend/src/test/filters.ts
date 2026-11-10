@@ -5,7 +5,7 @@ import { FILTER_GROUPS } from "@/components/filters/model";
 import { FILTER_GROUPS_KEY } from "@/hooks/useFilterPanelState";
 
 /** A fresh viewer who expanded every group of the filter panel. */
-export function openFilterGroups() {
+export function seedOpenFilterGroups() {
   localStorage.clear();
   localStorage.setItem(FILTER_GROUPS_KEY, JSON.stringify(FILTER_GROUPS.map((g) => g.title)));
 }

@@ -296,7 +296,7 @@ export const COLLECTED_EVENT: EventListItem = {
 };
 
 /** Id of the collection's second item. */
-export const SECOND_COLLECTED_EVENT_ID = "11111111-1111-4111-8111-111111111112";
+const SECOND_COLLECTED_EVENT_ID = "11111111-1111-4111-8111-111111111112";
 
 /**
  * The collection's second item.
