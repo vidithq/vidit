@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { countLabel, formatInstantOrDate, safeHostname } from "@/lib/format";
+import { countLabel, formatDate, formatInstantOrDate, safeHostname } from "@/lib/format";
+
+describe("formatDate", () => {
+  it("prints the UTC day of a date-only value in a zone west of UTC", () => {
+    expect(new Date("2026-03-14").getTimezoneOffset()).toBeGreaterThan(0);
+    expect(formatDate("2026-03-14")).toBe("14 Mar 2026");
+  });
+
+  it("prints the UTC day of an instant", () => {
+    expect(formatDate("2026-03-14T02:00:00Z")).toBe("14 Mar 2026");
+  });
+});
 
 describe("formatInstantOrDate", () => {
   it("shows the time when the instant is not midnight UTC", () => {

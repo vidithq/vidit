@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { DetailCard, DetailRow } from "@/components/ui/DetailRow";
 import { TEXT_LINK } from "@/components/ui/styles";
-import { formatDate, formatInstantDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { eventHref } from "@/lib/routes";
 import type { Site } from "@/lib/sites";
 import { LinkEffectPill, SiteKindPill } from "./SiteBadges";
@@ -12,7 +12,7 @@ import { LinkEffectPill, SiteKindPill } from "./SiteBadges";
 export function lastSourceText(site: Pick<Site, "last_source">): string {
   const source = site.last_source;
   if (!source) return "No source";
-  const date = formatInstantDate(source.captured_at);
+  const date = formatDate(source.captured_at);
   return source.provider ? `${date}, ${source.provider.name}` : date;
 }
 
@@ -49,8 +49,8 @@ export function SiteDetails({ site }: { site: Site }) {
           <LatestEffectValue effect={site.latest_link_effect} />
         </DetailRow>
       )}
-      <DetailRow label="Created" value={formatInstantDate(site.created_at)} />
-      {site.hidden_at && <DetailRow label="Withheld" value={formatInstantDate(site.hidden_at)} />}
+      <DetailRow label="Created" value={formatDate(site.created_at)} />
+      {site.hidden_at && <DetailRow label="Withheld" value={formatDate(site.hidden_at)} />}
     </DetailCard>
   );
 }

@@ -2,7 +2,7 @@ import type { Conflict, EventStatus, Media, Tag } from "@/types";
 import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
 import type { ActiveFilter } from "./ActiveFilterPills";
 import { accountName } from "@/lib/accounts";
-import { formatInstantDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import type { Option } from "@/components/ui/OptionSearch";
 import { conflictLabel, sortConflicts } from "@/lib/conflicts";
 import { searchTypeLabel } from "@/lib/items";
@@ -83,9 +83,9 @@ export function dimensionOptions(
 
 /** A date window in words: "From 1 Jan 2024", "Until 1 Jan 2025" or "1 Jan 2024 to 1 Jan 2025". */
 export function rangeSummary(from: string, to: string): string {
-  if (from && to) return `${formatInstantDate(from)} to ${formatInstantDate(to)}`;
-  if (from) return `From ${formatInstantDate(from)}`;
-  return `Until ${formatInstantDate(to)}`;
+  if (from && to) return `${formatDate(from)} to ${formatDate(to)}`;
+  if (from) return `From ${formatDate(from)}`;
+  return `Until ${formatDate(to)}`;
 }
 
 /** The value a dimension holds, as removable pills: one per picked option in the options' order,

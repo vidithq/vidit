@@ -9,13 +9,13 @@ import { Button } from "@/components/ui/Button";
 import { DetailRow } from "@/components/ui/DetailRow";
 import { Pill } from "@/components/ui/Pill";
 import { cn } from "@/lib/cn";
-import { formatDate, formatInstantDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { formatAreaKm2, zoneAreaKm2, zoneVertices } from "@/lib/siteZone";
 import type { SiteContour, SiteSource } from "@/lib/sites";
 
 /** A site source's name, by its capture day: *Source of 7 Sept 2026*. */
 export function siteSourceName(source: Pick<SiteSource, "captured_at" | "created_at">): string {
-  return `Source of ${formatInstantDate(source.captured_at ?? source.created_at)}`;
+  return `Source of ${formatDate(source.captured_at ?? source.created_at)}`;
 }
 
 /** A site source's name inside a sentence: *the source of 7 Sept 2026*. */

@@ -8,7 +8,7 @@ import { PageColumns, PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { CollectionIcon, collectionSpanLabel, eventCountLabel } from "@/lib/collections";
-import { formatInstantDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 /**
  * The one shell of a collection: the collection page and both collection forms render it and only
@@ -112,7 +112,7 @@ export function CollectionDetails({
             <DetailPills items={tags} />
           </DetailRow>
         )}
-        {created && <DetailRow label="Created" value={formatInstantDate(created)} />}
+        {created && <DetailRow label="Created" value={formatDate(created)} />}
       </DetailCard>
     </section>
   );
