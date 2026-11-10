@@ -38,73 +38,32 @@ import { useApiResource } from "@/test/apiResourceStub";
 vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
 // The page walks the cursor once and hands that sequence to the map and the list.
-const fetchCollectionSequence = vi.fn();
-const deleteCollection = vi.fn();
-const reportCollection = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  fetchCollectionSequence: (id: string, signal?: AbortSignal) =>
-    fetchCollectionSequence(id, signal),
-  deleteCollection: (id: string) => deleteCollection(id),
-  reportCollection: (id: string, body: unknown) => reportCollection(id, body),
+  fetchCollectionSequence: vi.fn(),
+  deleteCollection: vi.fn(),
+  reportCollection: vi.fn(),
 }));
 
-import type { Collection } from "@/lib/collections";
-import type { EventListItem } from "@/types";
+import {
+  deleteCollection,
+  fetchCollectionSequence,
+  reportCollection,
+  type Collection,
+} from "@/lib/collections";
 
 import CollectionPage from "./page";
 import { signedInAs, signedOut } from "@/test/auth";
+import { collection, eventRow } from "@/test/collection";
 import { pickOption } from "@/test/options";
 
-const OWNER = { id: "u1", username: "ana", avatar_url: null };
-
-const collection = (over: Partial<Collection> = {}): Collection => ({
-  id: "c1",
-  owner: OWNER,
-  title: "Kupiansk rail corridor",
-  description: "<p>Three days of strikes on the eastern approach.</p>",
-  description_text: "Three days of strikes on the eastern approach.",
-  cover: [],
-  tags: [],
-  event_count: 5,
-  first_date: "2026-03-14",
-  last_date: "2026-03-16",
-  created_at: "2026-03-21T09:00:00Z",
-  hidden_at: null,
-  ...over,
-});
-
-const ITEMS: EventListItem[] = [
-  {
-    id: "e1",
-    title: "Strike on the rail junction",
-    status: "geolocated",
-    occurred_date: "2026-03-14",
-    coords: { lat: 49.71, lng: 37.616 },
-    before_closed_status: null,
-    requested_at: null,
-    geolocators: [],
-    conflicts: [],
-    is_graphic: false,
-    media: null,
-    owner: OWNER,
-    tags: [],
-  },
-  {
-    id: "e2",
-    title: "Damaged locomotive shed",
+const ITEMS = [
+  eventRow("e1", "Strike on the rail junction"),
+  eventRow("e2", "Damaged locomotive shed", {
     status: "detected",
     occurred_date: "2026-03-15",
     coords: { lat: 49.613, lng: 37.492 },
-    before_closed_status: null,
-    requested_at: null,
-    geolocators: [],
-    conflicts: [],
-    is_graphic: false,
-    media: null,
-    owner: OWNER,
-    tags: [],
-  },
+  }),
 ];
 
 /** The one path the page reads: the collection. */
@@ -120,17 +79,10 @@ async function renderPage() {
 }
 
 beforeEach(() => {
-  useAuth.mockReset();
-  useApiResource.mockReset();
-  fetchCollectionSequence.mockReset();
-  deleteCollection.mockReset();
-  reportCollection.mockReset();
-  replace.mockReset();
-  push.mockReset();
   searchParams.delete("step");
   useAuth.mockReturnValue(signedOut());
   mockReads(collection());
-  fetchCollectionSequence.mockResolvedValue(ITEMS);
+  vi.mocked(fetchCollectionSequence).mockResolvedValue(ITEMS);
 });
 
 describe("CollectionPage", () => {
@@ -270,7 +222,7 @@ describe("CollectionPage", () => {
 
   it("offers no map for a collection with nothing on it", async () => {
     mockReads(collection({ event_count: 0, first_date: null, last_date: null }));
-    fetchCollectionSequence.mockResolvedValue([]);
+    vi.mocked(fetchCollectionSequence).mockResolvedValue([]);
 
     await renderPage();
 
@@ -376,8 +328,6 @@ describe("CollectionPage", () => {
   });
 
   it("reports the collection from the header, with no account", async () => {
-    reportCollection.mockResolvedValue(undefined);
-
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Report" }));
@@ -401,7 +351,7 @@ describe("CollectionPage", () => {
 
   it("drops the collection on a second click, then lands on the profile", async () => {
     useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
-    deleteCollection.mockResolvedValue(undefined);
+    vi.mocked(deleteCollection).mockResolvedValue(undefined);
 
     await renderPage();
 
@@ -421,7 +371,7 @@ describe("CollectionPage", () => {
 
   it("keeps the collection and says so when the drop fails", async () => {
     useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
-    deleteCollection.mockRejectedValue(new Error("nope"));
+    vi.mocked(deleteCollection).mockRejectedValue(new Error("nope"));
 
     await renderPage();
 
@@ -443,7 +393,7 @@ describe("CollectionPage", () => {
     const rows = () => screen.getAllByRole("button", { name: /^Read this collection from/ });
 
     it("lists the events 20 at a time behind Show more", async () => {
-      fetchCollectionSequence.mockResolvedValue(many);
+      vi.mocked(fetchCollectionSequence).mockResolvedValue(many);
 
       await renderPage();
 
@@ -456,7 +406,7 @@ describe("CollectionPage", () => {
     });
 
     it("opens the pages down to the step a link carries", async () => {
-      fetchCollectionSequence.mockResolvedValue(many);
+      vi.mocked(fetchCollectionSequence).mockResolvedValue(many);
       searchParams.set("step", "23");
 
       await renderPage();

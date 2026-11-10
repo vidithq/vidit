@@ -72,8 +72,7 @@ function renderForm() {
 }
 
 beforeEach(() => {
-  push.mockReset();
-  vi.mocked(saveSiteVersion).mockReset().mockResolvedValue(SITE);
+  vi.mocked(saveSiteVersion).mockResolvedValue(SITE);
 });
 
 describe("SiteEditForm", () => {

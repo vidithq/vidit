@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ANA, signedInAs, signedOut } from "@/test/auth";
+import { signedInAs, signedOut } from "@/test/auth";
+import { collection, eventRow } from "@/test/collection";
 import { textHtml } from "@/test/proofEditorStub";
 
 const push = vi.fn();
@@ -20,24 +21,13 @@ vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"
 import { useApiResource } from "@/test/apiResourceStub";
 vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
-const updateCollection = vi.fn();
-const fetchCollectionSequence = vi.fn();
-const addEventToCollection = vi.fn();
-const removeEventFromCollection = vi.fn();
-const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  updateCollection: (
-    id: string,
-    title: string,
-    description: string,
-  ) => updateCollection(id, title, description),
-  fetchCollectionSequence: (id: string) => fetchCollectionSequence(id),
-  addEventToCollection: (c: string, e: string) => addEventToCollection(c, e),
-  removeEventFromCollection: (c: string, e: string) =>
-    removeEventFromCollection(c, e),
-  searchPickableEvents: (username: string, q: string) =>
-    searchPickableEvents(username, q),
+  updateCollection: vi.fn(),
+  fetchCollectionSequence: vi.fn(),
+  addEventToCollection: vi.fn(),
+  removeEventFromCollection: vi.fn(),
+  searchPickableEvents: vi.fn(),
 }));
 
 // The add block's first page of the analyst's events.
@@ -50,25 +40,16 @@ vi.mock("@/hooks/useCursorList", () => ({
   useCursorList: () => useCursorList(),
 }));
 
-import type { Collection } from "@/lib/collections";
+import {
+  addEventToCollection,
+  fetchCollectionSequence,
+  removeEventFromCollection,
+  searchPickableEvents,
+  updateCollection,
+  type Collection,
+} from "@/lib/collections";
 
 import EditCollectionPage from "./page";
-
-
-/** One of the analyst's own events. */
-const event = (id: string, title: string) => ({
-  id,
-  title,
-  status: "geolocated",
-  media: null,
-  is_graphic: false,
-  occurred_date: "2026-03-15",
-  coords: { lat: 49.71, lng: 37.616 },
-  tags: [],
-  owner: ANA,
-  conflicts: [],
-  before_closed_status: null,
-});
 
 /** What the add block lists. */
 function mockBrowse(items: unknown[]) {
@@ -84,35 +65,23 @@ function mockBrowse(items: unknown[]) {
   apiFetchPage.mockResolvedValue({ items, nextCursor: null });
 }
 
-const collection = (over: Partial<Collection> = {}): Collection => ({
-  id: "c1",
-  owner: { id: "u1", username: "ana", avatar_url: null },
-  title: "Kupiansk rail corridor",
-  description: "<p>Three days of strikes on the eastern approach.</p>",
-  description_text: "Three days of strikes on the eastern approach.",
-  cover: [],
-  tags: [],
-  event_count: 5,
-  first_date: "2026-03-14",
-  last_date: "2026-03-16",
-  created_at: "2026-03-21T09:00:00Z",
-  hidden_at: null,
-  ...over,
-});
-
-/** The page's read: the collection it edits. */
+/** The page's read: the collection it edits, served at its own path only. */
 function mockRead(data: Collection | null, error: string | null = null) {
-  useApiResource.mockReturnValue({
-    data,
-    error,
+  useApiResource.mockImplementation((path: string | null) => ({
+    data: path === "/collections/c1" ? data : null,
+    error: path === "/collections/c1" ? error : null,
     loading: false,
     refetch: vi.fn(),
-  });
+  }));
 }
 
-/** The collection the page opens on: the picker's first-block rows and the save's baseline. */
-const sequenceOf = (...ids: string[]) =>
-  ids.map((id) => event(id, `Strike ${id}`));
+/** The collection the page opens on, served for `c1` only: the picker's first-block rows and the
+ *  save's baseline. */
+function mockSequence(...ids: string[]) {
+  vi.mocked(fetchCollectionSequence).mockImplementation(async (id) =>
+    id === "c1" ? ids.map((e) => eventRow(e, `Strike ${e}`)) : [],
+  );
+}
 
 /** Render, then wait for the two reads the form needs. */
 async function renderPage() {
@@ -121,23 +90,13 @@ async function renderPage() {
 }
 
 beforeEach(() => {
-  push.mockReset();
-  replace.mockReset();
-  useAuth.mockReset();
-  useApiResource.mockReset();
-  updateCollection.mockReset();
-  fetchCollectionSequence.mockReset();
-  addEventToCollection.mockReset();
-  removeEventFromCollection.mockReset();
-  searchPickableEvents.mockReset();
-  useCursorList.mockReset();
   useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
   mockRead(collection());
-  updateCollection.mockResolvedValue(collection());
-  fetchCollectionSequence.mockResolvedValue(sequenceOf("e1", "e2"));
-  addEventToCollection.mockResolvedValue(undefined);
-  removeEventFromCollection.mockResolvedValue(undefined);
-  searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(updateCollection).mockResolvedValue(collection());
+  mockSequence("e1", "e2");
+  vi.mocked(addEventToCollection).mockResolvedValue(undefined);
+  vi.mocked(removeEventFromCollection).mockResolvedValue(undefined);
+  vi.mocked(searchPickableEvents).mockResolvedValue({ items: [], total: 0 });
   mockBrowse([]);
 });
 
@@ -152,29 +111,23 @@ describe("EditCollectionPage", () => {
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 
-  it("opens on what the collection currently says about itself", async () => {
+  it("opens on what the collection currently says about itself, under a bare heading", async () => {
     await renderPage();
 
-    expect(useApiResource).toHaveBeenCalledWith("/collections/c1");
     expect(screen.getByLabelText("Title")).toHaveValue(
       "Kupiansk rail corridor",
     );
-    // Seeded with the collection's description; `find` because the form loads it through `next/dynamic`.
-    expect(
-      await screen.findByRole("textbox", { name: "Description" }),
-    ).toHaveValue("Three days of strikes on the eastern approach.");
-  });
-
-  it("carries no subtitle naming the collection, the Title field says it", async () => {
-    await renderPage();
-
+    // No subtitle naming the collection: the Title field says it.
     expect(
       screen.getByRole("heading", { name: "Edit collection" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Kupiansk rail corridor" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Title")).toHaveValue("Kupiansk rail corridor");
+    // Seeded with the collection's description; `find` because the form loads it through `next/dynamic`.
+    expect(
+      await screen.findByRole("textbox", { name: "Description" }),
+    ).toHaveValue("Three days of strikes on the eastern approach.");
   });
 
   it("writes both details and returns to the collection", async () => {
@@ -198,7 +151,6 @@ describe("EditCollectionPage", () => {
   it("opens the picker on what the collection holds", async () => {
     await renderPage();
 
-    expect(fetchCollectionSequence).toHaveBeenCalledWith("c1");
     // The first block is the current items, each with a remove cross.
     expect(
       screen.getByText("2 events, ordered by event date, earliest first."),
@@ -211,9 +163,9 @@ describe("EditCollectionPage", () => {
   });
 
   it("writes the difference the picker made, after the details", async () => {
-    mockBrowse([event("e4", "Strike on the depot")]);
+    mockBrowse([eventRow("e4", "Strike on the depot")]);
     // Opens holding `e3` (removed below) and `e2` (kept); `e4` is added.
-    fetchCollectionSequence.mockResolvedValue(sequenceOf("e2", "e3"));
+    mockSequence("e2", "e3");
 
     await renderPage();
     fireEvent.click(
@@ -234,8 +186,8 @@ describe("EditCollectionPage", () => {
   });
 
   it("stops at the first refusal the difference meets", async () => {
-    fetchCollectionSequence.mockResolvedValue(sequenceOf("e1"));
-    removeEventFromCollection.mockRejectedValue(new Error("Nope."));
+    mockSequence("e1");
+    vi.mocked(removeEventFromCollection).mockRejectedValue(new Error("Nope."));
 
     await renderPage();
     fireEvent.click(
@@ -252,7 +204,7 @@ describe("EditCollectionPage", () => {
   });
 
   it("stays on the page and says why when the save is refused", async () => {
-    updateCollection.mockRejectedValue(new Error("Title already used."));
+    vi.mocked(updateCollection).mockRejectedValue(new Error("Title already used."));
 
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Save collection" }));

@@ -13,7 +13,6 @@ import NotificationUnsubscribePage from "./page";
 describe("NotificationUnsubscribePage", () => {
   beforeEach(() => {
     link.token = "abc123.request_fulfilled.sig";
-    apiFetch.mockReset();
   });
 
   it("names the kind, turns nothing off until the reader confirms, then posts the token", async () => {

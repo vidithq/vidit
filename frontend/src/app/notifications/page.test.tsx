@@ -53,9 +53,7 @@ function serve(items: Notification[]) {
 
 describe("NotificationsPage", () => {
   beforeEach(() => {
-    apiFetch.mockReset().mockResolvedValue(undefined);
-    apiFetchPage.mockReset();
-    mocks.refresh.mockReset();
+    apiFetch.mockResolvedValue(undefined);
   });
 
   it("lists rows under New and Earlier, each linking to what it names", async () => {

@@ -51,13 +51,10 @@ vi.mock("node:dns", async (importOriginal) => {
 });
 
 /** The rejection log the image leg writes; silenced. */
-const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+const warn = vi.spyOn(console, "warn");
 
 beforeEach(() => {
-  fetchMock.mockReset();
-  undiciFetchMock.mockReset();
-  dnsLookupMock.mockReset();
-  warn.mockClear();
+  warn.mockImplementation(() => {});
   vi.stubGlobal("fetch", fetchMock);
 });
 

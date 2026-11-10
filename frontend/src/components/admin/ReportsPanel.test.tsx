@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { apiFetch, apiFetchPage } from "@/test/apiStub";
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
@@ -26,11 +26,6 @@ const report = (id: string) => ({
 const page = (ids: string[], pageNo: number, total: number) => ({
   items: { items: ids.map(report), total, page: pageNo, per_page: 20 },
   nextCursor: null,
-});
-
-beforeEach(() => {
-  apiFetch.mockReset();
-  apiFetchPage.mockReset();
 });
 
 describe("<ReportsPanel>", () => {

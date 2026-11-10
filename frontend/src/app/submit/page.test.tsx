@@ -72,10 +72,6 @@ beforeEach(() => {
   conflictsLoaded = true;
   storesDrafts = false;
   storedDraft.value = null;
-  vi.mocked(writeDraft).mockClear();
-  vi.mocked(clearDraft).mockClear();
-  vi.mocked(createEvent).mockReset();
-  vi.mocked(createEventRequest).mockReset();
   apiFetch.mockResolvedValue([]);
 });
 

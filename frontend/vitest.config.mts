@@ -22,6 +22,7 @@ export default defineConfig({
       // hard-fails on import when unset, but no test sends real traffic.
       NEXT_PUBLIC_API_URL: "https://api.invalid",
     },
+    mockReset: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
   },

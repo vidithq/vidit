@@ -42,9 +42,6 @@ function row(title: string): HTMLElement {
 }
 
 beforeEach(() => {
-  useApiResource.mockReset();
-  addEventToCollection.mockReset();
-  removeEventFromCollection.mockReset();
   useApiResource.mockReturnValue({ data: MEMBERSHIPS, error: null });
 });
 

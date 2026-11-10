@@ -19,8 +19,6 @@ const code = {
 };
 
 beforeEach(() => {
-  apiFetch.mockReset();
-  apiFetchPage.mockReset();
   apiFetchPage.mockResolvedValue({ items: [code], nextCursor: null });
 });
 

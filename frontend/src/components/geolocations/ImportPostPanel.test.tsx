@@ -67,8 +67,6 @@ function paste() {
 describe("ImportPostPanel", () => {
   beforeEach(() => {
     push.mockClear();
-    vi.mocked(importFromPost).mockReset();
-    useApiResource.mockReset();
     existingRow("gone");
   });
 

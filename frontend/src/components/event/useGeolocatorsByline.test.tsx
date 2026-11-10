@@ -39,7 +39,6 @@ function pick(username: string) {
 
 describe("<GeolocatorsByline>", () => {
   beforeEach(() => {
-    apiFetch.mockReset();
     apiFetch.mockResolvedValue(undefined);
     mocks.invites = [{ user: CY, invited_at: "2026-10-15T09:00:00Z" }];
   });

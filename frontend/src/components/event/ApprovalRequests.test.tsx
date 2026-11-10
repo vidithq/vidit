@@ -95,7 +95,6 @@ const dialog = () => screen.getByRole("dialog", { name: "Request approval" });
 
 describe("<RequestApprovalAction>", () => {
   beforeEach(() => {
-    apiFetch.mockReset();
     mocks.viewer = null;
   });
 

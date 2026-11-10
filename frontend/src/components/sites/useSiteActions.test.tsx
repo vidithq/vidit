@@ -70,7 +70,6 @@ function Actions({ site, onChanged }: { site: Site; onChanged: () => void }) {
 }
 
 beforeEach(() => {
-  apiFetch.mockReset();
   apiFetch.mockResolvedValue({});
   mocks.admin = true;
 });

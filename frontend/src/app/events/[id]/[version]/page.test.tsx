@@ -79,8 +79,6 @@ beforeEach(() => {
   segment = "v2";
   current = EVENT;
   viewer.id = null;
-  replace.mockClear();
-  notFound.mockClear();
   rows = {
     1: version(1, snapshot("v1 title"), { note: "why v2 happened" }),
     2: version(2, snapshot("v2 title"), { note: "why v3 happened" }),

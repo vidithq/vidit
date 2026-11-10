@@ -1,28 +1,13 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { useApiResource } from "@/test/apiResourceStub";
 vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
 import { type Collection, type CollectionPage } from "@/lib/collections";
+import { collection } from "@/test/collection";
 
 import { CollectionsSection } from "./CollectionsSection";
-
-const collection = (over: Partial<Collection> = {}): Collection => ({
-  id: "c1",
-  owner: { id: "u1", username: "ana", avatar_url: null },
-  title: "Kupiansk rail corridor",
-  description: "<p>Three days of strikes on the eastern approach.</p>",
-  description_text: "Three days of strikes on the eastern approach.",
-  cover: [],
-  tags: [],
-  event_count: 5,
-  first_date: "2026-03-14",
-  last_date: "2026-03-16",
-  created_at: "2026-03-21T09:00:00Z",
-  hidden_at: null,
-  ...over,
-});
 
 const page = (
   items: Collection[],
@@ -40,10 +25,6 @@ const shelf = (count: number): Collection[] =>
   Array.from({ length: count }, (_, i) =>
     collection({ id: `c${i + 1}`, title: `Collection ${i + 1}` }),
   );
-
-beforeEach(() => {
-  useApiResource.mockReset();
-});
 
 describe("CollectionsSection", () => {
   it("reads the collections a visitor may see and opens each on its own page", () => {

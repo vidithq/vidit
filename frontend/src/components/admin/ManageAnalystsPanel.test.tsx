@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "@/test/apiStub";
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
@@ -16,10 +16,6 @@ const ana = {
   sponsor: null,
   created_at: "2026-10-01T00:00:00Z",
 };
-
-beforeEach(() => {
-  apiFetch.mockReset();
-});
 
 describe("<ManageAnalystsPanel>", () => {
   it("picks an analyst from the search and hard deletes from the dialog", async () => {

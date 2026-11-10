@@ -55,7 +55,7 @@ async function settle() {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  apiFetch.mockReset().mockResolvedValue(CHECK);
+  apiFetch.mockResolvedValue(CHECK);
 });
 
 afterEach(() => {

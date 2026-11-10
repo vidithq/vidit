@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { useReportContent } from "./useReportContent";
 import { reportCollection } from "@/lib/collections";
@@ -24,11 +24,6 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 const mockReport = reportEvent as unknown as Mock;
 const mockReportCollection = reportCollection as unknown as Mock;
-
-beforeEach(() => {
-  mockReport.mockReset();
-  mockReportCollection.mockReset();
-});
 
 function ReportHarness({
   eventId,

@@ -80,8 +80,6 @@ const fiveRows = [
 
 beforeEach(() => {
   vi.useFakeTimers();
-  searchPickableEvents.mockReset();
-  apiFetchPage.mockReset();
   searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
   mockBrowse([row({ id: "e1" })]);
 });
