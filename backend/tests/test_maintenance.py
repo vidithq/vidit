@@ -185,11 +185,15 @@ def test_digest_survives_a_provider_failure(db, detection_owner, monkeypatch):
     assert result["detections_pending"] == 0
 
 
-def test_digest_caps_the_addresses_one_click_writes_to(db, detection_owner):
-    """One click is bounded (a provider round-trip per analyst, no resume marker); the biggest backlogs are kept."""
-    make_detection(db, detection_owner)
-    selected = maintenance_service.detections_awaiting_completion(db, limit=1)
-    assert len(selected) == 1
+def test_digest_caps_the_addresses_one_click_writes_to(db, make_user):
+    """One click is bounded (a provider round-trip per analyst, no resume marker); the biggest
+    backlogs are kept."""
+    small, big = make_user("d"), make_user("d")
+    make_detection(db, small)
+    make_detection(db, big)
+    make_detection(db, big)
+    [(user, _address, count)] = maintenance_service.detections_awaiting_completion(db, limit=1)
+    assert (user.id, count) == (big.id, 2)
 
 
 def test_send_completion_digests_endpoint_for_admin(admin_user, db, monkeypatch):
@@ -221,12 +225,3 @@ def test_send_completion_digests_endpoint_403_for_regular_user(regular_user):
         headers=login_as(client, regular_user),
     )
     assert response.status_code == 403
-
-
-def test_reap_proof_orphans_endpoint_is_gone(admin_user):
-    """The orphan reaper endpoint no longer exists."""
-    response = client.post(
-        "/api/v1/admin/maintenance/reap-proof-orphans",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 404

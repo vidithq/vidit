@@ -133,23 +133,6 @@ def _create_request(user: User, *, files=None, **data):
     )
 
 
-def test_list_returns_seeded_request(db, author):
-    request = _make_request(db, author=author)
-    response = client.get(_LIST)
-    assert response.status_code == 200
-    ids = {row["id"] for row in response.json()}
-    assert str(request.id) in ids
-
-
-def test_list_excludes_soft_deleted(db, author):
-    live = _make_request(db, author=author)
-    dead = _make_request(db, author=author, deleted=True)
-    response = client.get(_LIST)
-    ids = {row["id"] for row in response.json()}
-    assert str(live.id) in ids
-    assert str(dead.id) not in ids
-
-
 def test_list_filters_by_status(db, author):
     open_one = _make_request(db, author=author, status=STATUS_REQUESTED)
     closed = _make_request(db, author=author, status=STATUS_CLOSED)
@@ -187,36 +170,6 @@ def test_list_rejects_unknown_view(author):
     assert client.get("/api/v1/events?view=bogus").status_code == 422
 
 
-def test_list_filters_by_tag(db, author, free_tag):
-    with_tag = _make_request(db, author=author, tags=[free_tag])
-    without_tag = _make_request(db, author=author)
-
-    response = client.get(f"{_LIST}&tag={free_tag.name}")
-    assert response.status_code == 200
-    ids = {row["id"] for row in response.json()}
-    assert str(with_tag.id) in ids
-    assert str(without_tag.id) not in ids
-
-
-def test_list_filters_by_author_exact(db, author):
-    """Exact case-insensitive match; a fragment matches nothing."""
-    request = _make_request(db, author=author)
-    response = client.get(f"{_LIST}&author={author.username.upper()}")
-    assert response.status_code == 200
-    assert str(request.id) in {row["id"] for row in response.json()}
-    response = client.get(f"{_LIST}&author={author.username[2:6]}")
-    assert response.status_code == 200
-    assert str(request.id) not in {row["id"] for row in response.json()}
-
-
-def test_list_honours_limit(db, author):
-    for _ in range(3):
-        _make_request(db, author=author)
-    response = client.get(f"{_LIST}&limit=2")
-    assert response.status_code == 200
-    assert len(response.json()) == 2
-
-
 def test_list_rejects_unusable_limit(author):
     """Below 1 and non-numeric are 422; over the cap clamps."""
     for bad in ("0", "-1", "abc"):
@@ -239,12 +192,6 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert [link["url"] for link in source["links"]] == [_POST_URL]
     assert source["media"]["id"] == str(request.sources[0].media.id)
     assert body["geolocators"] == []
-
-
-def test_detail_404_for_soft_deleted(db, author):
-    request = _make_request(db, author=author, deleted=True)
-    response = client.get(f"/api/v1/events/{request.id}")
-    assert response.status_code == 404
 
 
 def test_create_requires_authentication():

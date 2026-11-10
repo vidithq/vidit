@@ -275,19 +275,6 @@ def test_deleting_an_unknown_approval_is_not_found(db, admin_user):
     assert response.json()["detail"]["code"] == "approval_not_found"
 
 
-def test_the_revoke_endpoint_is_gone(db, author, second_user):
-    geo = published_geo(db, author)
-    approval = approve(geo, second_user).json()
-    response = client.post(
-        f"{_EVENTS}/{geo.id}/approvals/{approval['id']}/revoke",
-        headers=login_as(client, second_user),
-    )
-    assert response.status_code in (404, 405)
-
-
-# ── Joining the geolocators ──────────────────────────────────────────
-
-
 def test_joining_the_geolocators_deletes_the_invitees_approvals(db, author, second_user):
     geo = published_geo(db, author)
     assert approve(geo, second_user).status_code == 201

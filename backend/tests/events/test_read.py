@@ -387,27 +387,6 @@ def test_points_cache_hits_across_one_grid_cell(db, author):
     assert first.content == second.content
 
 
-def test_points_cache_key_covers_bbox():
-    """The builder itself separates two boxes under an identical filter set."""
-    from app.routers.events.read import _build_points_cache_key
-
-    def key(bbox: tuple[float, float, float, float]) -> str:
-        return _build_points_cache_key(
-            bbox=bbox,
-            conflict=None,
-            source_kind=None,
-            level=None,
-            tag=None,
-            occurred_date_from=None,
-            occurred_date_to=None,
-            submitted_from=None,
-            submitted_to=None,
-            author=None,
-        )
-
-    assert key((45.0, 30.0, 50.0, 40.0)) != key((5.0, 5.0, 15.0, 15.0))
-
-
 def test_points_returns_compact_shape(db, author):
     geo = make_event(db, author=author, lat=48.5, lng=34.5)
     response = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
@@ -483,16 +462,6 @@ def test_detected_row_renders_marked_across_surfaces(db, author):
     assert item["status"] == "detected"
 
 
-def test_points_cache_miss_then_hit(db, author):
-    """First call cold, second warm (``X-Cache``); guards against a removed ``points_cache.set``."""
-    make_event(db, author=author)
-    first = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
-    assert first.headers.get("x-cache") == "MISS"
-    second = client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}")
-    assert second.headers.get("x-cache") == "HIT"
-    assert first.content == second.content
-
-
 def test_points_cache_keys_on_filter_combination(db, author, free_tag):
     """Different filter combos must miss independently, not share a cached response."""
     make_event(db, author=author, tags=[free_tag])
@@ -534,142 +503,59 @@ def test_points_filters_media(db, author):
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}&media=bogus").status_code == 422
 
 
-def test_points_cache_key_builder_is_separator_safe():
-    """Filter values carrying the legacy ``:`` separator must not collide.
-
-    The old ``f"points:{conflict}:{tag}"`` key folded ``conflict=["a:b"]`` and
-    ``conflict=["a"], tag=["b"]`` together; the hashed builder serialises via ``orjson``.
-    """
+def _points_key(**filters) -> str:
     from app.routers.events.read import _build_points_cache_key
 
-    colliding_a = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=["a:b"],
-        source_kind=None,
-        level=None,
-        tag=None,
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
+    unfiltered = dict.fromkeys(
+        (
+            "conflict",
+            "source_kind",
+            "level",
+            "tag",
+            "occurred_date_from",
+            "occurred_date_to",
+            "submitted_from",
+            "submitted_to",
+            "author",
+        )
     )
-    colliding_b = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=["a"],
-        source_kind=None,
-        level=None,
-        tag=["b"],
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert colliding_a != colliding_b, "colon-bearing inputs must produce distinct keys"
-
-    # Same inputs give the same key, so a builder change cannot turn every request into a MISS.
-    same_a = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=["ukraine"],
-        source_kind=None,
-        level=None,
-        tag=None,
-        occurred_date_from="2024-01-01",
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    same_b = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=["ukraine"],
-        source_kind=None,
-        level=None,
-        tag=None,
-        occurred_date_from="2024-01-01",
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert same_a == same_b, "identical filter tuples must produce the same key"
-
-    # source_kind and level participate in the key (guards against a bucket being dropped).
-    cs_a = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=None,
-        source_kind=["satellite"],
-        level=None,
-        tag=None,
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    cs_b = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=None,
-        source_kind=["drone"],
-        level=None,
-        tag=None,
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert cs_a != cs_b, "source_kind must participate in the cache key"
-    level_key = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        conflict=None,
-        source_kind=["satellite"],
-        level=["indirect"],
-        tag=None,
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert level_key != cs_a, "level must participate in the cache key"
+    return _build_points_cache_key(bbox=WORLD_BOUNDS, **{**unfiltered, **filters})
 
 
 @pytest.mark.parametrize(
-    "bucket",
-    ["conflict", "source_kind", "level", "tag"],
-    ids=["conflict-list", "source-kind-list", "level-list", "tag-list"],
+    "filters",
+    [
+        {"conflict": ["x"]},
+        {"source_kind": ["x"]},
+        {"level": ["x"]},
+        {"tag": ["x"]},
+        {"occurred_date_from": "2024-01-01"},
+        {"occurred_date_to": "2024-01-01"},
+        {"submitted_from": "2024-01-01"},
+        {"submitted_to": "2024-01-01"},
+        {"author": "x"},
+        {"media": ["video"]},
+        {"approved": True},
+        {"approved_by": "x"},
+        {"approved_by_org": "x"},
+    ],
+    ids=lambda filters: next(iter(filters)),
 )
+def test_points_cache_key_covers_each_filter(filters):
+    assert _points_key(**filters) != _points_key()
+    assert _points_key(**filters) == _points_key(**filters)
+
+
+def test_points_cache_key_keeps_values_in_their_bucket():
+    """The same values spread over other buckets give another key."""
+    assert _points_key(conflict=["a"], tag=["b"]) != _points_key(conflict=["b"], tag=["a"])
+    assert _points_key(conflict=["a"], tag=["b"]) != _points_key(conflict=["a", "b"])
+
+
+@pytest.mark.parametrize("bucket", ["conflict", "source_kind", "level", "tag"])
 def test_points_cache_key_is_list_order_insensitive(bucket):
-    """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` hit the same cache entry.
-
-    Parametrised so a refactor that sorts one list bucket but not another fails.
-    """
-    from app.routers.events.read import _build_points_cache_key
-
-    buckets = ("conflict", "source_kind", "level", "tag")
-    forward = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        **{bucket: ["alpha", "beta"]},
-        **{other: None for other in buckets if other != bucket},
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    reverse = _build_points_cache_key(
-        bbox=WORLD_BOUNDS,
-        **{bucket: ["beta", "alpha"]},
-        **{other: None for other in buckets if other != bucket},
-        occurred_date_from=None,
-        occurred_date_to=None,
-        submitted_from=None,
-        submitted_to=None,
-        author=None,
-    )
-    assert forward == reverse
+    """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` hit the same cache entry."""
+    assert _points_key(**{bucket: ["alpha", "beta"]}) == _points_key(**{bucket: ["beta", "alpha"]})
 
 
 def test_points_or_within_free_tag_list(db, author):
@@ -767,28 +653,9 @@ def test_points_single_tag_value_back_compat(db, author, free_tag):
 
 
 @pytest.mark.parametrize(
-    "bad",
-    [
-        "1,2,3",
-        "1,2,3,4,5",
-        "1",
-        "foo,bar,baz,qux",
-        "95.0,0.0,96.0,1.0",
-        "0.0,200.0,1.0,201.0",
-        "46.0,30.0,44.0,32.0",
-        "44.0,32.0,46.0,30.0",
-    ],
-    ids=[
-        "too-few-values",
-        "too-many-values",
-        "single-value",
-        "non-numeric",
-        "latitude-out-of-range",
-        "longitude-out-of-range",
-        "inverted-north-south",
-        "inverted-east-west",
-    ],
+    "bad", ["1,2,3", "46.0,30.0,44.0,32.0"], ids=["too-few-values", "inverted"]
 )
 def test_bbox_malformed_returns_422(bad):
+    """The list route shares the bbox parser; its table sits on the points tests."""
     response = client.get(f"/api/v1/events?bbox={bad}")
     assert response.status_code == 422, f"expected 422 for bbox={bad!r}"

@@ -27,114 +27,117 @@ def _reject_code(snapshot: str) -> str:
     return excinfo.value.code
 
 
-def test_a_wayback_replay_url_is_accepted():
-    assert source_archive.validate_snapshot(WAYBACK_SNAPSHOT) == "wayback"
+_ARCHIVE_TODAY_MIRRORS = (
+    "archive.ph",
+    "archive.today",
+    "archive.is",
+    "archive.md",
+    "archive.li",
+    "archive.vn",
+)
 
 
-def test_a_well_formed_replay_url_is_accepted_whatever_it_replays():
-    """Validation says where a snapshot lives, never what it captured. A replay URL
-    naming another link is accepted: the embedded original uses whatever form the
-    platform had at capture time (``youtu.be``, ``twitter.com``, ``t.me/s/``), so
-    comparing would refuse correct snapshots. The form warns the analyst."""
-    for embedded in (
-        "https://elsewhere.test/x",
-        "https://youtu.be/dQw4w9WgXcQ",
-        "https://twitter.com/analyst/status/9876543210",
-    ):
-        snapshot = f"https://web.archive.org/web/{CAPTURE_TS}/{embedded}"
-        assert source_archive.validate_snapshot(snapshot) == "wayback"
+@pytest.mark.parametrize(
+    ("snapshot", "provider"),
+    [
+        pytest.param(WAYBACK_SNAPSHOT, "wayback", id="wayback-replay"),
+        # Validation says where a snapshot lives, never what it captured: the embedded original
+        # keeps whatever form the platform had at capture time, so comparing would refuse
+        # correct snapshots. The form warns the analyst.
+        *(
+            pytest.param(
+                f"https://web.archive.org/web/{CAPTURE_TS}/{embedded}",
+                "wayback",
+                id=f"replays-{embedded}",
+            )
+            for embedded in (
+                "https://elsewhere.test/x",
+                "https://youtu.be/dQw4w9WgXcQ",
+                "https://twitter.com/analyst/status/9876543210",
+            )
+        ),
+        # A link copied from the Wayback player keeps the replay modifier on the timestamp.
+        pytest.param(
+            f"https://web.archive.org/web/{CAPTURE_TS}id_/{SOURCE}", "wayback", id="replay-modifier"
+        ),
+        # The short code embeds nothing, so the shape is the whole check.
+        pytest.param(
+            "https://archive.today/xY9k2/", "archive_today", id="archive-today-trailing-slash"
+        ),
+        # archive.today serves snapshots under six interchangeable domains.
+        *(
+            pytest.param(f"https://{host}/abcde", "archive_today", id=f"mirror-{host}")
+            for host in _ARCHIVE_TODAY_MIRRORS
+        ),
+        # One capture has two addresses: the short code and ``/<timestamp>/<original url>``.
+        pytest.param(
+            f"https://archive.ph/{CAPTURE_TS}/{SOURCE}", "archive_today", id="archive-today-capture"
+        ),
+        # A page capture and a video capture (addressed by the YouTube video id).
+        pytest.param(
+            "https://ghostarchive.org/archive/aBcD1", "ghostarchive", id="ghostarchive-page"
+        ),
+        pytest.param(
+            "https://ghostarchive.org/varchive/dQw4w9WgXcQ", "ghostarchive", id="ghostarchive-video"
+        ),
+    ],
+)
+def test_validate_snapshot_accepts(snapshot, provider):
+    assert source_archive.validate_snapshot(snapshot) == provider
 
 
-def test_a_replay_modifier_is_accepted():
-    """A link copied from the Wayback player (replay modifier on the timestamp) is still a snapshot."""
-    assert (
-        source_archive.validate_snapshot(f"https://web.archive.org/web/{CAPTURE_TS}id_/{SOURCE}")
-        == "wayback"
-    )
-
-
-def test_an_archive_today_code_is_accepted():
-    """The short code embeds nothing, so the shape is the whole check."""
-    assert source_archive.validate_snapshot(ARCHIVE_TODAY_SNAPSHOT) == "archive_today"
-    assert source_archive.validate_snapshot("https://archive.today/xY9k2/") == "archive_today"
-
-
-def test_every_archive_today_mirror_is_the_same_provider():
-    """archive.today serves snapshots under six interchangeable domains; refusing any refuses valid pastes."""
-    for host in (
-        "archive.ph",
-        "archive.today",
-        "archive.is",
-        "archive.md",
-        "archive.li",
-        "archive.vn",
-    ):
-        assert source_archive.validate_snapshot(f"https://{host}/abcde") == "archive_today"
-
-
-def test_an_archive_today_capture_url_is_accepted():
-    """One capture has two addresses: the short code and ``/<timestamp>/<original url>``."""
-    assert (
-        source_archive.validate_snapshot(f"https://archive.ph/{CAPTURE_TS}/{SOURCE}")
-        == "archive_today"
-    )
-
-
-def test_an_archive_today_lookup_is_still_refused():
-    """``archive.ph/newest/<url>`` is not one fixed capture, and ``newest`` is not a digit timestamp, so it is refused."""
-    assert _reject_code(f"https://archive.ph/newest/{SOURCE}") == "snapshot_not_a_snapshot_code"
-    assert _reject_code("https://archive.ph/") == "snapshot_not_a_snapshot_code"
-
-
-def test_both_ghostarchive_shapes_are_accepted():
-    """A page capture and a video capture (addressed by the YouTube video id)."""
-    assert (
-        source_archive.validate_snapshot("https://ghostarchive.org/archive/aBcD1") == "ghostarchive"
-    )
-    assert (
-        source_archive.validate_snapshot("https://ghostarchive.org/varchive/dQw4w9WgXcQ")
-        == "ghostarchive"
-    )
-
-
-def test_a_ghostarchive_url_of_another_shape_is_refused():
-    assert _reject_code("https://ghostarchive.org/") == "snapshot_not_a_snapshot_code"
-    assert (
-        _reject_code(f"https://ghostarchive.org/search/{SOURCE}") == "snapshot_not_a_snapshot_code"
-    )
-
-
-def test_http_is_refused():
-    assert (
-        _reject_code(f"http://web.archive.org/web/{CAPTURE_TS}/{SOURCE}")
-        == "snapshot_url_not_https"
-    )
-
-
-def test_a_host_outside_the_allowlist_is_refused():
-    """The allowlist bounds abuse (the catalog renders the value as an outbound link).
-    The hostname is parsed, not prefix-matched, so subdomain and suffix tricks fail."""
-    for host in (
-        "archive.org",
-        "web-archive.org.evil.example",
-        "archive.ph.evil.example",
-        "archive.today.evil.example",
-        "ghostarchive.org.evil.example",
-        "evil-archive.is",
-    ):
-        assert (
-            _reject_code(f"https://{host}/web/{CAPTURE_TS}/{SOURCE}")
-            == "snapshot_provider_not_allowed"
-        )
-
-
-def test_a_wayback_url_that_is_not_a_replay_url_is_refused():
-    assert _reject_code("https://web.archive.org/about/") == "snapshot_not_a_replay_url"
-
-
-def test_an_oversized_snapshot_is_refused():
-    oversized = "https://archive.ph/" + "a" * SOURCE_URL_MAX_LENGTH
-    assert _reject_code(oversized) == "snapshot_url_too_long"
+@pytest.mark.parametrize(
+    ("snapshot", "code"),
+    [
+        # ``newest`` is not one fixed capture, nor a digit timestamp.
+        pytest.param(
+            f"https://archive.ph/newest/{SOURCE}",
+            "snapshot_not_a_snapshot_code",
+            id="archive-today-lookup",
+        ),
+        pytest.param(
+            "https://archive.ph/", "snapshot_not_a_snapshot_code", id="archive-today-root"
+        ),
+        pytest.param(
+            "https://ghostarchive.org/", "snapshot_not_a_snapshot_code", id="ghostarchive-root"
+        ),
+        pytest.param(
+            f"https://ghostarchive.org/search/{SOURCE}",
+            "snapshot_not_a_snapshot_code",
+            id="ghostarchive-search",
+        ),
+        pytest.param(
+            f"http://web.archive.org/web/{CAPTURE_TS}/{SOURCE}", "snapshot_url_not_https", id="http"
+        ),
+        # The allowlist bounds abuse (the catalog renders the value as an outbound link). The
+        # hostname is parsed, not prefix-matched, so subdomain and suffix tricks fail.
+        *(
+            pytest.param(
+                f"https://{host}/web/{CAPTURE_TS}/{SOURCE}",
+                "snapshot_provider_not_allowed",
+                id=f"host-{host}",
+            )
+            for host in (
+                "archive.org",
+                "web-archive.org.evil.example",
+                "archive.ph.evil.example",
+                "archive.today.evil.example",
+                "ghostarchive.org.evil.example",
+                "evil-archive.is",
+            )
+        ),
+        pytest.param(
+            "https://web.archive.org/about/", "snapshot_not_a_replay_url", id="wayback-not-replay"
+        ),
+        pytest.param(
+            "https://archive.ph/" + "a" * SOURCE_URL_MAX_LENGTH,
+            "snapshot_url_too_long",
+            id="oversized",
+        ),
+    ],
+)
+def test_validate_snapshot_refuses(snapshot, code):
+    assert _reject_code(snapshot) == code
 
 
 # ── provider of a stored copy ──────────────────────────────────────────

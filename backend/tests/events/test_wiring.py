@@ -5,42 +5,26 @@ A shadowed literal path would 422 on its non-UUID segment.
 
 from __future__ import annotations
 
-from app.routers.events import (
-    approval_requests,
-    approvals,
-    batch,
-    duplicates,
-    geolocators,
-    import_archive,
-    import_tweet,
-    item,
-    read,
-    routers,
-    sites,
-    write,
+import pytest
+from fastapi.routing import APIRoute
+
+from app.main import app
+from tests._fixtures import client
+
+_LITERAL_GETS = sorted(
+    route.path
+    for route in app.routes
+    if isinstance(route, APIRoute)
+    and route.path.startswith("/api/v1/events/")
+    and "{" not in route.path
+    and "GET" in route.methods
 )
-from tests.events._helpers import WORLD_BBOX, client
 
 
-def test_router_mount_order_is_pinned():
-    """A re-sort of the router tuple that moves ``item`` off last fails here."""
-    assert routers == (
-        read.router,
-        duplicates.router,
-        import_tweet.router,
-        import_archive.router,
-        write.router,
-        batch.router,
-        geolocators.router,
-        approvals.router,
-        approval_requests.router,
-        sites.router,
-        item.router,
-    )
-    assert routers[-1] is item.router
-
-
-def test_literal_get_routes_are_not_shadowed_by_item():
-    """A literal-path GET reaches its own handler, not ``GET /{id}`` (which would 422)."""
-    assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").status_code == 200
-    assert client.get("/api/v1/events/possible-duplicates").status_code == 401
+@pytest.mark.parametrize("path", _LITERAL_GETS)
+def test_literal_get_routes_are_not_shadowed_by_item(path):
+    """A literal-path GET reaches its own handler, not ``GET /{id}`` (which would 422 on the
+    path segment)."""
+    response = client.get(path)
+    errors = response.json().get("detail", []) if response.status_code == 422 else []
+    assert not [error for error in errors if error["loc"][0] == "path"], response.text

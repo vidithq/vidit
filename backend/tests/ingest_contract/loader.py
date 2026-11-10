@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from app.services.tweet_ingest import Detection, Resolution, acquire_thread, read_tweets, stitch
 from app.services.tweet_ingest.records import TweetRecord
@@ -99,7 +100,8 @@ def secondary_sources_of(detection: Detection) -> list[dict[str, Any]]:
 def assert_resolution_matches(typology: str, path: str, resolution: Resolution) -> None:
     """Assert one entry's resolution answers the typology's expectation.
 
-    One detection per coordinate, each carrying the title, source, mirrors and context links,
+    One detection per coordinate, in order, each carrying the coordinate, the head post it
+    anchors on when the expectation names one, the title, source, mirrors and context links,
     warnings and media split the expectation names. ``paths.<path>.reason`` pins that entry's refusal.
 
     An ``expected["request"]`` block pins the second exit (the draft a coordinate-less
@@ -121,7 +123,12 @@ def assert_resolution_matches(typology: str, path: str, resolution: Resolution) 
         assert draft.title == request["title"], typology
         footage = draft.footage_candidates[0]
         assert [footage.kind, footage.origin] == list(request["footage"]), typology
-    for detection in resolution.detections:
+    for detection, (lat, lng) in zip(resolution.detections, expected["coords"], strict=True):
+        assert detection.coordinate.lat == pytest.approx(lat), typology
+        assert detection.coordinate.lng == pytest.approx(lng), typology
+        if "head_tweet_id" in expected:
+            head = f"/status/{expected['head_tweet_id']}"
+            assert detection.detected_from_url.endswith(head), typology
         assert detection.title == expected["title"], typology
         assert detection.source_url == expected["source_url"], typology
         assert secondary_sources_of(detection) == expected["secondary_sources"], typology

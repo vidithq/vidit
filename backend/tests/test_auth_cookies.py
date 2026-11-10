@@ -10,6 +10,7 @@ from app.services.auth_cookies import (
     SESSION_COOKIE,
 )
 from tests._fixtures import client
+from tests.conftest import DEFAULT_PASSWORD
 
 
 @pytest.fixture
@@ -88,6 +89,14 @@ def test_login_pays_one_bcrypt_check_for_an_over_long_password(monkeypatch, user
         response = client.post("/api/v1/auth/login", json={"email": email, "password": "é" * 40})
         assert response.status_code == 401
         assert len(checks) == 1
+
+
+def test_login_refuses_a_deactivated_account(make_user):
+    user = make_user(is_active=False)
+    response = client.post(
+        "/api/v1/auth/login", json={"email": user.email, "password": DEFAULT_PASSWORD}
+    )
+    assert response.status_code == 401
 
 
 def test_login_does_not_truncate_a_password_to_72_bytes(make_user):

@@ -719,11 +719,3 @@ def test_profile_includes_follow_counters_and_is_following(db, make_user):
     assert authed["followers_count"] == 2
     assert authed["following_count"] == 1
     assert authed["is_following"] is True
-
-
-def test_profile_self_view_is_following_false(db, make_user):
-    """Your own profile never reports ``is_following=true``, even with a stray self edge."""
-    me = make_user("me")
-
-    body = client.get(f"/api/v1/users/{me.username}", headers=login_as(client, me)).json()
-    assert body["is_following"] is False

@@ -91,31 +91,25 @@ def test_forgot_password_revokes_previously_outstanding_tokens(client, make_user
 
 
 def test_forgot_password_dispatches_work_to_background_task(client, make_user, monkeypatch):
-    """The mint + send runs off the request thread; inline work would leak user
-    existence via response time. The handler must schedule the worker, not call it."""
+    """The mint + send runs off the request thread; inline work would leak user existence via
+    response time. TestClient runs BackgroundTasks before returning, so the test records
+    ``BackgroundTasks.add_task`` and asserts the worker was scheduled."""
+    from fastapi import BackgroundTasks
+
     user = make_user()
+    scheduled: list = []
+    original = BackgroundTasks.add_task
 
-    called_inline = False
+    def recording_add_task(self, func, *args, **kwargs):
+        scheduled.append(func)
+        return original(self, func, *args, **kwargs)
 
-    def fake_worker(*args, **kwargs):
-        nonlocal called_inline
-        called_inline = True
+    monkeypatch.setattr(BackgroundTasks, "add_task", recording_add_task)
 
-    real_worker = auth_router._process_forgot_password
-    monkeypatch.setattr(auth_router, "_process_forgot_password", fake_worker)
+    response = client.post("/api/v1/auth/forgot-password", json={"email": user.email})
 
-    response = client.post(
-        "/api/v1/auth/forgot-password",
-        json={"email": user.email},
-    )
-
-    # TestClient runs BackgroundTasks before returning, so a call here proves
-    # background dispatch (inline blocking is not observable).
     assert response.status_code == 204
-    assert called_inline is True, "background task was not scheduled"
-
-    # Restore so subsequent tests in the same process see the real worker.
-    monkeypatch.setattr(auth_router, "_process_forgot_password", real_worker)
+    assert scheduled == [auth_router._process_forgot_password]
 
 
 def test_forgot_password_swallows_email_send_failure(client, monkeypatch, make_user, db):

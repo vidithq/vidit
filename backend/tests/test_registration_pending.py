@@ -8,9 +8,11 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.main import app
@@ -417,75 +419,43 @@ def test_reap_pending_registrations_drops_expired_rows(db, invite_code):
     assert db.query(PendingRegistration).filter(PendingRegistration.id == row_id).first() is None
 
 
-def test_integrity_constraint_lookup_email():
-    """The IntegrityError constraint name maps to the email or username pending error via psycopg's ``diag``.
-
-    Unit-tests the extraction helper: a real two-session INSERT race would need a
-    controlled gap after the SELECT.
-    """
-    from types import SimpleNamespace
-
-    from sqlalchemy.exc import IntegrityError
-
-    exc = IntegrityError(
-        "synthetic",
-        {},
-        SimpleNamespace(diag=SimpleNamespace(constraint_name="uq_pending_registrations_email")),
-    )
-    assert registration._integrity_error_constraint(exc) == "uq_pending_registrations_email"
+def _duplicate(constraint: str) -> Exception:
+    return Exception(f'duplicate key value violates unique constraint "{constraint}"')
 
 
-def test_integrity_constraint_lookup_falls_back_to_orig_text():
-    """Drivers without ``diag.constraint_name`` fall back to scanning the driver message.
-
-    ``str(exc)`` is not scanned: it includes the INSERT column list, which would match every column.
-    """
-    from sqlalchemy.exc import IntegrityError
-
-    exc = IntegrityError(
-        "synthetic outer",
-        {},
-        Exception(
-            'duplicate key value violates unique constraint "uq_pending_registrations_username"'
+@pytest.mark.parametrize(
+    ("statement", "orig", "constraint"),
+    [
+        pytest.param(
+            "synthetic",
+            SimpleNamespace(diag=SimpleNamespace(constraint_name="uq_pending_registrations_email")),
+            "uq_pending_registrations_email",
+            id="psycopg-diag",
         ),
-    )
-    assert registration._integrity_error_constraint(exc) == "uq_pending_registrations_username"
-
-
-def test_integrity_constraint_lookup_ignores_str_exc_column_list():
-    """``str(IntegrityError)`` (which contains the SQL column list) is not constraint-name evidence.
-
-    Scanning it would misattribute an email collision to ``username``.
-    """
-    from sqlalchemy.exc import IntegrityError
-
-    # Email collision: orig says so, the SQL message lists "username".
-    exc = IntegrityError(
-        "INSERT INTO users (id, username, email) VALUES (...)",
-        {},
-        Exception('duplicate key value violates unique constraint "users_email_key"'),
-    )
-    assert registration._integrity_error_constraint(exc) == "users_email_key"
-
-
-def test_integrity_constraint_lookup_users_username():
-    """Postgres auto-named ``users_username_key`` is in the scan list."""
-    from sqlalchemy.exc import IntegrityError
-
-    exc = IntegrityError(
-        "synthetic",
-        {},
-        Exception('duplicate key value violates unique constraint "users_username_key"'),
-    )
-    assert registration._integrity_error_constraint(exc) == "users_username_key"
-
-
-def test_integrity_constraint_lookup_unknown_returns_none():
-    """Unknown constraint → None so the caller picks the safe default."""
-    from sqlalchemy.exc import IntegrityError
-
-    exc = IntegrityError("ERROR: something unrelated", {}, Exception("opaque"))
-    assert registration._integrity_error_constraint(exc) is None
+        pytest.param(
+            "synthetic",
+            _duplicate("uq_pending_registrations_username"),
+            "uq_pending_registrations_username",
+            id="driver-message",
+        ),
+        # The statement lists every column: scanning it would read an email clash as username.
+        pytest.param(
+            "INSERT INTO users (id, username, email) VALUES (...)",
+            _duplicate("users_email_key"),
+            "users_email_key",
+            id="statement-not-scanned",
+        ),
+        pytest.param(
+            "synthetic", _duplicate("users_username_key"), "users_username_key", id="users"
+        ),
+        pytest.param("ERROR: something unrelated", Exception("opaque"), None, id="unknown"),
+    ],
+)
+def test_integrity_constraint_lookup(statement, orig, constraint):
+    """The constraint an IntegrityError names, read from psycopg's ``diag`` or the driver
+    message; a real two-session INSERT race would need a controlled gap after the SELECT."""
+    exc = IntegrityError(statement, {}, orig)
+    assert registration._integrity_error_constraint(exc) == constraint
 
 
 def test_is_username_constraint_defaults_safe():

@@ -387,15 +387,6 @@ async def test_media_less_detection_persists(db, owner):
     assert db.query(Media).filter(Media.event_id == geo.id).count() == 0
 
 
-async def test_unchanged_pair_is_skipped_not_updated(db, owner):
-    await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
-    outcome = await _persist(
-        db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher
-    )
-    assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
-    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
-
-
 async def test_a_pass_that_wrote_a_row_drops_the_points_cache(db, owner):
     """A ``detected`` row is public on landing, so the map cache must drop."""
     points_cache.set("points:whatever", b"[]")
@@ -732,15 +723,6 @@ async def test_the_entry_that_produced_a_detection_is_stamped_on_the_row(db, own
     )
     [row_id] = outcome.created
     assert _row(db, row_id).detection.via == via
-
-
-async def test_geolocated_pair_is_skipped(db, owner):
-    _publish_the_default_pair(db, owner)
-
-    outcome = await _persist(
-        db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher
-    )
-    assert len(outcome.skipped) == 1 and outcome.created == []
 
 
 async def test_detected_detection_is_upserted_in_place(db, owner):

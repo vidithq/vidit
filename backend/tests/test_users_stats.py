@@ -20,7 +20,6 @@ The profile insights aggregation:
 from __future__ import annotations
 
 import functools
-import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -465,13 +464,3 @@ def test_stats_source_kinds_count_each_event_once_per_kind(db, live_user):
         {"name": "drone", "count": 2},
         {"name": "satellite", "count": 1},
     ]
-
-
-def test_stats_404_for_unknown_username():
-    response = client.get(f"/api/v1/users/nobody-{uuid.uuid4().hex}/stats")
-    assert response.status_code == 404
-
-
-def test_stats_404_for_soft_deleted_user(soft_deleted_user):
-    response = client.get(f"/api/v1/users/{soft_deleted_user.username}/stats")
-    assert response.status_code == 404

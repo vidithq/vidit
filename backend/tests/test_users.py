@@ -79,18 +79,12 @@ def test_profile_does_not_leak_email(db):
         db.commit()
 
 
-def test_profile_404_for_unknown_username():
-    response = client.get(f"/api/v1/users/nobody-{uuid.uuid4().hex}")
-    assert response.status_code == 404
-
-
-def test_profile_404_for_soft_deleted_user(soft_deleted_user):
-    """Same 404 as unknown: any distinguishable answer would reveal removed usernames."""
-    response = client.get(f"/api/v1/users/{soft_deleted_user.username}")
-    assert response.status_code == 404
-
-
-# ── GET /users/{username}/events — feed ─────────────────────────────
+@pytest.mark.parametrize("page", ["", "/events", "/stats", "/collections"])
+@pytest.mark.parametrize("who", ["unknown", "soft-deleted"])
+def test_user_pages_404_for_an_unknown_or_soft_deleted_user(soft_deleted_user, page, who):
+    """Same 404 for both: any distinguishable answer would reveal removed usernames."""
+    username = soft_deleted_user.username if who == "soft-deleted" else f"nobody-{uuid.uuid4().hex}"
+    assert client.get(f"/api/v1/users/{username}{page}").status_code == 404
 
 
 def test_feed_returns_pagination_envelope(live_user):
@@ -101,31 +95,6 @@ def test_feed_returns_pagination_envelope(live_user):
     assert body["total"] == 0
     assert body["page"] == 1
     assert body["per_page"] == 20
-
-
-def test_feed_excludes_soft_deleted_geos(db, live_user):
-    """The feed filters soft-deleted rows, as the rest of the site does."""
-    live = make_event(db, author=live_user, title="live one")
-    dead = make_event(db, author=live_user, title="removed", deleted=True)
-
-    response = client.get(f"/api/v1/users/{live_user.username}/events")
-    assert response.status_code == 200
-    body = response.json()
-    ids = {row["id"] for row in body["items"]}
-    assert str(live.id) in ids
-    assert str(dead.id) not in ids
-    assert body["total"] == 1
-
-
-def test_feed_count_matches_profile_count_on_published_work(db, live_user):
-    """With published work alone, `geolocations_count` and the feed `total` agree."""
-    make_event(db, author=live_user)
-    make_event(db, author=live_user)
-    make_event(db, author=live_user, deleted=True)
-
-    profile = client.get(f"/api/v1/users/{live_user.username}").json()
-    feed = client.get(f"/api/v1/users/{live_user.username}/events").json()
-    assert profile["geolocations_count"] == feed["total"] == 2
 
 
 def test_feed_serves_published_work_only(db, live_user):
@@ -227,19 +196,6 @@ def test_feed_caps_per_page_at_100(db, live_user):
     response = client.get(f"/api/v1/users/{live_user.username}/events?per_page=500")
     assert response.status_code == 200
     assert response.json()["per_page"] == 100
-
-
-def test_feed_404_for_unknown_username():
-    response = client.get(f"/api/v1/users/nobody-{uuid.uuid4().hex}/events")
-    assert response.status_code == 404
-
-
-def test_feed_404_for_soft_deleted_user(soft_deleted_user):
-    response = client.get(f"/api/v1/users/{soft_deleted_user.username}/events")
-    assert response.status_code == 404
-
-
-# ── PATCH /users/me — self-edit ────────────────────────────────────────────
 
 
 def test_patch_me_requires_auth():
@@ -376,19 +332,19 @@ def test_patch_me_empty_string_clears_bio(live_user, db):
     assert refreshed.bio is None
 
 
-def test_patch_me_cannot_set_avatar_url(live_user, db):
-    """The self-edit body has no ``avatar_url`` and forbids extras: the column may
-    only hold a server-minted URL (a writable field is a beacon)."""
-    response = client.patch(
-        "/api/v1/users/me",
-        json={"avatar_url": "https://tracker.example.com/beacon.gif"},
-        headers=login_as(client, live_user),
-    )
+@pytest.mark.parametrize(
+    "body", [{"avatar_url": "https://tracker.example.com/beacon.gif"}, {"is_admin": True}]
+)
+def test_patch_me_refuses_a_field_outside_the_self_edit(live_user, db, body):
+    """The self-edit body is ``extra=forbid`` and has no ``avatar_url``: the column may only
+    hold a server-minted URL (a writable field is a beacon)."""
+    response = client.patch("/api/v1/users/me", json=body, headers=login_as(client, live_user))
     assert response.status_code == 422
 
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
     assert refreshed.avatar_url is None
+    assert refreshed.is_admin is False
 
 
 def test_patch_me_rejects_overlong_bio(live_user):
@@ -398,19 +354,6 @@ def test_patch_me_rejects_overlong_bio(live_user):
         headers=login_as(client, live_user),
     )
     assert response.status_code == 422
-
-
-def test_patch_me_ignores_extra_fields(live_user):
-    """The schema is ``extra=forbid``: an unlisted column cannot be set via self-edit."""
-    response = client.patch(
-        "/api/v1/users/me",
-        json={"is_admin": True},
-        headers=login_as(client, live_user),
-    )
-    assert response.status_code == 422
-
-
-# ── PUT / DELETE /users/me/avatar ─────────────────────────────────────────
 
 
 @pytest.fixture

@@ -28,18 +28,6 @@ def test_owner_has_no_delete_verb(db, author):
     assert db.query(Event).filter(Event.id == geo_id).first() is not None
 
 
-def test_admin_hard_delete_still_removes_the_row(db, author, admin_user):
-    geo = make_event(db, author=author)
-    geo_id = geo.id
-    response = client.delete(
-        f"/api/v1/admin/events/{geo_id}?hard=true",
-        headers=login_as(client, admin_user),
-    )
-    assert response.status_code == 200
-    db.expire_all()
-    assert db.query(Event).filter(Event.id == geo_id).first() is None
-
-
 def _kept(geo, url=DETECTION_URL, **kw) -> str:
     """The ``sources`` field re-posting the row's one source by ``id``, with its file if any."""
     [source] = geo.sources

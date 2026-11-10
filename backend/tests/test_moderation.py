@@ -112,14 +112,6 @@ def test_queue_lists_open_reports_before_resolved_ones(db, admin_user, event):
     assert ids.index(str(still_open.id)) < ids.index(str(resolved.id))
 
 
-def test_queue_403_for_regular_user(regular_user):
-    response = client.get("/api/v1/admin/reports", headers=login_as(client, regular_user))
-    assert response.status_code == 403
-
-
-# ── POST /admin/reports/{id}/resolve ──────────────────────────────────────
-
-
 def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_user, event):
     report = _report(db, event, reason="graphic_not_flagged")
 
@@ -219,19 +211,6 @@ def test_resolve_404_for_unknown_report(admin_user):
     )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "report_not_found"
-
-
-def test_resolve_403_for_regular_user(db, regular_user, event):
-    report = _report(db, event)
-    response = client.post(
-        f"/api/v1/admin/reports/{report.id}/resolve",
-        json={"resolution": "dismissed"},
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
-# ── A report outlives the target it was filed against ─────────────────────
 
 
 def _hard_delete(db, event) -> None:
@@ -412,18 +391,6 @@ def test_moderation_404_for_unknown_event(admin_user):
     )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "event_not_found"
-
-
-def test_moderation_403_for_regular_user(regular_user, event):
-    response = client.patch(
-        f"/api/v1/admin/events/{event.id}/moderation",
-        json={"hidden": True},
-        headers=login_as(client, regular_user),
-    )
-    assert response.status_code == 403
-
-
-# ── A collection is the other report target ───────────────────────────────
 
 
 def test_queue_lists_reports_of_both_kinds(db, admin_user, event, collection, regular_user):

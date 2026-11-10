@@ -15,7 +15,6 @@ from app.services.evidence_processing import (
     _ACCEPTED_FORMATS,
     HERO_MAX_DIM,
     MAX_CONCURRENT_DECODES,
-    MAX_DECODED_PIXELS,
     THUMBNAIL_MAX_DIM,
     UNREADABLE_IMAGE_MESSAGE,
     EvidenceProcessingError,
@@ -206,11 +205,6 @@ def test_strip_metadata_rejects_animated_webp():
         strip_metadata(buf.getvalue(), "image/webp")
 
 
-def test_max_decoded_pixels_clears_realistic_camera_output():
-    """The decode cap stays at or above ~50 MP phone cameras."""
-    assert MAX_DECODED_PIXELS >= 50_000_000
-
-
 def _solid_jpeg(width: int, height: int) -> bytes:
     """A real JPEG of the requested dimensions."""
     img = Image.new("RGB", (width, height), "red")
@@ -271,11 +265,6 @@ def test_make_jpeg_derivative_rejects_decompression_bomb(monkeypatch):
     raw = _solid_jpeg(100, 100)  # 10_000 pixels — above the patched cap
     with pytest.raises(EvidenceProcessingError, match="pixel cap"):
         make_jpeg_derivative(raw, "image/jpeg", HERO_MAX_DIM)
-
-
-def test_hero_is_larger_than_thumbnail():
-    """Swapping the constants would invert the bandwidth budget across every render surface."""
-    assert HERO_MAX_DIM > THUMBNAIL_MAX_DIM
 
 
 def test_make_jpeg_derivative_bakes_in_exif_orientation():

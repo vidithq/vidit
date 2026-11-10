@@ -3,11 +3,11 @@ unreopenable providers, the capture date, and the kinds the check covers."""
 
 from __future__ import annotations
 
-import importlib.util
+import re
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 from app.models.source import SOURCE_KINDS
 from app.services.imagery import (
@@ -207,13 +207,12 @@ def test_every_reopenable_provider_names_its_credit():
         assert provider.help, provider.id
 
 
-def test_the_sources_migration_freezes_the_kind_list():
-    path = next(
-        (Path(__file__).resolve().parents[1] / "alembic" / "versions").glob("fb4098ed6742_*.py")
-    )
-    spec = importlib.util.spec_from_file_location("event_sources_migration", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert module.SOURCE_KINDS == SOURCE_KINDS
-    assert "aircraft" in SOURCE_KINDS
+def test_the_kind_list_matches_the_database_check(db):
+    """``SOURCE_KINDS`` and ``ck_sources_kind_valid`` are two copies of one list."""
+    definition = db.execute(
+        text(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint"
+            " WHERE conrelid = 'sources'::regclass AND conname = 'ck_sources_kind_valid'"
+        )
+    ).scalar_one()
+    assert set(re.findall(r"'(\w+)'", definition)) == set(SOURCE_KINDS)

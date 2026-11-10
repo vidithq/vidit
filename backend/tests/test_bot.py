@@ -1366,8 +1366,9 @@ async def test_dropped_mentions_raise_no_webhook_gap(db, linked_owner, monkeypat
     assert captured == []
 
 
-async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, monkeypatch):
-    # While the webhook is live, a mention the poll processes fresh means the webhook missed it: page.
+async def test_poll_flags_a_webhook_gap_for_every_fresh_verdict(db, linked_owner, monkeypatch):
+    """While the webhook is live, a mention the poll handles fresh means the webhook missed it:
+    page, whether the pipeline saved a detection or raised."""
     import app.services.bot as bot_service
 
     captured: list[tuple[str, str | None]] = []
@@ -1384,18 +1385,6 @@ async def test_poll_flags_webhook_gap_when_webhook_enabled(db, linked_owner, mon
         "webhook gap" in m and TAGGED_ID in m and level == "warning" for m, level in captured
     )
 
-
-async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkeypatch):
-    # Every fresh verdict is a gap, including a mention whose pipeline raised.
-    import app.services.bot as bot_service
-
-    captured: list[tuple[str, str | None]] = []
-    monkeypatch.setattr(settings, "x_webhook_enabled", True)
-    monkeypatch.setattr(
-        bot_service.sentry_sdk,
-        "capture_message",
-        lambda message, level=None: captured.append((message, level)),
-    )
     unknown_id = "9100000000000000009"
 
     def read_handler(_req: httpx.Request) -> httpx.Response:
@@ -1454,29 +1443,9 @@ async def test_unconfigured_bot_refuses_to_run(db, monkeypatch):
         catch_up(db)
 
 
-def test_compose_reply_is_linkless_and_carries_the_warnings():
-    event_id = str(uuid.uuid4())
-    text = compose_reply(
-        event_id,
-        detections=1,
-        warnings=[SOURCE_FOOTAGE_MISSING, SOURCE_DATE_UNKNOWN, DUPLICATE_MEDIA],
-    )
-    assert text.startswith("✅ 1 detection saved")
-    assert event_id[:8] in text
-    assert event_id not in text  # the ref is shortened
-    assert "The source served no footage" in text
-    assert "post date" in text
-    assert "already on Vidit" in text
-    assert "http" not in text and "vidit.app" not in text
-    # Footer intact: ``_within_reply_cap`` truncates, so the cap check needs proof nothing was clipped.
-    assert text.endswith("Review from your profile")
-    assert reply_weighted_len(text) <= REPLY_MAX_WEIGHTED_LEN
-    clean = compose_reply(event_id, detections=1, warnings=[])
-    assert "⚠" not in clean
-
-
 def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
-    """One ⚠ line per raised code, in table order, and the heaviest reply fits X's cap.
+    """One ⚠ line per raised code, in table order, no link, a shortened ref, and the heaviest
+    reply fits X's cap with its footer intact (``_within_reply_cap`` truncates).
 
     Heaviest is four codes: the footage codes answer one question and the
     empty-source pair never co-occur. Both footage codes are composed because
@@ -1492,6 +1461,8 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
         ]
         text = compose_reply(event_id, detections=3, warnings=heaviest)
         assert text.startswith("✅ 3 detections saved")
+        assert event_id[:8] in text and event_id not in text
+        assert "http" not in text and "vidit.app" not in text
         assert [line for line in text.splitlines() if line.startswith("⚠")] == [
             f"⚠ {WARNING_MESSAGES[code]}" for code in heaviest
         ]
@@ -1502,6 +1473,10 @@ def test_compose_reply_carries_one_line_per_warning_and_stays_in_the_cap():
     assert "Several source links" in ambiguous
     assert "The source served no footage" not in ambiguous and "post date" not in ambiguous
     assert reply_weighted_len(ambiguous) <= REPLY_MAX_WEIGHTED_LEN
+
+    clean = compose_reply(event_id, detections=1, warnings=[])
+    assert clean.startswith("✅ 1 detection saved")
+    assert "⚠" not in clean
 
 
 def test_compose_failure_reply_without_diagnosis_routes_to_the_maintainers():

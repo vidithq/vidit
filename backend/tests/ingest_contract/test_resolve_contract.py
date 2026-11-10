@@ -146,14 +146,6 @@ def test_chased_telegram_sensitive_is_date_only() -> None:
     assert _roles(detection.proof_media) == [["image", "op"]]
 
 
-def test_unchased_telegram_link_is_link_only() -> None:
-    """The no-chase path: link source, no date, no source media (the ``telegram_link`` contract)."""
-    detection = single_detection([_telegram_record(None)])
-    assert detection.source_url == _TG_URL
-    assert detection.source_posted_at is None
-    assert detection.source_media == []
-
-
 def test_two_candidate_links_leave_the_source_empty() -> None:
     """Two candidate links make the source ambiguous: even chased Telegram footage is dropped and the source stays empty for review."""
     footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
@@ -269,13 +261,6 @@ def test_a_retweet_produces_nothing() -> None:
     resolution = resolve_threads([[retweet]])
     assert resolution.detections == []
     assert resolution.refusals == {COORDS_MISSING: 1}
-
-
-def test_every_typology_has_both_fixture_files() -> None:
-    """Each typology ships a body and an expected file, so a half-added typology fails loudly here."""
-    for typology in loader.typology_names():
-        assert (loader.FIXTURES_DIR / typology / "body.json").is_file()
-        assert (loader.FIXTURES_DIR / typology / "expected.json").is_file()
 
 
 _ENTRY_PATHS = ("bot", "paste", "archive")

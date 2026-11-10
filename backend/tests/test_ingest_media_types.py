@@ -11,8 +11,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.services.evidence_processing import DERIVATIVE_CONTENT_TYPE
-from app.services.storage import ALLOWED_IMAGE_TYPES, prepare_media
+from app.services.storage import prepare_media
 from app.services.tweet_ingest.archive import read_tweets
 from app.services.tweet_ingest.records import (
     PHOTO_CONTENT_TYPE,
@@ -21,12 +20,6 @@ from app.services.tweet_ingest.records import (
 )
 from app.services.tweet_ingest.syndication import extract_media
 from tests._fixtures import write_archive_js
-
-
-def test_an_imported_photo_is_stored_as_the_derivative_format() -> None:
-    """An original and its ``_hero`` / ``_thumb`` siblings share one format."""
-    assert PHOTO_CONTENT_TYPE == DERIVATIVE_CONTENT_TYPE
-    assert PHOTO_CONTENT_TYPE in ALLOWED_IMAGE_TYPES
 
 
 def test_the_stored_type_follows_the_kind_and_nothing_else() -> None:

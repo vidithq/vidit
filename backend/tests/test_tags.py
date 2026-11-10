@@ -9,25 +9,14 @@ from app.models.event import Event
 from app.models.source import Source, SourceLink
 from app.models.tag import Tag
 from app.models.user import User
-from app.services.auth import hash_password
-from tests._fixtures import client
+from tests._fixtures import client, make_event
 from tests.conftest import login_as
 
 
 @pytest.fixture
-def authed_user(db):
-    user = User(
-        username=f"tagtest-{uuid.uuid4().hex[:8]}",
-        email=f"{uuid.uuid4().hex}@example.test",
-        password_hash=hash_password("pw"),
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    headers = login_as(client, user)
-    yield user, headers
-    db.delete(user)
-    db.commit()
+def authed_user(make_user):
+    user = make_user("tagtest")
+    return user, login_as(client, user)
 
 
 def test_create_tag_passes(authed_user, db):
@@ -62,26 +51,14 @@ def test_create_tag_strips_whitespace(authed_user, db):
     db.commit()
 
 
-@pytest.mark.parametrize("name", ["", "   ", "\t\n"])
-def test_create_tag_rejects_empty(authed_user, name):
-    """Empty or whitespace-only names hit `min_length=1` after the strip: 422."""
+@pytest.mark.parametrize(
+    "name", ["", "   ", "\t\n", "x" * 101], ids=["empty", "space", "whitespace", "too-long"]
+)
+def test_create_tag_rejects_a_bad_name(authed_user, name):
+    """A blank name fails ``min_length=1`` after the strip; 101 characters overflow
+    ``String(100)``. Both 422 before the DB sees them."""
     _, headers = authed_user
-    response = client.post(
-        "/api/v1/tags",
-        json={"name": name},
-        headers=headers,
-    )
-    assert response.status_code == 422
-
-
-def test_create_tag_rejects_too_long(authed_user):
-    """101 chars overflows `String(100)`; the schema 422s before the DB sees it."""
-    _, headers = authed_user
-    response = client.post(
-        "/api/v1/tags",
-        json={"name": "x" * 101},
-        headers=headers,
-    )
+    response = client.post("/api/v1/tags", json={"name": name}, headers=headers)
     assert response.status_code == 422
 
 
@@ -115,141 +92,40 @@ def test_create_tag_requires_auth():
     assert response.status_code in {401, 403}
 
 
-def test_list_tags_filters_orphans(authed_user, db):
-    """Tags with no live-geolocation references are hidden from /tags (the map filter would show dead chips)."""
-    user, _ = authed_user
-    orphan = Tag(name=f"orphan-{uuid.uuid4().hex[:8]}")
-    used = Tag(name=f"used-{uuid.uuid4().hex[:8]}")
-    db.add_all([orphan, used])
-    db.commit()
+def test_list_tags_hides_an_orphan(free_tag):
+    """A tag nothing uses stays off the map filter."""
+    names = {row["name"] for row in client.get("/api/v1/tags").json()}
+    assert free_tag.name not in names
 
-    geo = Event(
-        owner_id=user.id,
-        title="t",
-        coords=from_shape(Point(0, 0), srid=4326),
-        occurred_date=date(2026, 1, 1),
-        created_at=datetime.now(UTC),
-        geolocated_at=datetime.now(UTC),
+
+@pytest.mark.parametrize(
+    ("carrier", "deleted", "listed"),
+    [
+        ("event", False, True),
+        ("event", True, False),
+        ("source", False, True),
+        ("source", True, False),
+    ],
+)
+def test_list_tags_shows_the_tags_of_live_events(free_tag, make_user, db, carrier, deleted, listed):
+    """A tag on a live event, or on one of its sources, is listed; one only a soft-deleted
+    event carries falls off the filter like an orphan."""
+    make_event(
+        db,
+        author=make_user(),
+        deleted=deleted,
+        tags=[free_tag] if carrier == "event" else None,
+        sources=[
+            Source(
+                level="direct",
+                kind="unknown",
+                links=[SourceLink(url="https://example.com")],
+                tags=[free_tag] if carrier == "source" else [],
+            )
+        ],
     )
-    geo.tags = [used]
-    db.add(geo)
-    db.commit()
-
-    try:
-        response = client.get("/api/v1/tags")
-        assert response.status_code == 200
-        names = {row["name"] for row in response.json()}
-        assert used.name in names
-        assert orphan.name not in names
-    finally:
-        db.delete(geo)
-        db.delete(used)
-        db.delete(orphan)
-        db.commit()
-
-
-def test_list_tags_drops_tag_when_only_geo_is_soft_deleted(authed_user, db):
-    """A tag used only by a soft-deleted geolocation falls off the filter like an orphan."""
-    user, _ = authed_user
-    tag = Tag(name=f"sd-{uuid.uuid4().hex[:8]}")
-    db.add(tag)
-    db.commit()
-
-    geo = Event(
-        owner_id=user.id,
-        title="t",
-        coords=from_shape(Point(0, 0), srid=4326),
-        occurred_date=date(2026, 1, 1),
-        created_at=datetime.now(UTC),
-        geolocated_at=datetime.now(UTC),
-        deleted_at=datetime.now(UTC),  # soft-deleted upfront
-    )
-    geo.tags = [tag]
-    db.add(geo)
-    db.commit()
-
-    try:
-        response = client.get("/api/v1/tags")
-        assert response.status_code == 200
-        names = {row["name"] for row in response.json()}
-        assert tag.name not in names
-    finally:
-        db.delete(geo)
-        db.delete(tag)
-        db.commit()
-
-
-def test_list_tags_includes_a_tag_only_on_a_source(authed_user, db):
-    """A tag carried by a source of a live event, and by no event, is a live tag."""
-    user, _ = authed_user
-    tag = Tag(name=f"src-{uuid.uuid4().hex[:8]}")
-    db.add(tag)
-    db.commit()
-
-    geo = Event(
-        owner_id=user.id,
-        title="t",
-        coords=from_shape(Point(0, 0), srid=4326),
-        occurred_date=date(2026, 1, 1),
-        created_at=datetime.now(UTC),
-        geolocated_at=datetime.now(UTC),
-    )
-    geo.sources = [
-        Source(
-            level="direct",
-            kind="unknown",
-            links=[SourceLink(url="https://example.com")],
-            tags=[tag],
-        )
-    ]
-    db.add(geo)
-    db.commit()
-
-    try:
-        response = client.get("/api/v1/tags")
-        assert response.status_code == 200
-        names = {row["name"] for row in response.json()}
-        assert tag.name in names
-    finally:
-        db.delete(geo)
-        db.delete(tag)
-        db.commit()
-
-
-def test_list_tags_drops_a_source_tag_when_its_event_is_soft_deleted(authed_user, db):
-    """A tag carried only by a source of a soft-deleted event falls off the filter."""
-    user, _ = authed_user
-    tag = Tag(name=f"srcsd-{uuid.uuid4().hex[:8]}")
-    db.add(tag)
-    db.commit()
-
-    geo = Event(
-        owner_id=user.id,
-        title="t",
-        coords=from_shape(Point(0, 0), srid=4326),
-        occurred_date=date(2026, 1, 1),
-        created_at=datetime.now(UTC),
-        geolocated_at=datetime.now(UTC),
-        deleted_at=datetime.now(UTC),
-    )
-    geo.sources = [
-        Source(
-            level="direct",
-            kind="unknown",
-            links=[SourceLink(url="https://example.com")],
-            tags=[tag],
-        )
-    ]
-    db.add(geo)
-    db.commit()
-
-    try:
-        names = {row["name"] for row in client.get("/api/v1/tags").json()}
-        assert tag.name not in names
-    finally:
-        db.delete(geo)
-        db.delete(tag)
-        db.commit()
+    names = {row["name"] for row in client.get("/api/v1/tags").json()}
+    assert (free_tag.name in names) is listed
 
 
 def _live_event(owner: User, tags: list[Tag], source_tags: list[Tag] = (), **fields) -> Event:

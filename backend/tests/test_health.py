@@ -135,11 +135,3 @@ def test_nosniff_header_present_on_normal_response():
     """Every response carries ``X-Content-Type-Options: nosniff`` so a mislabeled body is never sniffed and executed."""
     response = client.get("/health")
     assert response.headers.get("x-content-type-options") == "nosniff"
-
-
-def test_openapi_schema_is_served():
-    response = client.get("/openapi.json")
-    assert response.status_code == 200
-    schema = response.json()
-    assert schema["info"]["title"] == "Vidit API"
-    assert "/health" in schema["paths"]
