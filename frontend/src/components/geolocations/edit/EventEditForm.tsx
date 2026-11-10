@@ -106,15 +106,8 @@ export function EventEditForm({
   const [closing, setClosing] = useState(false);
 
   const versionState = (): EventVersionFormState => ({
-    title: form.title,
-    sourcesMoved: sourcesChanged(geo.sources, form.sources),
-    lat: form.lat,
-    lng: form.lng,
-    eventDate: form.eventDate,
-    eventTime: form.eventTime,
-    proof: form.proof,
-    tagIds: form.selectedTagIds,
-    conflictIds: form.selectedConflictIds,
+    ...form.fields,
+    sourcesMoved: sourcesChanged(geo.sources, form.fields.sources),
   });
 
   const versionChanged = editingPublished && hasVersionChanges(geo, versionState());

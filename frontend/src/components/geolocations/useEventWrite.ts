@@ -101,7 +101,7 @@ export function useEventWrite<R>(
       if (floor === "request" && form.siteLinks.links.length > 0) {
         return hold(REQUEST_SITE_LINKS);
       }
-      const blocked = sourcesBlockWrite(form.sources) ?? extraCheck?.() ?? null;
+      const blocked = sourcesBlockWrite(form.fields.sources) ?? extraCheck?.() ?? null;
       return blocked === null || hold(blocked);
     },
     write: () => void mutation.run(),

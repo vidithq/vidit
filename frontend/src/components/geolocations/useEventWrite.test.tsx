@@ -37,7 +37,7 @@ function stubForm({
     publishMissing,
     requestMissing,
     taxonomy: { blockedMessage },
-    sources,
+    fields: { sources },
     siteLinks: { links: Array.from({ length: siteLinks }, () => ({})) },
     flagIncomplete: vi.fn(),
     clearIncomplete: vi.fn(),
