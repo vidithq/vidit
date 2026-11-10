@@ -80,7 +80,7 @@ def get_current_user(
 
     user = db.query(User).filter(User.id == user_id).first()
     # Soft-deleted accounts are rejected like deactivated ones, at the next request.
-    if user is None or not user.is_active or user.deleted_at is not None:
+    if user is None or not user.is_live:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     # A JWT minted before the last invalidation event (logout / password change
     # / reset / soft-delete) has a stale ``tv``; opaque 401 as above.

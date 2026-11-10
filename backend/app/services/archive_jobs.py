@@ -211,7 +211,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     # work is hidden or suspended, so a job queued before the suspension must not land
     # detections under it.
     owner = db.get(User, job.owner_id)
-    if owner is None or owner.deleted_at is not None or not owner.is_active:
+    if owner is None or not owner.is_live:
         _finish(db, job, status="failed", error="owner gone")
         return
     # Imported under the owner's linked handle: provenance permalinks and the own-status

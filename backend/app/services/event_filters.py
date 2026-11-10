@@ -38,6 +38,10 @@ from sqlalchemy.orm import Session, aliased
 from app.models.approval import EventApproval
 from app.models.conflict import Conflict
 from app.models.event import (
+    LAT_MAX,
+    LAT_MIN,
+    LNG_MAX,
+    LNG_MIN,
     STATUS_CLOSED,
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
@@ -340,10 +344,14 @@ def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
             status_code=422,
             detail="bbox must be four comma-separated numbers: south,west,north,east",
         ) from exc
-    if not (-90.0 <= south <= 90.0 and -90.0 <= north <= 90.0):
-        raise HTTPException(status_code=422, detail="bbox latitudes must be in [-90, 90]")
-    if not (-180.0 <= west <= 180.0 and -180.0 <= east <= 180.0):
-        raise HTTPException(status_code=422, detail="bbox longitudes must be in [-180, 180]")
+    if not (LAT_MIN <= south <= LAT_MAX and LAT_MIN <= north <= LAT_MAX):
+        raise HTTPException(
+            status_code=422, detail=f"bbox latitudes must be in [{LAT_MIN:g}, {LAT_MAX:g}]"
+        )
+    if not (LNG_MIN <= west <= LNG_MAX and LNG_MIN <= east <= LNG_MAX):
+        raise HTTPException(
+            status_code=422, detail=f"bbox longitudes must be in [{LNG_MIN:g}, {LNG_MAX:g}]"
+        )
     if south > north:
         raise HTTPException(status_code=422, detail="bbox south must be <= north")
     if west > east:
@@ -365,10 +373,10 @@ def snap_bbox(bounds: tuple[float, float, float, float]) -> tuple[float, float, 
     """
     south, west, north, east = bounds
     return (
-        max(-90.0, _snap_down(south)),
-        max(-180.0, _snap_down(west)),
-        min(90.0, _snap_up(north)),
-        min(180.0, _snap_up(east)),
+        max(LAT_MIN, _snap_down(south)),
+        max(LNG_MIN, _snap_down(west)),
+        min(LAT_MAX, _snap_up(north)),
+        min(LNG_MAX, _snap_up(east)),
     )
 
 

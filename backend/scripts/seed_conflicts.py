@@ -2,7 +2,7 @@
 
 Pulls every armed conflict started in or after ``SINCE_YEAR`` (types in
 ``TYPE_ALLOWLIST``; battles, military operations and coup attempts are excluded
-as sub-conflict noise) and inserts the missing ones as ``source='seed'``,
+as sub-conflict noise) and inserts the missing ones as ``origin='seed'``,
 ``is_ongoing=false`` rows. The Wikipedia sync (``scripts/sync_conflicts.py``)
 flips the ongoing subset; this seed provides historical depth for archival
 footage.
@@ -22,17 +22,13 @@ import httpx
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import SessionLocal
-from app.models.conflict import Conflict
+from app.models.conflict import CONFLICT_NAME_MAX_LENGTH, Conflict
 
 SPARQL_URL = "https://query.wikidata.org/sparql"
 _HTTP_TIMEOUT_S = 120.0
 _USER_AGENT = "vidit-conflict-seed/1.0 (https://vidit.app)"
 
 SINCE_YEAR = 1914
-
-# ``conflicts.name`` is VARCHAR(200); labels are truncated before any write so an
-# over-long label can't raise a raw DataError.
-_NAME_MAX_LENGTH = 200
 
 # Wikidata P31 classes accepted as product-level conflicts. On the post-1914
 # population this keeps ~700-850 items and drops the dominant noise classes
@@ -128,10 +124,10 @@ def main() -> None:
         for row in rows:
             if row["wikidata_id"] in existing_qids:
                 continue
-            name = row["name"][:_NAME_MAX_LENGTH]
+            name = row["name"][:CONFLICT_NAME_MAX_LENGTH]
             if name in taken_names:
                 suffix = f" ({row['start_year']})"
-                name = f"{name[: _NAME_MAX_LENGTH - len(suffix)]}{suffix}"
+                name = f"{name[: CONFLICT_NAME_MAX_LENGTH - len(suffix)]}{suffix}"
             if name in taken_names:
                 skipped.append(f"{row['wikidata_id']} {row['name']!r}: name collision")
                 continue

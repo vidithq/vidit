@@ -292,15 +292,13 @@ def html_from_text(text: str, *, image_srcs: list[str] | None = None) -> str:
 
 
 class _Reader(HTMLParser):
-    """One pass over a body: its text lines, image srcs and link hrefs."""
-
-    _URL_ATTRS = {"img": "src", "a": "href"}
+    """One pass over a body: its text lines and image srcs."""
 
     def __init__(self, html: str) -> None:
         super().__init__(convert_charrefs=True)
         self.lines: list[str] = []
         self.current: list[str] = []
-        self.urls: dict[str, list[str]] = {"img": [], "a": []}
+        self.image_srcs: list[str] = []
         self.depth = 0
         self.max_depth = 0
         self.feed(html)
@@ -318,9 +316,8 @@ class _Reader(HTMLParser):
             self.max_depth = max(self.max_depth, self.depth)
         if tag in _LINE_TAGS:
             self.flush()
-        if tag in self._URL_ATTRS:
-            wanted = self._URL_ATTRS[tag]
-            self.urls[tag].extend(v for name, v in attrs if name == wanted and v is not None)
+        if tag == "img":
+            self.image_srcs.extend(v for name, v in attrs if name == "src" and v is not None)
 
     def handle_endtag(self, tag: str) -> None:
         if tag not in _VOID_TAGS:
@@ -342,4 +339,4 @@ def html_text(html: str) -> str:
 
 def extract_image_srcs(html: str) -> list[str]:
     """Image srcs of a rich-text body, in document order, deduped."""
-    return list(dict.fromkeys(_Reader(html).urls["img"]))
+    return list(dict.fromkeys(_Reader(html).image_srcs))

@@ -252,16 +252,14 @@ def login(
     )
     password_ok = verify_password(body.password, password_hash)
     # The dummy hash's plaintext is public, so a match there must not sign in.
-    if user is None or user.deleted_at is not None or not user.is_active or not password_ok:
+    if user is None or not user.is_live or not password_ok:
         # Log the matched user_id when there is one, NULL otherwise, so
         # existence is not leaked. A deactivated account is treated like a
         # soft-deleted one.
         audit.log_auth_event(
             db,
             action=ACTION_FAILED_LOGIN,
-            user_id=user.id
-            if (user is not None and user.deleted_at is None and user.is_active)
-            else None,
+            user_id=user.id if user is not None and user.is_live else None,
         )
         db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -414,7 +412,7 @@ def reset_password(
     # Mirror the mint-side guards (live + active): deactivation has no FK
     # cascade, so a token captured before it would otherwise still rotate the
     # password.
-    if user is None or user.deleted_at is not None or not user.is_active:
+    if user is None or not user.is_live:
         # ``consume`` already burned the token; roll back so it isn't persisted
         # without a password change.
         db.rollback()

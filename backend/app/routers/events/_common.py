@@ -22,7 +22,6 @@ from app.schemas.event import (
     EventVersionRead,
     GeolocatorInviteCreate,
 )
-from app.schemas.media import MediaRead
 from app.schemas.source import CoordsRead, SourceCreate
 from app.services.event_filters import visible_events
 from app.services.events.sources import build_source_read
@@ -35,7 +34,7 @@ from app.services.geolocator_credit import (
     live_geolocators,
 )
 from app.services.source_archive import SnapshotRejected
-from app.services.thumbnails import pick_thumbnail, thumbnail_loads
+from app.services.thumbnails import thumbnail_loads, thumbnail_media
 from app.services.uploads import UPLOAD_ERROR_STATUS
 from app.services.versions import VersionLimitError
 
@@ -204,13 +203,6 @@ def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
     if lat is None or lng is None:
         return None
     return CoordsRead(lat=lat, lng=lng)
-
-
-def thumbnail_media(geo: Event) -> MediaRead | None:
-    """The event's card thumbnail as its wire shape, or None
-    (``services.thumbnails.pick_thumbnail`` owns the pick)."""
-    row = pick_thumbnail(geo)
-    return MediaRead.model_validate(row) if row is not None else None
 
 
 def build_event_list(

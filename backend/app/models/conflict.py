@@ -17,6 +17,10 @@ ConflictOrigin = Literal["sync", "seed", "manual"]
 # for rows the sync never saw.
 ConflictTier = Literal["major", "minor", "conflict"]
 
+# Wikipedia names run long; 200 leaves headroom over tags' 100. The importers truncate a label to
+# it before writing, so an over-long one cannot raise a DataError.
+CONFLICT_NAME_MAX_LENGTH = 200
+
 event_conflicts = Table(
     "event_conflicts",
     Base.metadata,
@@ -45,8 +49,7 @@ class Conflict(Base):
     __tablename__ = "conflicts"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    # Wikipedia names run long; 200 leaves headroom over tags' 100.
-    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(CONFLICT_NAME_MAX_LENGTH), unique=True, nullable=False)
     # Wikidata item id ("Q131569"). NULL for manual rows; unique among the rest.
     wikidata_id: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)

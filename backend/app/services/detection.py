@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections import Counter
 from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -709,11 +710,7 @@ def _engine_warnings(persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, 
 
     A re-import that overwrote nothing must not report a source to pick or a coordinate to split.
     """
-    counts: dict[str, int] = {}
-    for _event_id, detection in persisted:
-        for code in detection.warnings:
-            counts[code] = counts.get(code, 0) + 1
-    return counts
+    return Counter(code for _event_id, detection in persisted for code in detection.warnings)
 
 
 class _WarningSubject(Protocol):
@@ -740,7 +737,7 @@ def _write_warnings(
     ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``. Both write paths read it; a request row is never
     footage-less, so the footage legs are reachable only through ``Detection``.
     """
-    counts: dict[str, int] = {}
+    counts: Counter[str] = Counter()
     if not persisted:
         return counts
     ids = [event_id for event_id, _subject in persisted]
@@ -757,8 +754,7 @@ def _write_warnings(
                 raised.append(SOURCE_DATE_UNKNOWN)
         if event_id in duplicated:
             raised.append(DUPLICATE_MEDIA)
-        for code in raised:
-            counts[code] = counts.get(code, 0) + 1
+        counts.update(raised)
     return counts
 
 
