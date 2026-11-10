@@ -24,6 +24,7 @@ import {
 } from "@/lib/collections";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { collectionItem } from "@/lib/items";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /** One page of the owner's list at the endpoint's page cap (`services/pagination.MAX_PAGE_SIZE`);
  *  older collections past it are absent, as in the event page's panel. */
@@ -83,7 +84,7 @@ export function BulkAddToCollectionPanel({
   );
 
   if (error) return <ErrorNotice error={error} />;
-  if (data === null) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (data === null) return <PageLoading variant="line" />;
 
   return (
     <CollectionPicker

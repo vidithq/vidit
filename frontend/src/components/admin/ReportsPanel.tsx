@@ -25,6 +25,7 @@ import { LIST_TILE } from "@/components/ui/form-styles";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { eventHref } from "@/lib/routes";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /**
  * The moderation queue: every content report, open first and newest first within each group (the
@@ -202,7 +203,7 @@ export function ReportsPanel() {
       </header>
 
       {error && <ErrorNotice error={error} />}
-      {loading && <div className="text-xs text-neutral-500 py-2">Loading…</div>}
+      {loading && <PageLoading variant="compact" className="py-2" />}
 
       {!loading && !error && reports.length === 0 && (
         <p className="text-xs text-neutral-500 py-2">No reports yet.</p>

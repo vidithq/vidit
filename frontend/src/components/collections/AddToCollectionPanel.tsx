@@ -17,6 +17,7 @@ import {
 } from "@/lib/collections";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { collectionItem } from "@/lib/items";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /**
  * The owner's shelving panel for one event: every collection they hold, each
@@ -81,7 +82,7 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
     return <ErrorNotice error={error} />;
   }
   if (rows === null) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <PageLoading variant="line" />;
   }
 
   return (

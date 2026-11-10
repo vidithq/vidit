@@ -54,7 +54,7 @@ export default function DetectionReviewPage() {
       {error ? (
         <ErrorNotice error={error} onRetry={refetch} />
       ) : (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <PageLoading variant="line" />
       )}
     </PageShell>
   );

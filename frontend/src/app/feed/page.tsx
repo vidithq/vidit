@@ -42,7 +42,7 @@ function enteredLabel(item: FeedItem): string {
 export default function FeedPage() {
   // `useSearchParams` opts out of static prerender, so the body sits under Suspense.
   return (
-    <Suspense fallback={<PageLoading label="Loading feed…" />}>
+    <Suspense fallback={<PageLoading />}>
       <FeedPageBody />
     </Suspense>
   );
@@ -78,7 +78,7 @@ function FeedPageBody() {
   );
 
   if (authLoading || !user) {
-    return <PageLoading label="Loading feed…" />;
+    return <PageLoading />;
   }
 
   const showAll = (
@@ -91,7 +91,7 @@ function FeedPageBody() {
   if (error && items.length === 0) {
     body = <ErrorNotice error={error} />;
   } else if (loading || (emptyFollowing && !profile && !profileError)) {
-    body = <p className="text-sm text-neutral-500">Loading feed…</p>;
+    body = <PageLoading variant="line" />;
   } else if (items.length > 0) {
     body = (
       <>

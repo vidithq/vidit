@@ -91,7 +91,7 @@ export default function DetectionsPage() {
       <ErrorNotice error={error} />
     );
   } else if (!summary || (page === 1 && !data)) {
-    listBody = <p className="text-sm text-neutral-500">Loading…</p>;
+    listBody = <PageLoading variant="line" />;
   } else if (summary.ready_total + summary.incomplete_total === 0) {
     // Reached once the last detection is submitted: nothing links here while the queue is empty.
     listBody = <EmptyState variant="boxed">{NOTHING_HERE.all}</EmptyState>;

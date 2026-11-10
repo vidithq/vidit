@@ -10,6 +10,7 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { ActionIcon, buttonClasses } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { PageLoading } from "@/components/ui/PageShell";
 
 type State = "confirming" | "success" | "invalid" | "unanswered";
 
@@ -115,7 +116,7 @@ function ConfirmInner() {
 export default function ConfirmRegistrationPage() {
   return (
     <Suspense
-      fallback={<span className="text-neutral-500 text-sm">Loading…</span>}
+      fallback={<PageLoading variant="line" />}
     >
       <ConfirmInner />
     </Suspense>
