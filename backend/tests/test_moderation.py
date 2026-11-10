@@ -22,7 +22,7 @@ from app.models.collection import Collection
 from app.models.content_report import ContentReport
 from app.models.event import Event
 from app.models.source import Source, SourceLink
-from tests._fixtures import client, collection_description
+from tests._fixtures import audit_row, client, collection_description
 from tests.conftest import login_as
 
 
@@ -90,15 +90,6 @@ def _collection_report(db, collection, *, reason: str = "other") -> ContentRepor
     return row
 
 
-def _audit(db, admin_user, action: str) -> AuditLog | None:
-    return (
-        db.query(AuditLog)
-        .filter(AuditLog.actor_id == admin_user.id, AuditLog.action == action)
-        .order_by(AuditLog.created_at.desc())
-        .first()
-    )
-
-
 # ── GET /admin/reports ────────────────────────────────────────────────────
 
 
@@ -130,14 +121,14 @@ def test_resolve_marked_graphic_sets_the_flag_and_stamps_the_report(db, admin_us
     stored = db.query(ContentReport).filter(ContentReport.id == report.id).one()
     assert stored.resolved_by_id == admin_user.id
 
-    assert _audit(db, admin_user, "report_resolved").target == {
+    assert audit_row(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),
         "event_id": str(event.id),
         "collection_id": None,
         "site_id": None,
         "resolution": "marked_graphic",
     }
-    assert _audit(db, admin_user, "event_marked_graphic").target == {"event_id": str(event.id)}
+    assert audit_row(db, admin_user, "event_marked_graphic").target == {"event_id": str(event.id)}
 
 
 def test_resolve_hidden_takes_the_event_off_the_public_list(db, admin_user, event):
@@ -157,7 +148,7 @@ def test_resolve_hidden_takes_the_event_off_the_public_list(db, admin_user, even
 
     after = client.get("/api/v1/events")
     assert str(event.id) not in {row["id"] for row in after.json()}
-    assert _audit(db, admin_user, "event_hidden").target == {"event_id": str(event.id)}
+    assert audit_row(db, admin_user, "event_hidden").target == {"event_id": str(event.id)}
 
 
 def test_resolve_dismissed_leaves_the_event_untouched(db, admin_user, event):
@@ -174,8 +165,8 @@ def test_resolve_dismissed_leaves_the_event_untouched(db, admin_user, event):
     refreshed = db.query(Event).filter(Event.id == event.id).one()
     assert refreshed.is_graphic is False
     assert refreshed.hidden_at is None
-    assert _audit(db, admin_user, "report_resolved") is not None
-    assert _audit(db, admin_user, "event_hidden") is None
+    assert audit_row(db, admin_user, "report_resolved") is not None
+    assert audit_row(db, admin_user, "event_hidden") is None
 
 
 def test_resolving_twice_is_a_conflict(db, admin_user, event):
@@ -270,7 +261,7 @@ def test_orphaned_report_can_still_be_dismissed(db, admin_user, event):
     assert body["event_id"] is None
     assert body["resolution"] == "dismissed"
 
-    assert _audit(db, admin_user, "report_resolved").target == {
+    assert audit_row(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),
         "event_id": None,
         "collection_id": None,
@@ -293,7 +284,7 @@ def test_moderation_hides_then_restores_the_event(db, admin_user, event):
     assert hide.status_code == 200, hide.text
     assert hide.json()["hidden_at"] is not None
     assert str(event.id) not in {row["id"] for row in client.get("/api/v1/events").json()}
-    assert _audit(db, admin_user, "event_hidden").target == {"event_id": str(event.id)}
+    assert audit_row(db, admin_user, "event_hidden").target == {"event_id": str(event.id)}
 
     restore = client.patch(
         f"/api/v1/admin/events/{event.id}/moderation",
@@ -303,7 +294,7 @@ def test_moderation_hides_then_restores_the_event(db, admin_user, event):
     assert restore.status_code == 200, restore.text
     assert restore.json()["hidden_at"] is None
     assert str(event.id) in {row["id"] for row in client.get("/api/v1/events").json()}
-    assert _audit(db, admin_user, "event_unhidden").target == {"event_id": str(event.id)}
+    assert audit_row(db, admin_user, "event_unhidden").target == {"event_id": str(event.id)}
 
     db.expire_all()
     assert db.query(Event).filter(Event.id == event.id).one().hidden_at is None
@@ -353,7 +344,7 @@ def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
     )
     assert marked.status_code == 200, marked.text
     assert marked.json()["is_graphic"] is True
-    assert _audit(db, admin_user, "event_marked_graphic") is not None
+    assert audit_row(db, admin_user, "event_marked_graphic") is not None
     assert _source_flags(db, event) == [True, True]
 
     cleared = client.patch(
@@ -363,7 +354,7 @@ def test_moderation_overrides_the_graphic_flag_both_ways(db, admin_user, event):
     )
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["is_graphic"] is False
-    assert _audit(db, admin_user, "event_unmarked_graphic") is not None
+    assert audit_row(db, admin_user, "event_unmarked_graphic") is not None
 
     assert _source_flags(db, event) == [False, False]
 
@@ -435,11 +426,11 @@ def test_resolve_hidden_withholds_the_collection(db, admin_user, collection):
     client.cookies.clear()
     assert client.get(f"/api/v1/collections/{collection.id}").status_code == 404
 
-    assert _audit(db, admin_user, "collection_hidden").target == {
+    assert audit_row(db, admin_user, "collection_hidden").target == {
         "collection_id": str(collection.id),
         "title": collection.title,
     }
-    assert _audit(db, admin_user, "report_resolved").target == {
+    assert audit_row(db, admin_user, "report_resolved").target == {
         "report_id": str(report.id),
         "event_id": None,
         "collection_id": str(collection.id),
@@ -479,7 +470,7 @@ def test_resolve_dismissed_leaves_the_collection_untouched(db, admin_user, colle
     assert db.query(Collection).filter(Collection.id == collection.id).one().hidden_at is None
     client.cookies.clear()
     assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
-    assert _audit(db, admin_user, "collection_hidden") is None
+    assert audit_row(db, admin_user, "collection_hidden") is None
 
 
 def test_a_report_names_one_target_at_most(db, event, collection):

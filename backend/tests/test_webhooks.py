@@ -16,8 +16,6 @@ from sqlalchemy import or_
 import app.services.bot as bot_service
 from app.config import settings
 from app.models.bot_mention import BotCatchUpCursor, BotMention
-from app.models.event import Event
-from app.models.user import User
 from app.services.bot import catch_up, drain_mentions
 from tests._fixtures import BOT_USER_ID, client, syndication_client, write_client
 
@@ -156,16 +154,8 @@ def _webhook_settings(monkeypatch):
 
 
 @pytest.fixture
-def linked_owner(db):
-    user = User(
-        username=f"analyst{uuid.uuid4().hex[:8]}",
-        email=f"analyst-{uuid.uuid4().hex}@example.com",
-        password_hash="x",
-        x_handle=HANDLE,
-    )
-    db.add(user)
-    db.commit()
-    return user
+def linked_owner(make_user):
+    return make_user("analyst", x_handle=HANDLE)
 
 
 @pytest.fixture(autouse=True)
@@ -179,12 +169,6 @@ def _cleanup():
         session.query(BotMention).filter(
             or_(BotMention.mention_post_id.in_(list(BODIES)), BotMention.status != "done")
         ).delete(synchronize_session=False)
-        owner = session.query(User).filter(User.x_handle == HANDLE).first()
-        if owner is not None:
-            session.query(Event).filter(Event.owner_id == owner.id).delete(
-                synchronize_session=False
-            )
-            session.query(User).filter(User.id == owner.id).delete(synchronize_session=False)
         session.commit()
     finally:
         session.close()

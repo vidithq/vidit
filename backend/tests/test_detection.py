@@ -26,7 +26,6 @@ from app.models.media import Media
 from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.services import admin, versions
-from app.services.auth import hash_password
 from app.services.detection import (
     Outcome,
     _row_disposition,
@@ -405,26 +404,29 @@ async def test_a_pass_that_wrote_nothing_leaves_the_points_cache_alone(db, owner
     assert points_cache.get("points:whatever") == b"[]"
 
 
-async def test_soft_deleted_pair_is_skipped(db, owner):
-    # A re-import must not resurrect an admin takedown or add a live twin.
+@pytest.mark.parametrize(
+    "takedown",
+    [
+        # A re-import must not resurrect an admin takedown or add a live twin.
+        pytest.param({"deleted_at": datetime.now(UTC)}, id="soft-deleted"),
+        # A takedown freezes the row: no overwrite, no second copy.
+        pytest.param({"hidden_at": datetime.now(UTC)}, id="withheld"),
+        # An owner reject (``closed``, before_closed_status='detected') is respected.
+        pytest.param(
+            {
+                "before_closed_status": STATUS_DETECTED,
+                "status": "closed",
+                "closed_at": datetime.now(UTC),
+            },
+            id="closed-detection",
+        ),
+    ],
+)
+async def test_a_taken_down_pair_is_skipped(db, owner, takedown):
     await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()
-    geo.deleted_at = datetime.now(UTC)
-    db.commit()
-
-    outcome = await _persist(
-        db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher
-    )
-    assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
-    live = db.query(Event).filter(Event.owner_id == owner.id, Event.deleted_at.is_(None)).all()
-    assert live == []
-
-
-async def test_withheld_pair_is_skipped(db, owner):
-    # A takedown freezes the row: no overwrite, no second copy.
-    await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
-    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
-    geo.hidden_at = datetime.now(UTC)
+    for column, value in takedown.items():
+        setattr(geo, column, value)
     db.commit()
     geo_id, stored_title = geo.id, geo.title
 
@@ -439,25 +441,7 @@ async def test_withheld_pair_is_skipped(db, owner):
     rows = db.query(Event).filter(Event.owner_id == owner.id).all()
     assert [r.id for r in rows] == [geo_id]
     assert rows[0].title == stored_title
-
-
-async def test_closed_detection_is_skipped(db, owner):
-    # An owner reject (``closed``, before_closed_status='detected') is respected by re-imports.
-    await _persist(db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher)
-    geo = db.query(Event).filter(Event.owner_id == owner.id).one()
-    geo.before_closed_status = STATUS_DETECTED
-    geo.status = "closed"
-    geo.closed_at = datetime.now(UTC)
-    db.commit()
-
-    outcome = await _persist(
-        db, owner=owner, detections=[_detection()], fetch_media=_missing_fetcher
-    )
-    assert outcome.created == [] and len(outcome.skipped) == 1 and len(outcome.updated) == 0
-    assert db.query(Event).filter(Event.owner_id == owner.id).count() == 1
-    assert (
-        db.query(Event).filter(Event.owner_id == owner.id, Event.status == "detected").all() == []
-    )
+    assert {column: getattr(rows[0], column) for column in takedown} == takedown
 
 
 async def test_retracted_geolocation_is_skipped(db, owner):
@@ -930,23 +914,6 @@ def _store_proof_derivatives(row: Event) -> None:
             store_bytes(TINY_JPEG, derivative_key(key, suffix))
 
 
-@pytest.fixture
-def actor(db):
-    user = User(
-        username=f"adm{uuid.uuid4().hex[:8]}",
-        email=f"adm-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
 async def test_an_imported_proof_image_is_stored_without_derivatives(db, owner):
     """Only the source image gets the hero and thumbnail its renders read."""
     row = await _import_source_and_proof(db, owner)
@@ -956,7 +923,7 @@ async def test_an_imported_proof_image_is_stored_without_derivatives(db, owner):
 
 
 @pytest.mark.parametrize("erasure", ["event", "user", "purge"])
-async def test_every_erasure_path_leaves_no_stored_object(db, owner, actor, erasure):
+async def test_every_erasure_path_leaves_no_stored_object(db, owner, admin_user, erasure):
     """Hard delete of the event, of its owner, and the detection purge each sweep every
     original and every derivative, whatever the media's role."""
     row = await _import_source_and_proof(db, owner)
@@ -965,11 +932,11 @@ async def test_every_erasure_path_leaves_no_stored_object(db, owner, actor, eras
     assert stored_keys() == _with_derivatives(source_key) | _with_derivatives(proof_key)
 
     if erasure == "event":
-        admin.hard_delete_geolocation(db, actor_id=actor.id, geolocation_id=row.id)
+        admin.hard_delete_geolocation(db, actor_id=admin_user.id, geolocation_id=row.id)
     elif erasure == "user":
-        admin.hard_delete_user(db, actor_id=actor.id, user_id=owner.id)
+        admin.hard_delete_user(db, actor_id=admin_user.id, user_id=owner.id)
     else:
-        admin.purge_detected_events(db, actor_id=actor.id, user_id=owner.id)
+        admin.purge_detected_events(db, actor_id=admin_user.id, user_id=owner.id)
 
     assert stored_keys() == set()
 
@@ -1201,49 +1168,54 @@ def test_validate_bytes_guards_type_and_size():
         validate_bytes(b"x" * (settings.max_image_size + 1), "image/jpeg")  # oversize
 
 
-async def test_a_sourced_detection_that_stored_no_footage_warns(db, owner):
-    """A declared source that stored no file and has an unknown post date warns."""
-    detection = _detection(
-        source_url="https://t.me/chan/42",
-        media=[_img()],
-        source_posted_at=None,
-    )
-    outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=_missing_fetcher)
+_SOURCED = {"source_url": "https://t.me/chan/42", "source_posted_at": None}
+
+
+@pytest.mark.parametrize(
+    ("detection_kw", "fetch_media", "warnings", "expected"),
+    [
+        # A declared source that stored no file and has an unknown post date warns.
+        pytest.param(
+            _SOURCED,
+            _missing_fetcher,
+            [],
+            {SOURCE_FOOTAGE_MISSING: 1, SOURCE_DATE_UNKNOWN: 1},
+            id="no-footage-no-date",
+        ),
+        # An upstream failure differs from a source with no footage: a re-run may fill it.
+        pytest.param(
+            {**_SOURCED, "source_fetch_failed": True},
+            _missing_fetcher,
+            [],
+            {SOURCE_FETCH_FAILED: 1, SOURCE_DATE_UNKNOWN: 1},
+            id="unreachable-source-may-come-back",
+        ),
+        pytest.param(
+            {**_SOURCED, "source_posted_at": datetime(2025, 11, 11, 8, 0, tzinfo=UTC)},
+            _image_fetcher,
+            [],
+            {},
+            id="footage-and-date-warn-about-neither",
+        ),
+        # A source-less detection already says why there is no footage or date.
+        pytest.param(
+            {},
+            _missing_fetcher,
+            [SOURCE_MISSING],
+            {SOURCE_MISSING: 1},
+            id="empty-source-slot-suppresses-footage-and-date",
+        ),
+    ],
+)
+async def test_the_source_warnings_a_pass_counts(
+    db, owner, detection_kw, fetch_media, warnings, expected
+):
+    detection = _detection(media=[_img()], **detection_kw)
+    if warnings:
+        detection = dataclasses.replace(detection, warnings=warnings)
+    outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=fetch_media)
     assert len(outcome.created) == 1
-    assert outcome.warnings == {SOURCE_FOOTAGE_MISSING: 1, SOURCE_DATE_UNKNOWN: 1}
-
-
-async def test_a_source_the_chase_could_not_reach_warns_that_it_may_come_back(db, owner):
-    """An upstream failure differs from a source with no footage: a re-run may fill it."""
-    detection = _detection(
-        source_url="https://t.me/chan/42",
-        media=[_img()],
-        source_posted_at=None,
-        source_fetch_failed=True,
-    )
-    outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=_missing_fetcher)
-    assert len(outcome.created) == 1
-    assert outcome.warnings == {SOURCE_FETCH_FAILED: 1, SOURCE_DATE_UNKNOWN: 1}
-
-
-async def test_a_detection_with_footage_and_a_source_date_warns_about_neither(db, owner):
-    detection = _detection(
-        source_url="https://t.me/chan/42",
-        media=[_img()],
-        source_posted_at=datetime(2025, 11, 11, 8, 0, tzinfo=UTC),
-    )
-    outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=_image_fetcher)
-    assert len(outcome.created) == 1
-    assert outcome.warnings == {}
-
-
-async def test_an_empty_source_slot_suppresses_the_footage_and_date_warnings(db, owner):
-    """A source-less detection already says why there is no footage or date."""
-    detection = _detection(media=[_img()])
-    detection = dataclasses.replace(detection, warnings=[SOURCE_MISSING])
-    outcome = await _persist(db, owner=owner, detections=[detection], fetch_media=_missing_fetcher)
-    assert len(outcome.created) == 1
-    assert outcome.warnings == {SOURCE_MISSING: 1}
+    assert outcome.warnings == expected
 
 
 async def test_media_already_on_another_event_warns_once_per_row(db, owner):

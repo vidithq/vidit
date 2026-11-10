@@ -1,6 +1,7 @@
-"""Shared test helpers: the shared ``client``, the user reaper, the ``make_event`` and
-``make_detection`` row factories, upload bytes, the X-export file every archive test writes,
-direct reads / writes of the local storage root, and small HTTP and ingest stubs.
+"""Shared test helpers: the shared ``client``, the user reaper, the ``make_event``,
+``make_detection`` and ``source`` row factories, the audit row read, upload bytes, the X-export
+file every archive test writes, direct reads / writes of the local storage root, and small HTTP
+and ingest stubs.
 
 The JPEG is real image bytes (the EXIF strip pre-decodes via Pillow, which
 rejects a stub). It is embedded as hex so collection needs no Pillow.
@@ -220,6 +221,24 @@ def make_detection(db, author: User, **kw: Any) -> Event:
     kw.setdefault("kind", "unknown")
     kw.setdefault("detected_from_url", DETECTION_URL)
     return make_event(db, author=author, status=STATUS_DETECTED, **kw)
+
+
+def source(
+    url: str | None = None, *, level: str = "direct", kind: str = "unknown", **kw: Any
+) -> Source:
+    """One source with ``url`` as its only link (none when ``None``); ``kw`` are columns."""
+    return Source(
+        level=level, kind=kind, links=[SourceLink(url=url)] if url is not None else [], **kw
+    )
+
+
+def audit_row(db, actor: User, action: str) -> AuditLog | None:
+    """The ``action`` row ``actor`` wrote, ``None`` when there is none; raises on a second."""
+    return (
+        db.query(AuditLog)
+        .filter(AuditLog.actor_id == actor.id, AuditLog.action == action)
+        .one_or_none()
+    )
 
 
 def _media() -> Media:

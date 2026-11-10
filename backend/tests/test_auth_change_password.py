@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import pytest
 
-from app.models.audit_log import ACTION_PASSWORD_CHANGED, AuditLog
+from app.models.audit_log import ACTION_PASSWORD_CHANGED
 from app.routers import auth as auth_router
 from app.services import email
+from tests._fixtures import audit_row
 from tests.conftest import DEFAULT_PASSWORD, login_as
 
 
@@ -130,12 +131,7 @@ def test_change_password_writes_audit_event(client, make_user, db, sent_emails):
     )
     assert response.status_code == 204
 
-    events = (
-        db.query(AuditLog)
-        .filter(AuditLog.actor_id == user.id, AuditLog.action == ACTION_PASSWORD_CHANGED)
-        .all()
-    )
-    assert len(events) == 1
+    assert audit_row(db, user, ACTION_PASSWORD_CHANGED) is not None
 
 
 def test_change_password_sends_heads_up_email(client, make_user, sent_emails):
@@ -196,9 +192,4 @@ def test_change_password_swallows_email_send_failure(client, make_user, monkeypa
     )
     assert ok.status_code == 200
 
-    events = (
-        db.query(AuditLog)
-        .filter(AuditLog.actor_id == user.id, AuditLog.action == ACTION_PASSWORD_CHANGED)
-        .all()
-    )
-    assert len(events) == 1
+    assert audit_row(db, user, ACTION_PASSWORD_CHANGED) is not None
