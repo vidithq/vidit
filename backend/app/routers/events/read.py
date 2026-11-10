@@ -8,7 +8,6 @@ import orjson
 from fastapi import (
     APIRouter,
     Depends,
-    HTTPException,
     Query,
     Request,
 )
@@ -34,15 +33,15 @@ from app.schemas.event import (
     PaginatedEventDetails,
 )
 from app.services.event_filters import (
-    VIEWS,
     EventFilters,
+    EventView,
     bbox_predicate,
     parse_bbox,
     snap_bbox,
     validate_status_filter,
     visible_events,
 )
-from app.services.events import DETECTION_READINESS, detection_ready_predicate
+from app.services.events import DetectionReadiness, detection_ready_predicate
 from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import (
     MAX_PAGE_SIZE,
@@ -165,7 +164,7 @@ def list_points(
 def list_events(
     request: Request,
     response: Response,
-    view: str = Query("located"),
+    view: EventView = Query("located"),
     # Multi-value, any-match; a single value parses to a one-item list.
     status: list[str] | None = Query(None),
     filters: EventFilters = Depends(event_filters),
@@ -186,10 +185,6 @@ def list_events(
     ``created_at, id``, descending for ``sort=newest`` and ascending for
     ``sort=oldest``. Both are total, so a walk can't duplicate or skip rows.
     """
-    if view not in VIEWS:
-        raise HTTPException(
-            status_code=422, detail=f"view must be one of: {', '.join(sorted(VIEWS))}"
-        )
     validate_status_filter(status)
     size = page_size(limit)
 
@@ -255,7 +250,7 @@ def list_detections(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1),
-    readiness: str = Query("all"),
+    readiness: DetectionReadiness = Query("all"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -277,11 +272,6 @@ def list_detections(
     always count the whole queue. Offset-paged (``page`` / ``per_page``),
     capped at 100 rows per page.
     """
-    if readiness not in DETECTION_READINESS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"readiness must be one of: {', '.join(sorted(DETECTION_READINESS))}",
-        )
     # Over-large sizes are clamped; below 1 is a 422 at ``Query(ge=1)`` (a
     # non-positive LIMIT / negative OFFSET would be a Postgres 500).
     per_page = page_size(per_page)

@@ -188,5 +188,5 @@ def test_detections_readiness_rejects_an_unknown_value(author):
     headers = login_as(client, author)
     response = client.get(f"{_URL}?readiness=complete", headers=headers)
     assert response.status_code == 422
-    assert "readiness must be one of" in response.json()["detail"]
+    assert response.json()["detail"][0]["loc"] == ["query", "readiness"]
     assert client.get(f"{_URL}?readiness=", headers=headers).status_code == 422

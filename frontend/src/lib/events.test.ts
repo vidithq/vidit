@@ -241,7 +241,10 @@ describe("uploadArchive", () => {
 
   it("maps the dev upload endpoint's 413 to the same code", async () => {
     // The route's own streaming guard (main.py::dev_staging_upload).
-    stubUpload(413, '{"detail":"Upload exceeds the size guard"}');
+    stubUpload(
+      413,
+      '{"detail":{"code":"upload_too_large","message":"Upload exceeds the size guard"}}'
+    );
     await expect(uploadArchive(target, zip)).rejects.toHaveProperty(
       "code",
       "archive_too_large"
@@ -250,7 +253,10 @@ describe("uploadArchive", () => {
 
   it("maps the dev body-size middleware's 413 to the same code", async () => {
     // The body-size middleware ahead of the route; its detail carries the cap in bytes.
-    stubUpload(413, '{"detail":"Request body too large (max 4305453056 bytes)"}');
+    stubUpload(
+      413,
+      '{"detail":{"code":"upload_too_large","message":"Request body too large (max 4305453056 bytes)"}}'
+    );
     await expect(uploadArchive(target, zip)).rejects.toHaveProperty(
       "code",
       "archive_too_large"

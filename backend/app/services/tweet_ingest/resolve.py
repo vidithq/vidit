@@ -25,7 +25,7 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from typing import Literal
+from typing import Final, Literal
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 from .extract import (
@@ -61,7 +61,7 @@ from .urls import (
 # thread reaches the engine.
 COORDS_MISSING = "coords_missing"
 COORDS_INVALID = "coords_invalid"
-POST_UNREADABLE = "post_unreadable"
+POST_UNREADABLE: Final = "post_unreadable"
 # Raised by the write path: a request draft's footage was all refused by the
 # evidence intake (over the size cap, or unreadable). Worded here because the
 # reply reads one table.

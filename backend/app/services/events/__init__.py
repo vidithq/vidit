@@ -44,12 +44,12 @@ from .errors import (
     TooManySourcesError,
     VersionMismatchError,
 )
-from .readiness import DETECTION_READINESS, detection_ready_predicate
+from .readiness import DetectionReadiness, detection_ready_predicate
 from .request import ImportProvenance, create_request, stamp_provenance, update_request
 from .revision import save_version
 
 __all__ = [
-    "DETECTION_READINESS",
+    "DetectionReadiness",
     "ROW_INTERNAL_ERROR_CODE",
     "ConflictRequiredError",
     "CoordinatesRequiredError",

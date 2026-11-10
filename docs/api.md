@@ -43,7 +43,7 @@ flowchart LR
   detail: code + message`"]:::exit
 
   e403["`403 plain string`"]:::exit
-  e413["`413`"]:::exit
+  e413["`413 upload_too_large`"]:::exit
   e401["`401 / 403`"]:::exit
   e429["`429 rate_limited, read_quota_exceeded`"]:::exit
   e422["`422 detail array`"]:::exit
@@ -754,7 +754,7 @@ The error table every event form endpoint shares. Each endpoint section names wh
 | 404 | `event_not_found` | Unknown or soft-deleted event |
 | 409 | `invalid_state` | The row is not in a state this endpoint accepts |
 | 409 | `version_mismatch` | `POST /events/{id}/versions` only: the posted `version_no` is not the live version. Reload the event |
-| 413 | | The body exceeds the platform cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB`). The middleware checks it before the body is read, and the 413 carries CORS headers |
+| 413 | `upload_too_large` | The body exceeds the platform cap (`max_video_size + max_proof_images_per_event × max_image_size + 10 MB`). The middleware checks it before the body is read, and the 413 carries CORS headers |
 | 422 | `too_many_files` | Over the [proof-image ceiling](#proof-image-ceiling) |
 | 422 | | A missing required field, `title` over 255 characters, a malformed `occurred_date` or `occurred_time`, or a `sources` entry that fails its schema: an unknown field, a missing `kind`, a value outside `level` or `kind`, a URL over 2000 characters, a malformed instant, or both `upload_id` and `media_id`. The `loc` of each entry starts with `["body", "sources", <index>]` |
 
@@ -4390,7 +4390,7 @@ Idempotent: redacting an already-redacted version returns it unchanged and appen
 | Code | Case |
 |------|------|
 | 403 | Not an admin, the event's owner included |
-| 404 | `geolocation_not_found`: unknown or soft-deleted event. `version_not_found`: no version under that number |
+| 404 | `event_not_found`: unknown or soft-deleted event. `version_not_found`: no version under that number |
 
 ### `POST /admin/maintenance/reap-password-reset-tokens` 🛡️
 
@@ -4452,7 +4452,7 @@ X's Challenge-Response Check (CRC), sent at registration and then hourly; a wron
 One Account Activity delivery.
 
 - The `x-twitter-webhooks-signature` header must carry `sha256=<base64(HMAC-SHA256(consumer_secret, raw_body))>`, compared in constant time. A mismatch is a 401.
-- A body over 512 KiB is a 413, before the body is read.
+- A body over 512 KiB is a 413 with code `upload_too_large`, before the body is read.
 - A valid signature always answers 200, because a non-2xx makes X retry and eventually deactivate the webhook. A foreign `for_user_id` and a non-mention event are ignored.
 - Mentions are queued as `queued` rows in [`bot_mentions`](data-model.md#bot_mentions), with `ON CONFLICT (mention_post_id) DO NOTHING`; the import worker runs the pipeline. A redelivered mention, or one the catch-up at 12:00 UTC already queued, adds no row.
 - The bot's own posts, and a reply to the bot's own post whose only bot tag is X's reply prefix, add no row ([`ingestion.md`](ingestion.md#the-bot)).
@@ -4525,7 +4525,7 @@ A non-2xx response carries one of three shapes on its `detail` field. The fronte
 | Validation array | `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}` | A request-body or query-string validation failure (422). The entries never echo the submitted value |
 | Typed envelope | `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` | A business-rule error from the service layer, with the status its error class declares |
 
-Branch on `code`, not on `message`: `code` is the stable contract, and each endpoint section lists its codes. The `429` responses of the [rate limiter](#rate-limits) use the typed envelope (`rate_limited`, `read_quota_exceeded`). Any endpoint that touches the database answers `409` with code `lock_timeout` when a statement waits longer than the [lock timeout](engineering.md#request-concurrency) for a lock another transaction holds; retry the request.
+Branch on `code`, not on `message`: `code` is the stable contract, and each endpoint section lists its codes. The OpenAPI spec at `/openapi.json` lists every code in the `ErrorCode` schema and the typed envelope as `CodedErrorResponse`. The `429` responses of the [rate limiter](#rate-limits) use the typed envelope (`rate_limited`, `read_quota_exceeded`). Any endpoint that touches the database answers `409` with code `lock_timeout` when a statement waits longer than the [lock timeout](engineering.md#request-concurrency) for a lock another transaction holds; retry the request.
 
 ### File limits
 

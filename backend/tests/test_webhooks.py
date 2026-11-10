@@ -279,8 +279,8 @@ def test_post_with_chunked_oversized_body_is_413(db):
         },
     )
     assert resp.status_code == 413
-    assert "too large" in resp.json()["detail"].lower()
-    assert str(webhooks_module.MAX_BODY_BYTES) in resp.json()["detail"]
+    assert resp.json()["detail"]["code"] == "upload_too_large"
+    assert str(webhooks_module.MAX_BODY_BYTES) in resp.json()["detail"]["message"]
     assert _queued_mentions(db) == []
 
 

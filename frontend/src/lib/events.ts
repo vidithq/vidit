@@ -1,6 +1,7 @@
 import { apiFetch } from "./api";
 import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
+import { readResponse } from "./errors";
 import { appendEventFilterParams, type EventFilterParams } from "./search";
 import { coordinatePair, parsePair, type CoordinatePair } from "./coordinates";
 import { hhmm } from "./format";
@@ -92,9 +93,11 @@ const DETECTIONS_PER_PAGE = 10;
  *  leaving the queue can't shift the position. The backend caps lists at 100 rows. */
 const DETECTIONS_REVIEW_QUEUE = 100;
 
-/** Queue filter for `GET /events/detections`. Hand-written like `EventView` (the router
- *  takes a plain `str`). Mirrors `services/events/readiness.py` `DETECTION_READINESS`; change both. */
-export type DetectionReadiness = "all" | "ready" | "incomplete";
+export type DetectionReadiness = NonNullable<
+  NonNullable<
+    operations["list_detections_api_v1_events_detections_get"]["parameters"]["query"]
+  >["readiness"]
+>;
 
 /** Shape of `GET /events/detections`. `total` counts the set `readiness` selected;
  *  `ready_total` and `incomplete_total` count the whole queue under any filter. */
@@ -115,9 +118,9 @@ export function detectionsReviewPath(): string {
   return detectionsPath(1, DETECTIONS_REVIEW_QUEUE);
 }
 
-/** Read views over the `events` table. Mirrors `event_filters.VIEWS`; see
- *  `docs/data-model.md`. */
-type EventView = "located" | "requested";
+type EventView = NonNullable<
+  NonNullable<operations["list_events_api_v1_events_get"]["parameters"]["query"]>["view"]
+>;
 
 /** The filter set of `GET /events`, plus its view, order and page. */
 interface EventListParams extends EventFilterParams {
@@ -642,13 +645,6 @@ export class ArchiveUploadError extends Error {
   }
 }
 
-/** `detail` prefixes of the dev upload endpoint's 413s (`backend/app/main.py`): its size
- *  guard and the body-size middleware. */
-const DEV_UPLOAD_TOO_LARGE_DETAILS = [
-  "Upload exceeds the size guard",
-  "Request body too large",
-];
-
 /** Whether a 413 came from the dev upload endpoint rather than an intermediary. */
 function isDevUploadTooLarge(body: string): boolean {
   let parsed: unknown;
@@ -657,9 +653,7 @@ function isDevUploadTooLarge(body: string): boolean {
   } catch {
     return false;
   }
-  const detail = (parsed as { detail?: unknown } | null)?.detail;
-  if (typeof detail !== "string") return false;
-  return DEV_UPLOAD_TOO_LARGE_DETAILS.some((prefix) => detail.startsWith(prefix));
+  return readResponse(413, parsed, null).code === "upload_too_large";
 }
 
 /** Classify a non-2xx from the storage POST. An over-cap body is terminal (S3: 400

@@ -96,6 +96,8 @@ _LINK_STATUS = {
 class LinkImportError(EvidenceIntakeError):
     """A post link whose file cannot be staged; ``code`` names why and sets the status."""
 
+    instance_codes = tuple(_LINK_STATUS)
+
     def __init__(self, code: str, message: str | None = None) -> None:
         super().__init__(message or _LINK_REFUSALS[code])
         self.code = code

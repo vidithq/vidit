@@ -82,7 +82,7 @@ def test_every_admin_route_refuses_a_regular_user(regular_user, method, path):
         ("DELETE", "/api/v1/admin/users/{id}/detected-events", None),
         ("POST", "/api/v1/admin/users/{id}/restore", None),
         ("DELETE", "/api/v1/admin/users/{id}", "user_not_found"),
-        ("DELETE", "/api/v1/admin/events/{id}", "geolocation_not_found"),
+        ("DELETE", "/api/v1/admin/events/{id}", "event_not_found"),
     ],
 )
 def test_admin_routes_404_on_an_unknown_id(admin_user, method, path, code):
