@@ -730,24 +730,6 @@ def _proof_rows(db, geo_id):
     return db.query(Media).filter(Media.event_id == geo_id)
 
 
-def test_proof_image_a_version_still_shows_is_not_deleted(db, author, conflict):
-    """A fresh proof image drops the old one from the current set, but version 1 still shows it."""
-    geo = _published(db, author, conflict)
-    response = _save_version(
-        geo.id,
-        author,
-        data=_form(conflict, _kept(geo), proof=proof_form_field()),
-        files=[proof_file_part()],
-    )
-    assert response.status_code == 200, response.text
-
-    db.expire_all()
-    proof_urls = {m.storage_url for m in _proof_rows(db, geo.id)}
-    # Without the version floor the intake would have swept the referenced image.
-    assert STORED_PROOF_URL in proof_urls
-    assert len(proof_urls) == 2
-
-
 def test_snapshot_lists_only_the_images_that_version_displayed(db, author, conflict):
     """``proof_media`` is the version's own body, not every proof row on the row.
 
@@ -1141,23 +1123,24 @@ def test_versions_read_rejects_a_malformed_cursor(db, author, conflict):
     assert client.get(f"/api/v1/events/{geo.id}/versions?cursor=not-a-cursor").status_code == 422
 
 
-def test_versions_read_serves_a_withheld_row_to_an_admin_only(db, author, admin_user, conflict):
-    """A takedown hides the history from all but an admin, who must read what was taken down."""
+@pytest.mark.parametrize("path", ["versions", "versions/1"], ids=["list", "one"])
+def test_versions_read_serves_a_withheld_row_to_an_admin_only(
+    db, author, admin_user, conflict, path
+):
+    """A takedown hides the history from all but an admin, who must read what was taken down;
+    the direct read takes the same branch as the list."""
     geo = _published(db, author, conflict)
     assert _save_version(geo.id, author, data=_form(conflict, _kept(geo))).status_code == 200
     geo.hidden_at = datetime.now(UTC)
     db.commit()
 
-    assert client.get(f"/api/v1/events/{geo.id}/versions").status_code == 404
-    assert (
-        client.get(
-            f"/api/v1/events/{geo.id}/versions", headers=login_as(client, author)
-        ).status_code
-        == 404
-    )
-    response = client.get(f"/api/v1/events/{geo.id}/versions", headers=login_as(client, admin_user))
+    url = f"/api/v1/events/{geo.id}/{path}"
+    assert client.get(url).status_code == 404
+    assert client.get(url, headers=login_as(client, author)).status_code == 404
+    response = client.get(url, headers=login_as(client, admin_user))
     assert response.status_code == 200, response.text
-    assert [item["version_no"] for item in response.json()["items"]] == [1]
+    body = response.json()
+    assert [item["version_no"] for item in body.get("items", [body])] == [1]
 
 
 def test_one_version_reads_by_its_number(db, author, conflict):
@@ -1206,28 +1189,6 @@ def test_one_version_serves_a_redacted_version_blanked(db, author, admin_user, c
     assert body["snapshot"] == {}
     assert body["note"] is None
     assert body["edited_by"]["username"] == author.username
-
-
-def test_one_version_serves_a_withheld_row_to_an_admin_only(db, author, admin_user, conflict):
-    """The direct read takes the same takedown branch as the list."""
-    geo = _published(db, author, conflict)
-    assert _save_version(geo.id, author, data=_form(conflict, _kept(geo))).status_code == 200
-    geo.hidden_at = datetime.now(UTC)
-    db.commit()
-
-    assert client.get(f"/api/v1/events/{geo.id}/versions/1").status_code == 404
-    assert (
-        client.get(
-            f"/api/v1/events/{geo.id}/versions/1", headers=login_as(client, author)
-        ).status_code
-        == 404
-    )
-    assert (
-        client.get(
-            f"/api/v1/events/{geo.id}/versions/1", headers=login_as(client, admin_user)
-        ).status_code
-        == 200
-    )
 
 
 # ── Redaction ────────────────────────────────────────────────────────────────

@@ -22,7 +22,6 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -33,15 +32,13 @@ from app.models.event import (
     STATUS_REQUESTED,
 )
 from app.models.user import User
-from app.services import storage as storage_module
-from app.services.auth import hash_password
 from app.services.evidence_processing import (
     MAX_AVATAR_DECODED_PIXELS,
     MAX_DECODED_PIXELS,
     UNREADABLE_IMAGE_MESSAGE,
 )
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
-from tests._fixtures import TINY_JPEG, client, gif_bytes, make_event
+from tests._fixtures import TINY_JPEG, client, gif_bytes, make_event, storage_key, stored_path
 from tests.conftest import login_as
 
 # ── GET /users/{username} — profile ───────────────────────────────────────
@@ -58,25 +55,8 @@ def test_profile_returns_user_shape(live_user):
     # Defaults to ``{}``, never NULL.
     assert body["external_links"] == {}
     assert body["geolocations_count"] == 0
-
-
-def test_profile_does_not_leak_email(db):
-    """`UserProfile` is public: an email here would be a harvest endpoint."""
-    user = User(
-        username=f"priv{uuid.uuid4().hex[:8]}",
-        email=f"private-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    try:
-        response = client.get(f"/api/v1/users/{user.username}")
-        assert response.status_code == 200
-        body = response.json()
-        assert "email" not in body, "email must not leak in public profile"
-    finally:
-        db.delete(user)
-        db.commit()
+    # ``UserProfile`` is public: an email here would be a harvest endpoint.
+    assert "email" not in body
 
 
 @pytest.mark.parametrize("page", ["", "/events", "/stats", "/collections"])
@@ -356,19 +336,6 @@ def test_patch_me_rejects_overlong_bio(live_user):
     assert response.status_code == 422
 
 
-@pytest.fixture
-def local_storage(monkeypatch, tmp_path):
-    """Point storage at a scratch directory; only the local backend can be read back off disk."""
-    monkeypatch.setattr(storage_module.settings, "storage_backend", "local")
-    monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
-    return tmp_path
-
-
-def _stored_path(root: Path, url: str) -> Path:
-    """The on-disk file a local-storage public URL resolves to."""
-    return root / url.removeprefix(f"{LOCAL_STORAGE_URL_PREFIX}/")
-
-
 def _put_avatar(live_user, content: bytes = TINY_JPEG, content_type: str = "image/jpeg"):
     return client.put(
         "/api/v1/users/me/avatar",
@@ -377,7 +344,7 @@ def _put_avatar(live_user, content: bytes = TINY_JPEG, content_type: str = "imag
     )
 
 
-def test_put_avatar_stores_the_image_on_our_own_host(local_storage, live_user, db):
+def test_put_avatar_stores_the_image_on_our_own_host(live_user, db):
     """The minted URL is under our storage prefix, never an owner-chosen host."""
     response = _put_avatar(live_user)
     assert response.status_code == 200
@@ -385,7 +352,7 @@ def test_put_avatar_stores_the_image_on_our_own_host(local_storage, live_user, d
     assert url.startswith(f"{LOCAL_STORAGE_URL_PREFIX}/avatars/{live_user.id}/")
     assert url.endswith(".jpg")
     # One object, not the hero/thumb trio.
-    stored = _stored_path(local_storage, url)
+    stored = stored_path(storage_key(url))
     assert stored.is_file()
     assert list(stored.parent.iterdir()) == [stored]
 
@@ -394,25 +361,25 @@ def test_put_avatar_stores_the_image_on_our_own_host(local_storage, live_user, d
     assert refreshed.avatar_url == url
 
 
-def test_put_avatar_replaces_and_removes_the_previous_object(local_storage, live_user, db):
+def test_put_avatar_replaces_and_removes_the_previous_object(live_user, db):
     """A replaced picture is deleted, or its old URL keeps working."""
     first_url = _put_avatar(live_user).json()["avatar_url"]
-    first_path = _stored_path(local_storage, first_url)
+    first_path = stored_path(storage_key(first_url))
     assert first_path.is_file()
 
     second_url = _put_avatar(live_user).json()["avatar_url"]
     assert second_url != first_url
     assert not first_path.exists()
-    assert _stored_path(local_storage, second_url).is_file()
+    assert stored_path(storage_key(second_url)).is_file()
 
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
     assert refreshed.avatar_url == second_url
 
 
-def test_delete_avatar_clears_the_column_and_the_object(local_storage, live_user, db):
+def test_delete_avatar_clears_the_column_and_the_object(live_user, db):
     url = _put_avatar(live_user).json()["avatar_url"]
-    stored = _stored_path(local_storage, url)
+    stored = stored_path(storage_key(url))
     assert stored.is_file()
 
     response = client.delete("/api/v1/users/me/avatar", headers=login_as(client, live_user))
@@ -425,7 +392,7 @@ def test_delete_avatar_clears_the_column_and_the_object(local_storage, live_user
     assert refreshed.avatar_url is None
 
 
-def test_delete_avatar_is_idempotent(local_storage, live_user):
+def test_delete_avatar_is_idempotent(live_user):
     """Nothing to clear is a success, so a double-click can't 500."""
     response = client.delete("/api/v1/users/me/avatar", headers=login_as(client, live_user))
     assert response.status_code == 200
@@ -440,7 +407,7 @@ def test_delete_avatar_is_idempotent(local_storage, live_user):
         (gif_bytes(1), "image/gif"),
     ],
 )
-def test_put_avatar_rejects_non_images(local_storage, live_user, db, content, content_type):
+def test_put_avatar_rejects_non_images(live_user, db, content, content_type):
     """Only the image types the evidence pipeline accepts can become an avatar:
     a video would land unstripped and unresized."""
     response = _put_avatar(live_user, content=content, content_type=content_type)
@@ -452,14 +419,14 @@ def test_put_avatar_rejects_non_images(local_storage, live_user, db, content, co
     assert refreshed.avatar_url is None
 
 
-def test_put_avatar_rejects_undecodable_image(local_storage, live_user):
+def test_put_avatar_rejects_undecodable_image(live_user):
     """A JPEG content type on bytes Pillow can't open is a 422, not a 500."""
     response = _put_avatar(live_user, content=b"\xff\xd8\xff\xd9", content_type="image/jpeg")
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "invalid_avatar"
 
 
-def test_put_avatar_accepts_a_webp_declared_as_jpeg(local_storage, live_user):
+def test_put_avatar_accepts_a_webp_declared_as_jpeg(live_user):
     """The declared type does not pick the decoder: a WebP sent as
     ``image/jpeg`` becomes an avatar like any accepted image."""
     buf = BytesIO()
@@ -468,11 +435,11 @@ def test_put_avatar_accepts_a_webp_declared_as_jpeg(local_storage, live_user):
     response = _put_avatar(live_user, content=buf.getvalue(), content_type="image/jpeg")
 
     assert response.status_code == 200
-    stored = _stored_path(local_storage, response.json()["avatar_url"])
+    stored = stored_path(storage_key(response.json()["avatar_url"]))
     assert stored.read_bytes().startswith(b"\xff\xd8\xff")
 
 
-def test_put_avatar_names_the_accepted_formats_when_refusing_one(local_storage, live_user):
+def test_put_avatar_names_the_accepted_formats_when_refusing_one(live_user):
     buf = BytesIO()
     Image.new("RGB", (8, 8)).save(buf, format="TIFF")
 
@@ -485,7 +452,7 @@ def test_put_avatar_names_the_accepted_formats_when_refusing_one(local_storage, 
     }
 
 
-def test_put_avatar_rejects_an_image_over_the_avatar_pixel_cap(local_storage, live_user, db):
+def test_put_avatar_rejects_an_image_over_the_avatar_pixel_cap(live_user, db):
     """An avatar has a lower pixel ceiling than evidence: refused, nothing stored."""
     width, height = MAX_AVATAR_DECODED_PIXELS // 5000 + 1, 5000
     assert width * height <= MAX_DECODED_PIXELS
@@ -496,7 +463,7 @@ def test_put_avatar_rejects_an_image_over_the_avatar_pixel_cap(local_storage, li
 
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "invalid_avatar"
-    assert not (local_storage / "avatars").exists()
+    assert not stored_path("avatars").exists()
     db.expire_all()
     assert db.query(User).filter(User.id == live_user.id).one().avatar_url is None
 
