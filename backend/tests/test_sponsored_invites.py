@@ -12,7 +12,7 @@ from app.models.audit_log import AuditLog
 from app.models.invite_code import InviteCode
 from app.models.user import User
 from app.services.sponsored_invites import DAILY_MINT_LIMIT
-from tests._fixtures import client
+from tests._fixtures import audit_row, client
 from tests.conftest import login_as
 
 _MINE = "/api/v1/users/me/invite-codes"
@@ -63,11 +63,7 @@ def test_mint_binds_normalized_handle_records_sponsor_and_audits(sponsor, db):
     assert invite.x_handle == handle
     assert invite.expires_at is None
 
-    audit = (
-        db.query(AuditLog)
-        .filter(AuditLog.actor_id == sponsor.id, AuditLog.action == "invite_sponsored")
-        .one()
-    )
+    audit = audit_row(db, sponsor, "invite_sponsored")
     assert audit.target == {"invite_code_id": body["id"], "x_handle": handle}
 
 
@@ -125,11 +121,7 @@ def test_sponsor_revokes_own_active_code_with_an_audit_row(sponsor, db):
 
     invite = db.query(InviteCode).filter(InviteCode.id == uuid.UUID(minted["id"])).one()
     assert invite.revoked_at is not None
-    audit = (
-        db.query(AuditLog)
-        .filter(AuditLog.actor_id == sponsor.id, AuditLog.action == "invite_revoked")
-        .one()
-    )
+    audit = audit_row(db, sponsor, "invite_revoked")
     assert audit.target == {"invite_code_id": minted["id"]}
 
 
@@ -157,12 +149,7 @@ def test_sponsor_revoke_refuses_a_used_or_revoked_code(sponsor, db):
         response = _revoke(sponsor, code_id)
         assert response.status_code == 409
         assert response.json()["detail"]["code"] == "invite_code_not_active"
-    assert (
-        db.query(AuditLog)
-        .filter(AuditLog.actor_id == sponsor.id, AuditLog.action == "invite_revoked")
-        .count()
-        == 1
-    )
+    assert audit_row(db, sponsor, "invite_revoked") is not None
 
 
 def test_sponsor_revoked_codes_still_count_against_their_day(sponsor, db):

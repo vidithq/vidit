@@ -354,10 +354,11 @@ The root [`conftest.py`](../backend/tests/conftest.py) defines the fixtures that
 |---|---|
 | `db` | A database session, closed after the test. |
 | `client` | The one `TestClient`; its cookie jar is cleared before and after every test. |
-| `make_user` | A factory for users. Each user it makes is deleted after the test, with the rows that reference it. `admin_user`, `regular_user`, `author` and `second_user` call it. |
+| `make_user` | A factory for users. Each user it makes is deleted after the test, with the rows that reference it. `admin_user`, `regular_user`, `author`, `second_user`, `live_user` and `soft_deleted_user` call it. Pass `username` to set the exact name a search test matches. |
 | `sent_emails` | The list of emails `email.send` received, in order, in place of a delivery. |
+| `free_tag`, `conflict` | A tag and a conflict, deleted after the test. |
 
-Build event rows with `make_event` and `make_detection` from [`tests/_fixtures.py`](../backend/tests/_fixtures.py). The coordinate parser runs on every test run against the sanitized posts in [`tests/typology/fixtures.json`](../backend/tests/typology/fixtures.json). A migration gets a test only while it is the head revision; validate the whole chain as [Migration house style](#migration-house-style) describes.
+Build event rows with `make_event` and `make_detection`, and their sources with `source`, from [`tests/_fixtures.py`](../backend/tests/_fixtures.py). Read the audit row a call wrote with `audit_row`. An event, collection or site owned by a `make_user` user goes with that user, so the test needs no teardown of its own. The coordinate parser runs on every test run against the sanitized posts in [`tests/typology/fixtures.json`](../backend/tests/typology/fixtures.json). A migration gets a test only while it is the head revision; validate the whole chain as [Migration house style](#migration-house-style) describes.
 
 ---
 
