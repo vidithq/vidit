@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections typology-weights mock-admin gen-api-types check-dup vulture check-changelog hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections mock-admin gen-api-types check-dup vulture check-changelog hygiene
 
 help:
 	@echo "Available commands:"
@@ -12,7 +12,6 @@ help:
 	@echo "  make migrate       - Apply database migrations via Alembic"
 	@echo "  make seed          - mock-admin + machine detections from the synthetic archive"
 	@echo "  make seed-detections - Backfill machine 'detected' geolocations from the synthetic archive"
-	@echo "  make typology-weights - Recompute weights.json + golden fixtures from the local corpus (gitignored)"
 	@echo "  make mock-admin    - Create a mock admin user (admin@vidit.app / admin)"
 	@echo "  make dev-backend   - Run FastAPI dev server (port 8000)"
 	@echo "  make dev-frontend  - Run Next.js dev server (port 3000)"
@@ -28,12 +27,6 @@ init: install env db-up migrate
 
 seed-detections:
 	cd backend && uv run python scripts/seed_detections.py
-
-# Typology QA harness: distils the local corpus under backend/datasets/
-# (gitignored, rebuilt by the tooling that lives there) into the committed
-# weights.json + fixtures.json.
-typology-weights:
-	cd backend && uv run python -m tests.typology.weights && uv run python -m tests.typology.gen_fixtures
 
 mock-admin:
 	cd backend && uv run python scripts/mock_admin.py

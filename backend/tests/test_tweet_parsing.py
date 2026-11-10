@@ -5,6 +5,9 @@ Route-level integration lives in ``tests/events/test_import.py``.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -164,6 +167,27 @@ def test_extract_coords_reads_one_pair(text, lat, lng):
 )
 def test_extract_coords_reads_no_pair(text):
     assert extract_coords(text) == []
+
+
+# Sanitized posts whose text holds the coordinate, or none for a coordinate-free post.
+_GOLDEN = json.loads((Path(__file__).parent / "typology" / "fixtures.json").read_text("utf-8"))
+
+
+@pytest.mark.parametrize("fixture", _GOLDEN, ids=lambda fixture: fixture["typology"])
+def test_golden_fixture_still_parses(fixture: dict) -> None:
+    text = fixture["op_text"] + (
+        "\n" + fixture["quoted_text"] if fixture.get("quoted_text") else ""
+    )
+    coords = extract_coords(text)
+    expected = fixture.get("expected_coord")
+    if expected is None:
+        assert coords == [], f"expected no coordinate, parser invented {coords}"
+    else:
+        assert any(
+            c.lat == pytest.approx(expected["lat"], abs=1e-4)
+            and c.lng == pytest.approx(expected["lng"], abs=1e-4)
+            for c in coords
+        ), f"parsed {coords} != expected {expected}"
 
 
 def test_title_first_non_empty_line():

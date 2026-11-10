@@ -348,6 +348,17 @@ vidit/
 
 `make test` runs `pytest -n auto --dist worksteal`: the conftest migrates a template database to alembic head and clones one database per xdist worker. Plain `pytest` stays serial on the development database. Stored files never reach `backend/.local-storage`: each test process writes to its own temporary storage root, emptied before every test and removed when the run ends.
 
+The root [`conftest.py`](../backend/tests/conftest.py) defines the fixtures that every test module shares:
+
+| Fixture | What it gives |
+|---|---|
+| `db` | A database session, closed after the test. |
+| `client` | The one `TestClient`; its cookie jar is cleared before and after every test. |
+| `make_user` | A factory for users. Each user it makes is deleted after the test, with the rows that reference it. `admin_user`, `regular_user`, `author` and `second_user` call it. |
+| `sent_emails` | The list of emails `email.send` received, in order, in place of a delivery. |
+
+Build event rows with `make_event` and `make_detection` from [`tests/_fixtures.py`](../backend/tests/_fixtures.py). The coordinate parser runs on every test run against the sanitized posts in [`tests/typology/fixtures.json`](../backend/tests/typology/fixtures.json). A migration gets a test only while it is the head revision; validate the whole chain as [Migration house style](#migration-house-style) describes.
+
 ---
 
 ## Backend: conventions
