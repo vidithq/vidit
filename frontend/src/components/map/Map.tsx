@@ -829,10 +829,9 @@ export default function Map({
   pinPreview = true,
   children,
 }: MapProps) {
-  const [mounted, setMounted] = useState(false);
-  // MapLibre needs WebGL2, which Tor Browser and some mobile GPUs lack; detect on mount to show a
-  // message, not a black canvas.
-  const [webglMissing, setWebglMissing] = useState(false);
+  // MapLibre needs WebGL2, which Tor Browser and some mobile GPUs lack: show a message, not a black
+  // canvas. Every importer loads the map client-only, so the check runs in the browser.
+  const [webglMissing, setWebglMissing] = useState(() => !supportsMaplibreWebGL());
   // Skip the first onMoveEnd (initial layout): it carries the values just seeded.
   const firstMoveEndRef = useRef(true);
   // Marker colours follow the accent palette; detections use a lighter shade of the same hue.
@@ -987,11 +986,6 @@ export default function Map({
     [clearCloseTimer, handlePinClick]
   );
 
-  useEffect(() => {
-    setWebglMissing(!supportsMaplibreWebGL());
-    setMounted(true);
-  }, []);
-
   // While a ring is out its stack is hidden underneath: the cluster circle by `cluster_id`,
   // unclustered circles by event id. On close the filters relax so circles re-merge.
   const clusterFilter = useCallback(
@@ -1113,14 +1107,6 @@ export default function Map({
     setSpiderClosing(false);
     hoverPin(null);
   }, [geojson, clearCloseTimer, hoverPin]);
-
-  if (!mounted) {
-    return (
-      <div className={`w-full h-full bg-neutral-950 flex items-center justify-center ${className || ""}`}>
-        <span className="text-neutral-500 text-sm">Loading map...</span>
-      </div>
-    );
-  }
 
   if (webglMissing) {
     return (
