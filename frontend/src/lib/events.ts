@@ -741,24 +741,18 @@ function getImportJob(jobId: string): Promise<ArchiveImportJob> {
  *  email is the durable signal. */
 export class ImportPollLost extends Error {}
 
-/** Poll until the job is `done` or `failed`. Transient errors retry; `maxErrors`
- *  consecutive misses or `timeoutMs` throw `ImportPollLost`. */
+const IMPORT_POLL_INTERVAL_MS = 2500;
+const IMPORT_POLL_MAX_ERRORS = 8;
+const IMPORT_POLL_TIMEOUT_MS = 15 * 60_000;
+
+/** Poll until the job is `done` or `failed`. Transient errors retry; `IMPORT_POLL_MAX_ERRORS`
+ *  consecutive misses or `IMPORT_POLL_TIMEOUT_MS` throw `ImportPollLost`. `onUpdate` fires on
+ *  every successful poll, for live progress. */
 export async function awaitImportJob(
   jobId: string,
-  {
-    intervalMs = 2500,
-    maxErrors = 8,
-    timeoutMs = 15 * 60_000,
-    onUpdate,
-  }: {
-    intervalMs?: number;
-    maxErrors?: number;
-    timeoutMs?: number;
-    /** Fires on every successful poll, for live progress. */
-    onUpdate?: (job: ArchiveImportJob) => void;
-  } = {}
+  onUpdate?: (job: ArchiveImportJob) => void,
 ): Promise<ArchiveImportJob> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + IMPORT_POLL_TIMEOUT_MS;
   let consecutiveErrors = 0;
   for (;;) {
     try {
@@ -768,14 +762,14 @@ export async function awaitImportJob(
       if (job.status === "done" || job.status === "failed") return job;
     } catch {
       consecutiveErrors += 1;
-      if (consecutiveErrors >= maxErrors) {
+      if (consecutiveErrors >= IMPORT_POLL_MAX_ERRORS) {
         throw new ImportPollLost("import job polling lost after repeated errors");
       }
     }
     if (Date.now() >= deadline) {
       throw new ImportPollLost("import job polling timed out");
     }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await new Promise((resolve) => setTimeout(resolve, IMPORT_POLL_INTERVAL_MS));
   }
 }
 

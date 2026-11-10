@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
 import { PASSWORD_MAX_BYTES, validateNewPassword } from "@/lib/auth";
+import { register } from "@/lib/users";
 import {
   FORM_LABEL_COMPACT,
 } from "@/components/ui/form-styles";
@@ -27,7 +27,6 @@ export default function RegisterForm({
   onSuccess,
   initialInviteCode = "",
 }: Props) {
-  const { register } = useAuth();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,7 +38,7 @@ export default function RegisterForm({
   const submitRegister = useMutation(
     async () => {
       try {
-        const result = await register(username, email, password, inviteCode);
+        const result = await register({ username, email, password, invite_code: inviteCode });
         return result.email;
       } catch (err) {
         // Already registered but unconfirmed: recoverable, so route to the pending screen's Resend rather

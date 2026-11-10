@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const register = vi.fn();
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ register }) }));
+vi.mock("@/lib/users", () => ({ register: (body: unknown) => register(body) }));
 
 import RegisterForm from "./RegisterForm";
 
@@ -25,7 +25,12 @@ describe("RegisterForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() =>
-      expect(register).toHaveBeenCalledWith("ana", "ana@example.test", "validpass123", "code"),
+      expect(register).toHaveBeenCalledWith({
+        username: "ana",
+        email: "ana@example.test",
+        password: "validpass123",
+        invite_code: "code",
+      }),
     );
   });
 

@@ -8,6 +8,14 @@ import type { ExternalLinks, User } from "@/types";
  *  wholesale. */
 export type UserProfileUpdate = components["schemas"]["UserUpdate"];
 
+/** Stage a registration: resolves once the confirmation email is queued and does not sign
+ *  in (`/confirm-registration` sets the session cookie). */
+export function register(
+  body: components["schemas"]["RegisterRequest"],
+): Promise<components["schemas"]["RegisterResponse"]> {
+  return apiFetch("/auth/register", { method: "POST", body: JSON.stringify(body) });
+}
+
 export function updateMyProfile(body: UserProfileUpdate): Promise<User> {
   return apiFetch<User>("/users/me", {
     method: "PATCH",
