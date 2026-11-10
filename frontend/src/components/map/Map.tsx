@@ -87,6 +87,7 @@ import { SatelliteOverlays } from "./SatelliteOverlays";
 import { useBasemapSettings } from "./basemapSettings";
 import { useMapAssets } from "./mapAssets";
 import { MapPreviewCard, PREVIEW_INTENT_MS } from "./MapPreviewCard";
+import { PageLoading } from "@/components/ui/PageShell";
 
 const POINTS_SOURCE = "points";
 // A cluster circle and the ring around it: a click or a hover on either is the cluster's.
@@ -480,7 +481,7 @@ function PinPreviewCard({
       ) : error ? (
         <p className="text-xs text-neutral-500">Preview unavailable</p>
       ) : (
-        <p className="text-xs text-neutral-500">Loading...</p>
+        <PageLoading variant="compact" />
       )}
     </MapPreviewCard>
   );

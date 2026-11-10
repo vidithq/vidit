@@ -21,6 +21,7 @@ import {
   type LinkEffect,
   type SiteSuggestion,
 } from "@/lib/sites";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /** How many suggestions show before **Show more**. */
 const SUGGESTIONS_SHOWN = 4;
@@ -75,7 +76,7 @@ export function LinkSuggestionPills({
     <div className="space-y-2">
       <p className="text-xs text-neutral-500">{label}</p>
       {rows === null ? (
-        <p className="text-xs text-neutral-500">Loading…</p>
+        <PageLoading variant="compact" />
       ) : (
         <>
           <ul className="flex flex-wrap gap-1.5" aria-label={label}>

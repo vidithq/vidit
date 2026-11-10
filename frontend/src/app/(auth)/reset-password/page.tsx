@@ -15,6 +15,7 @@ import { FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /** Opened from the email link. The backend returns one opaque 400 for every failure mode; the UI mirrors it with one "invalid link" path. */
 function ResetPasswordInner() {
@@ -156,7 +157,7 @@ function ResetPasswordInner() {
 export default function ResetPasswordPage() {
   return (
     <Suspense
-      fallback={<span className="text-neutral-500 text-sm">Loading…</span>}
+      fallback={<PageLoading variant="line" />}
     >
       <ResetPasswordInner />
     </Suspense>

@@ -53,10 +53,6 @@ export type PublicProfile = Omit<
  *  first; `source_hosts` + `other_hosts_count` + `no_source_count` add up to `total_events`. */
 export type UserStats = components["schemas"]["UserStatsRead"];
 
-export function getUserStats(username: string): Promise<UserStats> {
-  return apiFetch<UserStats>(`${userPath(username)}/stats`);
-}
-
 /** Security: `<a href>` is only safe if the destination parses as http(s). Auto-links pasted
  *  URLs, keeps handle-style values (`@me`, `me#1234`) as text, and keeps `javascript:` out
  *  of anchor targets. */

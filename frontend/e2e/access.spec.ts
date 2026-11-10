@@ -11,7 +11,7 @@ import { grantSession, mockApi } from "./support/mockApi";
 test.describe("protected pages", () => {
   for (const path of [
     "/feed",
-    "/profile",
+    `/profile/${SIGNED_IN_USER.username}/detections`,
     "/collections/new",
     `/collections/${COLLECTION_ID}/edit`,
     "/sites/new",

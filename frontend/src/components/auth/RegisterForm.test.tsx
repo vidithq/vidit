@@ -14,7 +14,7 @@ function fill() {
 
 describe("RegisterForm", () => {
   beforeEach(() => {
-    register.mockReset().mockResolvedValue({ status: "pending_confirmation", email: "ana@example.test" });
+    register.mockResolvedValue({ status: "pending_confirmation", email: "ana@example.test" });
   });
 
   it("registers with the four fields the form asks for", async () => {

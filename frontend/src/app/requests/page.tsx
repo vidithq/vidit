@@ -118,7 +118,7 @@ function RequestsPageBody() {
       )}
 
       {loading && (
-        <p className="text-sm text-neutral-500">Loading requests…</p>
+        <PageLoading variant="line" />
       )}
 
       {!error && !loading && requests.length === 0 && (

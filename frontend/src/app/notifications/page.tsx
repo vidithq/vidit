@@ -156,7 +156,7 @@ export default function NotificationsPage() {
     <PageShell title="Notifications">
       {error && items.length === 0 && <ErrorNotice error={error} />}
       {loading ? (
-        <p className="text-sm text-neutral-500">Loading notifications…</p>
+        <PageLoading variant="line" />
       ) : items.length === 0 ? (
         <EmptyState>
           Nothing yet. A notification appears here when another analyst or an organization

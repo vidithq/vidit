@@ -20,6 +20,7 @@ import {
 import { eventItem } from "@/lib/items";
 import type { Found } from "@/components/ui/ItemSearch";
 import type { EventListItem } from "@/types";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /** The rows in the order the collection's page reads them: event date, earliest
  *  first, undated last, then id. Mirrors `services/collections.chronological_key`,
@@ -196,7 +197,7 @@ export function EventPicker({
             ))}
           </ul>
         ) : matchedLoading ? (
-          <p className="text-sm text-neutral-500">Loading the geolocations you selected…</p>
+          <PageLoading variant="line" />
         ) : (
           <EmptyState variant="plain" lead="Nothing on this collection yet.">
             Add your own geolocations from the search above.

@@ -327,11 +327,30 @@ export function PageColumns({
   );
 }
 
-export function PageLoading({ label = "Loading…" }: { label?: string }) {
+const LOADING = "Loading…";
+
+/**
+ * The one loading state: centred on the page by default, or a muted line in the flow (`line`), at
+ * the smaller type of a dense panel (`compact`).
+ */
+export function PageLoading({
+  variant = "page",
+  className,
+}: {
+  variant?: "page" | "line" | "compact";
+  className?: string;
+}) {
+  if (variant === "page") {
+    return (
+      <PageCenter>
+        <span className="text-neutral-500">{LOADING}</span>
+      </PageCenter>
+    );
+  }
   return (
-    <PageCenter>
-      <span className="text-neutral-500">{label}</span>
-    </PageCenter>
+    <p className={cn("text-neutral-500", variant === "compact" ? "text-xs" : "text-sm", className)}>
+      {LOADING}
+    </p>
   );
 }
 

@@ -2,10 +2,9 @@
 
 import { Copy, ExternalLink } from "lucide-react";
 
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
-import { OutboundLink } from "@/components/ui/OutboundLink";
-import { Tooltip } from "@/components/ui/Tooltip";
+import { IconLink } from "@/components/ui/IconLink";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { cn } from "@/lib/cn";
 import { formatCoordinates, mapsUrl } from "@/lib/coordinates";
@@ -50,15 +49,14 @@ export function CoordinateActions({
   return (
     <span className={cn("inline-flex items-center gap-1", small && "-my-1.5")}>
       {point ? (
-        <Tooltip label={MAP_LINK}>
-          <OutboundLink
-            href={mapsUrl(point.lat, point.lng)}
-            aria-label={MAP_LINK}
-            className={buttonClasses("secondary", { icon: true, className: shape })}
-          >
-            <ExternalLink size={mark} />
-          </OutboundLink>
-        </Tooltip>
+        <IconLink
+          external
+          variant="secondary"
+          href={mapsUrl(point.lat, point.lng)}
+          label={MAP_LINK}
+          className={shape}
+          icon={<ExternalLink size={mark} />}
+        />
       ) : (
         <Button
           icon

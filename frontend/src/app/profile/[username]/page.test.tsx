@@ -28,16 +28,11 @@ vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 import { apiFetch } from "@/test/apiStub";
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
-vi.mock("@/lib/users", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/users")>()),
-  getUserStats: vi.fn(),
-}));
-
 import { ApiError } from "@/lib/api";
 import { readResponse } from "@/lib/errors";
 import type { CollectionPage } from "@/lib/collections";
 import type { OrganizationMembership } from "@/lib/organizations";
-import { getUserStats, type PublicProfile, type UserStats } from "@/lib/users";
+import type { PublicProfile, UserStats } from "@/lib/users";
 import { signedInAs, signedOut } from "@/test/auth";
 import { collection, eventRow } from "@/test/collection";
 import type { EventListItem, MapPoint } from "@/types";
@@ -136,9 +131,11 @@ function blockOrder(container: HTMLElement): string[] {
   return seen;
 }
 
-/** Answers each read the profile makes by its path, and every other path with the profile. */
+/** Answers each read the profile makes by its path, and every other path with the profile.
+ *  `stats: null` reads as a failed stats read, which the profile hides. */
 function mockReads({
   profile = PROFILE,
+  stats = STATS,
   submissions = [SUBMISSION],
   points = [POINT],
   memberships = MEMBERSHIPS,
@@ -149,9 +146,12 @@ function mockReads({
   points?: MapPoint[];
   memberships?: OrganizationMembership[];
   collections?: CollectionPage;
+  stats?: UserStats | null;
 } = {}) {
   useApiResource.mockImplementation((path: string | null) => ({
-    data: path?.startsWith("/users/ana/events")
+    data: path === "/users/ana/stats"
+      ? stats
+      : path?.startsWith("/users/ana/events")
       ? { items: submissions }
       : path?.startsWith("/events/points")
         ? points
@@ -173,7 +173,6 @@ function mountProfile() {
 describe("public profile order", () => {
   beforeEach(() => {
     useDetectionsCount.mockReturnValue({ count: 0, refresh: vi.fn() });
-    vi.mocked(getUserStats).mockResolvedValue(STATS);
     mockReads();
     useAuth.mockReturnValue(signedOut());
   });
@@ -337,7 +336,6 @@ describe("public profile order", () => {
 describe("public profile identity", () => {
   beforeEach(() => {
     useDetectionsCount.mockReturnValue({ count: 0, refresh: vi.fn() });
-    vi.mocked(getUserStats).mockRejectedValue(new Error("no stats"));
     useAuth.mockReturnValue(signedOut());
   });
 
@@ -351,6 +349,7 @@ describe("public profile identity", () => {
       points: [],
       memberships,
       collections: { ...COLLECTIONS, items: [], total: 0 },
+      stats: null,
     });
   }
 
@@ -458,7 +457,6 @@ describe("public profile identity", () => {
 describe("public profile edit mode", () => {
   beforeEach(() => {
     useDetectionsCount.mockReturnValue({ count: 1, refresh: vi.fn() });
-    vi.mocked(getUserStats).mockResolvedValue(STATS);
     mockReads();
     useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
   });
@@ -502,7 +500,12 @@ describe("public profile edit mode", () => {
             loading: false,
             refetch: vi.fn(),
           }
-        : { data: null, error: null, loading: false, refetch: vi.fn() },
+        : {
+            data: path === "/users/ana/stats" ? STATS : null,
+            error: null,
+            loading: false,
+            refetch: vi.fn(),
+          },
     );
     const { container } = mountProfile();
     await screen.findByText("Insights");

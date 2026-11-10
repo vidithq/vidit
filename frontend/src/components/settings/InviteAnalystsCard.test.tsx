@@ -44,7 +44,7 @@ describe("InviteAnalystsCard", () => {
   const writeText = vi.fn();
 
   beforeEach(() => {
-    writeText.mockReset().mockResolvedValue(undefined);
+    writeText.mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
   });
 

@@ -15,11 +15,11 @@ import { eventEditHref, eventHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
+import { IconLink } from "@/components/ui/IconLink";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
 import { GeolocatorInviteCard, InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import type { EventShellActions } from "@/components/event/EventShell";
@@ -113,18 +113,13 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
     canEdit && (
       // A published record is corrected by adding a version, a request is overwritten: the
       // tooltip says which, so "Edit" never reads as an in-place rewrite of a published record.
-      <Tooltip
+      <IconLink
         key="edit"
-        label={event.status === "geolocated" ? "Edit (saves a new version)" : "Edit"}
-      >
-        <Link
-          href={eventEditHref(event.id)}
-          className={buttonClasses("ghost", { icon: true })}
-          aria-label="Edit"
-        >
-          <SquarePen size={14} />
-        </Link>
-      </Tooltip>
+        href={eventEditHref(event.id)}
+        label="Edit"
+        title={event.status === "geolocated" ? "Edit (saves a new version)" : undefined}
+        icon={<SquarePen size={14} />}
+      />
     ),
     // A `detected` row is still editable by its owner, so a shared link's content may change.
     <ShareControl

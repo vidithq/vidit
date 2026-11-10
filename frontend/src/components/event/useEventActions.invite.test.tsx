@@ -6,9 +6,8 @@ import { apiFetch } from "@/test/apiStub";
 import { eventDetail } from "@/test/eventDetail";
 import { useEventActions } from "./useEventActions";
 
-vi.mock("@/lib/api", () => import("@/test/apiStub"));
 // The approvals read the event page makes stays in flight; these tests read the invitation only.
-apiFetch.mockImplementation(() => new Promise(() => {}));
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 vi.mock("next/navigation", () => import("@/test/navigationStub"));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "u2", username: "bo" } }),

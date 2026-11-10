@@ -15,6 +15,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The OpenAPI spec lists the values of `view` on `GET /events` and `readiness` on `GET /events/detections`; an unknown value still answers 422, now with the standard validation body that names the parameter.
 - The bot reads its mentions once a day at 12:00 UTC from where its last read stopped, so each mention is read once and a worker restart reads none; the bot's own posts, and replies under them that only inherit the tag, no longer enter the queue ([#830](https://github.com/vidithq/vidit/pull/830)).
 
+### Removed
+
+- `/profile` and `/geolocations/new` no longer resolve: open your profile from the sidebar, and submit from `/submit`.
+
 ### Fixed
 
 - A reader west of UTC sees an event's date on its own day, not the day before, and every date on the site reads the same for every reader.

@@ -151,9 +151,8 @@ export function TooltipButton({
 }
 
 /**
- * The same tooltip for an icon-only link (`buttonClasses("ghost", { icon: true })` on a `<Link>`
- * or an `<a>`), which `<Button>` cannot render: wrap the link. The wrapper is `display: contents`,
- * so the layout around the link is unchanged.
+ * The same tooltip for a control `<Button>` cannot render, such as `<IconLink>`: wrap it. The
+ * wrapper is `display: contents`, so the layout around the control is unchanged.
  *
  * `tapToShow` is for a link whose label is the only place a fact shows (who approved which
  * version when): a touch's first tap shows the bubble instead of following the link, and a

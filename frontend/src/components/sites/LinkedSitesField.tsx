@@ -6,7 +6,6 @@ import { EventSection } from "@/components/event/EventLayout";
 import { Card } from "@/components/ui/Card";
 import { Item } from "@/components/ui/Item";
 import { RemoveButton } from "@/components/ui/RemoveButton";
-import { META_LINE } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";
 import { useDebouncedEffect } from "@/hooks/useDebouncedEffect";
 import { apiFetch } from "@/lib/api";
@@ -25,6 +24,7 @@ import { EffectControl, LinkSearch, LinkSuggestionPills, siteCandidate } from ".
 import { NEAR_SITES_COPY, SITE_SEARCH_COPY } from "./useEventSites";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import type { ReadableError } from "@/lib/errors";
+import { PageLoading } from "@/components/ui/PageShell";
 
 const POINT_DEBOUNCE_MS = 400;
 
@@ -110,7 +110,7 @@ export function LinkedSitesField({
           <Card dense>
             {draft.error && <ErrorNotice error={draft.error} />}
             {draft.loading ? (
-              <p className={META_LINE}>Loading…</p>
+              <PageLoading variant="compact" />
             ) : (
               links.length > 0 && (
                 <ul className="space-y-3">

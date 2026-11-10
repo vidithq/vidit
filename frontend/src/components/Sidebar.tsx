@@ -227,13 +227,10 @@ export default function Sidebar() {
   // Suppressed only during the initial auth load, to avoid flashing the signed-out nav.
   if (loading) return null;
 
-  // Highlights only on /profile (redirects to {me}) and /profile/{me.username}: another analyst's
-  // profile is not "your" account.
+  // Highlights only on /profile/{me.username}: another analyst's profile is not "your" account.
   const profileActive =
     !!user &&
-    (pathname === "/profile" ||
-      pathname === profileHref(user.username) ||
-      pathname === detectionsQueueHref(user.username));
+    (pathname === profileHref(user.username) || pathname === detectionsQueueHref(user.username));
 
   // The brand mark is the Home entry, so it lights like a nav row on `/`.
   const homeActive = pathname === "/";

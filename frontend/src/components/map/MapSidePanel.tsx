@@ -18,6 +18,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { EVENT_SECTIONS } from "@/components/event/EventLayout";
 import { SourceBlocks } from "@/components/sources/SourceBlock";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /** What one record shows in the map's side panel, an event's or a site's. */
 export interface MapPanelContent {
@@ -151,7 +152,7 @@ export function MapSidePanel<T>({
         </div>
       ) : loading ? (
         <div className="flex items-center justify-center h-full min-h-32">
-          <span className="text-neutral-500 text-sm">Loading...</span>
+          <PageLoading variant="line" />
         </div>
       ) : panel ? (
         <div className="p-4 space-y-4">
