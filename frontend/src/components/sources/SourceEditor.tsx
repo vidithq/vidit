@@ -95,7 +95,7 @@ export function SourceEditor({
   onPickFile,
   onImportLink,
   proofImages = [],
-  onCopyProofImage = () => {},
+  onCopyProofImage,
   tags,
   setTags,
   suggestedTags,
@@ -181,7 +181,7 @@ export function SourceEditor({
         <Button
           action="useProof"
           variant="ghost"
-          onClick={() => onCopyProofImage(proofImages[0])}
+          onClick={() => onCopyProofImage?.(proofImages[0])}
           aria-label={`Use a proof image as the file of ${name.toLowerCase()}`}
         >
           Use a proof image
@@ -197,7 +197,7 @@ export function SourceEditor({
           aria-label={`${name} proof image`}
           value={copiedIndex}
           disabled={file?.state === "copying"}
-          onChange={(e) => onCopyProofImage(proofImages[Number(e.target.value)])}
+          onChange={(e) => onCopyProofImage?.(proofImages[Number(e.target.value)])}
         >
           {proofImages.map((url, i) => (
             <option key={url} value={i}>
