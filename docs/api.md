@@ -943,7 +943,7 @@ Compact `[id, lat, lng, occurred_date, added_date, detected]` tuples for client-
 |-------|------|-------------|
 | `bbox` | string, **required** | Same shape and validation as on `GET /events`. Missing, empty, or malformed → 422. A box crossing the antimeridian is not modeled; widen it to the full longitude range. |
 | `media` | string (repeatable) | `?media=image&media=video` matches an event carrying a source file or a proof image of a listed type. Values outside `image` / `video` → 422. |
-| `conflict`, `source_kind`, `level`, `tag`, `occurred_date_from`, `occurred_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org` | | Same semantics as on [`GET /events`](#get-events). |
+| `conflict`, `source_kind`, `level`, `tag`, `occurred_date_from`, `occurred_date_to`, `submitted_from`, `submitted_to`, `author`, `approved`, `approved_by`, `approved_by_org`, `has_coords` | | Same semantics as on [`GET /events`](#get-events). Every point carries a location, so `has_coords=false` returns an empty list. |
 
 | Status | Meaning |
 |--------|---------|

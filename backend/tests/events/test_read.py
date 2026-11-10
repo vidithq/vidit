@@ -15,7 +15,7 @@ from shapely.geometry import Point
 from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event, EventDetection
 from app.models.tag import Tag
-from app.services.event_filters import parse_bbox
+from app.services.event_filters import EventFilters, parse_bbox
 from tests._fixtures import fake_sha256, make_event
 from tests.events._helpers import WORLD_BBOX, client
 
@@ -504,22 +504,9 @@ def test_points_filters_media(db, author):
 
 
 def _points_key(**filters) -> str:
-    from app.routers.events.read import _build_points_cache_key
+    from app.routers.events.read import _points_cache_key
 
-    unfiltered = dict.fromkeys(
-        (
-            "conflict",
-            "source_kind",
-            "level",
-            "tag",
-            "occurred_date_from",
-            "occurred_date_to",
-            "submitted_from",
-            "submitted_to",
-            "author",
-        )
-    )
-    return _build_points_cache_key(bbox=WORLD_BOUNDS, **{**unfiltered, **filters})
+    return _points_cache_key(WORLD_BOUNDS, EventFilters(**filters))
 
 
 @pytest.mark.parametrize(
@@ -538,6 +525,8 @@ def _points_key(**filters) -> str:
         {"approved": True},
         {"approved_by": "x"},
         {"approved_by_org": "x"},
+        {"has_coords": True},
+        {"has_coords": False},
     ],
     ids=lambda filters: next(iter(filters)),
 )
@@ -556,6 +545,11 @@ def test_points_cache_key_keeps_values_in_their_bucket():
 def test_points_cache_key_is_list_order_insensitive(bucket):
     """``?bucket=a&bucket=b`` and ``?bucket=b&bucket=a`` hit the same cache entry."""
     assert _points_key(**{bucket: ["alpha", "beta"]}) == _points_key(**{bucket: ["beta", "alpha"]})
+
+
+@pytest.mark.parametrize("field", ["approved_by", "approved_by_org"])
+def test_points_cache_key_ignores_approver_case(field):
+    assert _points_key(**{field: "Alice"}) == _points_key(**{field: "alice"})
 
 
 def test_points_or_within_free_tag_list(db, author):
