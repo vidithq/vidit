@@ -42,34 +42,39 @@ import {
 } from "@/lib/sources";
 import type { EventDetail } from "@/types";
 
+/** The fields of an event form as one storable value. */
+export interface EventFormDraft {
+  title: string;
+  /** The subject point, as raw input strings parsed at post time. */
+  lat: string;
+  lng: string;
+  sources: SourceDraft[];
+  eventDate: string;
+  eventTime: string;
+  proof: string | null;
+  /** New inline proof images, uploaded as `proof_files[]` at post. */
+  proofFiles: File[];
+  tagIds: string[];
+  conflictIds: string[];
+  siteLinks: DraftSiteLink[];
+}
+
+/** The fields `useEventForm` holds itself; the Linked sites live in their own draft. */
+type EventFormFields = Omit<EventFormDraft, "siteLinks">;
+
+type FieldSetter = <K extends keyof EventFormFields>(
+  key: K,
+) => Dispatch<SetStateAction<EventFormFields[K]>>;
+
 /**
  * The editable state behind the fields, built by `useEventForm` and handed whole to
  * `eventFormSlots`.
  */
 export interface EventFormState {
-  title: string;
-  setTitle: Dispatch<SetStateAction<string>>;
-  /** The subject point, as raw input strings parsed at post time. */
-  lat: string;
-  setLat: Dispatch<SetStateAction<string>>;
-  lng: string;
-  setLng: Dispatch<SetStateAction<string>>;
-  sources: SourceDraft[];
-  setSources: Dispatch<SetStateAction<SourceDraft[]>>;
-  eventDate: string;
-  setEventDate: Dispatch<SetStateAction<string>>;
-  eventTime: string;
-  setEventTime: Dispatch<SetStateAction<string>>;
-  proof: string | null;
-  setProof: Dispatch<SetStateAction<string | null>>;
-  /** New inline proof images, uploaded as `proof_files[]` at post. */
-  proofFiles: File[];
-  setProofFiles: Dispatch<SetStateAction<File[]>>;
+  fields: EventFormFields;
+  /** The setter of one field. Each key returns the same function on every render. */
+  set: FieldSetter;
   taxonomy: TaxonomyState;
-  selectedTagIds: string[];
-  setSelectedTagIds: Dispatch<SetStateAction<string[]>>;
-  selectedConflictIds: string[];
-  setSelectedConflictIds: Dispatch<SetStateAction<string[]>>;
   /** The Linked sites, written after a geolocation write. */
   siteLinks: SiteLinksDraft;
   /** What a geolocation publish still misses, live: the request floor, then the coordinates,
@@ -94,24 +99,24 @@ export interface EventFormState {
   restoreDraft: (draft: EventFormDraft) => void;
 }
 
-/** The fields of an event form as one storable value. */
-export interface EventFormDraft {
-  title: string;
-  lat: string;
-  lng: string;
-  sources: SourceDraft[];
-  eventDate: string;
-  eventTime: string;
-  proof: string | null;
-  proofFiles: File[];
-  tagIds: string[];
-  conflictIds: string[];
-  siteLinks: DraftSiteLink[];
-}
+// The time input drops seconds: a value equal to its seed is untouched.
+const seedEventTime = (row: EventDetail | null): string =>
+  row?.occurred_time ? hhmm(row.occurred_time) : "";
 
-/** The editors a row seeds: one per stored source, or one blank editor. */
-function seedSources(row: EventDetail | null): SourceDraft[] {
-  return row && row.sources.length > 0 ? row.sources.map(sourceDraftFrom) : [newSourceDraft()];
+/** The fields a row seeds: one source editor per stored source, or one blank editor. */
+function seedFields(row: EventDetail | null): EventFormFields {
+  return {
+    title: row?.title ?? "",
+    lat: row?.coords ? String(row.coords.lat) : "",
+    lng: row?.coords ? String(row.coords.lng) : "",
+    sources: row && row.sources.length > 0 ? row.sources.map(sourceDraftFrom) : [newSourceDraft()],
+    eventDate: row?.occurred_date ?? "",
+    eventTime: seedEventTime(row),
+    proof: row?.proof ?? null,
+    proofFiles: [],
+    tagIds: row?.tags.map((t) => t.id) ?? [],
+    conflictIds: row?.conflicts.map((c) => c.id) ?? [],
+  };
 }
 
 /**
@@ -123,25 +128,29 @@ function seedSources(row: EventDetail | null): SourceDraft[] {
 export function useEventForm(row?: EventDetail | null): EventFormState {
   const seed = row ?? null;
 
-  const [title, setTitle] = useState(seed?.title ?? "");
-  const [lat, setLat] = useState(seed?.coords ? String(seed.coords.lat) : "");
-  const [lng, setLng] = useState(seed?.coords ? String(seed.coords.lng) : "");
-  const [sources, setSources] = useState<SourceDraft[]>(() => seedSources(seed));
-  const [eventDate, setEventDate] = useState(seed?.occurred_date ?? "");
-  // The time input drops seconds: a value equal to its seed is untouched.
-  const seededEventTime = seed?.occurred_time ? hhmm(seed.occurred_time) : "";
-  const [eventTime, setEventTime] = useState(seededEventTime);
-  const [proof, setProof] = useState<string | null>(seed?.proof ?? null);
-  const [proofFiles, setProofFiles] = useState<File[]>([]);
+  const [fields, setFields] = useState<EventFormFields>(() => seedFields(seed));
+  const seededEventTime = seedEventTime(seed);
+  // Stable per key, as `useState` setters are: a child effect that depends on one must not rerun.
+  const [set] = useState<FieldSetter>(() => {
+    const setters = new Map<keyof EventFormFields, unknown>();
+    return <K extends keyof EventFormFields>(key: K) => {
+      if (!setters.has(key)) {
+        const setter: Dispatch<SetStateAction<EventFormFields[K]>> = (value) =>
+          setFields((prev) => {
+            const next =
+              typeof value === "function"
+                ? (value as (current: EventFormFields[K]) => EventFormFields[K])(prev[key])
+                : value;
+            return Object.is(next, prev[key]) ? prev : { ...prev, [key]: next };
+          });
+        setters.set(key, setter);
+      }
+      return setters.get(key) as Dispatch<SetStateAction<EventFormFields[K]>>;
+    };
+  });
+  const { title, lat, lng, sources, eventTime, proof, conflictIds } = fields;
 
   const taxonomy = useTaxonomy();
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
-    seed?.tags.map((t) => t.id) ?? []
-  );
-  const [selectedConflictIds, setSelectedConflictIds] = useState<string[]>(
-    seed?.conflicts.map((c) => c.id) ?? []
-  );
-
   const siteLinks = useSiteLinksDraft(seed);
   const incomplete = useIncompleteForm();
 
@@ -159,59 +168,29 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
         lng,
         proof,
         sources: floor,
-        hasConflict: selectedConflictIds.length > 0,
+        hasConflict: conflictIds.length > 0,
         siteEffectMissing: siteLinks.missingEffect,
       }),
-    [title, lat, lng, proof, floor, selectedConflictIds, siteLinks.missingEffect]
+    [title, lat, lng, proof, floor, conflictIds, siteLinks.missingEffect]
   );
 
   const draft = useMemo<EventFormDraft>(
-    () => ({
-      title,
-      lat,
-      lng,
-      sources,
-      eventDate,
-      eventTime,
-      proof,
-      proofFiles,
-      tagIds: selectedTagIds,
-      conflictIds: selectedConflictIds,
-      siteLinks: siteLinks.links,
-    }),
-    [
-      title,
-      lat,
-      lng,
-      sources,
-      eventDate,
-      eventTime,
-      proof,
-      proofFiles,
-      selectedTagIds,
-      selectedConflictIds,
-      siteLinks.links,
-    ]
+    () => ({ ...fields, siteLinks: siteLinks.links }),
+    [fields, siteLinks.links]
   );
-  const restoreDraft = (stored: EventFormDraft) => {
+  const restoreDraft = ({ siteLinks: links, ...stored }: EventFormDraft) => {
     const now = Date.now();
-    setTitle(stored.title);
-    setLat(stored.lat);
-    setLng(stored.lng);
-    setSources(stored.sources.map((source) => restoredSourceDraft(source, now)));
-    setEventDate(stored.eventDate);
-    setEventTime(stored.eventTime);
-    setProof(stored.proof);
-    setProofFiles(stored.proofFiles);
-    setSelectedTagIds(stored.tagIds);
-    setSelectedConflictIds(stored.conflictIds);
-    siteLinks.setLinks(stored.siteLinks);
+    setFields({
+      ...stored,
+      sources: stored.sources.map((source) => restoredSourceDraft(source, now)),
+    });
+    siteLinks.setLinks(links);
   };
 
   const shared = (): Omit<EventWriteInput, "lat" | "lng"> => ({
     title: title.trim(),
     sources: sources.map(sourceCreatePayload),
-    occurred_date: eventDate || undefined,
+    occurred_date: fields.eventDate || undefined,
     // An untouched time goes back at the row's own precision, not as the input's truncation:
     // an absent value clears it.
     occurred_time:
@@ -219,33 +198,15 @@ export function useEventForm(row?: EventDetail | null): EventFormState {
         ? (seed.occurred_time ?? undefined)
         : eventTime || undefined,
     proof,
-    tag_ids: selectedTagIds,
-    conflict_ids: selectedConflictIds,
-    proof_files: proofFiles,
+    tag_ids: fields.tagIds,
+    conflict_ids: conflictIds,
+    proof_files: fields.proofFiles,
   });
 
   return {
-    title,
-    setTitle,
-    lat,
-    setLat,
-    lng,
-    setLng,
-    sources,
-    setSources,
-    eventDate,
-    setEventDate,
-    eventTime,
-    setEventTime,
-    proof,
-    setProof,
-    proofFiles,
-    setProofFiles,
+    fields,
+    set,
     taxonomy,
-    selectedTagIds,
-    setSelectedTagIds,
-    selectedConflictIds,
-    setSelectedConflictIds,
     siteLinks,
     publishMissing,
     requestMissing,
@@ -364,8 +325,8 @@ function eventFormSlots(
   return {
     titleField: (
       <TitleField
-        value={form.title}
-        onChange={form.setTitle}
+        value={form.fields.title}
+        onChange={form.set("title")}
         invalid={invalidKeys.has("title")}
         form={formId}
       />
@@ -373,15 +334,15 @@ function eventFormSlots(
     body: {
       sources: (
         <SourcesField
-          sources={form.sources}
-          setSources={form.setSources}
+          sources={form.fields.sources}
+          setSources={form.set("sources")}
           tags={form.taxonomy.tags}
           setTags={form.taxonomy.setTags}
           suggestedTags={form.taxonomy.suggestedTags}
           invalidKeys={invalidKeys}
           attempt={form.validationAttempt}
           proofImages={
-            row ? { eventId: row.id, urls: storedProofImages(form.proof, row.proof) } : undefined
+            row ? { eventId: row.id, urls: storedProofImages(form.fields.proof, row.proof) } : undefined
           }
         />
       ),
@@ -389,10 +350,10 @@ function eventFormSlots(
       proof: {
         content: (
           <ProofEditorPanel
-            proof={form.proof}
-            onChange={form.setProof}
-            proofFiles={form.proofFiles}
-            onProofFilesChange={form.setProofFiles}
+            proof={form.fields.proof}
+            onChange={form.set("proof")}
+            proofFiles={form.fields.proofFiles}
+            onProofFilesChange={form.set("proofFiles")}
             invalid={proofInvalid}
           />
         ),
@@ -402,17 +363,17 @@ function eventFormSlots(
       details: {
         content: (
           <DetailsFields
-            eventDate={form.eventDate}
-            setEventDate={form.setEventDate}
-            eventTime={form.eventTime}
-            setEventTime={form.setEventTime}
+            eventDate={form.fields.eventDate}
+            setEventDate={form.set("eventDate")}
+            eventTime={form.fields.eventTime}
+            setEventTime={form.set("eventTime")}
             detectedFromUrl={row?.detected_from_url}
             openedAsRequest={!!row?.requested_by}
             taxonomy={form.taxonomy}
-            selectedTagIds={form.selectedTagIds}
-            setSelectedTagIds={form.setSelectedTagIds}
-            selectedConflictIds={form.selectedConflictIds}
-            setSelectedConflictIds={form.setSelectedConflictIds}
+            selectedTagIds={form.fields.tagIds}
+            setSelectedTagIds={form.set("tagIds")}
+            selectedConflictIds={form.fields.conflictIds}
+            setSelectedConflictIds={form.set("conflictIds")}
             conflictInvalid={invalidKeys.has("conflict_tag")}
           />
         ),
@@ -422,10 +383,10 @@ function eventFormSlots(
         content: (
           <div className="space-y-6">
             <LocationPicker
-              lat={form.lat}
-              setLat={form.setLat}
-              lng={form.lng}
-              setLng={form.setLng}
+              lat={form.fields.lat}
+              setLat={form.set("lat")}
+              lng={form.fields.lng}
+              setLng={form.set("lng")}
               invalid={invalidKeys.has("coordinates")}
             />
             {afterLocation}
@@ -436,8 +397,8 @@ function eventFormSlots(
       sites: siteLinks && (
         <LinkedSitesField
           draft={form.siteLinks}
-          lat={form.lat}
-          lng={form.lng}
+          lat={form.fields.lat}
+          lng={form.fields.lng}
           invalid={invalidKeys.has("site_effect")}
         />
       ),

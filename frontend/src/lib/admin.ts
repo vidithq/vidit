@@ -162,10 +162,6 @@ export function setEventModeration(
  *  backend `AdminDetectionStatsRead` schema. */
 export type DetectionStats = components["schemas"]["AdminDetectionStatsRead"];
 
-export function getDetectionStats(): Promise<DetectionStats> {
-  return apiFetch<DetectionStats>("/admin/detection-stats");
-}
-
 /** A site's takedown state after the PATCH: `hidden_at` is null once restored. */
 export type AdminSiteModeration = components["schemas"]["AdminSiteModerationRead"];
 

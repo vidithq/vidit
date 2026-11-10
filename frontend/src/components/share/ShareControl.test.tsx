@@ -1,11 +1,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { eventDetail } from "@/test/eventDetail";
-import type { EventDetail } from "@/types";
-import { EventShare } from "./EventShare";
+import { ShareControl } from "./ShareControl";
 
-const geolocated: EventDetail = eventDetail("e1", "Strike near Bakhmut");
+const PATH = "/events/e1";
+const TITLE = "Strike near Bakhmut";
+const CAVEAT = "Detected and may still change.";
 const URL_OF_E1 = `${window.location.origin}/events/e1`;
 
 function withWebShare() {
@@ -30,10 +30,10 @@ afterEach(() => {
   delete (navigator as { share?: unknown }).share;
 });
 
-describe("EventShare without the Web Share API", () => {
-  it("copies the event's address in one click, with no menu", async () => {
+describe("ShareControl without the Web Share API", () => {
+  it("copies the address in one click, with no menu", async () => {
     const writeText = withClipboard();
-    render(<EventShare event={geolocated} />);
+    render(<ShareControl path={PATH} title={TITLE} />);
     const share = screen.getByRole("button", { name: "Share" });
     expect(share).not.toHaveAttribute("aria-haspopup");
 
@@ -46,7 +46,7 @@ describe("EventShare without the Web Share API", () => {
 
   it("turns the mark into a check, shows and announces the copy, then turns back", async () => {
     withClipboard();
-    render(<EventShare event={geolocated} />);
+    render(<ShareControl path={PATH} title={TITLE} />);
     const share = screen.getByRole("button", { name: "Share" });
 
     await act(async () => {
@@ -64,9 +64,9 @@ describe("EventShare without the Web Share API", () => {
     expect(screen.queryByText("Link copied")).toBeNull();
   });
 
-  it("arms a detected row's share on the first click rather than copying", async () => {
+  it("arms a caveated share on the first click rather than copying", async () => {
     const writeText = withClipboard();
-    render(<EventShare event={{ ...geolocated, status: "detected" }} />);
+    render(<ShareControl path={PATH} title={TITLE} caveat={CAVEAT} />);
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Share" }));
@@ -81,20 +81,20 @@ describe("EventShare without the Web Share API", () => {
   });
 });
 
-describe("EventShare with the Web Share API", () => {
-  it("opens the share sheet with the event's address and title, and copies nothing", () => {
+describe("ShareControl with the Web Share API", () => {
+  it("opens the share sheet with the address and title, and copies nothing", () => {
     const share = withWebShare();
     const writeText = withClipboard();
-    render(<EventShare event={geolocated} />);
+    render(<ShareControl path={PATH} title={TITLE} />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
     expect(share).toHaveBeenCalledWith({ title: "Strike near Bakhmut", url: URL_OF_E1 });
     expect(writeText).not.toHaveBeenCalled();
   });
 
-  it("arms a detected row's share on the first click rather than opening it", () => {
+  it("arms a caveated share on the first click rather than opening it", () => {
     const share = withWebShare();
-    render(<EventShare event={{ ...geolocated, status: "detected" }} />);
+    render(<ShareControl path={PATH} title={TITLE} caveat={CAVEAT} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(share).not.toHaveBeenCalled();

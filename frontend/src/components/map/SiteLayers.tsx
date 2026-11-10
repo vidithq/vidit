@@ -15,7 +15,7 @@ import {
   SITE_POINT_MAX_ZOOM,
   SITE_RING_WIDTH_PX,
   SITE_ZONE_FILL_OPACITY,
-  TAP_TARGET_LAYERS,
+  presentTapLayers,
 } from "./layers";
 import { MapPreviewCard, PREVIEW_INTENT_MS } from "./MapPreviewCard";
 
@@ -99,7 +99,7 @@ export function SiteLayers({
   useEffect(() => {
     if (!map || !onSelect) return;
     const overPin = (point: MapLayerMouseEvent["point"]) => {
-      const pins = TAP_TARGET_LAYERS.filter((id) => map.getLayer(id));
+      const pins = presentTapLayers(map);
       return pins.length > 0 && map.queryRenderedFeatures(point, { layers: pins }).length > 0;
     };
     const clearHover = () => {

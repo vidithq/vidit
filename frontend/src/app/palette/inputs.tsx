@@ -132,10 +132,9 @@ function PaletteOptionSearch() {
           suggestions={tagOptions}
         />
       </Variant>
-      <Variant label="single required" className={FIELD}>
+      <Variant label="single" className={FIELD}>
         <OptionSearch
           single
-          required
           aria-label="Kind"
           placeholder="Search source kinds"
           options={[

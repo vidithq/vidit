@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { CollectionPicker } from "@/components/collections/CollectionPicker";
 import { Item } from "@/components/ui/Item";
@@ -35,12 +35,13 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   const { data, error } = useApiResource<CollectionMemberships>(
     eventCollectionsPath(eventId),
   );
-  // Local copy so a toggle paints before its write lands.
+  // Local copy so a toggle paints before its write lands, reseeded during render when a read lands.
   const [rows, setRows] = useState<CollectionMembership[] | null>(null);
-
-  useEffect(() => {
-    if (data) setRows(data.items);
-  }, [data]);
+  const [seeded, setSeeded] = useState<CollectionMemberships | null>(null);
+  if (data && data !== seeded) {
+    setSeeded(data);
+    setRows(data.items);
+  }
 
   // The bit and the count move together. Setting the bit it already holds is a
   // no-op, so a rollback never counts twice.

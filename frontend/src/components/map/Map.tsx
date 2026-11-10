@@ -48,12 +48,15 @@ import {
 } from "./stack";
 import {
   CLUSTER_COUNT_COLOR,
+  CLUSTER_COUNT_LAYER,
   CLUSTER_LAYER,
   CLUSTER_OPACITY,
   CLUSTER_SOURCE,
   POINT_COUNT,
+  POINT_LAYER,
   POINT_LAYERS,
   POINT_RADIUS,
+  SELECTED_POINT_LAYER,
   SELECTED_POINT_RADIUS,
   SELECTED_STROKE,
   SELECTED_STROKE_WIDTH,
@@ -66,8 +69,9 @@ import {
   SITE_RING_RADIUS_PX,
   SITE_RING_WIDTH_PX,
   SITE_ZONE_FILL_OPACITY,
+  STACK_COUNT_LAYER,
   STACK_LAYER,
-  TAP_TARGET_LAYERS,
+  presentTapLayers,
   clusterColor,
   clusterCountLayout,
   clusterRadius,
@@ -102,6 +106,9 @@ const PREVIEW_CACHE_MAX = 50;
 const POINTS_ZOOM = CLUSTER_MAX_ZOOM + 1;
 const FADE_OUT_START = CLUSTER_MAX_ZOOM + 0.5;
 const FADE_IN_END = CLUSTER_MAX_ZOOM + 1.25;
+// The opacity at which a cluster hands off to what replaces it.
+const HANDOFF_OPACITY = 0.35;
+const STACK_COUNT: ExpressionSpecification = ["get", "stack_count"];
 // A cluster click past the ceiling overshoots the band so revealed pins land at full opacity.
 const CLUSTER_OVERSHOOT_ZOOM = CLUSTER_MAX_ZOOM + 1.3;
 
@@ -189,6 +196,15 @@ function StackInteractions({
   useEffect(() => {
     if (!map) return;
 
+    const openSpiderAt = (
+      points: SpiderPoint[],
+      coordinates: [number, number],
+      clusterId: number | null,
+    ) => {
+      const center = map.project(coordinates);
+      onSpiderOpen({ key: stackKey(points), center: { x: center.x, y: center.y }, points, clusterId });
+    };
+
     // The unclustered stack badge carries its members inline (`stack_members` JSON); hover or tap opens the ring.
     const openFromStackFeature = (feature: Feature | undefined): boolean => {
       if (!feature || feature.geometry?.type !== "Point") return false;
@@ -202,19 +218,13 @@ function StackInteractions({
       }
       if (!Array.isArray(members) || members.length < 2) return false;
       const [lng, lat] = feature.geometry.coordinates;
-      const px = map.project([lng, lat]);
       const points: SpiderPoint[] = members.map((m) => ({
         id: m.id,
         detected: m.detected === 1 ? 1 : 0,
         lng,
         lat,
       }));
-      onSpiderOpen({
-        key: stackKey(points),
-        center: { x: px.x, y: px.y },
-        points,
-        clusterId: null,
-      });
+      openSpiderAt(points, [lng, lat], null);
       return true;
     };
 
@@ -256,16 +266,8 @@ function StackInteractions({
       coincidentLeaves(clusterId)
         .then(({ points }) => {
           if (gen !== clusterHoverGen || map.isMoving()) return;
-          if (points) {
-            // Project only now: a move completed during resolution would misanchor the ring.
-            const center = map.project(coordinates);
-            onSpiderOpen({
-              key: stackKey(points),
-              center: { x: center.x, y: center.y },
-              points,
-              clusterId,
-            });
-          }
+          // Project only now: a move completed during resolution would misanchor the ring.
+          if (points) openSpiderAt(points, coordinates, clusterId);
         })
         .catch(() => {});
     };
@@ -280,13 +282,7 @@ function StackInteractions({
       try {
         const { zoom, points } = await coincidentLeaves(clusterId);
         if (points) {
-          const center = map.project(coordinates);
-          onSpiderOpen({
-            key: stackKey(points),
-            center: { x: center.x, y: center.y },
-            points,
-            clusterId,
-          });
+          openSpiderAt(points, coordinates, clusterId);
           return;
         }
         // A cluster splitting only at the ceiling lands on the crossfade low point: overshoot past the band.
@@ -295,7 +291,7 @@ function StackInteractions({
           zoom: zoom > CLUSTER_MAX_ZOOM ? CLUSTER_OVERSHOOT_ZOOM : zoom,
         });
       } catch {
-        map.easeTo({ center: coordinates, zoom: (map.getZoom() || 5) + 2 });
+        map.easeTo({ center: coordinates, zoom: map.getZoom() + 2 });
       }
     };
     const handleClusterClick = (e: MapLayerMouseEvent) => {
@@ -326,13 +322,10 @@ function StackInteractions({
       clickPoint(e.features?.[0]);
     };
 
-    // Tap targets present on the style, resolved on first use: the `<Layer>` children add them from
-    // effects that run after this one. Filtered because `queryRenderedFeatures` throws on an unknown id.
+    // Resolved on first use: the `<Layer>` children add them from effects that run after this one.
     let tapLayers: string[] = [];
     const layersForTap = () => {
-      if (tapLayers.length === 0) {
-        tapLayers = TAP_TARGET_LAYERS.filter((id) => map.getLayer(id));
-      }
+      if (tapLayers.length === 0) tapLayers = presentTapLayers(map);
       return tapLayers;
     };
 
@@ -400,43 +393,37 @@ function StackInteractions({
       map.getCanvas().style.cursor = "";
     };
 
-    map.on("click", CLUSTER_LAYERS, handleClusterClick);
-    map.on("mouseenter", CLUSTER_LAYERS, handleClusterEnter);
-    map.on("click", STACK_LAYER, handleStackClick);
-    map.on("mouseenter", STACK_LAYER, handleStackEnter);
-    map.on("click", POINT_LAYERS, handlePointClick);
-    map.on("mousemove", POINT_LAYERS, handlePointMove);
-    map.on("mouseleave", POINT_LAYERS, clearPinHover);
+    const layerHandlers: [
+      "click" | "mouseenter" | "mousemove" | "mouseleave",
+      string[],
+      (e: MapLayerMouseEvent) => void,
+    ][] = [
+      ["click", CLUSTER_LAYERS, handleClusterClick],
+      ["mouseenter", CLUSTER_LAYERS, handleClusterEnter],
+      ["click", [STACK_LAYER], handleStackClick],
+      ["mouseenter", [STACK_LAYER], handleStackEnter],
+      ["click", POINT_LAYERS, handlePointClick],
+      ["mousemove", POINT_LAYERS, handlePointMove],
+      ["mouseleave", POINT_LAYERS, clearPinHover],
+      ["mouseleave", CLUSTER_LAYERS, invalidateClusterHover],
+      ["mouseenter", CLUSTER_LAYERS, pointerOn],
+      ["mouseleave", CLUSTER_LAYERS, pointerOff],
+      ["mouseenter", [STACK_LAYER], pointerOn],
+      ["mouseleave", [STACK_LAYER], pointerOff],
+      ["mouseenter", POINT_LAYERS, pointerOn],
+      ["mouseleave", POINT_LAYERS, pointerOff],
+    ];
+    for (const [type, layers, handler] of layerHandlers) map.on(type, layers, handler);
     map.on("movestart", clearPinHover);
-    map.on("mouseleave", CLUSTER_LAYERS, invalidateClusterHover);
     map.on("movestart", invalidateClusterHover);
     // Registered last so every layer click handler runs first and can report it took the tap.
     if (isCoarsePointer()) map.on("click", handleCanvasTap);
-    map.on("mouseenter", CLUSTER_LAYERS, pointerOn);
-    map.on("mouseleave", CLUSTER_LAYERS, pointerOff);
-    map.on("mouseenter", STACK_LAYER, pointerOn);
-    map.on("mouseleave", STACK_LAYER, pointerOff);
-    map.on("mouseenter", POINT_LAYERS, pointerOn);
-    map.on("mouseleave", POINT_LAYERS, pointerOff);
 
     return () => {
-      map.off("click", CLUSTER_LAYERS, handleClusterClick);
-      map.off("mouseenter", CLUSTER_LAYERS, handleClusterEnter);
-      map.off("click", STACK_LAYER, handleStackClick);
-      map.off("mouseenter", STACK_LAYER, handleStackEnter);
-      map.off("click", POINT_LAYERS, handlePointClick);
-      map.off("mousemove", POINT_LAYERS, handlePointMove);
-      map.off("mouseleave", POINT_LAYERS, clearPinHover);
+      for (const [type, layers, handler] of layerHandlers) map.off(type, layers, handler);
       map.off("movestart", clearPinHover);
-      map.off("mouseleave", CLUSTER_LAYERS, invalidateClusterHover);
       map.off("movestart", invalidateClusterHover);
       map.off("click", handleCanvasTap);
-      map.off("mouseenter", CLUSTER_LAYERS, pointerOn);
-      map.off("mouseleave", CLUSTER_LAYERS, pointerOff);
-      map.off("mouseenter", STACK_LAYER, pointerOn);
-      map.off("mouseleave", STACK_LAYER, pointerOff);
-      map.off("mouseenter", POINT_LAYERS, pointerOn);
-      map.off("mouseleave", POINT_LAYERS, pointerOff);
     };
   }, [map, onPointClick, onSpiderOpen, onPinHover]);
 
@@ -842,10 +829,9 @@ export default function Map({
   pinPreview = true,
   children,
 }: MapProps) {
-  const [mounted, setMounted] = useState(false);
-  // MapLibre needs WebGL2, which Tor Browser and some mobile GPUs lack; detect on mount to show a
-  // message, not a black canvas.
-  const [webglMissing, setWebglMissing] = useState(false);
+  // MapLibre needs WebGL2, which Tor Browser and some mobile GPUs lack: show a message, not a black
+  // canvas. Every importer loads the map client-only, so the check runs in the browser.
+  const [webglMissing, setWebglMissing] = useState(() => !supportsMaplibreWebGL());
   // Skip the first onMoveEnd (initial layout): it carries the values just seeded.
   const firstMoveEndRef = useRef(true);
   // Marker colours follow the accent palette; detections use a lighter shade of the same hue.
@@ -1000,11 +986,6 @@ export default function Map({
     [clearCloseTimer, handlePinClick]
   );
 
-  useEffect(() => {
-    setWebglMissing(!supportsMaplibreWebGL());
-    setMounted(true);
-  }, []);
-
   // While a ring is out its stack is hidden underneath: the cluster circle by `cluster_id`,
   // unclustered circles by event id. On close the filters relax so circles re-merge.
   const clusterFilter = useCallback(
@@ -1050,15 +1031,11 @@ export default function Map({
   // A stack of 3 must never look like one pin.
   const geojson = useMemo<FeatureCollection>(() => {
     const features: Feature[] = [];
-    for (const stack of groupStacks(points, mapPointFields)) {
+    for (const stack of groupStacks(points.map(mapPointFields), (p) => p)) {
       const stackCount = stack.length;
-      const members = stack.map((p) => {
-        const { id, detected } = mapPointFields(p);
-        return { id, detected };
-      });
-      const anySelected = stack.some((p) => mapPointFields(p).id === selectedId);
-      stack.forEach((p, i) => {
-        const { id, lat, lng, detected } = mapPointFields(p);
+      const members = stack.map(({ id, detected }) => ({ id, detected }));
+      const anySelected = stack.some((p) => p.id === selectedId);
+      stack.forEach(({ id, lat, lng, detected }, i) => {
         features.push({
           type: "Feature",
           properties: {
@@ -1109,6 +1086,19 @@ export default function Map({
       ? opacity
       : ["case", ["==", ["get", "dimmed"], 1], DIMMED_OPACITY, opacity];
 
+  // Ease the ceiling handoff: ramps an opacity across the band only while a zoom is in flight
+  // (`zoomInFlight`), and holds `full` at rest.
+  const crossfade = (
+    full: number | ExpressionSpecification,
+    stops: (number | ExpressionSpecification)[],
+  ): number | ExpressionSpecification =>
+    zoomInFlight
+      ? (["interpolate", ["linear"], ["zoom"], ...stops] as unknown as ExpressionSpecification)
+      : full;
+  // A cluster thins out approaching the ceiling; what replaces it fades in from the same level.
+  const fadeOut = (full: number) => crossfade(full, [FADE_OUT_START, full, POINTS_ZOOM, HANDOFF_OPACITY]);
+  const fadeIn = (full: number) => crossfade(full, [POINTS_ZOOM, HANDOFF_OPACITY, FADE_IN_END, full]);
+
   // A points swap rebuilds the source and supercluster reassigns cluster ids: an open ring could
   // hide the wrong cluster and reference filtered-out events. Reset the overlay and preview.
   useEffect(() => {
@@ -1117,14 +1107,6 @@ export default function Map({
     setSpiderClosing(false);
     hoverPin(null);
   }, [geojson, clearCloseTimer, hoverPin]);
-
-  if (!mounted) {
-    return (
-      <div className={`w-full h-full bg-neutral-950 flex items-center justify-center ${className || ""}`}>
-        <span className="text-neutral-500 text-sm">Loading map...</span>
-      </div>
-    );
-  }
 
   if (webglMissing) {
     return (
@@ -1250,44 +1232,29 @@ export default function Map({
         />
 
         <Layer
-          id="clusters"
+          id={CLUSTER_LAYER}
           type="circle"
           filter={clusterFilter(POINT_COUNT)}
           paint={{
             "circle-color": clusterColor(marker, POINT_COUNT),
-            // Ease the ceiling handoff: clusters thin out approaching it, replacements fade in from the same
-            // level. Zoom-interpolated, only while a zoom is in flight (`zoomInFlight`).
-            "circle-opacity": zoomInFlight
-              ? [
-                  "interpolate", ["linear"], ["zoom"],
-                  FADE_OUT_START, CLUSTER_OPACITY,
-                  POINTS_ZOOM, 0.35,
-                ]
-              : CLUSTER_OPACITY,
+            "circle-opacity": fadeOut(CLUSTER_OPACITY),
             "circle-radius": clusterRadius(POINT_COUNT),
           }}
         />
 
         <Layer
-          id="cluster-count"
+          id={CLUSTER_COUNT_LAYER}
           type="symbol"
           filter={clusterFilter(POINT_COUNT)}
           layout={clusterCountLayout(POINT_COUNT)}
           paint={{
             "text-color": CLUSTER_COUNT_COLOR,
-            // Mirrors the cluster circle's ceiling fade above.
-            "text-opacity": zoomInFlight
-              ? [
-                  "interpolate", ["linear"], ["zoom"],
-                  FADE_OUT_START, 1,
-                  POINTS_ZOOM, 0.35,
-                ]
-              : 1,
+            "text-opacity": fadeOut(1),
           }}
         />
 
         <Layer
-          id="points-selected"
+          id={SELECTED_POINT_LAYER}
           type="circle"
           filter={pointFilter(1)}
           paint={{
@@ -1301,7 +1268,7 @@ export default function Map({
         />
 
         <Layer
-          id="points-circle"
+          id={POINT_LAYER}
           type="circle"
           filter={pointFilter(0)}
           paint={{
@@ -1310,63 +1277,39 @@ export default function Map({
             "circle-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-color": ["case", ["==", ["get", "detected"], 1], DETECTED, marker.base],
             "circle-stroke-width": 1,
-            // The crossfade's other half: pins released by a dissolving cluster fade in from its hand-off
-            // opacity (only while a zoom is in flight, see `zoomInFlight`).
-            "circle-opacity": zoomInFlight
-              ? [
-                  "interpolate", ["linear"], ["zoom"],
-                  POINTS_ZOOM - 0.01, withDim(1),
-                  POINTS_ZOOM, withDim(0.35),
-                  FADE_IN_END, withDim(1),
-                ]
-              : withDim(1),
+            // Pins released by a dissolving cluster fade in from its hand-off opacity.
+            "circle-opacity": crossfade(withDim(1), [
+              POINTS_ZOOM - 0.01, withDim(1),
+              POINTS_ZOOM, withDim(HANDOFF_OPACITY),
+              FADE_IN_END, withDim(1),
+            ]),
           }}
         />
 
         {/* Stack badge: styled like the small cluster it resolved from so crossing the ceiling shows no
             change; a stack fans out, a cluster zooms. The selected halo moves onto it. */}
         <Layer
-          id="stacks-circle"
+          id={STACK_LAYER}
           type="circle"
           filter={stackFilter}
           paint={{
             "circle-radius": 12,
             "circle-color": marker.base,
-            // A badge exists only past the ceiling: fading in from the cluster hand-off opacity completes the
-            // crossfade (only while a zoom is in flight).
-            "circle-opacity": zoomInFlight
-              ? [
-                  "interpolate", ["linear"], ["zoom"],
-                  POINTS_ZOOM, 0.35,
-                  FADE_IN_END, CLUSTER_OPACITY,
-                ]
-              : CLUSTER_OPACITY,
+            // A badge exists only past the ceiling: fading in completes the crossfade.
+            "circle-opacity": fadeIn(CLUSTER_OPACITY),
             "circle-stroke-color": selectedStroke,
             "circle-stroke-width": ["case", ["==", ["get", "stack_selected"], 1], SELECTED_STROKE_WIDTH, 0],
           }}
         />
 
         <Layer
-          id="stacks-count"
+          id={STACK_COUNT_LAYER}
           type="symbol"
           filter={stackFilter}
-          layout={{
-            "text-field": "{stack_count}",
-            "text-font": ["Montserrat Medium"],
-            "text-size": 11,
-            "text-allow-overlap": true,
-            "text-ignore-placement": true,
-          }}
+          layout={clusterCountLayout(STACK_COUNT)}
           paint={{
             "text-color": CLUSTER_COUNT_COLOR,
-            // Mirrors the stack circle's fade-in above.
-            "text-opacity": zoomInFlight
-              ? [
-                  "interpolate", ["linear"], ["zoom"],
-                  POINTS_ZOOM, 0.35,
-                  FADE_IN_END, 1,
-                ]
-              : 1,
+            "text-opacity": fadeIn(1),
           }}
         />
       </Source>

@@ -10,7 +10,7 @@ const KINDS = [
   { value: "article", label: "Article" },
 ];
 
-function Host({ single = false, required = false }: { single?: boolean; required?: boolean }) {
+function Host({ single = false }: { single?: boolean }) {
   const [selected, setSelected] = useState<string[]>([]);
   return (
     <OptionSearch
@@ -20,7 +20,6 @@ function Host({ single = false, required = false }: { single?: boolean; required
       selected={selected}
       onChange={setSelected}
       single={single}
-      required={required}
     />
   );
 }
@@ -55,19 +54,14 @@ describe("<OptionSearch>", () => {
     expect(screen.getByRole("button", { name: "Remove Article" })).toBeInTheDocument();
   });
 
-  it("keeps one pick in single mode, which a new pick replaces", () => {
+  it("keeps one pick in single mode, which a new pick replaces and nothing removes", () => {
     render(<Host single />);
     pick("Drone");
+    expect(screen.queryByRole("button", { name: "Remove Drone" })).not.toBeInTheDocument();
     pick("Satellite");
-    expect(screen.queryByRole("button", { name: "Remove Drone" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove Satellite" })).toBeInTheDocument();
-  });
-
-  it("offers no removal of a required single pick", () => {
-    render(<Host single required />);
-    pick("Drone");
-    expect(screen.getByText("Drone")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Remove Drone" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Drone")).not.toBeInTheDocument();
+    expect(screen.getByText("Satellite")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove Satellite" })).not.toBeInTheDocument();
   });
 });
 

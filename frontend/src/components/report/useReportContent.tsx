@@ -165,7 +165,6 @@ export function useReportContent(
           </span>
           <OptionSearch
             single
-            required
             id="report_reason"
             aria-label="Reason"
             placeholder="Search reasons"

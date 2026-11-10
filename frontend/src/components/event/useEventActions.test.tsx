@@ -215,6 +215,12 @@ describe("the owner's edit", () => {
     );
   });
 
+  it("arms a detected row's share with its caveat rather than sharing at once", () => {
+    renderAs(ANALYST, { status: "detected", surface: "event" });
+    fireEvent.click(within(row()).getByRole("button", { name: "Share" }));
+    expect(screen.getByText("Detected and may still change. Click again to share.")).toBeVisible();
+  });
+
   it("gives a closed request Share and Report, and no Geolocate", () => {
     renderAs(ANALYST, { status: "closed", surface: "request", beforeClosedStatus: "requested" });
     expect(screen.queryByRole("link", { name: "Geolocate" })).toBeNull();

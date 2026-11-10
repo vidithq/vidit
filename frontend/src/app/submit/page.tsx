@@ -151,10 +151,10 @@ function SubmitForm() {
         fields={{
           afterLocation: (
             <DuplicateProbe
-              lat={form.lat}
-              lng={form.lng}
-              sourceUrl={form.sources.flatMap(draftUrls)[0] ?? ""}
-              eventDate={form.eventDate}
+              lat={form.fields.lat}
+              lng={form.fields.lng}
+              sourceUrl={form.fields.sources.flatMap(draftUrls)[0] ?? ""}
+              eventDate={form.fields.eventDate}
             />
           ),
         }}
