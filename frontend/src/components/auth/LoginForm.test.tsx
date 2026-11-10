@@ -9,7 +9,7 @@ import LoginForm from "./LoginForm";
 
 describe("LoginForm", () => {
   beforeEach(() => {
-    login.mockReset().mockResolvedValue(undefined);
+    login.mockResolvedValue(undefined);
   });
 
   it("signs in with the two fields", async () => {

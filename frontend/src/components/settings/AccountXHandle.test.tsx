@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { XHandleState } from "@/lib/xHandle";
 
@@ -10,12 +10,10 @@ vi.mock("@/lib/api", () => import("@/test/apiStub"));
 import { AccountXHandle } from "./AccountXHandle";
 
 function serve(state: XHandleState) {
-  apiFetch.mockReset().mockResolvedValue(state);
+  apiFetch.mockResolvedValue(state);
 }
 
 describe("AccountXHandle", () => {
-  beforeEach(() => apiFetch.mockReset());
-
   it("shows the bound handle read-only", async () => {
     serve({ x_handle: "osint_hawk" });
     render(<AccountXHandle />);
