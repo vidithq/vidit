@@ -6,12 +6,10 @@ import { Globe } from "lucide-react";
 import { displayLinkValue, resolveLinkHref } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { DiscordGlyph, GitHubGlyph, XGlyph } from "@/components/ui/BrandGlyphs";
-import { buttonClasses } from "@/components/ui/Button";
+import { IconLink } from "@/components/ui/IconLink";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { FieldError } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { OutboundLink } from "@/components/ui/OutboundLink";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FORM_LABEL } from "@/components/ui/form-styles";
@@ -138,15 +136,7 @@ export function LinkedAccountsLine({ links }: { links: ExternalLinks }) {
         const href = resolveLinkHref(key, value);
         if (!href) return [];
         return [
-          <Tooltip key={key} label={name}>
-            <OutboundLink
-              href={href}
-              aria-label={name}
-              className={buttonClasses("ghost", { icon: true })}
-            >
-              <Icon size={14} />
-            </OutboundLink>
-          </Tooltip>,
+          <IconLink key={key} external href={href} label={name} icon={<Icon size={14} />} />,
         ];
       })}
     </>

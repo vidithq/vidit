@@ -2,7 +2,6 @@
 
 import { Suspense, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { SquarePen } from "lucide-react";
 
 import { CollectionCoverage } from "@/components/collections/CollectionCoverage";
@@ -10,9 +9,8 @@ import { CollectionItems } from "@/components/collections/CollectionItems";
 import { CollectionDetails, CollectionShell } from "@/components/collections/CollectionShell";
 import { useReportContent } from "@/components/report/useReportContent";
 import ShareOnX from "@/components/share/ShareOnX";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
-import { buttonClasses } from "@/components/ui/Button";
+import { IconLink } from "@/components/ui/IconLink";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Card } from "@/components/ui/Card";
 import { PageError, PageLoading } from "@/components/ui/PageShell";
@@ -123,16 +121,11 @@ function CollectionPageBody() {
           {!isOwner && report.trigger}
           {isOwner && (
             <>
-              {/* Navigation: `buttonClasses` on the link, not a button nested in an anchor. */}
-              <Tooltip label="Edit this collection">
-                <Link
-                  href={collectionEditHref(collection.id)}
-                  className={buttonClasses("ghost", { icon: true })}
-                  aria-label="Edit this collection"
-                >
-                  <SquarePen size={14} />
-                </Link>
-              </Tooltip>
+              <IconLink
+                href={collectionEditHref(collection.id)}
+                label="Edit this collection"
+                icon={<SquarePen size={14} />}
+              />
               <ConfirmButton
                 icon
                 label="Drop this collection"

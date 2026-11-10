@@ -6,6 +6,7 @@ import type { ArchivedLink } from "@/types";
 import { parseHttp } from "@/lib/format";
 import { ACTION_ICONS, ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { IconLink } from "@/components/ui/IconLink";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WARNING_CALLOUT } from "@/components/ui/styles";
@@ -133,15 +134,7 @@ function copyLabel(provider: ArchivedLink["provider"], describes: string): strin
 function ArchivedCopyLink({ copy, describes }: { copy: ArchivedLink; describes: string }) {
   const label = copyLabel(copy.provider, describes);
   return (
-    <Tooltip label={label}>
-      <OutboundLink
-        href={copy.url}
-        aria-label={label}
-        className={buttonClasses("ghost", { icon: true })}
-      >
-        <ArchiveMark size={14} />
-      </OutboundLink>
-    </Tooltip>
+    <IconLink external href={copy.url} label={label} icon={<ArchiveMark size={14} />} />
   );
 }
 
@@ -302,15 +295,12 @@ function SavePageDoor({
   }
   const label = `Open the ${SAVE_PAGE_LABEL} for ${describes}`;
   return (
-    <Tooltip label={label}>
-      <OutboundLink
-        href={savePageUrl(target)}
-        aria-label={label}
-        className={buttonClasses("ghost", { icon: true })}
-      >
-        <ExternalLink size={14} />
-      </OutboundLink>
-    </Tooltip>
+    <IconLink
+      external
+      href={savePageUrl(target)}
+      label={label}
+      icon={<ExternalLink size={14} />}
+    />
   );
 }
 

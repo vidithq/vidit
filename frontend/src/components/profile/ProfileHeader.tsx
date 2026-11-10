@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
-import Link from "next/link";
 import { FolderPlus, LogOut, SquarePen } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,12 +12,12 @@ import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile } from "@/lib/users";
 import type { ExternalLinks } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
+import { IconLink } from "@/components/ui/IconLink";
 import { FileManager } from "@/components/ui/FileManager";
 import { FORM_LABEL } from "@/components/ui/form-styles";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { ARMED_RING, TEXT_LINK } from "@/components/ui/styles";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { ACCEPTED_IMAGE_MIME } from "@/lib/mediaTypes";
 import { LinkedAccountsLine } from "./LinkedAccounts";
 import { ProfileOrganizations } from "./ProfileOrganizations";
@@ -178,15 +177,7 @@ export function OwnProfileActions() {
   });
   return (
     <>
-      <Tooltip label="New collection">
-        <Link
-          href={newCollectionHref()}
-          className={buttonClasses("ghost", { icon: true })}
-          aria-label="New collection"
-        >
-          <FolderPlus size={14} />
-        </Link>
-      </Tooltip>
+      <IconLink href={newCollectionHref()} label="New collection" icon={<FolderPlus size={14} />} />
       <Button
         ref={controlRef}
         icon
