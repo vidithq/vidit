@@ -14,10 +14,10 @@ import {
 import type { EventStatus } from "@/types";
 
 export type Site = components["schemas"]["SiteRead"];
-export type SiteCreated = components["schemas"]["SiteCreatedRead"];
+type SiteCreated = components["schemas"]["SiteCreatedRead"];
 export type SiteListItem = components["schemas"]["SiteList"];
 export type SiteSource = components["schemas"]["SiteSourceRead"];
-export type SiteSourceFiled = components["schemas"]["SiteSourceFiledRead"];
+type SiteSourceFiled = components["schemas"]["SiteSourceFiledRead"];
 export type SiteSourceCreate = components["schemas"]["SiteSourceCreate"];
 export type SiteContour = components["schemas"]["SiteContourRead"];
 export type SiteLinkedEvent = components["schemas"]["SiteLinkedEventRead"];
@@ -26,7 +26,6 @@ export type SiteSuggestion = components["schemas"]["SiteSuggestionRead"];
 export type EventSiteLink = components["schemas"]["EventSiteLinkRead"];
 export type Zone = components["schemas"]["ZonePolygon"];
 export type SiteVersion = components["schemas"]["SiteVersionRead"];
-export type SiteVersionList = components["schemas"]["SiteVersionList"];
 export type SiteVersionCreate = components["schemas"]["SiteVersionCreate"];
 export type SiteVersionEntry = VersionEntry<Site>;
 
@@ -83,11 +82,11 @@ export function siteEditHref(id: string, sourceId?: string): string {
 }
 
 /** Past versions only; the current one keeps `/sites/{id}`. */
-export function siteVersionHref(id: string, versionNo: number): string {
+function siteVersionHref(id: string, versionNo: number): string {
   return `${siteHref(id)}/v${versionNo}`;
 }
 
-export function siteHistoryHref(id: string): string {
+function siteHistoryHref(id: string): string {
   return `${siteHref(id)}/history`;
 }
 
@@ -175,7 +174,7 @@ export function linkEventToSite(
   });
 }
 
-export function unlinkEventFromSite(eventId: string, siteId: string): Promise<void> {
+function unlinkEventFromSite(eventId: string, siteId: string): Promise<void> {
   return apiFetch<void>(`${eventSiteLinksPath(eventId)}/${encodeURIComponent(siteId)}`, {
     method: "DELETE",
   });
@@ -366,7 +365,7 @@ export function siteVersioned(site: Pick<Site, "id" | "version_no">): VersionedR
 
 /** One filed version as the site shape the site page renders. Links have no history, so a
  *  version shows none. */
-export function siteVersionView(current: Site, row: SiteVersion): Site {
+function siteVersionView(current: Site, row: SiteVersion): Site {
   return {
     ...current,
     version_no: row.version_no,

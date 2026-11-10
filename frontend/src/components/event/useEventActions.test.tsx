@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ANA } from "@/test/auth";
 import { useEventActions, type ActionSurface } from "./useEventActions";
 import type { Approval } from "@/lib/approvals";
-import type { BeforeClosedStatus, EventDetail, EventStatus } from "@/types";
+import type { EventDetail, EventStatus } from "@/types";
 import { apiFetch } from "@/test/apiStub";
 import { eventDetail } from "@/test/eventDetail";
 
 type Viewer = { id: string; username: string } | null;
+type BeforeClosedStatus = NonNullable<EventDetail["before_closed_status"]>;
 
 const mocks = vi.hoisted(() => ({
   approvals: [] as unknown[],

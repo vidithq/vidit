@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/Card";
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 
-export type PaletteEntry = { entry: string; tier: PaletteTier; demo: ReactNode };
+type PaletteEntry = { entry: string; tier: PaletteTier; demo: ReactNode };
 
 /** `low`: a building block two or more other shared components reuse. `high`: what surfaces
  *  assemble, which at most one other shared component reuses. */

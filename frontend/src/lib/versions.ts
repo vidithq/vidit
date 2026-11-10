@@ -34,7 +34,7 @@ export interface VersionEntry<View> {
 /** The rows of one version in a history walk: `own` holds its content (absent for the live
  *  version) and `below`, the row one lower, holds the byline of the write that produced it,
  *  since the API files a write's byline on the version it superseded, and the diff base. */
-export interface VersionStep<Row> {
+interface VersionStep<Row> {
   number: number;
   own: Row | undefined;
   below: Row | undefined;
@@ -43,7 +43,7 @@ export interface VersionStep<Row> {
 /** The versions of a history walk newest first. While `hasMore`, the oldest loaded row is only
  *  the byline of the version above it, so the walk stops one above it until the page that
  *  completes it arrives: no version number appears without an editor. */
-export function versionSteps<Row extends { version_no: number }>(
+function versionSteps<Row extends { version_no: number }>(
   latest: number,
   first: number,
   rows: Row[],

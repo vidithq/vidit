@@ -168,7 +168,7 @@ export function getDetectionStats(): Promise<DetectionStats> {
 }
 
 /** A site's takedown state after the PATCH: `hidden_at` is null once restored. */
-export type AdminSiteModeration = components["schemas"]["AdminSiteModerationRead"];
+type AdminSiteModeration = components["schemas"]["AdminSiteModerationRead"];
 
 /** Withhold a site from every public read, or restore it. */
 export function setSiteModeration(id: string, hidden: boolean): Promise<AdminSiteModeration> {

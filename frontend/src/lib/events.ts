@@ -248,7 +248,7 @@ export function eventVersionHref(id: string, versionNo: number): string {
   return `${eventHref(id)}/v${versionNo}`;
 }
 
-export function eventHistoryHref(id: string): string {
+function eventHistoryHref(id: string): string {
   return `${eventHref(id)}/history`;
 }
 

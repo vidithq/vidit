@@ -99,7 +99,7 @@ const HALVES = [
 
 /** What keeps two inputs from holding a usable pair. `half` names the input at fault, null when
  *  both are blank. A blank half is `missing`: nothing typed is wrong yet. */
-export interface PairProblem {
+interface PairProblem {
   message: string;
   half: "lat" | "lng" | null;
   missing: boolean;
