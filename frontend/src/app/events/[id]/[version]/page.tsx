@@ -1,13 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { notFound, useParams, useRouter } from "next/navigation";
-
 import type { EventDetail, EventVersion } from "@/types";
-import { useApiResource } from "@/hooks/useApiResource";
-import { eventVersionPath, eventVersion, eventVersioned, firstVersion } from "@/lib/events";
-import { parseVersionSegment } from "@/lib/versions";
-import { skipBackRecord } from "@/lib/navigation";
+import { useFiledVersion } from "@/hooks/useVersionPage";
+import { eventVersionPath, eventVersion, eventVersioned } from "@/lib/events";
 import { VersionApprovals } from "@/components/event/Approvals";
 import { eventPageSlots } from "@/components/event/EventDetailBody";
 import { eventLocation } from "@/components/event/EventLocation";
@@ -16,55 +11,23 @@ import { EventShell } from "@/components/event/EventShell";
 import { EventVersionBanner } from "@/components/event/EventVersionBanner";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PageError, PageLoading } from "@/components/ui/PageShell";
 import { eventHref } from "@/lib/routes";
 
 /**
  * One filed version at `/events/{id}/vN`: the canonical body fed the version's
  * snapshot, read-only. The version selector is its one sticky action, and the
  * side column opens with the version's approvals (the other actions act on the
- * record). Three
- * reads: the event, the version, and the version below (it holds the edit's
- * byline and date).
+ * record).
  */
 export default function EventVersionPage() {
-  const params = useParams();
-  const router = useRouter();
-  const eventId = typeof params.id === "string" ? params.id : "";
-  const number = parseVersionSegment(
-    typeof params.version === "string" ? params.version : ""
-  );
-
-  const { data: geo, error } = useApiResource<EventDetail>(
-    eventId && number !== null ? `/events/${eventId}` : null
-  );
-  // Only versions below the live row are filed, from the first one the history holds.
-  const first = geo !== null ? firstVersion(geo) : 1;
-  const filed = geo !== null && number !== null && number >= first && number < geo.version_no;
-  const { data: row, error: rowError } = useApiResource<EventVersion>(
-    filed ? eventVersionPath(eventId, number!) : null
-  );
-  const { data: producedBy, error: producedByError } = useApiResource<EventVersion>(
-    filed && number! > first ? eventVersionPath(eventId, number! - 1) : null
-  );
-
-  const isCurrent = geo !== null && number === geo.version_no;
-  useEffect(() => {
-    if (!isCurrent) return;
-    // The current version has one address: forward to it, declaring this page out of the back-stack first.
-    skipBackRecord();
-    router.replace(eventHref(eventId));
-  }, [isCurrent, router, eventId]);
-
-  if (number === null) notFound();
-  if (error) return <PageError error={error} />;
-  if (!geo) return <PageLoading />;
-  if (number > geo.version_no || number < first) notFound();
-  if (isCurrent) return <PageLoading />;
-  if (rowError) return <PageError error={rowError} />;
-  if (!row) return <PageLoading />;
-  // The byline read lands last; if it fails the banner loses its byline, not the page its content.
-  if (number > first && !producedBy && !producedByError) return <PageLoading />;
+  const filed = useFiledVersion<EventDetail, EventVersion>({
+    recordPath: (id) => `/events/${id}`,
+    versionPath: eventVersionPath,
+    versioned: eventVersioned,
+    href: eventHref,
+  });
+  if (filed.gate) return filed.gate;
+  const { record: geo, versioned, number, row, producedBy } = filed;
 
   const version = eventVersion(geo, number, { own: row, producedBy });
 
@@ -79,7 +42,7 @@ export default function EventVersionPage() {
         />
       }
       actions={{
-        pinned: <VersionSelector record={eventVersioned(geo)} selected={number} />,
+        pinned: <VersionSelector record={versioned} selected={number} />,
         // Version 0 was never published, so nothing approves it.
         below: number > 0 ? <VersionApprovals event={geo} versionNo={number} /> : null,
       }}

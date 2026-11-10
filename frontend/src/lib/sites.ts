@@ -2,7 +2,15 @@ import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { withCursor } from "./pagination";
 import { sourceCreatePayload, draftUrls, newSourceDraft, type SourceDraft } from "./sources";
-import { sameSet, versionSteps, type VersionedRecord, type VersionEntry } from "./versions";
+import {
+  sameSet,
+  versionEntries,
+  versionEntry,
+  type VersionedRecord,
+  type VersionEntry,
+  type VersionEntryRows,
+  type VersionReader,
+} from "./versions";
 import type { EventStatus } from "@/types";
 
 export type Site = components["schemas"]["SiteRead"];
@@ -398,42 +406,32 @@ export function siteChangedFields(version: Site, previous: Site): string[] {
     .map((field) => SITE_VERSION_FIELD_LABELS[field]);
 }
 
-/** One version, described by the write that produced it: content from row `n`, authorship from
- *  row `n - 1`. Version 1 has no producing row and takes the owner and the creation date. */
-export function siteVersion(
-  current: Site,
-  number: number,
-  {
-    own,
-    producedBy,
-    previous = null,
-  }: { own?: SiteVersion; producedBy?: SiteVersion; previous?: Site | null } = {},
-): SiteVersionEntry {
-  const view = number === current.version_no ? current : own ? siteVersionView(current, own) : null;
-  const first = number === 1;
+/** How a site reads its version rows. Version 1 has no producing row and takes the owner and
+ *  the creation date. */
+function siteVersionReader(current: Site): VersionReader<Site, SiteVersion> {
   return {
-    number,
-    current: number === current.version_no,
-    view,
-    editor: producedBy ? producedBy.edited_by : first ? current.owner : null,
-    createdAt: producedBy ? producedBy.created_at : first ? current.created_at : null,
-    note: producedBy?.note ?? null,
-    redacted: false,
-    changed: view && previous ? siteChangedFields(view, previous) : null,
+    first: 1,
+    viewOf: (row) => siteVersionView(current, row),
+    origin: (number) =>
+      number === 1
+        ? { editor: current.owner, createdAt: current.created_at }
+        : { editor: null, createdAt: null },
+    changedFields: siteChangedFields,
   };
 }
 
-/** Versions newest first, on the walk of `versionSteps`. */
+export function siteVersion(
+  current: Site,
+  number: number,
+  rows: VersionEntryRows<Site, SiteVersion> = {},
+): SiteVersionEntry {
+  return versionEntry(current, number, rows, siteVersionReader(current));
+}
+
 export function siteVersions(
   current: Site,
   rows: SiteVersion[],
   hasMore = false,
 ): SiteVersionEntry[] {
-  return versionSteps(current.version_no, 1, rows, hasMore).map(({ number, own, below }) =>
-    siteVersion(current, number, {
-      own,
-      producedBy: below,
-      previous: below ? siteVersionView(current, below) : null,
-    }),
-  );
+  return versionEntries(current, rows, hasMore, siteVersionReader(current));
 }
