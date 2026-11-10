@@ -48,12 +48,15 @@ import {
 } from "./stack";
 import {
   CLUSTER_COUNT_COLOR,
+  CLUSTER_COUNT_LAYER,
   CLUSTER_LAYER,
   CLUSTER_OPACITY,
   CLUSTER_SOURCE,
   POINT_COUNT,
+  POINT_LAYER,
   POINT_LAYERS,
   POINT_RADIUS,
+  SELECTED_POINT_LAYER,
   SELECTED_POINT_RADIUS,
   SELECTED_STROKE,
   SELECTED_STROKE_WIDTH,
@@ -66,6 +69,7 @@ import {
   SITE_RING_RADIUS_PX,
   SITE_RING_WIDTH_PX,
   SITE_ZONE_FILL_OPACITY,
+  STACK_COUNT_LAYER,
   STACK_LAYER,
   TAP_TARGET_LAYERS,
   clusterColor,
@@ -1245,7 +1249,7 @@ export default function Map({
         />
 
         <Layer
-          id="clusters"
+          id={CLUSTER_LAYER}
           type="circle"
           filter={clusterFilter(POINT_COUNT)}
           paint={{
@@ -1256,7 +1260,7 @@ export default function Map({
         />
 
         <Layer
-          id="cluster-count"
+          id={CLUSTER_COUNT_LAYER}
           type="symbol"
           filter={clusterFilter(POINT_COUNT)}
           layout={clusterCountLayout(POINT_COUNT)}
@@ -1267,7 +1271,7 @@ export default function Map({
         />
 
         <Layer
-          id="points-selected"
+          id={SELECTED_POINT_LAYER}
           type="circle"
           filter={pointFilter(1)}
           paint={{
@@ -1281,7 +1285,7 @@ export default function Map({
         />
 
         <Layer
-          id="points-circle"
+          id={POINT_LAYER}
           type="circle"
           filter={pointFilter(0)}
           paint={{
@@ -1302,7 +1306,7 @@ export default function Map({
         {/* Stack badge: styled like the small cluster it resolved from so crossing the ceiling shows no
             change; a stack fans out, a cluster zooms. The selected halo moves onto it. */}
         <Layer
-          id="stacks-circle"
+          id={STACK_LAYER}
           type="circle"
           filter={stackFilter}
           paint={{
@@ -1316,7 +1320,7 @@ export default function Map({
         />
 
         <Layer
-          id="stacks-count"
+          id={STACK_COUNT_LAYER}
           type="symbol"
           filter={stackFilter}
           layout={clusterCountLayout(STACK_COUNT)}
