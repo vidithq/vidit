@@ -17,7 +17,7 @@ from starlette.types import ASGIApp
 
 from app.config import settings
 from app.database import bound_lock_waits
-from app.errors import CodedError
+from app.errors import CodedError, declared_codes
 from app.middleware.csrf import CSRFMiddleware
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.observability import configure_logging, init_sentry
@@ -74,7 +74,45 @@ class _ViditAPI(FastAPI):
         components = schema.setdefault("components", {}).setdefault("schemas", {})
         for name, definition in defs.get("$defs", {}).items():
             components.setdefault(name, definition)
+        components.update(_error_envelope_schemas())
         return schema
+
+
+def error_codes() -> list[str]:
+    """Every ``code`` a typed ``{code, message}`` body can carry.
+
+    The ``CodedError`` classes, the two rate-limit codes, and the archive codes the frontend's
+    archive trim raises before an upload (``archive_zip.ArchiveIntakeError``).
+    """
+    return sorted(
+        declared_codes(CodedError)
+        | declared_codes(archive_zip.ArchiveIntakeError)
+        | {RATE_LIMITED_CODE, READ_QUOTA_EXCEEDED_CODE}
+    )
+
+
+def _error_envelope_schemas() -> dict[str, Any]:
+    """``ErrorCode`` and the typed error body, for the frontend codegen. No route lists them
+    as a response, so existing operation schemas stay as they are."""
+    ref = "#/components/schemas/{}".format
+    return {
+        "ErrorCode": {"title": "ErrorCode", "type": "string", "enum": error_codes()},
+        "CodedErrorDetail": {
+            "title": "CodedErrorDetail",
+            "type": "object",
+            "properties": {
+                "code": {"$ref": ref("ErrorCode")},
+                "message": {"title": "Message", "type": "string"},
+            },
+            "required": ["code", "message"],
+        },
+        "CodedErrorResponse": {
+            "title": "CodedErrorResponse",
+            "type": "object",
+            "properties": {"detail": {"$ref": ref("CodedErrorDetail")}},
+            "required": ["detail"],
+        },
+    }
 
 
 app = _ViditAPI(
@@ -89,7 +127,6 @@ app.state.limiter = limiter
 # fixed hour-long window. Each gets a distinct typed code so a caller can tell
 # them apart, and every 429 carries `Retry-After` in seconds.
 RATE_LIMITED_CODE = "rate_limited"
-# Mirrored by the frontend's lib/errors.rateLimited; change both.
 READ_QUOTA_EXCEEDED_CODE = "read_quota_exceeded"
 
 

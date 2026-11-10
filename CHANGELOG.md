@@ -4,6 +4,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
+### Added
+
+- The OpenAPI spec lists every error code in the `ErrorCode` schema and the typed error body as `CodedErrorResponse`.
+
 ### Changed
 
 - The admin event routes answer an unknown event with the error code `event_not_found`, the code every other route uses, instead of `geolocation_not_found`.

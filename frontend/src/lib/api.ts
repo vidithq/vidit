@@ -6,6 +6,7 @@ import {
   plainError,
   readError,
   readResponse,
+  type ErrorCode,
   type ReadableError,
 } from "./errors";
 import { nextCursor } from "./pagination";
@@ -39,13 +40,13 @@ const SESSION_PROBES = new Set(["/auth/login", "/auth/me"]);
  * one sentence. */
 export class ApiError extends Error {
   readonly status: number;
-  readonly code: string | null;
+  readonly code: ErrorCode | null;
   readonly sessionRejected: boolean;
   readonly readable: ReadableError;
   constructor(
     message: string,
     status: number,
-    code: string | null = null,
+    code: ErrorCode | null = null,
     sessionRejected = false,
     readable: ReadableError = plainError(message),
   ) {

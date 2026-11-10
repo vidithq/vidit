@@ -8,6 +8,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.errors import CodedError
 from app.models.user import User
 from app.services.auth import decode_session_token
 from app.services.auth_cookies import SESSION_COOKIE
@@ -17,6 +18,11 @@ logger = logging.getLogger(__name__)
 # How stale ``users.last_seen_at`` may get before a request rewrites it, so the
 # hot path doesn't pay an UPDATE + commit per request.
 LAST_SEEN_THROTTLE = timedelta(minutes=15)
+
+
+class LockTimeoutError(CodedError):
+    code = "lock_timeout"
+    status_code = 409
 
 
 def get_db() -> Generator[Session]:
@@ -29,12 +35,8 @@ def get_db() -> Generator[Session]:
         if not isinstance(exc.orig, LockNotAvailable):
             raise
         logger.warning("Lock wait timed out: %s", exc.orig.diag.context)
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "lock_timeout",
-                "message": "Another request is changing this record. Try again in a moment.",
-            },
+        raise LockTimeoutError(
+            "Another request is changing this record. Try again in a moment."
         ) from exc
     finally:
         db.close()
