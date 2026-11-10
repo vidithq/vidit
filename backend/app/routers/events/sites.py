@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._errors import raise_typed_error
 from app.routers.events._common import resolve_live_event, resolve_readable_event
 from app.schemas.site import EventSiteLinkCreate, EventSiteLinkRead, SiteSuggestionRead
 from app.services import sites as sites_service
@@ -45,12 +44,9 @@ def link_site(
     event that is not published, 404 ``site_not_found`` for an unknown or withheld site.
     """
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        return sites_service.link_event(
-            db, event=geo, user=current_user, site_id=body.site_id, effect=body.effect
-        )
-    except sites_service.SiteError as exc:
-        raise_typed_error(exc, sites_service.SITE_ERROR_STATUS)
+    return sites_service.link_event(
+        db, event=geo, user=current_user, site_id=body.site_id, effect=body.effect
+    )
 
 
 @router.delete("/{geolocation_id}/site-links/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -64,10 +60,7 @@ def unlink_site(
 ) -> None:
     """Remove your event's link to a site (owner only). Idempotent (204)."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        sites_service.unlink_event(db, event=geo, user=current_user, site_id=site_id)
-    except sites_service.SiteError as exc:
-        raise_typed_error(exc, sites_service.SITE_ERROR_STATUS)
+    sites_service.unlink_event(db, event=geo, user=current_user, site_id=site_id)
 
 
 @router.get("/{geolocation_id}/site-suggestions", response_model=list[SiteSuggestionRead])

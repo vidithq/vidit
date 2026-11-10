@@ -30,7 +30,6 @@ from app.models.content_report import ContentReport
 from app.models.event import TITLE_MAX_LENGTH, Event
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._errors import raise_typed_error
 from app.routers._forms import (
     parse_json_id_list,
     parse_optional_iso_date,
@@ -40,14 +39,10 @@ from app.routers.events._common import (
     DETAIL_LOADS,
     GEOLOCATOR_INVITES_FIELD_DESCRIPTION,
     SOURCES_FIELD_DESCRIPTION,
-    _raise_event_error,
     build_event_read,
     build_version_read,
     parse_geolocator_invites,
     parse_sources,
-    raise_archive_error,
-    raise_credit_error,
-    raise_version_error,
     resolve_live_event,
     resolve_readable_event,
 )
@@ -64,15 +59,13 @@ from app.services import collections as collections_service
 from app.services import events as events_service
 from app.services import reports as reports_service
 from app.services import versions as versions_service
-from app.services.evidence_intake import EvidenceIntakeError
-from app.services.geolocator_credit import GeolocatorCreditError, has_pending_invite
+from app.services.geolocator_credit import has_pending_invite
 from app.services.pagination import (
     decode_ordinal_cursor,
     encode_ordinal_cursor,
     page_size,
     paged,
 )
-from app.services.source_archive import SnapshotRejected
 
 router = APIRouter()
 
@@ -111,18 +104,15 @@ def report_event(
 
     An unknown, soft-deleted or already-withheld event answers 404.
     """
-    try:
-        return reports_service.create_event_report(
-            db,
-            event_id=geolocation_id,
-            reason=body.reason,
-            details=body.details,
-            reporter_id=current_user.id if current_user is not None else None,
-            reporter_username=current_user.username if current_user is not None else None,
-            background_tasks=background_tasks,
-        )
-    except reports_service.ReportError as exc:
-        raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
+    return reports_service.create_event_report(
+        db,
+        event_id=geolocation_id,
+        reason=body.reason,
+        details=body.details,
+        reporter_id=current_user.id if current_user is not None else None,
+        reporter_username=current_user.username if current_user is not None else None,
+        background_tasks=background_tasks,
+    )
 
 
 @router.get("/{geolocation_id}", response_model=EventRead)
@@ -223,28 +213,23 @@ def update_event_request(
 
     # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        edited = asyncio.run(
-            events_service.update_request(
-                db,
-                geo=geo,
-                current_user=current_user,
-                title=title,
-                proof_data=proof_data,
-                lat=lat,
-                lng=lng,
-                occurred_date=parsed_occurred_date,
-                occurred_time=parsed_occurred_time,
-                tag_ids=parsed_tag_ids,
-                conflict_ids=parsed_conflict_ids,
-                sources=parsed_sources,
-                proof_files=proof_files,
-            )
+    edited = asyncio.run(
+        events_service.update_request(
+            db,
+            geo=geo,
+            current_user=current_user,
+            title=title,
+            proof_data=proof_data,
+            lat=lat,
+            lng=lng,
+            occurred_date=parsed_occurred_date,
+            occurred_time=parsed_occurred_time,
+            tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
+            sources=parsed_sources,
+            proof_files=proof_files,
         )
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)
-    except SnapshotRejected as exc:
-        raise_archive_error(exc)
+    )
     return _serialize_event(db, edited)
 
 
@@ -311,35 +296,26 @@ def save_event_version(
 
     # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        edited = asyncio.run(
-            events_service.save_version(
-                db,
-                geo=geo,
-                current_user=current_user,
-                title=title,
-                lat=lat,
-                lng=lng,
-                occurred_date=parsed_occurred_date,
-                occurred_time=parsed_occurred_time,
-                proof_data=proof_data,
-                tag_ids=parsed_tag_ids,
-                conflict_ids=parsed_conflict_ids,
-                sources=parsed_sources,
-                proof_files=proof_files,
-                note=note,
-                expected_version=version_no,
-                geolocator_invites=parsed_invites,
-            )
+    edited = asyncio.run(
+        events_service.save_version(
+            db,
+            geo=geo,
+            current_user=current_user,
+            title=title,
+            lat=lat,
+            lng=lng,
+            occurred_date=parsed_occurred_date,
+            occurred_time=parsed_occurred_time,
+            proof_data=proof_data,
+            tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
+            sources=parsed_sources,
+            proof_files=proof_files,
+            note=note,
+            expected_version=version_no,
+            geolocator_invites=parsed_invites,
         )
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)
-    except SnapshotRejected as exc:
-        raise_archive_error(exc)
-    except versions_service.VersionLimitError as exc:
-        raise_version_error(exc)
-    except GeolocatorCreditError as exc:
-        raise_credit_error(exc)
+    )
     return _serialize_event(db, edited)
 
 
@@ -420,10 +396,7 @@ def list_event_collections(
     soft-deleted or withheld event, 403 when you are not credited.
     """
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        collections_service.ensure_credited(db, event_id=geo.id, user=current_user)
-    except collections_service.CollectionError as exc:
-        raise_typed_error(exc, collections_service.COLLECTION_ERROR_STATUS)
+    collections_service.ensure_credited(db, event_id=geo.id, user=current_user)
     return CollectionMembershipList(
         items=collections_service.list_memberships(db, owner=current_user, event_id=geo.id)
     )
@@ -449,10 +422,7 @@ def close_event(
     409; soft-deleted 404; not the owner 403.
     """
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        closed = events_service.close(
-            db, geo=geo, current_user=current_user, close_reason=body.close_reason
-        )
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)
+    closed = events_service.close(
+        db, geo=geo, current_user=current_user, close_reason=body.close_reason
+    )
     return _serialize_event(db, closed)

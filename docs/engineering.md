@@ -385,10 +385,10 @@ flowchart LR
   req["`**HTTP request**`"]:::spec
   router["`**routers/**
   endpoints only; calls a service and returns a schema`"]:::shared
-  errors["`**routers/_errors.raise_typed_error**
-  maps a service error's code to a status plus a code and message body`"]:::spec
+  errors["`**main.coded_error_handler**
+  answers a CodedError with its status_code and a code and message body`"]:::spec
   service["`**services/**
-  the decisions; raises a typed error with a stable code, never HTTPException`"]:::core
+  the decisions; raises a CodedError with its code and status, never HTTPException`"]:::core
   model["`**models/**
   SQLAlchemy tables, structure only`"]:::shared
   schema["`**schemas/**
@@ -400,13 +400,13 @@ flowchart LR
   req --> router --> service --> model --> db
   schema --> router
   dep --> router
-  service -- "typed error" --> errors --> router
+  service -- "CodedError" --> errors
 ```
 
 | Layer | Role | Rule |
 |-------|------|------|
-| **routers/** | HTTP endpoints, no business logic | Calls a service, returns a schema. Maps service-raised typed errors to HTTP status + `{code, message}` detail via the shared [`routers/_errors.py`](../backend/app/routers/_errors.py) `raise_typed_error(exc, status_map)`, each router supplying its own `code → status` map ([`routers/auth.py`](../backend/app/routers/auth.py) `_REGISTRATION_ERROR_STATUS`, [`routers/admin.py`](../backend/app/routers/admin.py) `_ADMIN_ERROR_STATUS`). |
-| **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response`, never raises `HTTPException`; raise a typed error subclass with a stable `code` and let the router translate. |
+| **routers/** | HTTP endpoints, no business logic | Calls a service, returns a schema. Lets a service's `CodedError` propagate: the `coded_error_handler` in [`main.py`](../backend/app/main.py) answers it with the error's `status_code` and a `{code, message}` detail. Catch a `CodedError` only to act before it propagates, for example to log it, then re-raise it. |
+| **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response`, never raises `HTTPException`. Raises a subclass of [`errors.CodedError`](../backend/app/errors.py) that declares its stable `code` and its HTTP `status_code` next to each other. |
 | **models/** | SQLAlchemy tables | Structure only, no logic |
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
 | **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |

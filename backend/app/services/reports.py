@@ -12,9 +12,6 @@ the same audit trail. The collection takedown is
 ``DELETE /admin/collections/{id}``, and the site takedown
 ``services/admin.move_site_takedown``, shared with
 ``PATCH /admin/sites/{id}/moderation``.
-
-Errors carry stable ``code`` strings; :data:`REPORT_ERROR_STATUS` is the one
-code-to-HTTP mapping every router reads.
 """
 
 from __future__ import annotations
@@ -29,6 +26,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
+from app.errors import CodedError
 from app.models.collection import Collection
 from app.models.content_report import (
     ContentReport,
@@ -46,10 +44,11 @@ from app.services.sites import visible_sites
 logger = logging.getLogger(__name__)
 
 
-class ReportError(Exception):
+class ReportError(CodedError):
     """Friendly error; ``code`` maps to HTTP status. Mirrors ``admin.AdminError``."""
 
     code: str = "report_error"
+    status_code = 400
 
 
 class EventNotFoundError(ReportError):
@@ -57,6 +56,7 @@ class EventNotFoundError(ReportError):
     already withheld from the public surface it was reached through."""
 
     code = "event_not_found"
+    status_code = 404
 
 
 class CollectionNotFoundError(ReportError):
@@ -68,16 +68,19 @@ class CollectionNotFoundError(ReportError):
     """
 
     code = "collection_not_found"
+    status_code = 404
 
 
 class SiteNotFoundError(ReportError):
     """The site does not exist, is withheld, or belongs to a soft-deleted account."""
 
     code = "site_not_found"
+    status_code = 404
 
 
 class ReportNotFoundError(ReportError):
     code = "report_not_found"
+    status_code = 404
 
 
 class ReportAlreadyResolvedError(ReportError):
@@ -88,6 +91,7 @@ class ReportAlreadyResolvedError(ReportError):
     """
 
     code = "report_already_resolved"
+    status_code = 409
 
 
 class ReportTargetGoneError(ReportError):
@@ -97,6 +101,7 @@ class ReportTargetGoneError(ReportError):
     """
 
     code = "report_target_gone"
+    status_code = 409
 
 
 class ReportVerdictNotApplicableError(ReportError):
@@ -107,17 +112,7 @@ class ReportVerdictNotApplicableError(ReportError):
     """
 
     code = "report_verdict_not_applicable"
-
-
-REPORT_ERROR_STATUS: dict[str, int] = {
-    "event_not_found": 404,
-    "collection_not_found": 404,
-    "site_not_found": 404,
-    "report_not_found": 404,
-    "report_already_resolved": 409,
-    "report_target_gone": 409,
-    "report_verdict_not_applicable": 409,
-}
+    status_code = 409
 
 
 def _notify_new_report(

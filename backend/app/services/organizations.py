@@ -15,6 +15,7 @@ from sqlalchemy import ColumnExpressionArgument, Select, case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.errors import CodedError
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.event import Event
@@ -40,76 +41,73 @@ from app.services.storage import avatar_key_of, sweep_keys
 from app.services.users import apply_profile_update, get_live_by_username, x_handle_holder
 
 
-class OrganizationError(Exception):
+class OrganizationError(CodedError):
     """A refused organization action. Carries a stable ``code`` for the router."""
 
     code: str = "organization_error"
+    status_code = 400
 
 
 class OrganizationNotFoundError(OrganizationError):
     code = "organization_not_found"
+    status_code = 404
 
 
 class UserNotFoundError(OrganizationError):
     code = "user_not_found"
+    status_code = 404
 
 
 class SlugTakenError(OrganizationError):
     code = "slug_taken"
+    status_code = 409
 
 
 class XHandleConflictError(OrganizationError):
     code = "x_handle_conflict"
+    status_code = 409
 
 
 class NotOrganizationManagerError(OrganizationError):
     code = "not_organization_manager"
+    status_code = 403
 
 
 class NotOrganizationMemberError(OrganizationError):
     code = "not_organization_member"
+    status_code = 403
 
 
 class NotMutualFollowError(OrganizationError):
     code = "not_mutual_follow"
+    status_code = 403
 
 
 class AlreadyMemberError(OrganizationError):
     code = "already_member"
+    status_code = 409
 
 
 class AlreadyInvitedError(OrganizationError):
     code = "already_invited"
+    status_code = 409
 
 
 class InviteNotFoundError(OrganizationError):
     code = "invite_not_found"
+    status_code = 404
 
 
 class MemberNotFoundError(OrganizationError):
     code = "member_not_found"
+    status_code = 404
 
 
 class LastManagerError(OrganizationError):
     """The action would leave the organization without a live org manager."""
 
     code = "last_manager"
-
-
-ORGANIZATION_ERROR_STATUS: dict[str, int] = {
-    "organization_not_found": 404,
-    "user_not_found": 404,
-    "invite_not_found": 404,
-    "member_not_found": 404,
-    "not_organization_manager": 403,
-    "not_organization_member": 403,
-    "not_mutual_follow": 403,
-    "slug_taken": 409,
-    "x_handle_conflict": 409,
-    "already_member": 409,
-    "already_invited": 409,
-    "last_manager": 409,
-}
+    status_code = 409
 
 
 def get_by_slug(db: Session, slug: str, *, lock: bool = False) -> Organization:

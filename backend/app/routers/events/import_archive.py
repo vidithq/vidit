@@ -17,7 +17,6 @@ from app.dependencies import get_current_user, get_db
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers._errors import raise_typed_error
 from app.schemas.event import (
     ArchiveImportEnqueue,
     ArchiveImportJobRead,
@@ -30,14 +29,6 @@ from app.services.tweet_ingest import archive_zip
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# StagedUploadError ``code`` to status: foreign or malformed key 400, nothing
-# uploaded 404, over the guard 413.
-_ARCHIVE_STATUS = {
-    "archive_upload_invalid": 400,
-    "archive_upload_missing": 404,
-    "archive_too_large": 413,
-}
 
 
 @router.post("/import-archive/presign", response_model=ArchiveImportPresignRead)
@@ -81,16 +72,13 @@ def import_archive(
     entries and emails the outcome. Poll
     ``GET /events/import-archive/{job_id}`` for counts.
     """
-    try:
-        archive_jobs.verify_staged_upload(body.upload_key, owner_id=current_user.id)
-        job = archive_jobs.enqueue(
-            db,
-            owner=current_user,
-            upload_key=body.upload_key,
-            estimated_post_count=body.estimated_post_count,
-        )
-    except archive_jobs.StagedUploadError as exc:
-        raise_typed_error(exc, _ARCHIVE_STATUS)
+    archive_jobs.verify_staged_upload(body.upload_key, owner_id=current_user.id)
+    job = archive_jobs.enqueue(
+        db,
+        owner=current_user,
+        upload_key=body.upload_key,
+        estimated_post_count=body.estimated_post_count,
+    )
     logger.info("Archive import staged for user %s: job %s", current_user.id, job.id)
     return job
 

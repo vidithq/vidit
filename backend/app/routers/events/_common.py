@@ -1,12 +1,12 @@
 """Shared helpers for the events sub-routers (``read`` / ``write`` / ``item``),
-kept here so none imports another: the typed-error to HTTP envelopes, the
+kept here so none imports another: the
 ``EventRead`` / ``EventList`` assemblers (also imported by the users and social
 routers), the projection helpers, :func:`resolve_live_event` and
 :func:`resolve_readable_event`.
 """
 
 import uuid
-from typing import Annotated, NoReturn
+from typing import Annotated
 
 from fastapi import HTTPException
 from pydantic import Field, TypeAdapter, ValidationError
@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.event import Event, EventVersion
 from app.models.source import Source
 from app.models.user import User
-from app.routers._errors import raise_typed_error
 from app.schemas.event import (
     EventList,
     EventRead,
@@ -26,57 +25,12 @@ from app.schemas.media import MediaRead
 from app.schemas.source import CoordsRead, SourceCreate
 from app.services.event_filters import visible_events
 from app.services.events.sources import build_source_read
-from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.geolocator_credit import (
     CREDIT_LOAD,
-    GEOLOCATOR_CREDIT_ERROR_STATUS,
     MAX_EVENT_GEOLOCATORS,
-    GeolocatorCreditError,
     live_geolocators,
 )
-from app.services.source_archive import SnapshotRejected
 from app.services.thumbnails import pick_thumbnail, thumbnail_loads
-from app.services.uploads import UPLOAD_ERROR_STATUS
-from app.services.versions import VersionLimitError
-
-# Every ``SnapshotRejected`` code is a 400; the code says which check failed.
-# Shared by every write form with a snapshot field.
-ARCHIVE_ERROR_STATUS: dict[str, int] = {
-    "snapshot_url_invalid": 400,
-    "snapshot_url_too_long": 400,
-    "snapshot_url_not_https": 400,
-    "snapshot_provider_not_allowed": 400,
-    "snapshot_not_a_replay_url": 400,
-    "snapshot_not_a_snapshot_code": 400,
-}
-
-
-def raise_archive_error(exc: SnapshotRejected) -> NoReturn:
-    """Translate a rejected snapshot paste into its 400."""
-    raise_typed_error(exc, ARCHIVE_ERROR_STATUS)
-
-
-_EVENT_ERROR_STATUS: dict[str, int] = {
-    **EVIDENCE_INTAKE_ERROR_STATUS,
-    **UPLOAD_ERROR_STATUS,
-    "event_not_found": 404,
-    "coordinates_required": 400,
-    "invalid_coordinates": 400,
-    "invalid_proof": 400,
-    "proof_image_required": 400,
-    "conflict_required": 400,
-    "source_required": 400,
-    "source_file_required": 400,
-    "source_link_required": 400,
-    "invalid_source_url": 400,
-    "too_many_sources": 400,
-    "too_many_source_links": 400,
-    "source_not_found": 400,
-    "source_media_not_found": 400,
-    "invalid_state": 409,
-    "nothing_changed": 409,
-    "version_mismatch": 409,
-}
 
 # Every relationship ``build_source_read`` reads, for a query that serves sources.
 SOURCE_LOAD = selectinload(Event.sources).options(
@@ -143,28 +97,6 @@ def parse_geolocator_invites(raw: str | None) -> list[str]:
     ``GeolocatorInviteCreate``."""
     invites = _parse_json_field(_INVITES_ADAPTER, raw, field="geolocator_invites")
     return [invite.username for invite in invites]
-
-
-def raise_credit_error(exc: GeolocatorCreditError) -> NoReturn:
-    """Translate a refused credit write into its HTTP response."""
-    raise_typed_error(exc, GEOLOCATOR_CREDIT_ERROR_STATUS)
-
-
-def _raise_event_error(exc: EvidenceIntakeError) -> NoReturn:
-    """Translate a typed events-service error into an HTTP response."""
-    raise_typed_error(exc, _EVENT_ERROR_STATUS)
-
-
-_VERSION_ERROR_STATUS: dict[str, int] = {"version_limit": 409}
-
-
-def raise_version_error(exc: VersionLimitError) -> NoReturn:
-    """Translate a refused version into its 409.
-
-    Its own map because :class:`VersionLimitError` is not an
-    :class:`EvidenceIntakeError`, the base :func:`_raise_event_error` catches.
-    """
-    raise_typed_error(exc, _VERSION_ERROR_STATUS)
 
 
 def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:

@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import Headers
 
 from app.cache import points_cache
+from app.errors import CodedError
 from app.models.event import (
     STATUS_DETECTED,
     DetectedVia,
@@ -1014,10 +1015,11 @@ def linked_owner(db: Session, handle: str) -> User | None:
     )
 
 
-class NotYourPost(RuntimeError):
-    """The pasted post is not the caller's own; ``code`` is what the router turns into its 400."""
+class NotYourPost(CodedError):
+    """The pasted post is not the caller's own."""
 
     code = "not_your_post"
+    status_code = 400
 
 
 async def import_pasted_post(

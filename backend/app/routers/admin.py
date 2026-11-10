@@ -1,5 +1,4 @@
 import uuid
-from typing import NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
@@ -8,7 +7,6 @@ from app.cache import points_cache
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_version_read
 from app.schemas.admin import (
     AdminCollectionHideResponse,
@@ -55,21 +53,6 @@ from app.services.pagination import (
 
 router = APIRouter()
 
-_ADMIN_ERROR_STATUS: dict[str, int] = {
-    "user_not_found": 404,
-    "geolocation_not_found": 404,
-    "version_not_found": 404,
-    "collection_not_found": 404,
-    "site_not_found": 404,
-    "x_handle_conflict": 409,
-    "invite_code_used": 409,
-}
-
-
-def _raise_admin_error(exc: admin_service.AdminError) -> NoReturn:
-    """Translate a typed admin error into a structured HTTP response."""
-    raise_typed_error(exc, _ADMIN_ERROR_STATUS)
-
 
 @router.get("/me", response_model=AdminMeResponse)
 def admin_me(current_user: User = Depends(get_current_user)) -> AdminMeResponse:
@@ -102,15 +85,12 @@ def create_invite_code(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminInviteCodeRead:
-    try:
-        invite = admin_service.create_invite_code(
-            db,
-            actor_id=current_user.id,
-            expires_in_days=body.expires_in_days,
-            x_handle=body.x_handle,
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    invite = admin_service.create_invite_code(
+        db,
+        actor_id=current_user.id,
+        expires_in_days=body.expires_in_days,
+        x_handle=body.x_handle,
+    )
     return admin_service.serialize_invite_code(db, invite)
 
 
@@ -164,12 +144,7 @@ def delete_invite_code(
     current_user: User = Depends(require_admin),
 ) -> Response:
     """Drop the row of a code no account was created from. 409 once it was."""
-    try:
-        deleted = admin_service.delete_invite_code(
-            db, actor_id=current_user.id, invite_id=invite_id
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    deleted = admin_service.delete_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Invite code not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -188,10 +163,7 @@ def create_organization(
     current_user: User = Depends(require_admin),
 ) -> OrganizationRead:
     """Create an organization and name its first org manager, who joins without an invite."""
-    try:
-        org = organizations_service.create_organization(db, actor=current_user, body=body)
-    except organizations_service.OrganizationError as exc:
-        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
+    org = organizations_service.create_organization(db, actor=current_user, body=body)
     return organizations_service.build_read(db, org, viewer=current_user)
 
 
@@ -209,13 +181,10 @@ def appoint_organization_manager(
     current_user: User = Depends(require_admin),
 ) -> OrganizationMemberRead:
     """Make a live analyst an org manager of the organization, joining it if needed, with audit."""
-    try:
-        org = organizations_service.get_by_slug(db, slug, lock=True)
-        return organizations_service.appoint_manager(
-            db, actor=current_user, org=org, username=body.username
-        )
-    except organizations_service.OrganizationError as exc:
-        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
+    org = organizations_service.get_by_slug(db, slug, lock=True)
+    return organizations_service.appoint_manager(
+        db, actor=current_user, org=org, username=body.username
+    )
 
 
 @router.delete("/organizations/{slug}", status_code=status.HTTP_204_NO_CONTENT)
@@ -227,10 +196,7 @@ def delete_organization(
     current_user: User = Depends(require_admin),
 ) -> Response:
     """Delete an organization with its memberships, invites, approval requests and approvals."""
-    try:
-        organizations_service.delete_organization(db, actor=current_user, slug=slug)
-    except organizations_service.OrganizationError as exc:
-        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
+    organizations_service.delete_organization(db, actor=current_user, slug=slug)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -243,10 +209,7 @@ def delete_approval(
     current_user: User = Depends(require_admin),
 ) -> Response:
     """Delete one approval, as themselves or for an organization, and write it to the admin log."""
-    try:
-        approvals_service.delete_as_admin(db, approval_id=approval_id, actor=current_user)
-    except approvals_service.ApprovalError as exc:
-        raise_typed_error(exc, approvals_service.APPROVAL_ERROR_STATUS)
+    approvals_service.delete_as_admin(db, approval_id=approval_id, actor=current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -281,15 +244,12 @@ def set_user_x_handle(
 ) -> User:
     """Link or clear the X handle the bot attributes mentions to. The only
     write path for ``users.x_handle``."""
-    try:
-        return admin_service.set_user_x_handle(
-            db,
-            actor_id=current_user.id,
-            user_id=user_id,
-            x_handle=body.x_handle,
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    return admin_service.set_user_x_handle(
+        db,
+        actor_id=current_user.id,
+        user_id=user_id,
+        x_handle=body.x_handle,
+    )
 
 
 @router.patch("/users/{user_id}/invite-minting", response_model=AdminUserRead)
@@ -302,12 +262,9 @@ def set_user_invite_minting(
     current_user: User = Depends(require_admin),
 ) -> User:
     """Turn minting invite codes from Settings on or off for one analyst."""
-    try:
-        return admin_service.set_invite_minting(
-            db, actor_id=current_user.id, user_id=user_id, enabled=body.enabled
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    return admin_service.set_invite_minting(
+        db, actor_id=current_user.id, user_id=user_id, enabled=body.enabled
+    )
 
 
 @router.post("/users/{user_id}/restore", response_model=AdminUserRestoreResponse)
@@ -319,12 +276,9 @@ def restore_user_admin(
     current_user: User = Depends(require_admin),
 ) -> AdminUserRestoreResponse:
     """Undo a soft delete: the account and the events its soft delete hid come back."""
-    try:
-        user, restored_events = admin_service.restore_user(
-            db, actor_id=current_user.id, user_id=user_id
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    user, restored_events = admin_service.restore_user(
+        db, actor_id=current_user.id, user_id=user_id
+    )
     points_cache.invalidate()
     return AdminUserRestoreResponse(
         user_id=user.id, username=user.username, restored_events=restored_events
@@ -344,10 +298,7 @@ def purge_detected_events_admin(
 ) -> AdminPurgeDetectedResponse:
     """Hard-delete every detection the user owns (rows + S3 media), keeping
     the account and everything else. The broken-archive repair."""
-    try:
-        result = admin_service.purge_detected_events(db, actor_id=current_user.id, user_id=user_id)
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    result = admin_service.purge_detected_events(db, actor_id=current_user.id, user_id=user_id)
     points_cache.invalidate()
     return AdminPurgeDetectedResponse(
         user_id=user_id,
@@ -374,25 +325,22 @@ def delete_user_admin(
     (drops the row, their geolocations and S3 objects, and hands a co-credited
     event to its earliest live co-geolocator). Both paths invalidate the points
     cache."""
-    try:
-        if hard:
-            result = admin_service.hard_delete_user(db, actor_id=current_user.id, user_id=user_id)
-            points_cache.invalidate()
-            return AdminUserDeleteResponse(
-                user_id=user_id,
-                username=result["username"],
-                mode="hard",
-                deleted_at=None,
-                cascaded_geolocations=result["geolocation_count"],
-                transferred_events=result["transferred_count"],
-                media_count=result["media_count"],
-            )
-
-        user, cascaded_geolocations, transferred = admin_service.soft_delete_user(
-            db, actor_id=current_user.id, user_id=user_id
+    if hard:
+        result = admin_service.hard_delete_user(db, actor_id=current_user.id, user_id=user_id)
+        points_cache.invalidate()
+        return AdminUserDeleteResponse(
+            user_id=user_id,
+            username=result["username"],
+            mode="hard",
+            deleted_at=None,
+            cascaded_geolocations=result["geolocation_count"],
+            transferred_events=result["transferred_count"],
+            media_count=result["media_count"],
         )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+
+    user, cascaded_geolocations, transferred = admin_service.soft_delete_user(
+        db, actor_id=current_user.id, user_id=user_id
+    )
     points_cache.invalidate()
     return AdminUserDeleteResponse(
         user_id=user.id,
@@ -419,25 +367,22 @@ def delete_geolocation_admin(
     """Remove a geolocation. Default soft (sets `deleted_at`); `?hard=true` is
     GDPR-grade erasure (row, media rows, S3 objects). Both paths invalidate
     the points cache."""
-    try:
-        if hard:
-            result = admin_service.hard_delete_geolocation(
-                db, actor_id=current_user.id, geolocation_id=geolocation_id
-            )
-            points_cache.invalidate()
-            return AdminEventDeleteResponse(
-                geolocation_id=geolocation_id,
-                title=result["title"],
-                mode="hard",
-                deleted_at=None,
-                media_count=result["media_count"],
-            )
-
-        geo = admin_service.soft_delete_geolocation(
+    if hard:
+        result = admin_service.hard_delete_geolocation(
             db, actor_id=current_user.id, geolocation_id=geolocation_id
         )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+        points_cache.invalidate()
+        return AdminEventDeleteResponse(
+            geolocation_id=geolocation_id,
+            title=result["title"],
+            mode="hard",
+            deleted_at=None,
+            media_count=result["media_count"],
+        )
+
+    geo = admin_service.soft_delete_geolocation(
+        db, actor_id=current_user.id, geolocation_id=geolocation_id
+    )
     points_cache.invalidate()
     return AdminEventDeleteResponse(
         geolocation_id=geo.id,
@@ -464,12 +409,9 @@ def hide_collection_admin(
     ``{"hidden": true}``: same stamp, audit row and response. Idempotent; 404
     on an unknown collection.
     """
-    try:
-        collection = admin_service.hide_collection(
-            db, actor_id=current_user.id, collection_id=collection_id
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    collection = admin_service.hide_collection(
+        db, actor_id=current_user.id, collection_id=collection_id
+    )
     return AdminCollectionHideResponse(
         collection_id=collection.id,
         title=collection.title,
@@ -499,15 +441,12 @@ def set_collection_moderation(
     ``DELETE /admin/collections/{id}``. Idempotent: an unchanged state writes
     no audit row. 404 on an unknown collection.
     """
-    try:
-        collection = admin_service.set_collection_moderation(
-            db,
-            actor_id=current_user.id,
-            collection_id=collection_id,
-            hidden=body.hidden,
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    collection = admin_service.set_collection_moderation(
+        db,
+        actor_id=current_user.id,
+        collection_id=collection_id,
+        hidden=body.hidden,
+    )
     return AdminCollectionHideResponse(
         collection_id=collection.id,
         title=collection.title,
@@ -530,12 +469,9 @@ def set_site_moderation(
     suggestions. ``false`` clears it. Idempotent: an unchanged state writes no audit row.
     404 on an unknown site.
     """
-    try:
-        site = admin_service.set_site_moderation(
-            db, actor_id=current_user.id, site_id=site_id, hidden=body.hidden
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    site = admin_service.set_site_moderation(
+        db, actor_id=current_user.id, site_id=site_id, hidden=body.hidden
+    )
     return AdminSiteModerationRead(site_id=site.id, name=site.name, hidden_at=site.hidden_at)
 
 
@@ -579,15 +515,12 @@ def resolve_report(
     take. The service owns the mutation and audit trail; the points cache is
     dropped here, only when an event actually left the map.
     """
-    try:
-        report, hidden_changed = reports_service.resolve_report(
-            db,
-            report_id=report_id,
-            resolution=body.resolution,
-            actor_id=current_user.id,
-        )
-    except reports_service.ReportError as exc:
-        raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
+    report, hidden_changed = reports_service.resolve_report(
+        db,
+        report_id=report_id,
+        resolution=body.resolution,
+        actor_id=current_user.id,
+    )
     if hidden_changed:
         points_cache.invalidate()
     return ContentReportRead.model_validate(report)
@@ -608,16 +541,13 @@ def set_event_moderation(
     writes no audit row. The one verb that also UNDOES a takedown. 404 for an
     unknown or soft-deleted event.
     """
-    try:
-        event, hidden_changed = reports_service.set_event_moderation(
-            db,
-            geolocation_id=geolocation_id,
-            is_graphic=body.is_graphic,
-            hidden=body.hidden,
-            actor_id=current_user.id,
-        )
-    except reports_service.ReportError as exc:
-        raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
+    event, hidden_changed = reports_service.set_event_moderation(
+        db,
+        geolocation_id=geolocation_id,
+        is_graphic=body.is_graphic,
+        hidden=body.hidden,
+        actor_id=current_user.id,
+    )
     if hidden_changed:
         points_cache.invalidate()
     return AdminEventModerationRead.model_validate(event)
@@ -646,15 +576,12 @@ def redact_event_version(
     Idempotent: an already-redacted version writes no audit row. 404 for an
     unknown or soft-deleted event, or a version the event does not carry.
     """
-    try:
-        row = admin_service.redact_version(
-            db,
-            actor_id=current_user.id,
-            geolocation_id=geolocation_id,
-            version_no=version_no,
-        )
-    except admin_service.AdminError as exc:
-        _raise_admin_error(exc)
+    row = admin_service.redact_version(
+        db,
+        actor_id=current_user.id,
+        geolocation_id=geolocation_id,
+        version_no=version_no,
+    )
     return build_version_read(row)
 
 

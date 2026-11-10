@@ -63,16 +63,19 @@ class UploadNotFoundError(EvidenceIntakeError):
     """A source names an upload that does not exist or belongs to someone else."""
 
     code = "upload_not_found"
+    status_code = 400
 
 
 class UploadExpiredError(EvidenceIntakeError):
     """A source names an upload past its ``expires_at``: upload the file again."""
 
     code = "upload_expired"
+    status_code = 400
 
 
 class TooManyUploadsError(EvidenceIntakeError):
     code = "too_many_uploads"
+    status_code = 429
 
 
 _LINK_REFUSALS = {
@@ -82,30 +85,28 @@ _LINK_REFUSALS = {
 }
 
 
+_LINK_STATUS = {
+    "unsupported_link": 400,
+    "link_not_accessible": 404,
+    "link_has_no_file": 404,
+    "upstream_busy": 503,
+}
+
+
 class LinkImportError(EvidenceIntakeError):
-    """A post link whose file cannot be staged; ``code`` names why."""
+    """A post link whose file cannot be staged; ``code`` names why and sets the status."""
 
     def __init__(self, code: str, message: str | None = None) -> None:
         super().__init__(message or _LINK_REFUSALS[code])
         self.code = code
+        self.status_code = _LINK_STATUS[code]
 
 
 class ProofImageNotFoundError(EvidenceIntakeError):
     """The image is not a stored proof image of a live event you may edit."""
 
     code = "proof_image_not_found"
-
-
-UPLOAD_ERROR_STATUS: dict[str, int] = {
-    "proof_image_not_found": 404,
-    "upload_not_found": 400,
-    "upload_expired": 400,
-    "too_many_uploads": 429,
-    "unsupported_link": 400,
-    "link_not_accessible": 404,
-    "link_has_no_file": 404,
-    "upstream_busy": 503,
-}
+    status_code = 404
 
 
 def _ensure_room(db: Session, uploader: User, now: datetime, needed: int = 1) -> None:

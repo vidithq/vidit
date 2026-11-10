@@ -1,6 +1,4 @@
 import asyncio
-from collections.abc import Iterator
-from contextlib import contextmanager
 
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
@@ -8,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._errors import raise_typed_error
 from app.schemas.approval import OrganizationApprovalRead
 from app.schemas.approval_request import OrganizationApprovalRequestRead
 from app.schemas.organization import (
@@ -35,16 +32,6 @@ from app.services.pagination import (
 router = APIRouter()
 
 
-@contextmanager
-def _typed_errors() -> Iterator[None]:
-    try:
-        yield
-    except organizations_service.OrganizationError as exc:
-        raise_typed_error(exc, organizations_service.ORGANIZATION_ERROR_STATUS)
-    except users_service.AvatarError as exc:
-        raise_typed_error(exc, users_service.AVATAR_ERROR_STATUS)
-
-
 @router.get("/{slug}", response_model=OrganizationRead)
 @authenticated_read_quota
 @limiter.limit("120/minute")
@@ -55,8 +42,7 @@ def get_organization(
     current_user: User | None = Depends(get_current_user_optional),
 ) -> OrganizationRead:
     """An organization's public profile, with the caller's role and pending invite."""
-    with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
+    org = organizations_service.get_by_slug(db, slug)
     return organizations_service.build_read(db, org, viewer=current_user)
 
 
@@ -69,8 +55,7 @@ def list_organization_members(
     db: Session = Depends(get_db),
 ) -> list[OrganizationMemberRead]:
     """An organization's members, org managers first, then by join date."""
-    with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
+    org = organizations_service.get_by_slug(db, slug)
     return organizations_service.list_members(db, org)
 
 
@@ -86,8 +71,7 @@ def list_organization_approvals(
     db: Session = Depends(get_db),
 ) -> list[OrganizationApprovalRead]:
     """The approvals placed in the organization's name, newest first, capped at 100 per page (``Link: rel="next"`` cursor)."""
-    with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
+    org = organizations_service.get_by_slug(db, slug)
     size = page_size(limit)
     window = approvals_service.list_for_organization(
         db,
@@ -109,9 +93,8 @@ def list_organization_approval_requests(
 ) -> list[OrganizationApprovalRequestRead]:
     """Open approval requests addressed to the organization, oldest first. Members and site
     admins only."""
-    with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.require_member(db, org, current_user)
+    org = organizations_service.get_by_slug(db, slug)
+    organizations_service.require_member(db, org, current_user)
     rows = approval_requests_service.list_open_for_organization(db, org=org)
     return [approval_requests_service.build_organization_read(row) for row in rows]
 
@@ -127,8 +110,7 @@ def update_organization(
 ) -> OrganizationRead:
     """Edit an organization's bio, links and approval request audience. Org managers and site
     admins only."""
-    with _typed_errors():
-        org = organizations_service.get_managed(db, slug, current_user)
+    org = organizations_service.get_managed(db, slug, current_user)
     organizations_service.apply_update(org, body)
     db.commit()
     db.refresh(org)
@@ -145,9 +127,8 @@ def set_organization_avatar(
     current_user: User = Depends(get_current_user),
 ) -> OrganizationRead:
     """Replace an organization's picture, under the rules of ``PUT /users/me/avatar``."""
-    with _typed_errors():
-        org = organizations_service.get_managed(db, slug, current_user)
-        org = asyncio.run(users_service.set_avatar(db, owner=org, file=file))
+    org = organizations_service.get_managed(db, slug, current_user)
+    org = asyncio.run(users_service.set_avatar(db, owner=org, file=file))
     return organizations_service.build_read(db, org, viewer=current_user)
 
 
@@ -160,8 +141,7 @@ def delete_organization_avatar(
     current_user: User = Depends(get_current_user),
 ) -> OrganizationRead:
     """Drop an organization's picture."""
-    with _typed_errors():
-        org = organizations_service.get_managed(db, slug, current_user)
+    org = organizations_service.get_managed(db, slug, current_user)
     org = users_service.clear_avatar(db, owner=org)
     return organizations_service.build_read(db, org, viewer=current_user)
 
@@ -175,8 +155,7 @@ def list_organization_invites(
     current_user: User = Depends(get_current_user),
 ) -> list[OrganizationInviteRead]:
     """Pending invites, newest first. Org managers and site admins only."""
-    with _typed_errors():
-        org = organizations_service.get_managed(db, slug, current_user)
+    org = organizations_service.get_managed(db, slug, current_user)
     return organizations_service.list_invites(db, org)
 
 
@@ -189,8 +168,7 @@ def list_invite_candidates(
     current_user: User = Depends(get_current_user),
 ) -> list[User]:
     """The analysts you may invite: in mutual follow with you, neither member nor invited."""
-    with _typed_errors():
-        org = organizations_service.get_managed(db, slug, current_user)
+    org = organizations_service.get_managed(db, slug, current_user)
     return organizations_service.invite_candidates(db, org, inviter=current_user)
 
 
@@ -208,9 +186,8 @@ def create_organization_invite(
     current_user: User = Depends(get_current_user),
 ) -> OrganizationInviteRead:
     """Invite an analyst in mutual follow with you. Org managers only."""
-    with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        row = organizations_service.invite(db, org, inviter=current_user, username=body.username)
+    org = organizations_service.get_by_slug(db, slug)
+    row = organizations_service.invite(db, org, inviter=current_user, username=body.username)
     db.commit()
     db.refresh(row)
     return OrganizationInviteRead.model_validate(row)
@@ -226,9 +203,8 @@ def cancel_organization_invite(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """Withdraw a pending invite. Org managers and site admins only."""
-    with _typed_errors():
-        org = organizations_service.get_managed(db, slug, current_user)
-        organizations_service.cancel_invite(db, org, username=username)
+    org = organizations_service.get_managed(db, slug, current_user)
+    organizations_service.cancel_invite(db, org, username=username)
     db.commit()
 
 
@@ -241,9 +217,8 @@ def accept_organization_invite(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """Accept your pending invite and join as a member."""
-    with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.accept_invite(db, org, user=current_user)
+    org = organizations_service.get_by_slug(db, slug)
+    organizations_service.accept_invite(db, org, user=current_user)
     db.commit()
 
 
@@ -256,9 +231,8 @@ def decline_organization_invite(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """Decline your pending invite."""
-    with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug)
-        organizations_service.decline_invite(db, org, user=current_user)
+    org = organizations_service.get_by_slug(db, slug)
+    organizations_service.decline_invite(db, org, user=current_user)
     db.commit()
 
 
@@ -273,9 +247,8 @@ def update_organization_member(
     current_user: User = Depends(get_current_user),
 ) -> OrganizationMemberRead:
     """Change a member's role. Org managers and site admins only; the last org manager keeps the role."""
-    with _typed_errors():
-        org = organizations_service.get_managed(db, slug, current_user, lock=True)
-        result = organizations_service.change_role(db, org, username=username, role=body.role)
+    org = organizations_service.get_managed(db, slug, current_user, lock=True)
+    result = organizations_service.change_role(db, org, username=username, role=body.role)
     db.commit()
     return result
 
@@ -290,7 +263,6 @@ def remove_organization_member(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """Remove a member, or leave with your own username. The last org manager cannot leave."""
-    with _typed_errors():
-        org = organizations_service.get_by_slug(db, slug, lock=True)
-        organizations_service.remove_member(db, org, actor=current_user, username=username)
+    org = organizations_service.get_by_slug(db, slug, lock=True)
+    organizations_service.remove_member(db, org, actor=current_user, username=username)
     db.commit()

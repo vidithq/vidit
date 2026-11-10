@@ -6,6 +6,7 @@ from sqlalchemy import and_, delete, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.errors import CodedError
 from app.models.approval import EventApproval
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.audit_log import ACTION_LOGIN, AuditLog
@@ -47,7 +48,7 @@ from app.services.uploads import upload_object
 from app.services.users import x_handle_holder
 
 
-class AdminError(Exception):
+class AdminError(CodedError):
     """Base for friendly errors raised by admin services.
 
     Carries a ``code`` so the router maps to an HTTP status without string-matching exception
@@ -55,42 +56,50 @@ class AdminError(Exception):
     """
 
     code: str = "admin_error"
+    status_code = 400
 
 
 class UserNotFoundError(AdminError):
     code = "user_not_found"
+    status_code = 404
 
 
 class EventNotFoundError(AdminError):
     code = "geolocation_not_found"
+    status_code = 404
 
 
 class XHandleConflictError(AdminError):
     code = "x_handle_conflict"
+    status_code = 409
 
 
 class VersionNotFoundError(AdminError):
     """The event carries no version under that number."""
 
     code = "version_not_found"
+    status_code = 404
 
 
 class InviteCodeUsedError(AdminError):
     """The code names a redeemer, so its row belongs to the audit trail."""
 
     code = "invite_code_used"
+    status_code = 409
 
 
 class CollectionNotFoundError(AdminError):
     """No collection carries that id."""
 
     code = "collection_not_found"
+    status_code = 404
 
 
 class SiteNotFoundError(AdminError):
     """No site carries that id."""
 
     code = "site_not_found"
+    status_code = 404
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:

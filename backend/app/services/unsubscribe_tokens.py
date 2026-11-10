@@ -15,10 +15,12 @@ import hmac
 import uuid
 
 from app.config import settings
+from app.errors import CodedError
 
 
-class InvalidUnsubscribeTokenError(Exception):
+class InvalidUnsubscribeTokenError(CodedError):
     code = "invalid_unsubscribe_token"
+    status_code = 400
 
 
 def _signature(purpose: bytes, user_id: uuid.UUID, scope: str) -> bytes:

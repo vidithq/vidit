@@ -4,7 +4,6 @@ Business rules live in ``services/approval_requests``; this module maps its type
 """
 
 import uuid
-from typing import NoReturn
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
@@ -12,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers._errors import raise_typed_error
 from app.routers.events._common import resolve_live_event
 from app.schemas.approval_request import (
     ApprovalRequestCreate,
@@ -20,13 +18,8 @@ from app.schemas.approval_request import (
     ApprovalRequestTargetList,
 )
 from app.services import approval_requests
-from app.services.approval_requests import APPROVAL_REQUEST_ERROR_STATUS, ApprovalRequestError
 
 router = APIRouter()
-
-
-def _raise(exc: ApprovalRequestError) -> NoReturn:
-    raise_typed_error(exc, APPROVAL_REQUEST_ERROR_STATUS)
 
 
 @router.get("/{geolocation_id}/approval-requests", response_model=list[ApprovalRequestRead])
@@ -57,10 +50,7 @@ def list_approval_request_targets(
 ) -> ApprovalRequestTargetList:
     """Analysts and organizations you can ask to approve this event now (geolocators only)."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        return approval_requests.eligible_targets(db, geo=geo, requester=current_user, query=q)
-    except ApprovalRequestError as exc:
-        _raise(exc)
+    return approval_requests.eligible_targets(db, geo=geo, requester=current_user, query=q)
 
 
 @router.post(
@@ -79,16 +69,13 @@ def create_approval_request(
     """Ask an analyst or an organization to approve the live version of a published event you
     geolocated."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        row = approval_requests.request_approval(
-            db,
-            geo=geo,
-            requester=current_user,
-            username=body.username,
-            organization=body.organization,
-        )
-    except ApprovalRequestError as exc:
-        _raise(exc)
+    row = approval_requests.request_approval(
+        db,
+        geo=geo,
+        requester=current_user,
+        username=body.username,
+        organization=body.organization,
+    )
     return approval_requests.build_read(row)
 
 
@@ -105,8 +92,5 @@ def decline_approval_request(
 ) -> ApprovalRequestRead:
     """Decline an approval request addressed to you, or to an organization you belong to."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        row = approval_requests.decline(db, geo=geo, request_id=request_id, user=current_user)
-    except ApprovalRequestError as exc:
-        _raise(exc)
+    row = approval_requests.decline(db, geo=geo, request_id=request_id, user=current_user)
     return approval_requests.build_read(row)
