@@ -155,13 +155,6 @@ export function removeSiteSource(siteId: string, sourceId: string): Promise<void
   });
 }
 
-export function reportSite(
-  id: string,
-  body: components["schemas"]["ContentReportCreate"],
-): Promise<components["schemas"]["ContentReportRead"]> {
-  return apiFetch(`${sitePath(id)}/report`, { method: "POST", body: JSON.stringify(body) });
-}
-
 /** Idempotent: the same effect again writes nothing, a new one rewrites the link. */
 export function linkEventToSite(
   eventId: string,

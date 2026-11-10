@@ -10,7 +10,7 @@ import {
 } from "@/lib/admin";
 import { collectionHref } from "@/lib/collections";
 import { siteHref } from "@/lib/sites";
-import { REPORT_REASON_LABELS, type ContentReport } from "@/lib/events";
+import { REPORT_REASON_LABELS, type ContentReport } from "@/lib/reports";
 import { formatInstant } from "@/lib/format";
 import { useCursorList } from "@/hooks/useCursorList";
 import { useMutation } from "@/hooks/useMutation";

@@ -46,7 +46,10 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   fetchCollectionSequence: (id: string, signal?: AbortSignal) =>
     fetchCollectionSequence(id, signal),
   deleteCollection: (id: string) => deleteCollection(id),
-  reportCollection: (id: string, body: unknown) => reportCollection(id, body),
+}));
+vi.mock("@/lib/reports", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/reports")>()),
+  reportContent: (_kind: string, id: string, body: unknown) => reportCollection(id, body),
 }));
 
 import type { Collection } from "@/lib/collections";

@@ -2,7 +2,7 @@ import { apiFetch } from "./api";
 import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
 import { appendEventFilterParams, type EventFilterParams } from "./search";
-import { cleanNumber, inBounds } from "./coordinates";
+import { coordinatePair, parsePair, type CoordinatePair } from "./coordinates";
 import { hhmm } from "./format";
 import { proofHasImage } from "./proof";
 import { snapshotProvider } from "./snapshots";
@@ -143,11 +143,8 @@ export function eventListPath(params: EventListParams = {}): string {
 export function parseGuessCoords(
   latStr: string,
   lngStr: string
-): { lat: number; lng: number } | Record<string, never> {
-  const lat = cleanNumber(latStr);
-  const lng = cleanNumber(lngStr);
-  if (lat === null || lng === null) return {};
-  return { lat, lng };
+): CoordinatePair | Record<string, never> {
+  return parsePair(latStr, lngStr) ?? {};
 }
 
 /** The fields every event write posts: the whole row state, its sources included. */
@@ -507,11 +504,6 @@ export interface EventVersionFormState {
   conflictIds: string[];
 }
 
-const coordsOf = (lat: string, lng: string): EventDetail["coords"] => {
-  const [parsedLat, parsedLng] = [cleanNumber(lat), cleanNumber(lng)];
-  return parsedLat === null || parsedLng === null ? null : { lat: parsedLat, lng: parsedLng };
-};
-
 /** Whether saving would file a version that differs from the one on screen. The server
  *  refuses the same edit with `nothing_changed` and is the authority (the row may have
  *  moved). Delegates to `changedFields` over a candidate built from the form, except the
@@ -524,7 +516,7 @@ export function hasVersionChanges(
   const candidate: EventDetail = {
     ...geo,
     title: state.title.trim(),
-    coords: coordsOf(state.lat, state.lng),
+    coords: parsePair(state.lat, state.lng),
     occurred_date: state.eventDate || null,
     occurred_time: state.eventTime || null,
     // Only the ids are compared, so the rest of each row is the loaded one.
@@ -827,40 +819,8 @@ export function closeEvent(id: string, closeReason: string): Promise<EventDetail
   });
 }
 
-/** Report buckets, aliased from the generated spec so a backend rename fails `tsc`. */
-export type ContentReportReason =
-  components["schemas"]["ContentReportCreate"]["reason"];
-
-/** One report as the admin queue reads it (`resolved_at === null` means open). */
-export type ContentReport = components["schemas"]["ContentReportRead"];
-
-/** Mirrors `schemas/report.DETAILS_MAX_LENGTH`; change both. */
-export const REPORT_DETAILS_MAX_LEN = 2000;
-
 /** Mirrors `schemas/event.CLOSE_REASON_MAX_LENGTH`; change both. */
 export const CLOSE_REASON_MAX_LEN = 2000;
-
-/** One label per report bucket, shared by the report form and the admin queue. Keyed by the
- *  generated union so a new backend reason fails `tsc`. */
-export const REPORT_REASON_LABELS: Record<ContentReportReason, string> = {
-  illegal_content: "Illegal content",
-  graphic_not_flagged: "Graphic content, not flagged",
-  copyright: "Copyright",
-  privacy: "Privacy",
-  other: "Something else",
-};
-
-/** `POST /events/{id}/report`. Open to anyone: `apiFetch` omits the CSRF header with no
- *  session cookie. The backend caps it per IP. */
-export function reportEvent(
-  id: string,
-  body: components["schemas"]["ContentReportCreate"]
-): Promise<ContentReport> {
-  return apiFetch<ContentReport>(`/events/${id}/report`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
 
 /** What a form's source editors hold against the floor (`sourceFloor`). */
 export interface SourceFloorState {
@@ -889,10 +849,8 @@ export interface EventFieldsState {
  *  (`docs/api.md#evidence-floor`). Proof must carry an image (`proofHasImage`): text alone
  *  can't be audited. */
 export function missingEventFields(s: EventFieldsState): MissingField[] {
-  // Strict parse like `cleanNumber`: `"48.85abc"` is missing, not truncated to 48.85.
-  const lat = cleanNumber(s.lat);
-  const lng = cleanNumber(s.lng);
-  const coordsValid = lat !== null && lng !== null && inBounds(lat, lng);
+  // Strict parse: `"48.85abc"` is missing, not truncated to 48.85.
+  const coordsValid = coordinatePair(s.lat, s.lng) !== null;
 
   // The request floor, then the rest in page order.
   const missing = missingEventRequestFields(s);

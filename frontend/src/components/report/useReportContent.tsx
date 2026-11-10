@@ -3,15 +3,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Flag } from "lucide-react";
 
-import { reportCollection } from "@/lib/collections";
-import { reportSite } from "@/lib/sites";
 import {
   REPORT_DETAILS_MAX_LEN,
   REPORT_REASON_LABELS,
-  reportEvent,
-  type ContentReport,
+  reportContent,
   type ContentReportReason,
-} from "@/lib/events";
+  type ReportTargetKind,
+} from "@/lib/reports";
 import { useMutation } from "@/hooks/useMutation";
 import { Button } from "@/components/ui/Button";
 import { CharCounter } from "@/components/ui/CharCounter";
@@ -44,25 +42,6 @@ import { FORM_LABEL, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
  * 2000-character ceiling to drift.
  */
 
-/** What this report is filed against. Mirrors the three report routes. */
-type ReportTargetKind = "event" | "collection" | "site";
-
-// The call per kind and the noun the copy uses, keyed by the union so a third target fails `tsc` here.
-const SUBMIT: Record<
-  ReportTargetKind,
-  (id: string, body: { reason: ContentReportReason; details: string | null }) => Promise<ContentReport>
-> = {
-  event: reportEvent,
-  collection: reportCollection,
-  site: reportSite,
-};
-
-const NOUN: Record<ReportTargetKind, string> = {
-  event: "event",
-  collection: "collection",
-  site: "site",
-};
-
 // The select's order, from the shared label map so the form and the admin queue name buckets alike.
 const REASONS = Object.keys(REPORT_REASON_LABELS) as ContentReportReason[];
 
@@ -91,7 +70,7 @@ export function useReportContent(
 
   const reportMutation = useMutation(
     () =>
-      SUBMIT[kind](targetId, {
+      reportContent(kind, targetId, {
         reason,
         details: details.trim() || null,
       }),
@@ -114,7 +93,7 @@ export function useReportContent(
       panel: (
         <div className={FORM_SUCCESS_BANNER} role="status">
           Report received. An admin reviews it and decides what happens to the{" "}
-          {NOUN[kind]}.
+          {kind}.
         </div>
       ),
     };
@@ -142,7 +121,7 @@ export function useReportContent(
     trigger,
     panel: (
       <ConfirmDialog
-        title={`Report this ${NOUN[kind]}`}
+        title={`Report this ${kind}`}
         confirmLabel="Send report"
         confirmAction="report"
         busyLabel="Sending…"
@@ -153,7 +132,7 @@ export function useReportContent(
       >
         <p>
           No account needed. Say what is wrong with it and an admin reviews the{" "}
-          {NOUN[kind]}.
+          {kind}.
         </p>
 
         <div className="space-y-1.5 pt-1">

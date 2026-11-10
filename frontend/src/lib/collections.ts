@@ -2,7 +2,7 @@ import { ACTION_ICONS } from "@/components/ui/Button";
 
 import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
-import { EVENT_TITLE_MAX_LEN, eventListPath, type ContentReport } from "./events";
+import { EVENT_TITLE_MAX_LEN, eventListPath } from "./events";
 import { countLabel, formatDate } from "./format";
 import { eventFilterFields, hitsOf, search, type EventFilterParams } from "./search";
 import type {
@@ -236,18 +236,6 @@ export function deleteCollection(id: string): Promise<void> {
   return apiFetch<void>(`/collections/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
-}
-
-/** `POST /collections/{id}/report`. Twin of `reportEvent`: open to anyone, per-IP capped,
- *  and `apiFetch` omits the CSRF header with no session cookie. */
-export function reportCollection(
-  id: string,
-  body: components["schemas"]["ContentReportCreate"],
-): Promise<ContentReport> {
-  return apiFetch<ContentReport>(
-    `/collections/${encodeURIComponent(id)}/report`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
 }
 
 /** Idempotent server-side, so the panel can re-send an uncertain row. */

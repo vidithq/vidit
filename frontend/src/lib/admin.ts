@@ -1,6 +1,7 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { withCursor } from "./pagination";
+import type { ContentReport } from "./reports";
 
 /** One onboarding invite row. ``x_handle`` is the handle the code binds;
  *  redemption copies it onto the new account as its bot-attribution link.
@@ -135,8 +136,8 @@ export function reportsPath(page: number, perPage: number): string {
 export function resolveReport(
   reportId: string,
   resolution: ContentReportResolution
-): Promise<components["schemas"]["ContentReportRead"]> {
-  return apiFetch<components["schemas"]["ContentReportRead"]>(
+): Promise<ContentReport> {
+  return apiFetch<ContentReport>(
     `/admin/reports/${reportId}/resolve`,
     { method: "POST", body: JSON.stringify({ resolution }) }
   );
