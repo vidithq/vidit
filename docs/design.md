@@ -1893,7 +1893,7 @@ Opening one is [`/collections/new`](../frontend/src/app/collections/new/page.tsx
 - Each row is a static compact [`<Item>`](#items) of the collection: its first cover tile, its title, its span and its event count.
 - The list scrolls past `18rem`, since the popover is fixed to the viewport.
 - With no collection, *No collections yet.* says what **New collection** does with what is being added.
-- The footer is a ghost **New collection** button.
+- The footer is a ghost **New collection** button, led by the one `FolderPlus` mark of its action.
 
 Each surface supplies the item's action, because the two writes differ: one event has a membership bit to turn on and off, a selection only adds.
 
