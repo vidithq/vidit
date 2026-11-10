@@ -17,8 +17,10 @@ export type ThemeId = components["schemas"]["DisplayPreferences"]["theme"];
 export const DEFAULT_THEME: ThemeId = "dark";
 export const THEME_EVENT = "vidit:theme-changed";
 
+const THEME_IDS = { dark: null, light: null } satisfies Record<ThemeId, null>;
+
 function isThemeId(value: string | null): value is ThemeId {
-  return value === "dark" || value === "light";
+  return value !== null && Object.keys(THEME_IDS).includes(value);
 }
 
 const pref = createAttributePreference<ThemeId>({

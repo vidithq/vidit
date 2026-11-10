@@ -29,9 +29,8 @@ interface PaletteOption {
 }
 
 // One entry per backend schemas/preferences.PaletteId, each with its globals.css block; change both.
-export const PALETTES: readonly PaletteOption[] = [
-  {
-    id: "orange",
+const PALETTE_OPTIONS: Record<PaletteId, Omit<PaletteOption, "id">> = {
+  orange: {
     label: "Orange",
     swatch: "#f97316",
     map: {
@@ -41,8 +40,7 @@ export const PALETTES: readonly PaletteOption[] = [
       detected: "#fdba74",
     },
   },
-  {
-    id: "blue",
+  blue: {
     label: "Blue",
     swatch: "#3b82f6",
     map: {
@@ -52,8 +50,7 @@ export const PALETTES: readonly PaletteOption[] = [
       detected: "#93c5fd",
     },
   },
-  {
-    id: "emerald",
+  emerald: {
     label: "Emerald",
     swatch: "#10b981",
     map: {
@@ -63,8 +60,7 @@ export const PALETTES: readonly PaletteOption[] = [
       detected: "#6ee7b7",
     },
   },
-  {
-    id: "violet",
+  violet: {
     label: "Violet",
     swatch: "#8b5cf6",
     map: {
@@ -74,8 +70,7 @@ export const PALETTES: readonly PaletteOption[] = [
       detected: "#c4b5fd",
     },
   },
-  {
-    id: "rose",
+  rose: {
     label: "Rose",
     swatch: "#f43f5e",
     map: {
@@ -85,7 +80,11 @@ export const PALETTES: readonly PaletteOption[] = [
       detected: "#fda4af",
     },
   },
-] as const;
+};
+
+export const PALETTES: readonly PaletteOption[] = (
+  Object.keys(PALETTE_OPTIONS) as PaletteId[]
+).map((id) => ({ id, ...PALETTE_OPTIONS[id] }));
 
 // Mirrors backend schemas/preferences.DISPLAY_DEFAULTS; change both.
 export const DEFAULT_PALETTE: PaletteId = "orange";
