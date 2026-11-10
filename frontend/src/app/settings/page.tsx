@@ -18,6 +18,7 @@ import {
   FORM_LABEL,
   FORM_SUCCESS_BANNER,
 } from "@/components/ui/form-styles";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input } from "@/components/ui/Input";
 import { META_LINE } from "@/components/ui/styles";
 import { PreferenceText, ToggleRow } from "@/components/ui/ToggleRow";
@@ -274,12 +275,11 @@ export default function SettingsPage() {
             )}
 
             <div>
-              <label
+              <FieldLabel
                 htmlFor="current-password"
-                className={incomplete.labelClass("current", FORM_LABEL)}
-              >
-                Current password
-              </label>
+                label="Current password"
+                invalid={invalidKeys.has("current")}
+              />
               <Input
                 id="current-password"
                 invalid={invalidKeys.has("current")}
@@ -292,12 +292,11 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label
+              <FieldLabel
                 htmlFor="new-password"
-                className={incomplete.labelClass("new", FORM_LABEL)}
-              >
-                New password
-              </label>
+                label="New password"
+                invalid={invalidKeys.has("new")}
+              />
               <Input
                 id="new-password"
                 invalid={invalidKeys.has("new")}
@@ -311,12 +310,11 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label
+              <FieldLabel
                 htmlFor="confirm-password"
-                className={incomplete.labelClass("confirm", FORM_LABEL)}
-              >
-                Confirm new password
-              </label>
+                label="Confirm new password"
+                invalid={invalidKeys.has("confirm")}
+              />
               <Input
                 id="confirm-password"
                 invalid={invalidKeys.has("confirm")}
