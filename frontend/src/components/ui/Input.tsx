@@ -189,6 +189,10 @@ export function Textarea({
   ...props
 }: FieldProps & TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
-    <textarea className={fieldClass(variant, invalid, className)} {...props} />
+    <textarea
+      className={fieldClass(variant, invalid, className)}
+      aria-invalid={invalid || undefined}
+      {...props}
+    />
   );
 }
