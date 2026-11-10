@@ -11,7 +11,7 @@ import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { eventVersioned, hasPublishedRecord } from "@/lib/events";
 import { answerGeolocatorInvite, creditedAuthors, removeGeolocator } from "@/lib/geolocatorCredit";
-import { eventEditHref } from "@/lib/routes";
+import { eventEditHref, eventHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
@@ -21,13 +21,13 @@ import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
-import { EventShare } from "@/components/event/EventShare";
 import { GeolocatorInviteCard, InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import type { EventShellActions } from "@/components/event/EventShell";
 import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
 import { useEventSites } from "@/components/sites/useEventSites";
+import { ShareControl } from "@/components/share/ShareControl";
 import type { EventDetail } from "@/types";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
@@ -126,7 +126,13 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
         </Link>
       </Tooltip>
     ),
-    <EventShare key="share" event={event} />,
+    // A `detected` row is still editable by its owner, so a shared link's content may change.
+    <ShareControl
+      key="share"
+      path={eventHref(event.id)}
+      title={event.title}
+      caveat={event.status === "detected" ? "Detected and may still change." : undefined}
+    />,
     // Keyed by the row: this hook survives a client navigation between rows, and the next row
     // must not open with the previous one's popover open.
     canCollect && (
