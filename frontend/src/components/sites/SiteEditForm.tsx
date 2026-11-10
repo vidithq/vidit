@@ -21,7 +21,7 @@ import { useMutation } from "@/hooks/useMutation";
 import { cn } from "@/lib/cn";
 import type { components } from "@/lib/api-types";
 import { nothingChangedMessage } from "@/lib/events";
-import { formatInstantDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { CONTOUR_REQUIREMENT, positionsBounds, zoneVertices } from "@/lib/siteZone";
 import {
   contourOfSource,
@@ -330,8 +330,8 @@ export function SiteEditForm({
                       {olderThanCurrent && current && (
                         <p className={cn("rounded-md px-3 py-2 text-xs", WARNING_CALLOUT)}>
                           This source predates the current contour, from{" "}
-                          {formatInstantDate(current.captured_at)}. A contour drawn on it holds from{" "}
-                          {formatInstantDate(capturedAt)} until then, and the current zone stays as it
+                          {formatDate(current.captured_at)}. A contour drawn on it holds from{" "}
+                          {formatDate(capturedAt)} until then, and the current zone stays as it
                           is.
                         </p>
                       )}

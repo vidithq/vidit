@@ -1,13 +1,3 @@
-export function formatDate(input: string): string {
-  const date = new Date(input);
-  if (isNaN(date.getTime())) return input;
-  return date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 export const DAY_MS = 86_400_000;
 
 /** How long something opened at `since` (an ISO instant) has been open, in whole days:
@@ -30,8 +20,9 @@ export function formatMonth(period: string): string {
   });
 }
 
-/** The UTC day of an instant, as "28 Mar 2026"; an unparsable value renders as-is. */
-export function formatInstantDate(iso: string): string {
+/** The UTC day of a date-only value or an instant, as "28 Mar 2026", so the server and every
+ * reader's time zone print the same day; an unparsable value renders as-is. */
+export function formatDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-GB", {
@@ -48,7 +39,7 @@ export function formatInstant(iso: string | null): string {
   if (iso === null) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  const date = formatInstantDate(iso);
+  const date = formatDate(iso);
   const time = d.toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -64,7 +55,7 @@ export function formatInstant(iso: string | null): string {
 export function formatInstantOrDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  return d.getTime() % DAY_MS === 0 ? formatInstantDate(iso) : formatInstant(iso);
+  return d.getTime() % DAY_MS === 0 ? formatDate(iso) : formatInstant(iso);
 }
 
 /** A time of day as `HH:MM`: the API serves `HH:MM:SS`, a time input holds `HH:MM`. */

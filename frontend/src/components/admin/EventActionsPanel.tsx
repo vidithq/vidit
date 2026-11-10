@@ -9,7 +9,7 @@ import {
   type AdminEventDeleteResponse,
   type AdminEventModeration,
 } from "@/lib/admin";
-import { countLabel, formatDate, formatInstant, formatInstantDate } from "@/lib/format";
+import { countLabel, formatDate, formatInstant } from "@/lib/format";
 import { hitsOf, search } from "@/lib/search";
 import { useMutation } from "@/hooks/useMutation";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -75,7 +75,7 @@ async function searchEvents(q: string): Promise<Target[]> {
   return hitsOf(found.hits, "event").map((e) => {
     const date =
       e.status === "requested"
-        ? `Requested ${formatInstantDate(e.created_at)}`
+        ? `Requested ${formatDate(e.created_at)}`
         : e.occurred_date
           ? formatDate(e.occurred_date)
           : "Undated";

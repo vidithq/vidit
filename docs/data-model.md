@@ -744,7 +744,7 @@ event happens ──▶ media captured ──▶ media posted at a URL ──▶
 | `event_detections.post_at` | when the analyst posted it on X | machine-written rows only (the imported post's time) | no row for a human submit |
 | `created_at` | when it was submitted to Vidit | system | NOT NULL |
 
-`occurred_date` is *editorial*: a real-world event, often known only to the day, with no canonical time zone. It stores a bare date plus an optional UTC hour. `captured_at`, `posted_at` and `event_detections.post_at` are *instants*: known to the minute when present, and always UTC, so they store full timestamps. All entered times follow the UTC convention.
+`occurred_date` is *editorial*: a real-world event, often known only to the day, with no canonical time zone. It stores a bare date plus an optional UTC hour. `captured_at`, `posted_at` and `event_detections.post_at` are *instants*: known to the minute when present, and always UTC, so they store full timestamps. All entered times follow the UTC convention. The frontend prints a bare date or an instant as its UTC day (`formatDate` in [`lib/format.ts`](../frontend/src/lib/format.ts)), so the server render and every reader's time zone show the same day.
 
 **Indexes:**
 - `GIST(coords)`. Required for geospatial queries: bounding-box filtering and proximity sort.
