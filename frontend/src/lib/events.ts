@@ -1,6 +1,7 @@
 import { apiFetch } from "./api";
 import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
+import { readResponse } from "./errors";
 import { appendEventFilterParams, type EventFilterParams } from "./search";
 import { coordinatePair, parsePair, type CoordinatePair } from "./coordinates";
 import { hhmm } from "./format";
@@ -644,13 +645,6 @@ export class ArchiveUploadError extends Error {
   }
 }
 
-/** `detail` prefixes of the dev upload endpoint's 413s (`backend/app/main.py`): its size
- *  guard and the body-size middleware. */
-const DEV_UPLOAD_TOO_LARGE_DETAILS = [
-  "Upload exceeds the size guard",
-  "Request body too large",
-];
-
 /** Whether a 413 came from the dev upload endpoint rather than an intermediary. */
 function isDevUploadTooLarge(body: string): boolean {
   let parsed: unknown;
@@ -659,9 +653,7 @@ function isDevUploadTooLarge(body: string): boolean {
   } catch {
     return false;
   }
-  const detail = (parsed as { detail?: unknown } | null)?.detail;
-  if (typeof detail !== "string") return false;
-  return DEV_UPLOAD_TOO_LARGE_DETAILS.some((prefix) => detail.startsWith(prefix));
+  return readResponse(413, parsed, null).code === "upload_too_large";
 }
 
 /** Classify a non-2xx from the storage POST. An over-cap body is terminal (S3: 400

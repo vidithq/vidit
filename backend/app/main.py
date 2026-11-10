@@ -162,13 +162,17 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     )
 
 
-@app.exception_handler(CodedError)
-async def coded_error_handler(_request: Request, exc: CodedError):
-    """A business error a route lets escape, as the typed ``{code, message}`` body."""
+def _coded_response(exc: CodedError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": {"code": exc.code, "message": str(exc)}},
     )
+
+
+@app.exception_handler(CodedError)
+async def coded_error_handler(_request: Request, exc: CodedError):
+    """A business error a route lets escape, as the typed ``{code, message}`` body."""
+    return _coded_response(exc)
 
 
 @app.exception_handler(RequestValidationError)
@@ -199,6 +203,12 @@ _MAX_REQUEST_BODY_BYTES = (
     + (10 * 1024 * 1024)
 )
 
+
+class UploadTooLargeError(CodedError):
+    code = "upload_too_large"
+    status_code = 413
+
+
 # The X webhook path. Keep in sync with the ``include_router`` prefix below.
 _WEBHOOK_ACTIVITY_PATH = "/api/v1/webhooks/x"
 
@@ -227,10 +237,7 @@ async def enforce_request_body_size(request: Request, call_next):
         # A well-formed Content-Length frames the body exactly, so one check
         # settles it. Reject negatives too: ``-1 > cap`` is False.
         if announced < 0 or announced > cap:
-            return JSONResponse(
-                status_code=413,
-                content={"detail": (f"Request body too large (max {cap} bytes)")},
-            )
+            return _coded_response(UploadTooLargeError(f"Request body too large (max {cap} bytes)"))
         return await call_next(request)
     # No usable Content-Length: read the stream with a running cap and abort
     # when it crosses. Caching onto ``request._body`` replays the bytes to the
@@ -240,10 +247,7 @@ async def enforce_request_body_size(request: Request, call_next):
     async for chunk in request.stream():
         total += len(chunk)
         if total > cap:
-            return JSONResponse(
-                status_code=413,
-                content={"detail": (f"Request body too large (max {cap} bytes)")},
-            )
+            return _coded_response(UploadTooLargeError(f"Request body too large (max {cap} bytes)"))
         chunks.append(chunk)
     request._body = b"".join(chunks)
     return await call_next(request)
@@ -340,7 +344,7 @@ if settings.storage_backend == "local":
                 if size > archive_zip.MAX_UPLOAD_BYTES:
                     out.close()
                     dest.unlink(missing_ok=True)
-                    raise HTTPException(status_code=413, detail="Upload exceeds the size guard")
+                    raise UploadTooLargeError("Upload exceeds the size guard")
                 out.write(chunk)
         return Response(status_code=204)
 
