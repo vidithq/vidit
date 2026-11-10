@@ -1,11 +1,11 @@
 "use client";
 
 import { SOURCE_KIND_LABELS, type SourceKind } from "@/lib/sources";
-import { useEffect, useState } from "react";
 import { Bot, Camera, MapPin, Swords } from "lucide-react";
 
 import { profileSearchHref } from "@/lib/search";
-import { getUserStats, type UserStats } from "@/lib/users";
+import { userPath, type UserStats } from "@/lib/users";
+import { useApiResource } from "@/hooks/useApiResource";
 import { ActivityHeatmap } from "@/components/ui/ActivityHeatmap";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -30,24 +30,8 @@ import { StatGrid, StatTile } from "@/components/ui/StatTile";
  * definition.
  */
 export function ProfileInsights({ username }: { username: string }) {
-  // The result remembers which username it answers, so navigating never paints stale stats.
-  const [result, setResult] = useState<{ username: string; stats: UserStats } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getUserStats(username)
-      .then((stats) => {
-        if (!cancelled) setResult({ username, stats });
-      })
-      .catch(() => {
-        // Deliberately swallowed: see the component doc.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [username]);
-
-  const stats = result?.username === username ? result.stats : null;
+  // A failed read leaves `data` null and is deliberately not shown: see the component doc.
+  const { data: stats } = useApiResource<UserStats>(`${userPath(username)}/stats`);
 
   if (!stats || stats.total_events === 0) {
     return null;
