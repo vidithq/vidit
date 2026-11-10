@@ -8,6 +8,10 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - The bot reads its mentions once a day at 12:00 UTC from where its last read stopped, so each mention is read once and a worker restart reads none; the bot's own posts, and replies under them that only inherit the tag, no longer enter the queue ([#830](https://github.com/vidithq/vidit/pull/830)).
 
+### Fixed
+
+- The API reference lists the 30/hour limit on `POST /admin/users/{id}/restore` and counts `POST /collections/collectable-events` in the per-user read quota, and CI fails when the rate-limit tables and the code disagree.
+
 ## v0.8.2, 2026-10-30
 
 ### Fixed
