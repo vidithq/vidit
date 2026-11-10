@@ -11,6 +11,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 ### Fixed
 
 - A reader west of UTC sees an event's date on its own day, not the day before, and every date on the site reads the same for every reader.
+- The **New collection** button in the **Add to collection** popovers shows one icon instead of two.
 
 ## v0.8.2, 2026-10-30
 

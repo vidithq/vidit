@@ -2,7 +2,6 @@
 
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
 
 import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -11,13 +10,6 @@ import { collectionItem, type ItemCollection } from "@/lib/items";
 
 /** Past this many collections the picker offers a search over them by title. */
 const FIND_FROM = 6;
-
-const NEW_COLLECTION = (
-  <>
-    <Plus size={14} strokeWidth={1.8} />
-    New collection
-  </>
-);
 
 /**
  * The owner's collections in an Add to collection popover, shared by the event page (one event,
@@ -83,11 +75,11 @@ export function CollectionPicker<T extends ItemCollection & { id: string }>({
       {typeof newCollection === "string" ? (
         <Link href={newCollection} className={buttonClasses("ghost")}>
           <ActionIcon action="newCollection" />
-          {NEW_COLLECTION}
+          New collection
         </Link>
       ) : (
         <Button action="newCollection" variant="ghost" onClick={newCollection}>
-          {NEW_COLLECTION}
+          New collection
         </Button>
       )}
     </div>
