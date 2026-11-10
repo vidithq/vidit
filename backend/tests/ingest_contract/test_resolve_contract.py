@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from app.services.tweet_ingest import COORDS_MISSING, Detection, chase_thread, resolve_threads
+from app.services.tweet_ingest import COORDS_MISSING, chase_thread, resolve_threads
 from app.services.tweet_ingest.records import (
     ParsedMedia,
     QuotedTweet,
@@ -21,16 +21,11 @@ from app.services.tweet_ingest.records import (
     TelegramFootage,
     TweetRecord,
 )
+from tests._fixtures import single_detection
 
 from . import loader
 
 _COORD_PLACES = 6
-
-
-def _detection(thread: list[TweetRecord]) -> Detection:
-    """The single detection a one-coordinate thread resolves to."""
-    [detection] = resolve_threads([thread]).detections
-    return detection
 
 
 def _roles(media: list[Any]) -> list[list[str]]:
@@ -71,7 +66,7 @@ def test_typology_resolves_to_expected(typology: str, tmp_path: Path) -> None:
 def test_marker_lines_reach_the_proof_as_typed(tmp_path: Path) -> None:
     """The ``T:`` / ``C:`` / ``S:`` markers are the analyst's own words and are kept in the proof, with ``S:`` expanded to its status; only the bot tag (addressing, not content) goes."""
     typology = "marker_lines"
-    detection = _detection(loader.thread_for(typology, tmp_path))
+    detection = single_detection(loader.thread_for(typology, tmp_path))
     assert detection.proof_text == loader.load_expected(typology)["proof_text"]
 
 
@@ -102,7 +97,7 @@ def test_x_status_link_chase_fills_source_from_chased_tweet(
     monkeypatch.setattr(x_chase_mod, "fetch_syndication", fake_fetch)
     records = chase_thread(archive_mod.read_tweets(archive, handle=body["user"]["screen_name"]))
 
-    detection = _detection(records)
+    detection = single_detection(records)
     assert detection.source_url == expected["source_url"]
     assert detection.source_posted_at == datetime.fromisoformat(expected["source_posted_at"])
     assert _roles(detection.source_media) == [list(pair) for pair in expected["source_media"]]
@@ -135,7 +130,7 @@ def test_chased_telegram_fills_source_date_and_media() -> None:
         posted_at="2026-03-04T09:00:00+00:00",
         media=[ParsedMedia("video", "https://cdn4.cdn-telegram.org/file/v.mp4", "quote")],
     )
-    detection = _detection([_telegram_record(footage)])
+    detection = single_detection([_telegram_record(footage)])
     assert detection.source_url == _TG_URL
     assert detection.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
     assert _roles(detection.source_media) == [["video", "quote"]]
@@ -144,7 +139,7 @@ def test_chased_telegram_fills_source_date_and_media() -> None:
 
 def test_chased_telegram_sensitive_is_date_only() -> None:
     footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
-    detection = _detection([_telegram_record(footage)])
+    detection = single_detection([_telegram_record(footage)])
     assert detection.source_url == _TG_URL
     assert detection.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
     assert detection.source_media == []
@@ -153,7 +148,7 @@ def test_chased_telegram_sensitive_is_date_only() -> None:
 
 def test_unchased_telegram_link_is_link_only() -> None:
     """The no-chase path: link source, no date, no source media (the ``telegram_link`` contract)."""
-    detection = _detection([_telegram_record(None)])
+    detection = single_detection([_telegram_record(None)])
     assert detection.source_url == _TG_URL
     assert detection.source_posted_at is None
     assert detection.source_media == []
@@ -166,7 +161,7 @@ def test_two_candidate_links_leave_the_source_empty() -> None:
         footage,
         extra_links=[SourceLink("https://www.youtube.com/watch?v=FAKEVIDEO01")],
     )
-    detection = _detection([record])
+    detection = single_detection([record])
     assert detection.source_url is None
     assert detection.source_posted_at is None
     assert detection.source_media == []
@@ -192,7 +187,7 @@ def test_second_link_becomes_a_secondary_source() -> None:
             created_at="2026-03-04T09:00:00+00:00",
         ),
     )
-    detection = _detection([record])
+    detection = single_detection([record])
     assert detection.source_url == "https://x.com/front_cam/status/8400000000000000002"
     assert [extra.url for extra in detection.secondary_sources] == [_TG_URL]
 
@@ -211,7 +206,7 @@ def _links_record(links: list[SourceLink]) -> TweetRecord:
 def test_primary_link_is_not_repeated_as_a_secondary() -> None:
     """The source link in another spelling (``twitter.com``, a tracking query) is the primary, not a mirror."""
     status = "https://x.com/source_gull/status/8500000000000000002"
-    detection = _detection(
+    detection = single_detection(
         [
             _links_record(
                 [
@@ -229,7 +224,7 @@ def test_primary_link_is_not_repeated_as_a_secondary() -> None:
 def test_tracking_query_spelling_of_the_primary_is_not_a_mirror() -> None:
     """Same video id with share provenance only in the query is one link, so the slot is not ambiguous."""
     video = "https://www.youtube.com/watch?v=FAKEVIDEO01"
-    detection = _detection(
+    detection = single_detection(
         [_links_record([SourceLink(video), SourceLink(f"{video}&si=abc123&utm_source=x")])]
     )
     assert detection.source_url == video
@@ -240,14 +235,14 @@ def test_distinct_videos_sharing_a_path_are_two_candidates() -> None:
     """Two YouTube ids on one ``/watch`` path are two links (the identity rule reads the query), so the source is ambiguous and both land as mirrors."""
     first = "https://www.youtube.com/watch?v=FAKEVIDEO01"
     second = "https://www.youtube.com/watch?v=FAKEVIDEO02"
-    detection = _detection([_links_record([SourceLink(first), SourceLink(second)])])
+    detection = single_detection([_links_record([SourceLink(first), SourceLink(second)])])
     assert detection.source_url is None
     assert [extra.url for extra in detection.secondary_sources] == [first, second]
 
 
 def test_a_maps_link_is_never_a_source() -> None:
     """A Google Maps link is where the coordinate came from, not the footage: it is not a candidate."""
-    detection = _detection(
+    detection = single_detection(
         [_links_record([SourceLink("https://www.google.com/maps/@44.6123,33.5221,15z")])]
     )
     assert detection.source_url is None
@@ -257,7 +252,7 @@ def test_a_maps_link_is_never_a_source() -> None:
 def test_an_article_link_is_a_source() -> None:
     """Host-blind: a link on no chase-vocabulary host is a candidate like any other, so a sole article link fills the slot link-only."""
     article = "https://example-news.test/2026/03/04/strike-report"
-    detection = _detection([_links_record([SourceLink(article)])])
+    detection = single_detection([_links_record([SourceLink(article)])])
     assert detection.source_url == article
     assert detection.source_posted_at is None
 

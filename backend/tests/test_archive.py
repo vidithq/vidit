@@ -12,7 +12,6 @@ from pathlib import Path
 import httpx
 
 from app.services.tweet_ingest import (
-    Detection,
     ParsedMedia,
     TweetRecord,
     archive_media_fetcher,
@@ -21,15 +20,9 @@ from app.services.tweet_ingest import (
     resolve_threads,
     stitch,
 )
-from tests._fixtures import write_archive_js
+from tests._fixtures import single_detection, write_archive_js
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
-
-
-def _detection(records: list[TweetRecord]) -> Detection:
-    """The single detection a one-coordinate thread resolves to."""
-    [detection] = resolve_threads([records]).detections
-    return detection
 
 
 def _chased(archive: Path, *, handle: str) -> list[TweetRecord]:
@@ -327,7 +320,7 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     [record] = _chased(archive, handle="ana")
     assert chased == ["https://t.me/chan/42"]
-    detection = _detection([record])
+    detection = single_detection([record])
     assert detection.source_url == "https://t.me/chan/42"
     assert "t.co" not in detection.proof_text
 
@@ -342,7 +335,7 @@ def test_a_link_written_inside_prose_is_a_candidate(tmp_path):
         "https://t.co/ownPhoto",
     )
     [record] = read_tweets(archive, handle="ana")
-    assert _detection([record]).source_url == "https://www.instagram.com/reel/FAKEREEL01/"
+    assert single_detection([record]).source_url == "https://www.instagram.com/reel/FAKEREEL01/"
 
 
 def _cdn_client_factory(handler):

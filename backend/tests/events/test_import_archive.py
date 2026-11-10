@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import io
 import uuid
-import zipfile
 
 import pytest
 
@@ -20,7 +18,7 @@ from app.models.event import STATUS_CLOSED, STATUS_DETECTED, Event
 from app.services import archive_jobs
 from app.services.storage import get_storage
 from app.services.tweet_ingest import archive_zip
-from tests._fixtures import store_bytes, stored_bytes
+from tests._fixtures import store_bytes, stored_bytes, zip_bytes
 from tests.conftest import login_as
 from tests.events._helpers import client
 
@@ -48,35 +46,20 @@ def _linked_handle(db, author):
     return author
 
 
-@pytest.fixture
-def sent_emails(monkeypatch):
-    sent = []
-    monkeypatch.setattr(archive_jobs.email, "send", sent.append)
-    return sent
-
-
-def _zip_bytes(entries: dict[str, bytes]) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        for name, data in entries.items():
-            zf.writestr(name, data)
-    return buf.getvalue()
-
-
 def _presign(author) -> dict:
     resp = client.post("/api/v1/events/import-archive/presign", headers=login_as(client, author))
     assert resp.status_code == 200, resp.text
     return resp.json()
 
 
-def _upload(author, presign: dict, zip_bytes: bytes):
+def _upload(author, presign: dict, archive: bytes):
     """POST the zip as the browser would; the TestClient takes the URL's path."""
     path = presign["upload"]["url"].removeprefix("http://localhost:8000")
     return client.post(
         path,
         headers=login_as(client, author),
         data=presign["upload"]["fields"],
-        files={"file": ("archive.zip", zip_bytes, "application/zip")},
+        files={"file": ("archive.zip", archive, "application/zip")},
     )
 
 
@@ -88,9 +71,9 @@ def _enqueue(author, upload_key: str, estimated_post_count: int | None = 3):
     )
 
 
-def _post(author, zip_bytes: bytes):
+def _post(author, archive: bytes):
     presign = _presign(author)
-    uploaded = _upload(author, presign, zip_bytes)
+    uploaded = _upload(author, presign, archive)
     assert uploaded.status_code == 204, uploaded.text
     return _enqueue(author, presign["upload_key"])
 
@@ -99,8 +82,8 @@ def _drain(db) -> int:
     return asyncio.run(archive_jobs.run_once(db))
 
 
-def _import(author, db, zip_bytes: bytes) -> dict:
-    accepted = _post(author, zip_bytes)
+def _import(author, db, archive: bytes) -> dict:
+    accepted = _post(author, archive)
     assert accepted.status_code == 202, accepted.text
     job_id = accepted.json()["id"]
     assert _drain(db) == 1
@@ -149,7 +132,7 @@ def test_presign_is_rate_limited(author):
 
 
 def test_enqueue_returns_queued_job_for_staged_upload(db, author):
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS, "account.js": b"private"}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS, "account.js": b"private"}))
     assert accepted.status_code == 202, accepted.text
     body = accepted.json()
     assert body["status"] == "queued"
@@ -162,7 +145,7 @@ def test_enqueue_returns_queued_job_for_staged_upload(db, author):
 
 
 def test_job_poll_is_owner_only(db, author, second_user):
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS}))
     job_id = accepted.json()["id"]
     other = client.get(
         f"/api/v1/events/import-archive/{job_id}", headers=login_as(client, second_user)
@@ -173,8 +156,8 @@ def test_job_poll_is_owner_only(db, author, second_user):
 def test_enqueue_rejects_reused_upload_key(db, author):
     # A replayed key would race the first job's terminal delete and email a spurious failure.
     presign = _presign(author)
-    zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
-    assert _upload(author, presign, zip_bytes).status_code == 204
+    archive = zip_bytes({"tweets.js": _TWEETS})
+    assert _upload(author, presign, archive).status_code == 204
     first = _enqueue(author, presign["upload_key"])
     assert first.status_code == 202
     second = _enqueue(author, presign["upload_key"])
@@ -199,7 +182,7 @@ def test_enqueue_rejects_key_with_no_staged_object(author):
 
 def test_enqueue_rejects_oversized_staged_object(author, monkeypatch):
     key = archive_jobs.mint_staging_key(author.id)
-    store_bytes(_zip_bytes({"tweets.js": _TWEETS}), key)
+    store_bytes(zip_bytes({"tweets.js": _TWEETS}), key)
     monkeypatch.setattr(archive_zip, "MAX_UPLOAD_BYTES", 10)
     resp = _enqueue(author, key)
     assert resp.status_code == 413
@@ -208,7 +191,7 @@ def test_enqueue_rejects_oversized_staged_object(author, monkeypatch):
 
 def test_enqueue_rejects_foreign_and_malformed_keys(author, second_user):
     presign = _presign(second_user)
-    assert _upload(second_user, presign, _zip_bytes({"tweets.js": _TWEETS})).status_code == 204
+    assert _upload(second_user, presign, zip_bytes({"tweets.js": _TWEETS})).status_code == 204
     resp = _enqueue(author, presign["upload_key"])
     assert resp.status_code == 400
     assert resp.json()["detail"]["code"] == "archive_upload_invalid"
@@ -223,12 +206,12 @@ def test_enqueue_rejects_foreign_and_malformed_keys(author, second_user):
 def test_dev_upload_rejects_non_staging_key(author):
     presign = _presign(author)
     presign["upload"]["fields"]["key"] = "uploads/escape.zip"
-    resp = _upload(author, presign, _zip_bytes({"tweets.js": _TWEETS}))
+    resp = _upload(author, presign, zip_bytes({"tweets.js": _TWEETS}))
     assert resp.status_code == 400
 
 
 def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
-    job = _import(author, db, _zip_bytes({"tweets.js": _TWEETS, "account.js": b"private"}))
+    job = _import(author, db, zip_bytes({"tweets.js": _TWEETS, "account.js": b"private"}))
     assert job["status"] == "done"
     assert _counts(job) == {"created": 1, "updated": 0, "skipped": 0, "failed": 0}
 
@@ -245,16 +228,16 @@ def test_import_creates_detected_rows_owned_by_caller(db, author, sent_emails):
 
 
 def test_reimport_is_idempotent(db, author, sent_emails):
-    zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
-    assert _counts(_import(author, db, zip_bytes))["created"] == 1
-    second = _import(author, db, zip_bytes)
+    archive = zip_bytes({"tweets.js": _TWEETS})
+    assert _counts(_import(author, db, archive))["created"] == 1
+    second = _import(author, db, archive)
     assert _counts(second) == {"created": 0, "updated": 0, "skipped": 1, "failed": 0}
 
 
 def test_reimport_respects_a_detection_the_analyst_rejected(db, author, sent_emails):
     """A rejection stands: the re-import skips the pair instead of requeueing it."""
-    zip_bytes = _zip_bytes({"tweets.js": _TWEETS})
-    first = _import(author, db, zip_bytes)
+    archive = zip_bytes({"tweets.js": _TWEETS})
+    first = _import(author, db, archive)
     assert _counts(first) == {"created": 1, "updated": 0, "skipped": 0, "failed": 0}
 
     detected = db.query(Event).filter(Event.owner_id == author.id).one()
@@ -268,7 +251,7 @@ def test_reimport_respects_a_detection_the_analyst_rejected(db, author, sent_ema
     assert close_response.status_code == 200, close_response.text
     assert close_response.json()["before_closed_status"] == STATUS_DETECTED
 
-    second = _import(author, db, zip_bytes)
+    second = _import(author, db, archive)
     assert _counts(second) == {"created": 0, "updated": 0, "skipped": 1, "failed": 0}
 
     db.expire_all()
@@ -294,7 +277,7 @@ def test_malformed_staged_zip_fails_in_the_worker(db, author, sent_emails):
 
 def test_worker_fails_job_whose_staged_object_vanished(db, author, sent_emails):
     """An object deleted between enqueue and claim fails the job instead of raising."""
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS}))
     job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
     get_storage().delete_many([job.zip_key])
 
@@ -307,7 +290,7 @@ def test_worker_fails_job_whose_staged_object_vanished(db, author, sent_emails):
 
 def test_worker_fails_a_job_whose_owner_was_deactivated(db, author, sent_emails):
     """Third spelling of the bot's ``no_account`` rule: a job queued before suspension fails."""
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS}))
     author.is_active = False
     db.commit()
 
@@ -321,7 +304,7 @@ def test_worker_fails_a_job_whose_owner_was_deactivated(db, author, sent_emails)
 
 def test_worker_fails_a_job_whose_owner_has_no_linked_handle(db, author, sent_emails):
     """No fallback to the Vidit username: provenance permalinks are written from the handle."""
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS}))
     author.x_handle = None
     db.commit()
 
@@ -339,7 +322,7 @@ def test_failed_run_lands_failed_and_notifies(db, author, sent_emails, monkeypat
         raise RuntimeError("backfill exploded")
 
     monkeypatch.setattr(archive_jobs, "backfill_from_archive", _boom)
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS}))
     assert _drain(db) == 1
 
     job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
@@ -353,7 +336,7 @@ def test_failed_run_lands_failed_and_notifies(db, author, sent_emails, monkeypat
 
 def test_worker_reclaims_stale_running_job_and_caps_attempts(db, author, sent_emails):
     """A stale ``running`` job is reclaimed; spent attempts fail it (poison-pill guard)."""
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS}))
     job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
 
     from datetime import UTC, datetime
@@ -390,7 +373,7 @@ def test_worker_heartbeat_restamps_started_at(db, author, sent_emails, monkeypat
         raise RuntimeError("stop after heartbeats")
 
     monkeypatch.setattr(archive_jobs, "backfill_from_archive", _slow_backfill)
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS}))
     job = db.get(ArchiveImportJob, uuid.UUID(accepted.json()["id"]))
 
     claimed_at = None
@@ -410,7 +393,7 @@ def test_worker_heartbeat_restamps_started_at(db, author, sent_emails, monkeypat
 
 
 def test_job_carries_estimate_and_live_progress(db, author, sent_emails):
-    accepted = _post(author, _zip_bytes({"tweets.js": _TWEETS}))
+    accepted = _post(author, zip_bytes({"tweets.js": _TWEETS}))
     body = accepted.json()
     assert body["estimated_post_count"] >= 1
     assert body["processed_detection_count"] == 0 and body["detection_count"] is None

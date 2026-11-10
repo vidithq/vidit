@@ -6,10 +6,10 @@ import json
 import uuid
 
 from app.models.event import STATUS_CLOSED, STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from tests._fixtures import DETECTION_URL, make_detection, make_event
 from tests.conftest import login_as
 from tests.events._helpers import (
     WORLD_BBOX,
-    _make_geo,
     client,
     proof_file_part,
     proof_form_field,
@@ -20,7 +20,7 @@ from tests.events._helpers import (
 
 def test_owner_has_no_delete_verb(db, author):
     """The path serves no ``DELETE``: the owner closes a row, an admin destroys it."""
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     geo_id = geo.id
     response = client.delete(f"/api/v1/events/{geo_id}", headers=login_as(client, author))
     assert response.status_code == 405
@@ -29,7 +29,7 @@ def test_owner_has_no_delete_verb(db, author):
 
 
 def test_admin_hard_delete_still_removes_the_row(db, author, admin_user):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     geo_id = geo.id
     response = client.delete(
         f"/api/v1/admin/events/{geo_id}?hard=true",
@@ -38,21 +38,6 @@ def test_admin_hard_delete_still_removes_the_row(db, author, admin_user):
     assert response.status_code == 200
     db.expire_all()
     assert db.query(Event).filter(Event.id == geo_id).first() is None
-
-
-DETECTION_URL = "https://x.com/a/status/1"
-
-
-def _detected(db, author, **kwargs):
-    """A machine ``detected`` row, born tagless unless ``tags`` is passed."""
-    return _make_geo(
-        db,
-        author=author,
-        status=STATUS_DETECTED,
-        detected_from_url=DETECTION_URL,
-        source_url=DETECTION_URL,
-        **kwargs,
-    )
 
 
 def _kept(geo, url=DETECTION_URL, **kw) -> str:
@@ -91,7 +76,7 @@ def _floor_files():
 
 
 def test_geolocate_requires_authentication(db, author):
-    geo = _detected(db, author)
+    geo = make_detection(db, author)
     response = client.post(f"/api/v1/events/{geo.id}/versions", data=_geolocate_form())
     assert response.status_code == 401
 
@@ -106,7 +91,7 @@ def test_geolocate_returns_404_for_unknown_id(author):
 
 
 def test_geolocate_returns_404_for_soft_deleted(db, author):
-    geo = _detected(db, author, deleted=True)
+    geo = make_detection(db, author, deleted=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(),
@@ -116,7 +101,7 @@ def test_geolocate_returns_404_for_soft_deleted(db, author):
 
 
 def test_geolocate_returns_403_when_not_owner(db, author, second_user):
-    geo = _detected(db, author)
+    geo = make_detection(db, author)
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(),
@@ -127,7 +112,7 @@ def test_geolocate_returns_403_when_not_owner(db, author, second_user):
 
 def test_a_publish_form_is_refused_on_a_published_row(db, author):
     """A form loaded at version 0 cannot land on a row that is already version 1."""
-    geo = _make_geo(db, author=author)  # default status = geolocated
+    geo = make_event(db, author=author)  # default status = geolocated
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(version_no="0"),
@@ -138,7 +123,7 @@ def test_a_publish_form_is_refused_on_a_published_row(db, author):
 
 
 def test_publishing_a_closed_row_is_refused(db, author):
-    geo = _make_geo(db, author=author, status=STATUS_DETECTED)
+    geo = make_event(db, author=author, status=STATUS_DETECTED)
     client.post(
         f"/api/v1/events/{geo.id}/close",
         json={"close_reason": "Not mine"},
@@ -155,7 +140,7 @@ def test_publishing_a_closed_row_is_refused(db, author):
 
 def test_geolocate_writes_fields_and_freezes(db, author, conflict):
     """The whole form lands, the source's capture details included; no tag is required."""
-    geo = _detected(db, author, with_media=True, kind="unknown")
+    geo = make_detection(db, author, with_media=True, kind="unknown")
     sources = _kept(
         geo,
         kind="drone",
@@ -201,7 +186,7 @@ def test_geolocate_writes_fields_and_freezes(db, author, conflict):
 
 def test_geolocate_accepts_missing_occurred_date(db, author, conflict):
     """A null date reads as Unknown: footage does not always establish when it happened."""
-    geo = _detected(db, author, with_media=True)
+    geo = make_detection(db, author, with_media=True)
     form = _floor_form(conflict, geo)
     del form["occurred_date"]
     response = client.post(
@@ -220,7 +205,7 @@ def test_geolocate_applies_the_sources_but_ignores_provenance_and_state(db, auth
     """The owner curates the form: the sources are editable. Only
     ``detected_from_url`` (provenance) and ``status`` have no field, so sending
     them is silently ignored. The row ends ``geolocated`` via the verb itself."""
-    geo = _detected(db, author, with_media=True)
+    geo = make_detection(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_floor_form(
@@ -244,7 +229,7 @@ def test_geolocate_applies_the_sources_but_ignores_provenance_and_state(db, auth
 
 def test_geolocate_rejects_out_of_range_coordinate(db, author):
     """Coordinate validation runs before the floor, so a bare form still 400s."""
-    geo = _detected(db, author)
+    geo = make_detection(db, author)
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(lat="200.0"),
@@ -255,7 +240,7 @@ def test_geolocate_rejects_out_of_range_coordinate(db, author):
 
 
 def test_geolocate_blocked_without_media(db, author, conflict):
-    geo = _detected(db, author, with_media=False)
+    geo = make_detection(db, author, with_media=False)
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_floor_form(conflict, geo),
@@ -267,7 +252,7 @@ def test_geolocate_blocked_without_media(db, author, conflict):
 
 
 def test_geolocate_blocked_without_proof_image(db, author, conflict):
-    geo = _detected(db, author, with_media=True)
+    geo = make_detection(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(conflict_ids=json.dumps([str(conflict.id)]), sources=_kept(geo)),
@@ -280,7 +265,7 @@ def test_geolocate_blocked_without_proof_image(db, author, conflict):
 def test_geolocate_blocked_without_a_conflict(db, author):
     """A detected row is born without one; geolocate enforces the floor the machine path
     skipped."""
-    geo = _detected(db, author, with_media=True)
+    geo = make_detection(db, author, with_media=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_geolocate_form(proof=proof_form_field(), sources=_kept(geo)),
@@ -292,7 +277,7 @@ def test_geolocate_blocked_without_a_conflict(db, author):
 
 
 def test_geolocate_freezes_against_resubmit(db, author, conflict):
-    geo = _detected(db, author, with_media=True)
+    geo = make_detection(db, author, with_media=True)
     ok = client.post(
         f"/api/v1/events/{geo.id}/versions",
         data=_floor_form(conflict, geo, version_no="0"),
@@ -314,7 +299,7 @@ def test_geolocate_freezes_against_resubmit(db, author, conflict):
 
 
 def test_geolocate_invalidates_points_cache(db, author, conflict):
-    geo = _detected(db, author, with_media=True)
+    geo = make_detection(db, author, with_media=True)
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "MISS"
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "HIT"
     client.post(
@@ -335,26 +320,26 @@ def _close(geo_id, user, reason="Not the claimed location"):
 
 
 def test_close_requires_authentication(db, author):
-    geo = _detected(db, author)
+    geo = make_detection(db, author)
     response = client.post(f"/api/v1/events/{geo.id}/close", json={"close_reason": "x"})
     assert response.status_code == 401
 
 
 def test_close_returns_404_for_soft_deleted(db, author):
-    geo = _detected(db, author, deleted=True)
+    geo = make_detection(db, author, deleted=True)
     response = _close(geo.id, author)
     assert response.status_code == 404
 
 
 def test_close_returns_403_when_not_owner(db, author, second_user):
-    geo = _detected(db, author)
+    geo = make_detection(db, author)
     response = _close(geo.id, second_user)
     assert response.status_code == 403
 
 
 def test_close_retracts_a_published_row(db, author):
     """The closed page keeps the id, coordinate and reason as the record of a retracted claim."""
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     geo_id = geo.id
     response = _close(geo_id, author, reason="Wrong village, corrected elsewhere")
     assert response.status_code == 200
@@ -372,7 +357,7 @@ def test_close_retracts_a_published_row(db, author):
 
 
 def test_retraction_leaves_the_read_views_and_the_map(db, author):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     geo_id = geo.id
     assert str(geo_id) in {r["id"] for r in client.get("/api/v1/events").json()}
     assert str(geo_id) in {
@@ -390,7 +375,7 @@ def test_retraction_leaves_the_read_views_and_the_map(db, author):
 
 def test_retraction_leaves_the_published_feed_and_count(db, author):
     """``published_events`` backs both the profile feed and its count."""
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
 
     def feed():
         body = client.get(f"/api/v1/users/{author.username}/events").json()
@@ -407,7 +392,7 @@ def test_retraction_leaves_the_published_feed_and_count(db, author):
 
 
 def test_close_rejects_an_already_closed_row(db, author):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     assert _close(geo.id, author).status_code == 200
     response = _close(geo.id, author)
     assert response.status_code == 409
@@ -415,7 +400,7 @@ def test_close_rejects_an_already_closed_row(db, author):
 
 
 def test_retracted_row_cannot_be_edited(db, author, conflict):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     assert _close(geo.id, author).status_code == 200
     response = client.post(
         f"/api/v1/events/{geo.id}/versions",
@@ -428,7 +413,7 @@ def test_retracted_row_cannot_be_edited(db, author, conflict):
 
 def test_close_keeps_detected_row_visible(db, author):
     """A rejected detection stays publicly readable instead of being hidden."""
-    geo = _detected(db, author)
+    geo = make_detection(db, author)
     geo_id = geo.id
     response = _close(geo_id, author, reason="Bot misread the coordinates")
     assert response.status_code == 200
@@ -452,7 +437,7 @@ def test_close_keeps_detected_row_visible(db, author):
 
 def test_closed_detection_leaves_the_map(db, author):
     """The map shows live confidence only; the list keeps the audit trail."""
-    geo = _detected(db, author)
+    geo = make_detection(db, author)
     points = {row[0] for row in client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").json()}
     assert str(geo.id) in points
 
@@ -463,7 +448,7 @@ def test_closed_detection_leaves_the_map(db, author):
 
 
 def test_close_invalidates_points_cache(db, author):
-    geo = _detected(db, author)
+    geo = make_detection(db, author)
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "MISS"
     assert client.get(f"/api/v1/events/points?bbox={WORLD_BBOX}").headers.get("x-cache") == "HIT"
     _close(geo.id, author)

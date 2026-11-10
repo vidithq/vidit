@@ -19,7 +19,6 @@ import httpx
 
 from app.services.tweet_ingest import Detection, Resolution, acquire_thread, read_tweets, stitch
 from app.services.tweet_ingest.records import TweetRecord
-from app.services.tweet_ingest.syndication import _cache_clear
 from app.services.tweet_ingest.urls import TELEGRAM_HOST_RE
 from tests._fixtures import TINY_MP4, write_archive_js
 
@@ -164,11 +163,9 @@ def syndication_client(typology: str) -> httpx.Client:
 
     An ``x.com`` read answers from the bodies, a ``t.me`` read from ``embed.html``. A 404
     is X's answer for an invisible post, so an out-of-fixture chase fails soft offline.
-    The fetch cache is cleared first so another typology's body cannot answer here.
     """
     bodies = load_bodies(typology)
     embed = load_embed(typology)
-    _cache_clear()
 
     def handler(request: httpx.Request) -> httpx.Response:
         if TELEGRAM_HOST_RE.match(request.url.host.lower()) is not None:

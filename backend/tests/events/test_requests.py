@@ -38,10 +38,9 @@ from app.services.events import (
     update_request,
 )
 from app.services.sanitize import extract_image_srcs
-from tests._fixtures import fake_sha256
+from tests._fixtures import fake_sha256, make_event
 from tests.conftest import login_as
 from tests.events._helpers import (
-    _make_geo,
     client,
     filed_source,
     proof_file_part,
@@ -165,7 +164,7 @@ def test_list_filters_by_status(db, author):
 def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
     """``before_closed_status`` splits a withdrawn request from a rejected detection."""
     withdrawn = _make_request(db, author=author, status=STATUS_CLOSED)
-    rejected = _make_geo(db, author=author, status=STATUS_CLOSED)
+    rejected = make_event(db, author=author, status=STATUS_CLOSED)
     rejected.before_closed_status = "detected"
     db.commit()
 
@@ -177,7 +176,7 @@ def test_list_includes_withdrawn_but_not_rejected_closed(db, author):
 def test_list_excludes_located_events(db, author):
     """A fulfilled request never surfaces in the requested view."""
     requested = _make_request(db, author=author)
-    located = _make_geo(db, author=author, status=STATUS_GEOLOCATED)
+    located = make_event(db, author=author, status=STATUS_GEOLOCATED)
 
     ids = {row["id"] for row in client.get(_LIST).json()}
     assert str(requested.id) in ids
@@ -834,7 +833,7 @@ def test_edit_request_requires_authentication(db, author):
 def test_edit_request_rejects_a_row_that_left_requested(db, author):
     """Only an open request takes this write."""
     for status in (STATUS_GEOLOCATED, "detected", STATUS_CLOSED):
-        geo = _make_geo(db, author=author, status=status, with_media=True)
+        geo = make_event(db, author=author, status=status, with_media=True)
         response = _edit_request(geo, author)
         assert response.status_code == 409, f"{status}: {response.text}"
         assert response.json()["detail"]["code"] == "invalid_state"

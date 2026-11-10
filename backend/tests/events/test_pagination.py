@@ -11,8 +11,9 @@ import orjson
 
 from app.models.event import STATUS_DETECTED
 from app.services.pagination import MAX_PAGE_SIZE
+from tests._fixtures import make_event
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import client
 
 _LIST = "/api/v1/events"
 _DETECTIONS = "/api/v1/events/detections"
@@ -48,7 +49,7 @@ def _walk(first_path: str, headers: dict[str, str] | None = None) -> list[list[s
 def test_list_caps_at_100_however_many_are_asked_for(db, author):
     """Over-asking is not an error, it just does not buy more rows."""
     for _ in range(MAX_PAGE_SIZE + 5):
-        _make_geo(db, author=author)
+        make_event(db, author=author)
 
     response = client.get(f"{_LIST}?limit=500&author={author.username}")
     assert response.status_code == 200
@@ -62,7 +63,7 @@ def test_detections_caps_at_100_however_many_are_asked_for(author):
 
 
 def test_list_cursor_walks_the_whole_set_without_gaps_or_duplicates(db, author):
-    created = {str(_make_geo(db, author=author).id) for _ in range(7)}
+    created = {str(make_event(db, author=author).id) for _ in range(7)}
 
     pages = _walk(f"{_LIST}?limit=3&author={author.username}")
 
@@ -74,7 +75,7 @@ def test_list_cursor_walks_the_whole_set_without_gaps_or_duplicates(db, author):
 
 def test_list_link_header_absent_on_the_last_page(db, author):
     for _ in range(2):
-        _make_geo(db, author=author)
+        make_event(db, author=author)
 
     response = client.get(f"{_LIST}?limit=50&author={author.username}")
     assert response.status_code == 200
@@ -83,8 +84,8 @@ def test_list_link_header_absent_on_the_last_page(db, author):
 
 def test_list_cursor_keeps_the_filters_it_was_minted_under(db, author, second_user):
     """The next-page URL carries the whole query, so a walk stays in one view."""
-    mine = {str(_make_geo(db, author=author).id) for _ in range(3)}
-    _make_geo(db, author=second_user)
+    mine = {str(make_event(db, author=author).id) for _ in range(3)}
+    make_event(db, author=second_user)
 
     pages = _walk(f"{_LIST}?limit=2&author={author.username}")
 
@@ -100,13 +101,13 @@ def test_list_cursor_holds_across_a_row_landing_mid_walk(db, author):
     base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     first_batch = []
     for minute in range(4):
-        geo = _make_geo(db, author=author)
+        geo = make_event(db, author=author)
         geo.created_at = base + timedelta(minutes=minute)
         first_batch.append(str(geo.id))
     db.commit()
 
     page1 = client.get(f"{_LIST}?limit=2&author={author.username}")
-    late = _make_geo(db, author=author)
+    late = make_event(db, author=author)
     late.created_at = base + timedelta(hours=1)
     db.commit()
     page2 = client.get(_next_path(page1))
@@ -120,7 +121,7 @@ def test_detections_offset_pager_walks_the_whole_queue(db, author):
     walk ends on the first short page."""
     created = {
         str(
-            _make_geo(
+            make_event(
                 db,
                 author=author,
                 status=STATUS_DETECTED,
@@ -153,7 +154,7 @@ def test_list_oldest_sort_walks_the_whole_set_ascending(db, author):
     base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     created = []
     for minute in range(7):
-        geo = _make_geo(db, author=author)
+        geo = make_event(db, author=author)
         geo.created_at = base + timedelta(minutes=minute)
         created.append(str(geo.id))
     db.commit()
@@ -167,7 +168,7 @@ def test_list_oldest_sort_walks_the_whole_set_ascending(db, author):
 def test_list_oldest_sort_breaks_created_at_ties_on_id(db, author):
     """Rows sharing a ``created_at`` page by ``id``, so the walk stays total."""
     stamp = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
-    rows = [_make_geo(db, author=author) for _ in range(5)]
+    rows = [make_event(db, author=author) for _ in range(5)]
     for geo in rows:
         geo.created_at = stamp
     db.commit()
@@ -222,7 +223,7 @@ def test_list_accepts_a_well_formed_cursor_it_did_not_mint(db, author):
     It carries no authorisation and every filter still applies.
     """
     for _ in range(3):
-        _make_geo(db, author=author)
+        make_event(db, author=author)
 
     forged = _encode([datetime.now(UTC).isoformat(), str(uuid.uuid4())])
     response = client.get(f"{_LIST}?cursor={forged}&author={author.username}")

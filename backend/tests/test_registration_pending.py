@@ -18,34 +18,8 @@ from app.models.invite_code import InviteCode
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
 from app.routers import auth as auth_router
-from app.services import email, registration
+from app.services import registration
 from app.services.auth_cookies import CSRF_COOKIE, SESSION_COOKIE
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def email_recorder(monkeypatch):
-
-    sent: list[email.Email] = []
-
-    def _record(email_obj: email.Email) -> None:
-        sent.append(email_obj)
-
-    monkeypatch.setattr(auth_router.email, "send", _record)
-    return sent
 
 
 @pytest.fixture
@@ -83,7 +57,7 @@ def _extract_token(text: str) -> str:
     return text[idx:end]
 
 
-def test_register_returns_202_and_no_user_row(client, invite_code, email_recorder, db):
+def test_register_returns_202_and_no_user_row(client, invite_code, sent_emails, db):
     payload = _unique_payload(invite_code)
     response = client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 202, response.text
@@ -100,13 +74,13 @@ def test_register_returns_202_and_no_user_row(client, invite_code, email_recorde
     assert pending.username == payload["username"]
     assert pending.invite_code_id == invite_code.id
 
-    assert len(email_recorder) == 1
-    sent = email_recorder[0]
+    assert len(sent_emails) == 1
+    sent = sent_emails[0]
     assert sent.to == payload["email"]
     assert "/confirm-registration?token=" in sent.text
 
 
-def test_register_does_not_set_session_cookie(client, invite_code, email_recorder):
+def test_register_does_not_set_session_cookie(client, invite_code, sent_emails):
     response = client.post("/api/v1/auth/register", json=_unique_payload(invite_code))
     assert response.status_code == 202
     # No login cookie until the user proves email control.
@@ -114,7 +88,7 @@ def test_register_does_not_set_session_cookie(client, invite_code, email_recorde
     assert CSRF_COOKIE not in client.cookies
 
 
-def test_register_does_not_consume_invite(client, invite_code, email_recorder, db):
+def test_register_does_not_consume_invite(client, invite_code, sent_emails, db):
     """An abandoned signup does not burn the invite (``used_at`` is stamped at confirmation)."""
     client.post("/api/v1/auth/register", json=_unique_payload(invite_code))
     db.refresh(invite_code)
@@ -122,7 +96,7 @@ def test_register_does_not_consume_invite(client, invite_code, email_recorder, d
     assert invite_code.used_by_id is None
 
 
-def test_register_rejects_unknown_invite(client, email_recorder, db):
+def test_register_rejects_unknown_invite(client, sent_emails, db):
     payload = {
         "username": f"u{uuid.uuid4().hex[:8]}",
         "email": f"{uuid.uuid4().hex}@example.com",
@@ -131,14 +105,14 @@ def test_register_rejects_unknown_invite(client, email_recorder, db):
     }
     response = client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 400
-    assert email_recorder == []
+    assert sent_emails == []
     assert (
         db.query(PendingRegistration).filter(PendingRegistration.email == payload["email"]).first()
         is None
     )
 
 
-def test_register_caps_the_password_at_72_bytes(client, invite_code, email_recorder, db):
+def test_register_caps_the_password_at_72_bytes(client, invite_code, sent_emails, db):
     # 36 "é" encode to 72 bytes; one more letter makes 73 bytes in 37 characters.
     at_cap = {**_unique_payload(invite_code), "password": "é" * 36}
     over_cap = {**_unique_payload(invite_code), "password": "é" * 36 + "a"}
@@ -155,7 +129,7 @@ def test_register_caps_the_password_at_72_bytes(client, invite_code, email_recor
     )
 
 
-def test_register_rejects_when_email_is_pending(client, invite_code, email_recorder, db):
+def test_register_rejects_when_email_is_pending(client, invite_code, sent_emails, db):
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
 
@@ -170,10 +144,10 @@ def test_register_rejects_when_email_is_pending(client, invite_code, email_recor
         db.query(PendingRegistration).filter(PendingRegistration.email == payload["email"]).all()
     )
     assert len(pendings) == 1
-    assert len(email_recorder) == 1
+    assert len(sent_emails) == 1
 
 
-def test_register_rejects_when_email_already_registered(client, invite_code, email_recorder, db):
+def test_register_rejects_when_email_already_registered(client, invite_code, sent_emails, db):
     # Existing user with this email: "account exists", not "in flight".
     existing_email = f"prev-{uuid.uuid4().hex}@example.com"
     user = User(
@@ -191,13 +165,13 @@ def test_register_rejects_when_email_already_registered(client, invite_code, ema
         body = response.json()
         assert body["detail"]["code"] == "email_already_registered"
         assert "already exists" in body["detail"]["message"].lower()
-        assert email_recorder == []
+        assert sent_emails == []
     finally:
         db.delete(user)
         db.commit()
 
 
-def test_register_soft_deleted_user_still_blocks_email(client, invite_code, email_recorder, db):
+def test_register_soft_deleted_user_still_blocks_email(client, invite_code, sent_emails, db):
     """A soft-deleted user keeps its email bound: re-registration is refused."""
     deleted_email = f"deleted-{uuid.uuid4().hex}@example.com"
     user = User(
@@ -213,14 +187,14 @@ def test_register_soft_deleted_user_still_blocks_email(client, invite_code, emai
         payload["email"] = deleted_email
         response = client.post("/api/v1/auth/register", json=payload)
         assert response.status_code == 409
-        assert email_recorder == []
+        assert sent_emails == []
     finally:
         db.delete(user)
         db.commit()
 
 
 def test_register_schedules_email_send_via_background_tasks(
-    client, invite_code, email_recorder, monkeypatch
+    client, invite_code, sent_emails, monkeypatch
 ):
     """The Resend round-trip is scheduled, not called inline.
 
@@ -248,10 +222,10 @@ def test_register_schedules_email_send_via_background_tasks(
     assert kwargs.get("to") and kwargs.get("raw_token")
 
 
-def test_confirm_creates_user_and_signs_them_in(client, invite_code, email_recorder, db):
+def test_confirm_creates_user_and_signs_them_in(client, invite_code, sent_emails, db):
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     response = client.post("/api/v1/auth/confirm-registration", json={"token": token})
     assert response.status_code == 200, response.text
@@ -278,7 +252,7 @@ def test_confirm_creates_user_and_signs_them_in(client, invite_code, email_recor
     db.commit()
 
 
-def test_confirm_with_invalid_token_returns_400(client, email_recorder):
+def test_confirm_with_invalid_token_returns_400(client, sent_emails):
     response = client.post(
         "/api/v1/auth/confirm-registration",
         json={"token": "x" * 32},  # well-formed length but never minted
@@ -287,10 +261,10 @@ def test_confirm_with_invalid_token_returns_400(client, email_recorder):
     assert SESSION_COOKIE not in client.cookies
 
 
-def test_confirm_with_expired_token_returns_400(client, invite_code, email_recorder, db):
+def test_confirm_with_expired_token_returns_400(client, invite_code, sent_emails, db):
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     pending = (
         db.query(PendingRegistration).filter(PendingRegistration.email == payload["email"]).first()
@@ -305,7 +279,7 @@ def test_confirm_with_expired_token_returns_400(client, invite_code, email_recor
 
 
 def test_confirm_with_revoked_invite_returns_400_and_releases_pending(
-    client, invite_code, email_recorder, db
+    client, invite_code, sent_emails, db
 ):
     """Admin revokes the invite between register and confirm: 400, address released.
 
@@ -314,7 +288,7 @@ def test_confirm_with_revoked_invite_returns_400_and_releases_pending(
     """
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     invite_code.revoked_at = datetime.now(UTC)
     db.commit()
@@ -334,12 +308,12 @@ def test_confirm_with_revoked_invite_returns_400_and_releases_pending(
 
 
 def test_confirm_with_expired_invite_returns_400_and_releases_pending(
-    client, invite_code, email_recorder, db
+    client, invite_code, sent_emails, db
 ):
     """Invite expires between register and confirm → 400, address released."""
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     invite_code.expires_at = datetime.now(UTC) - timedelta(minutes=1)
     db.commit()
@@ -357,7 +331,7 @@ def test_confirm_with_expired_invite_returns_400_and_releases_pending(
 
 
 def test_confirm_with_already_consumed_invite_returns_400_and_releases_pending(
-    client, invite_code, email_recorder, db
+    client, invite_code, sent_emails, db
 ):
     """Invite consumed by another path (two-tab paste) between register and confirm: 400, address released.
 
@@ -365,7 +339,7 @@ def test_confirm_with_already_consumed_invite_returns_400_and_releases_pending(
     """
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     # Simulate another path having consumed the invite.
     invite_code.used_at = datetime.now(UTC)
@@ -383,11 +357,11 @@ def test_confirm_with_already_consumed_invite_returns_400_and_releases_pending(
     )
 
 
-def test_confirm_is_single_use(client, invite_code, email_recorder, db):
+def test_confirm_is_single_use(client, invite_code, sent_emails, db):
     """A second click on the same link fails: the first click deleted the pending row."""
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     first = client.post("/api/v1/auth/confirm-registration", json={"token": token})
     assert first.status_code == 200
@@ -400,24 +374,24 @@ def test_confirm_is_single_use(client, invite_code, email_recorder, db):
     db.commit()
 
 
-def test_resend_confirmation_returns_204_for_unknown_email(client, email_recorder):
+def test_resend_confirmation_returns_204_for_unknown_email(client, sent_emails):
     response = client.post(
         "/api/v1/auth/resend-confirmation",
         json={"email": f"nobody-{uuid.uuid4().hex}@example.com"},
     )
     assert response.status_code == 204
-    assert email_recorder == []
+    assert sent_emails == []
 
 
-def test_resend_confirmation_re_sends_for_live_pending(client, invite_code, email_recorder, db):
+def test_resend_confirmation_re_sends_for_live_pending(client, invite_code, sent_emails, db):
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
     # The resend sends a second email with a different token (the old one is dead).
-    first_token = _extract_token(email_recorder[0].text)
+    first_token = _extract_token(sent_emails[0].text)
     response = client.post("/api/v1/auth/resend-confirmation", json={"email": payload["email"]})
     assert response.status_code == 204
-    assert len(email_recorder) == 2
-    second_token = _extract_token(email_recorder[1].text)
+    assert len(sent_emails) == 2
+    second_token = _extract_token(sent_emails[1].text)
     assert second_token != first_token
 
     response = client.post("/api/v1/auth/confirm-registration", json={"token": first_token})
@@ -590,7 +564,7 @@ def test_consume_invite_code_does_not_over_consume_under_race(db, invite_code):
         db.commit()
 
 
-def test_confirm_is_atomic_under_parallel_use(client, invite_code, email_recorder, db):
+def test_confirm_is_atomic_under_parallel_use(client, invite_code, sent_emails, db):
     """Two concurrent confirms with the same token create one user.
 
     The DELETE-RETURNING claim on ``pending_registrations`` is the single-use
@@ -602,7 +576,7 @@ def test_confirm_is_atomic_under_parallel_use(client, invite_code, email_recorde
 
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     statuses: list[int] = []
     barrier = threading.Barrier(2)
@@ -631,7 +605,7 @@ def test_confirm_is_atomic_under_parallel_use(client, invite_code, email_recorde
     db.commit()
 
 
-def test_register_normalizes_email_case(client, invite_code, email_recorder, db):
+def test_register_normalizes_email_case(client, invite_code, sent_emails, db):
     """``Admin@vidit.app`` vs ``admin@vidit.app`` is an admin-escalation vector.
 
     The case-sensitive UNIQUE on ``users.email`` would let both register and
@@ -674,14 +648,14 @@ def test_reap_pending_registrations_keeps_live_rows(db, invite_code):
         db.commit()
 
 
-def test_confirm_copies_invite_x_handle_onto_account(client, invite_code, email_recorder, db):
+def test_confirm_copies_invite_x_handle_onto_account(client, invite_code, sent_emails, db):
     bound = f"bh{uuid.uuid4().hex[:10]}"
     invite_code.x_handle = bound
     db.commit()
 
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
     response = client.post("/api/v1/auth/confirm-registration", json={"token": token})
     assert response.status_code == 200, response.text
 
@@ -694,7 +668,7 @@ def test_confirm_copies_invite_x_handle_onto_account(client, invite_code, email_
 
 
 def test_confirm_survives_taken_x_handle_and_skips_link(
-    client, invite_code, email_recorder, db, caplog
+    client, invite_code, sent_emails, db, caplog
 ):
     """A handle linked to another account between mint and redemption: registration succeeds without the link.
 
@@ -714,7 +688,7 @@ def test_confirm_survives_taken_x_handle_and_skips_link(
 
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
     with caplog.at_level(logging.WARNING, logger="app.services.registration"):
         response = client.post("/api/v1/auth/confirm-registration", json={"token": token})
     assert response.status_code == 200, response.text

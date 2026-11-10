@@ -1,8 +1,4 @@
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-client = TestClient(app)
+from tests._fixtures import client
 
 
 def test_health_endpoint():

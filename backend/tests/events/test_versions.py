@@ -33,11 +33,9 @@ from app.models.notification import Notification
 from app.models.source import SourceLink
 from app.services import versions as versions_service
 from app.services.sanitize import extract_image_srcs
-from app.services.storage import get_storage
-from tests._fixtures import fake_sha256, stored_keys, stored_path
+from tests._fixtures import fake_sha256, make_event, storage_key, stored_keys, stored_path
 from tests.conftest import login_as
 from tests.events._helpers import (
-    _make_geo,
     client,
     filed_source,
     proof_file_part,
@@ -66,7 +64,7 @@ def _published(
 ):
     """A row (``geolocated`` unless ``status`` says otherwise) carrying the whole published
     floor an edit has to keep."""
-    geo = _make_geo(
+    geo = make_event(
         db,
         author=author,
         status=status,
@@ -133,12 +131,6 @@ def _publish(user, conflict, sources: str) -> dict:
     )
     assert response.status_code == 201, response.text
     return response.json()
-
-
-def _key(url: str) -> str:
-    key = get_storage().key_from_url(url)
-    assert key is not None
-    return key
 
 
 def _filed(db, geo_id) -> EventVersion:
@@ -287,7 +279,7 @@ def test_a_superseded_source_file_outlives_its_row_until_the_last_version_naming
     first, second = body["sources"]
     target = first if how == "replaced" else second
     old_url = target["media"]["storage_url"]
-    key = _key(old_url)
+    key = storage_key(old_url)
 
     if how == "replaced":
         sources = sources_field(
@@ -324,7 +316,7 @@ def test_hard_delete_erases_the_files_only_a_past_version_names(db, author, admi
     )
     assert response.status_code == 200, response.text
     [old_proof] = extract_image_srcs(body["proof"])
-    assert {_key(first["media"]["storage_url"]), _key(old_proof)} <= stored_keys()
+    assert {storage_key(first["media"]["storage_url"]), storage_key(old_proof)} <= stored_keys()
 
     response = client.delete(
         f"/api/v1/admin/events/{body['id']}?hard=true", headers=login_as(client, admin_user)
@@ -466,7 +458,7 @@ def test_a_row_created_published_has_no_version_0(db, author, conflict):
 
 def test_save_version_refuses_a_closed_row(db, author, conflict):
     """A closed row takes no write: 409."""
-    geo = _make_geo(
+    geo = make_event(
         db,
         author=author,
         status=STATUS_CLOSED,
@@ -898,7 +890,7 @@ def test_a_proof_may_cite_a_superseded_source_file_which_redaction_then_keeps(
     body = _publish(author, conflict, filed_source(author))
     [source] = body["sources"]
     old_url = source["media"]["storage_url"]
-    key = _key(old_url)
+    key = storage_key(old_url)
     cited = body["proof"] + f'<p>The frame.</p><img src="{old_url}">'
 
     replaced = _save_version(

@@ -1,21 +1,14 @@
-import io
 from unittest.mock import MagicMock
 
 import boto3
 import pytest
-from fastapi import UploadFile
 from moto import mock_aws
 
 from app.services.storage import S3Storage, StorageDeleteError
+from tests._fixtures import upload_file
 
 REGION = "us-east-1"
 BUCKET = "vidit-test-bucket"
-
-
-def _upload_file(name: str, content: bytes, content_type: str) -> UploadFile:
-    return UploadFile(
-        filename=name, file=io.BytesIO(content), headers={"content-type": content_type}
-    )
 
 
 @pytest.fixture
@@ -30,7 +23,7 @@ async def test_s3_storage_upload_puts_object_and_returns_s3_url(s3_setup):
     import hashlib
 
     backend = S3Storage(bucket=BUCKET, region=REGION)
-    file = _upload_file("evidence.jpg", b"image-bytes", "image/jpeg")
+    file = upload_file("evidence.jpg", b"image-bytes", "image/jpeg")
 
     result = await backend.upload(file, "uploads/abc/evidence.jpg")
 

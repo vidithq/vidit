@@ -8,19 +8,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.database import SessionLocal
 from app.models.invite_code import InviteCode
 from app.models.user import User
 from app.services.auth import validate_invite_code
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @pytest.fixture

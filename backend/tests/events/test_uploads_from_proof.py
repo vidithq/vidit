@@ -11,9 +11,16 @@ from app.models.event import STATUS_DETECTED, STATUS_REQUESTED, Event
 from app.models.media import Media
 from app.services import uploads as uploads_service
 from app.services.storage import content_sha256, get_storage
-from tests._fixtures import TINY_JPEG, store_bytes, stored_bytes, stored_keys, stored_path
+from tests._fixtures import (
+    TINY_JPEG,
+    make_event,
+    store_bytes,
+    stored_bytes,
+    stored_keys,
+    stored_path,
+)
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client, source_spec, sources_field, stage_file
+from tests.events._helpers import client, source_spec, sources_field, stage_file
 
 SOURCE_URL = "https://example.com/source"
 
@@ -39,7 +46,7 @@ def _with_proof_image(db, geo: Event, key: str = "proof/u/footage.jpg") -> str:
 def _detection(db, author, **kw) -> tuple[Event, str]:
     """A detection whose source is a link with no file, beside a proof image: the two halves
     of ``source_footage_missing`` the promote answers."""
-    geo = _make_geo(db, author=author, status=STATUS_DETECTED, source_url=SOURCE_URL, **kw)
+    geo = make_event(db, author=author, status=STATUS_DETECTED, source_url=SOURCE_URL, **kw)
     return geo, _with_proof_image(db, geo)
 
 
@@ -109,7 +116,7 @@ def test_the_staged_copy_fills_the_detections_source_on_the_publish(db, author, 
 
 
 def test_anyone_may_copy_a_proof_image_of_an_open_request(db, author, second_user):
-    geo = _make_geo(db, author=author, status=STATUS_REQUESTED, with_media=True)
+    geo = make_event(db, author=author, status=STATUS_REQUESTED, with_media=True)
     url = _with_proof_image(db, geo)
 
     assert _promote(second_user, geo.id, url).status_code == 201
@@ -126,9 +133,9 @@ def test_an_image_that_is_not_your_events_proof_image_is_refused(db, author, sec
     elif case == "unknown_event":
         event_id = uuid.uuid4()
     elif case == "another_event":
-        event_id = _make_geo(db, author=author, status=STATUS_DETECTED).id
+        event_id = make_event(db, author=author, status=STATUS_DETECTED).id
     elif case == "source_file":
-        sourced = _make_geo(db, author=author, status=STATUS_DETECTED, with_media=True)
+        sourced = make_event(db, author=author, status=STATUS_DETECTED, with_media=True)
         event_id, url = sourced.id, sourced.sources[0].media.storage_url
     before = stored_keys()
 

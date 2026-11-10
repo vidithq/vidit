@@ -7,20 +7,16 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-import pytest
-
 from app.models.approval import EventApproval
 from app.models.audit_log import AuditLog
 from app.models.event import STATUS_CLOSED, Event, EventGeolocator
 from app.models.notification import Notification
 from app.models.user import User
 from app.services import approvals
-from app.services.auth import hash_password
 from tests.conftest import login_as
 from tests.events._helpers import (
     approve,
     client,
-    delete_user,
     notifications_of,
     published_geo,
 )
@@ -28,30 +24,6 @@ from tests.events.test_versions import WAYBACK, _form, _kept, _save_version
 from tests.events.test_versions import _published as _published_with_floor
 
 _EVENTS = "/api/v1/events"
-
-
-@pytest.fixture
-def make_user(db):
-    made: list[uuid.UUID] = []
-
-    def make(**kw) -> User:
-        user = User(
-            username=f"ap{uuid.uuid4().hex[:8]}",
-            email=f"ap-{uuid.uuid4().hex}@example.com",
-            password_hash=hash_password("password123"),
-            **kw,
-        )
-        db.add(user)
-        db.commit()
-        made.append(user.id)
-        return user
-
-    yield make
-    db.expire_all()
-    for user_id in made:
-        db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        delete_user(db, user_id)
-    db.commit()
 
 
 def _delete(approval_id: str, user: User):

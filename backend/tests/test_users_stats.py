@@ -15,182 +15,32 @@ The profile insights aggregation:
 * Every aggregate covers visible ``geolocated`` and ``detected`` events only;
   soft-deleted, ``requested`` and ``closed`` rows take no part.
 * Unknown and soft-deleted usernames 404 like the profile.
-
-Fixtures are local: importing the events package's ``conftest.py`` would couple the suites.
 """
 
 from __future__ import annotations
 
+import functools
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
-from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
 
-from app.database import SessionLocal
-from app.main import app
-from app.models.conflict import Conflict
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
     STATUS_REQUESTED,
-    Event,
 )
-from app.models.media import Media
 from app.models.source import Source, SourceLink
-from app.models.tag import Tag
-from app.models.user import User
-from app.services.auth import hash_password
-from tests._fixtures import fake_sha256
-
-client = TestClient(app)
+from tests._fixtures import client, make_event
 
 
 def _month_str(d: date) -> str:
     return f"{d.year:04d}-{d.month:02d}"
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def live_user(db):
-    user = User(
-        username=f"stat{uuid.uuid4().hex[:8]}",
-        email=f"stat-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def soft_deleted_user(db):
-    user = User(
-        username=f"gone{uuid.uuid4().hex[:8]}",
-        email=f"gone-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        deleted_at=datetime.now(UTC),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def conflict(db):
-    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
-    db.add(row)
-    db.commit()
-    conflict_id = row.id
-    yield row
-    db.execute(Conflict.__table__.delete().where(Conflict.id == conflict_id))
-    db.commit()
-
-
-@pytest.fixture
-def free_tag(db):
-    tag = Tag(name=f"tag-{uuid.uuid4().hex[:8]}")
-    db.add(tag)
-    db.commit()
-    tag_id = tag.id
-    yield tag
-    db.execute(Tag.__table__.delete().where(Tag.id == tag_id))
-    db.commit()
-
-
-def _media() -> Media:
-    return Media(sha256=fake_sha256(), storage_url="s3://x/m.jpg", kind="image")
-
-
-def _make_geo(
-    db,
-    *,
-    author: User,
-    status: str = STATUS_GEOLOCATED,
-    before_closed_status: str = STATUS_DETECTED,
-    occurred_date: date | None = None,
-    source_url: str | None = "https://example.com/source",
-    kind: str = "unknown",
-    deleted: bool = False,
-    tags: list[Tag] | None = None,
-    conflicts: list[Conflict] | None = None,
-    with_media: bool = False,
-    proof_images: int = 0,
-    sources: list[Source] | None = None,
-) -> Event:
-    """Minimal event-row factory, stamped per the lifecycle CHECKs.
-
-    Builds one direct source with ``source_url`` (a file when ``with_media``),
-    none when ``source_url`` is None and there is no file; ``sources`` replaces
-    it. ``before_closed_status`` applies to a ``closed`` row only.
-    """
-    now = datetime.now(UTC)
-    geo = Event(
-        owner_id=author.id,
-        title=f"Geo {uuid.uuid4().hex[:8]}",
-        coords=from_shape(Point(34.5, 48.5), srid=4326),
-        occurred_date=occurred_date,
-        status=status,
-    )
-    if sources is not None:
-        geo.sources = sources
-    elif source_url is not None or with_media:
-        geo.sources = [
-            Source(
-                level="direct",
-                kind=kind,
-                links=[SourceLink(url=source_url)] if source_url is not None else [],
-                media=_media() if with_media else None,
-            )
-        ]
-    if status == STATUS_GEOLOCATED:
-        geo.geolocated_at = now
-    elif status == STATUS_DETECTED:
-        geo.detected_at = now
-    elif status == STATUS_CLOSED:
-        geo.closed_at = now
-        geo.before_closed_status = before_closed_status
-    if deleted:
-        geo.deleted_at = now
-    if tags:
-        geo.tags = tags
-    if conflicts:
-        geo.conflicts = conflicts
-    geo.media = [_media() for _ in range(proof_images)]
-    db.add(geo)
-    db.commit()
-    db.refresh(geo)
-    return geo
+# The stats read an ``unknown`` source as no kind and a dateless row as off the activity row.
+_make_geo = functools.partial(make_event, kind="unknown", occurred_date=None)
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────

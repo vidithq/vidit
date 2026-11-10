@@ -10,73 +10,18 @@ Without the ``tv`` semantics a leaked JWT stays live to its ``exp``.
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime, timedelta
 
 import jwt
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
-from app.database import SessionLocal
-from app.main import app
 from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User
-from app.routers import auth as auth_router
 from app.services import auth as auth_service
-from app.services import email, password_reset_tokens
+from app.services import password_reset_tokens
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
-from tests.conftest import TEST_CSRF_TOKEN, login_as
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def user_factory(db):
-    """Create users with a known password; cleaned up afterwards."""
-
-    created: list[User] = []
-
-    def _make(
-        *, password: str = "originalpassword1", deleted: bool = False, active: bool = True
-    ) -> tuple[User, str]:
-        user = User(
-            username=f"u{uuid.uuid4().hex[:12]}",
-            email=f"{uuid.uuid4().hex}@example.com",
-            password_hash=auth_service.hash_password(password),
-            is_active=active,
-            deleted_at=datetime.now(UTC) if deleted else None,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        created.append(user)
-        return user, password
-
-    yield _make
-
-    for user in created:
-        db.query(User).filter(User.id == user.id).delete()
-    db.commit()
-
-
-@pytest.fixture
-def email_recorder(monkeypatch):
-    sent: list[email.Email] = []
-    monkeypatch.setattr(auth_router.email, "send", lambda e: sent.append(e))
-    return sent
+from tests.conftest import DEFAULT_PASSWORD, TEST_CSRF_TOKEN, login_as
 
 
 def _sibling_session_cookie_for(user: User) -> str:
@@ -94,8 +39,8 @@ def _hit_me_with(client: TestClient, session_token: str) -> int:
 # ── Logout ────────────────────────────────────────────────────────────────
 
 
-def test_logout_bumps_token_version_and_invalidates_sibling_sessions(client, user_factory, db):
-    user, _ = user_factory()
+def test_logout_bumps_token_version_and_invalidates_sibling_sessions(client, make_user, db):
+    user = make_user()
     sibling_token = _sibling_session_cookie_for(user)
     assert _hit_me_with(client, sibling_token) == 200
 
@@ -110,8 +55,8 @@ def test_logout_bumps_token_version_and_invalidates_sibling_sessions(client, use
     assert _hit_me_with(client, sibling_token) == 401
 
 
-def test_logout_without_cookie_does_not_touch_any_user(client, user_factory, db):
-    user, _ = user_factory()
+def test_logout_without_cookie_does_not_touch_any_user(client, make_user, db):
+    user = make_user()
     starting_tv = user.token_version
 
     client.cookies.clear()
@@ -124,8 +69,8 @@ def test_logout_without_cookie_does_not_touch_any_user(client, user_factory, db)
     assert user.token_version == starting_tv
 
 
-def test_logout_with_tampered_cookie_does_not_bump(client, user_factory, db):
-    user, _ = user_factory()
+def test_logout_with_tampered_cookie_does_not_bump(client, make_user, db):
+    user = make_user()
     starting_tv = user.token_version
 
     # Signed with a different secret.
@@ -151,16 +96,16 @@ def test_logout_with_tampered_cookie_does_not_bump(client, user_factory, db):
 
 
 def test_change_password_invalidates_other_sessions_but_keeps_current_cookie_alive(
-    client, user_factory, email_recorder, db
+    client, make_user, sent_emails, db
 ):
-    user, current = user_factory()
+    user = make_user()
     sibling_token = _sibling_session_cookie_for(user)
     assert _hit_me_with(client, sibling_token) == 200
 
     headers = login_as(client, user)
     response = client.post(
         "/api/v1/auth/change-password",
-        json={"current_password": current, "new_password": "brandnewpassword2"},
+        json={"current_password": DEFAULT_PASSWORD, "new_password": "brandnewpassword2"},
         headers=headers,
     )
     assert response.status_code == 204
@@ -191,8 +136,8 @@ def _mint_reset_token(db, user: User) -> str:
     return raw
 
 
-def test_reset_password_bumps_token_version_for_all_sessions(client, user_factory, db):
-    user, _ = user_factory()
+def test_reset_password_bumps_token_version_for_all_sessions(client, make_user, db):
+    user = make_user()
     sibling_token = _sibling_session_cookie_for(user)
     raw_token = _mint_reset_token(db, user)
 
@@ -207,11 +152,11 @@ def test_reset_password_bumps_token_version_for_all_sessions(client, user_factor
     assert _hit_me_with(client, sibling_token) == 401
 
 
-def test_reset_password_rejects_soft_deleted_user_with_live_token(client, user_factory, db):
+def test_reset_password_rejects_soft_deleted_user_with_live_token(client, make_user, db):
     """``/login`` and the forgot-password mint reject soft-deleted accounts, so
     ``/reset-password`` must too: a token captured before the account was
     disabled cannot rotate the password back into a usable credential."""
-    user, _ = user_factory()
+    user = make_user()
     raw_token = _mint_reset_token(db, user)
 
     user.deleted_at = datetime.now(UTC)
@@ -234,9 +179,9 @@ def test_reset_password_rejects_soft_deleted_user_with_live_token(client, user_f
     assert row.consumed_at is None
 
 
-def test_reset_password_rejects_deactivated_user_with_live_token(client, user_factory, db):
+def test_reset_password_rejects_deactivated_user_with_live_token(client, make_user, db):
     """The same for deactivation (``is_active=False`` leaves rows intact)."""
-    user, _ = user_factory(active=False)
+    user = make_user(is_active=False)
     raw_token = _mint_reset_token(db, user)
 
     response = client.post(
@@ -249,13 +194,13 @@ def test_reset_password_rejects_deactivated_user_with_live_token(client, user_fa
 # ── Soft-delete ──────────────────────────────────────────────────────────
 
 
-def test_soft_delete_user_bumps_token_version(user_factory, db):
+def test_soft_delete_user_bumps_token_version(make_user, db):
     """Soft-deleting a user bumps ``token_version``, so cached paths fail too and an
     un-soft-delete does not revive old sessions."""
     from app.services import admin as admin_service
 
-    actor, _ = user_factory()
-    target, _ = user_factory()
+    actor = make_user()
+    target = make_user()
     starting_tv = target.token_version
 
     admin_service.soft_delete_user(db, actor_id=actor.id, user_id=target.id)
@@ -268,9 +213,9 @@ def test_soft_delete_user_bumps_token_version(user_factory, db):
 # ── Missing tv claim (pre-migration JWT shape) ───────────────────────────
 
 
-def test_jwt_without_tv_claim_returns_401(client, user_factory):
+def test_jwt_without_tv_claim_returns_401(client, make_user):
     """Tokens with no ``tv`` claim 401 (the one-time forced logout is intended)."""
-    user, _ = user_factory()
+    user = make_user()
     legacy = jwt.encode(
         {"sub": str(user.id), "exp": datetime.now(UTC) + timedelta(minutes=10)},
         settings.jwt_secret,

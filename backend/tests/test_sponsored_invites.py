@@ -7,83 +7,20 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.audit_log import AuditLog
 from app.models.invite_code import InviteCode
-from app.models.pending_registration import PendingRegistration
 from app.models.user import User
-from app.routers import auth as auth_router
-from app.services import email
-from app.services.auth import hash_password
-from app.services.auth_cookies import CSRF_HEADER
 from app.services.sponsored_invites import DAILY_MINT_LIMIT
-from tests.conftest import TEST_CSRF_TOKEN, login_as
-
-client = TestClient(app, headers={CSRF_HEADER: TEST_CSRF_TOKEN})
+from tests._fixtures import client
+from tests.conftest import login_as
 
 _MINE = "/api/v1/users/me/invite-codes"
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def user_ids(db):
-    """Every account a test creates, reaped with its codes and audit rows."""
-    ids: list[uuid.UUID] = []
-    yield ids
-    db.expire_all()
-    db.query(AuditLog).filter(AuditLog.actor_id.in_(ids)).delete(synchronize_session=False)
-    codes = db.query(InviteCode.id).filter(InviteCode.created_by_id.in_(ids))
-    db.query(PendingRegistration).filter(PendingRegistration.invite_code_id.in_(codes)).delete(
-        synchronize_session=False
-    )
-    db.query(InviteCode).filter(InviteCode.created_by_id.in_(ids)).delete(synchronize_session=False)
-    db.query(User).filter(User.id.in_(ids)).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def make_user(db, user_ids):
-    def factory(prefix: str = "sp", **kw) -> User:
-        user = User(
-            username=f"{prefix}{uuid.uuid4().hex[:8]}",
-            email=f"{prefix}-{uuid.uuid4().hex}@example.com",
-            password_hash=hash_password("password123"),
-            **kw,
-        )
-        db.add(user)
-        db.commit()
-        user_ids.append(user.id)
-        return user
-
-    return factory
 
 
 @pytest.fixture
 def sponsor(make_user):
     return make_user("spn")
-
-
-@pytest.fixture
-def admin(make_user):
-    return make_user("spadm", is_admin=True)
 
 
 def _handle() -> str:
@@ -161,9 +98,9 @@ def test_sixth_mint_in_a_utc_day_is_refused_with_the_reset_time(sponsor, db):
     )
 
 
-def test_revoked_codes_still_count_against_their_day(sponsor, admin, db):
+def test_revoked_codes_still_count_against_their_day(sponsor, admin_user, db):
     ids = [_mint(sponsor, _handle()).json()["id"] for _ in range(DAILY_MINT_LIMIT)]
-    headers = login_as(client, admin)
+    headers = login_as(client, admin_user)
     for invite_id in ids:
         revoke = client.post(f"/api/v1/admin/invite-codes/{invite_id}/revoke", headers=headers)
         assert revoke.status_code == 200
@@ -254,12 +191,14 @@ def test_quota_window_starts_at_midnight_utc(sponsor, db):
     assert _mint(sponsor, _handle()).status_code == 429
 
 
-def test_list_returns_own_codes_and_quota_state(sponsor, make_user, admin, db):
+def test_list_returns_own_codes_and_quota_state(sponsor, make_user, admin_user, db):
     other = make_user("spo")
     assert _mint(other, _handle()).status_code == 201
     first = _mint(sponsor, _handle()).json()
     second = _mint(sponsor, _handle()).json()
-    client.post(f"/api/v1/admin/invite-codes/{first['id']}/revoke", headers=login_as(client, admin))
+    client.post(
+        f"/api/v1/admin/invite-codes/{first['id']}/revoke", headers=login_as(client, admin_user)
+    )
 
     response = client.get(_MINE, headers=login_as(client, sponsor))
     assert response.status_code == 200
@@ -272,9 +211,9 @@ def test_list_returns_own_codes_and_quota_state(sponsor, make_user, admin, db):
     assert body["resets_at"].startswith((_today_start() + timedelta(days=1)).date().isoformat())
 
 
-def test_admin_switch_turns_minting_off_and_on(sponsor, admin, db):
+def test_admin_switch_turns_minting_off_and_on(sponsor, admin_user, db):
     path = f"/api/v1/admin/users/{sponsor.id}/invite-minting"
-    response = client.patch(path, json={"enabled": False}, headers=login_as(client, admin))
+    response = client.patch(path, json={"enabled": False}, headers=login_as(client, admin_user))
     assert response.status_code == 200
     assert response.json()["is_invite_minting_enabled"] is False
 
@@ -284,41 +223,41 @@ def test_admin_switch_turns_minting_off_and_on(sponsor, admin, db):
     listing = client.get(_MINE, headers=login_as(client, sponsor)).json()
     assert listing["minting_enabled"] is False
 
-    response = client.patch(path, json={"enabled": True}, headers=login_as(client, admin))
+    response = client.patch(path, json={"enabled": True}, headers=login_as(client, admin_user))
     assert response.json()["is_invite_minting_enabled"] is True
     assert _mint(sponsor, _handle()).status_code == 201
 
     actions = [
         row.action
         for row in db.query(AuditLog)
-        .filter(AuditLog.actor_id == admin.id)
+        .filter(AuditLog.actor_id == admin_user.id)
         .order_by(AuditLog.created_at.asc())
     ]
     assert actions == ["invite_minting_disabled", "invite_minting_enabled"]
 
 
-def test_admin_switch_is_idempotent_without_a_second_audit_row(sponsor, admin, db):
+def test_admin_switch_is_idempotent_without_a_second_audit_row(sponsor, admin_user, db):
     path = f"/api/v1/admin/users/{sponsor.id}/invite-minting"
-    headers = login_as(client, admin)
+    headers = login_as(client, admin_user)
     for _ in range(2):
         assert client.patch(path, json={"enabled": False}, headers=headers).status_code == 200
-    assert db.query(AuditLog).filter(AuditLog.actor_id == admin.id).count() == 1
+    assert db.query(AuditLog).filter(AuditLog.actor_id == admin_user.id).count() == 1
 
 
-def test_admin_switch_is_admin_only_and_404s_an_unknown_user(sponsor, admin):
+def test_admin_switch_is_admin_only_and_404s_an_unknown_user(sponsor, admin_user):
     path = f"/api/v1/admin/users/{sponsor.id}/invite-minting"
     response = client.patch(path, json={"enabled": False}, headers=login_as(client, sponsor))
     assert response.status_code == 403
 
     missing = f"/api/v1/admin/users/{uuid.uuid4()}/invite-minting"
-    response = client.patch(missing, json={"enabled": False}, headers=login_as(client, admin))
+    response = client.patch(missing, json={"enabled": False}, headers=login_as(client, admin_user))
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "user_not_found"
 
 
-def test_redemption_links_the_handle_and_the_sponsor(sponsor, admin, user_ids, db, monkeypatch):
-    sent: list[email.Email] = []
-    monkeypatch.setattr(auth_router.email, "send", sent.append)
+def test_redemption_links_the_handle_and_the_sponsor(
+    sponsor, admin_user, user_ids, db, sent_emails
+):
     handle = _handle()
     minted = _mint(sponsor, handle).json()
     client.cookies.clear()
@@ -331,7 +270,7 @@ def test_redemption_links_the_handle_and_the_sponsor(sponsor, admin, user_ids, d
         "invite_code": minted["code"],
     }
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202
-    token = sent[0].text.split("?token=", 1)[1].split()[0]
+    token = sent_emails[0].text.split("?token=", 1)[1].split()[0]
     response = client.post("/api/v1/auth/confirm-registration", json={"token": token})
     assert response.status_code == 200, response.text
 
@@ -341,7 +280,7 @@ def test_redemption_links_the_handle_and_the_sponsor(sponsor, admin, user_ids, d
     assert invitee.sponsor is not None
     assert invitee.sponsor.id == sponsor.id
 
-    headers = login_as(client, admin)
+    headers = login_as(client, admin_user)
     found = client.get(f"/api/v1/admin/users?q={invitee.username}", headers=headers).json()
     assert found[0]["sponsor"]["username"] == sponsor.username
     assert found[0]["is_invite_minting_enabled"] is True
@@ -355,10 +294,12 @@ def test_redemption_links_the_handle_and_the_sponsor(sponsor, admin, user_ids, d
     assert listing["items"][0]["status"] == "exhausted"
 
 
-def test_admin_minted_code_has_no_sponsor(admin):
-    response = client.post("/api/v1/admin/invite-codes", json={}, headers=login_as(client, admin))
+def test_admin_minted_code_has_no_sponsor(admin_user):
+    response = client.post(
+        "/api/v1/admin/invite-codes", json={}, headers=login_as(client, admin_user)
+    )
     assert response.status_code == 201
     assert response.json()["sponsor"] is None
     client.delete(
-        f"/api/v1/admin/invite-codes/{response.json()['id']}", headers=login_as(client, admin)
+        f"/api/v1/admin/invite-codes/{response.json()['id']}", headers=login_as(client, admin_user)
     )

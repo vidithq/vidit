@@ -17,12 +17,18 @@ from app.models.source import Source
 from app.models.upload import Upload
 from app.schemas.media import MediaRead
 from app.services import uploads as uploads_service
-from app.services.storage import get_storage
-from tests._fixtures import TINY_JPEG, gif_bytes, stored_bytes, stored_keys, stored_path
+from tests._fixtures import (
+    TINY_JPEG,
+    gif_bytes,
+    make_event,
+    storage_key,
+    stored_bytes,
+    stored_keys,
+    stored_path,
+)
 from tests.conftest import login_as
 from tests.events._helpers import (
     WORLD_BBOX,
-    _make_geo,
     client,
     filed_source,
     proof_file_part,
@@ -50,15 +56,6 @@ def _create(user, conflict, sources: str, **overrides):
         data=form,
         files=[proof_file_part()],
     )
-
-
-def _key(url: str) -> str:
-    key = get_storage().key_from_url(url)
-    assert key is not None
-    return key
-
-
-# ── Several sources ──────────────────────────────────────────────────────────
 
 
 def test_an_event_holds_several_sources_in_the_posted_order(author, conflict):
@@ -235,9 +232,9 @@ def test_a_source_needs_a_url(author, conflict):
 
 def test_a_machine_detection_is_exempt_until_published(db, author):
     """A detection may hold a file-less source (or none); its sources are ``direct``."""
-    row = _make_geo(db, author=author, status="detected", kind="unknown")
+    row = make_event(db, author=author, status="detected", kind="unknown")
     assert [(s.level, s.kind, s.media) for s in row.sources] == [("direct", "unknown", None)]
-    bare = _make_geo(db, author=author, status="detected", source_url=None)
+    bare = make_event(db, author=author, status="detected", source_url=None)
     assert bare.sources == []
 
 
@@ -293,7 +290,7 @@ def test_an_upload_is_staged_then_taken_by_the_write(db, author, conflict):
     [body] = staged.json()["items"]
     assert body["kind"] == "image" and body["original_filename"] == "strike.jpg"
     assert datetime.fromisoformat(body["expires_at"]) > datetime.now(UTC) + timedelta(hours=23)
-    assert stored_path(_key(body["storage_url"])).exists()
+    assert stored_path(storage_key(body["storage_url"])).exists()
 
     response = _create(author, conflict, sources_field(source_spec(upload_id=body["id"])))
     assert response.status_code == 201, response.text
@@ -394,7 +391,7 @@ def test_a_gif_is_staged_as_one_png_per_frame(db, author, conflict):
     assert [i["original_filename"] for i in items] == ["comparison-1.png", "comparison-2.png"]
     assert {i["kind"] for i in items} == {"image"}
     for index, item in enumerate(items):
-        key = _key(item["storage_url"])
+        key = storage_key(item["storage_url"])
         assert key.endswith(".png")
         frame = Image.open(BytesIO(stored_bytes(key)))
         assert frame.format == "PNG"
@@ -414,7 +411,7 @@ def test_a_single_frame_gif_is_staged_as_one_png(author):
     assert response.status_code == 201, response.text
     [item] = response.json()["items"]
     assert item["original_filename"] == "scan.png"
-    assert _key(item["storage_url"]).endswith(".png")
+    assert storage_key(item["storage_url"]).endswith(".png")
 
 
 def test_a_gif_past_the_frame_cap_is_refused_for_a_video(db, author):
@@ -486,7 +483,7 @@ def test_a_source_may_take_a_sibling_sources_file(author, conflict):
     assert merged["id"] == bare["id"]
     assert merged["media"]["storage_url"] == filed["media"]["storage_url"]
     assert merged["is_graphic"] is True
-    assert stored_path(_key(filed["media"]["storage_url"])).exists()
+    assert stored_path(storage_key(filed["media"]["storage_url"])).exists()
 
 
 def test_a_request_edit_sweeps_the_file_nothing_names_any_more(db, author):
@@ -497,7 +494,7 @@ def test_a_request_edit_sweeps_the_file_nothing_names_any_more(db, author):
     )
     assert created.status_code == 201, created.text
     source = created.json()["sources"][0]
-    key = _key(source["media"]["storage_url"])
+    key = storage_key(source["media"]["storage_url"])
     replacement = stage_file(author)
     edited = client.post(
         f"/api/v1/events/{created.json()['id']}/request",
@@ -546,7 +543,7 @@ def test_a_source_kept_by_id_keeps_its_file_and_a_dropped_one_goes(db, author):
 
 
 def test_a_foreign_source_id_is_refused(db, author):
-    other = _make_geo(db, author=author)
+    other = make_event(db, author=author)
     response = client.post(
         "/api/v1/events/requests",
         headers=login_as(client, author),
@@ -598,7 +595,7 @@ def test_an_event_is_graphic_when_one_source_is(db, author, conflict):
     assert [s["is_graphic"] for s in created.json()["sources"]] == [False, True]
     listed = client.get("/api/v1/events", params={"author": author.username})
     assert listed.json()[0]["is_graphic"] is True
-    plain = _make_geo(db, author=author)
+    plain = make_event(db, author=author)
     assert plain.is_graphic is False
     assert db.query(Event).filter(Event.is_graphic, Event.owner_id == author.id).count() == 1
 
@@ -607,8 +604,8 @@ def test_an_event_is_graphic_when_one_source_is(db, author, conflict):
 
 
 def test_the_source_kind_and_level_filters_narrow_the_lists_and_the_map(db, author):
-    drone = _make_geo(db, author=author, kind="drone")
-    phone = _make_geo(db, author=author, kind="smartphone")
+    drone = make_event(db, author=author, kind="drone")
+    phone = make_event(db, author=author, kind="smartphone")
     for path, extra in (("/api/v1/events", {}), ("/api/v1/events/points", {"bbox": WORLD_BBOX})):
         by_kind = client.get(
             path, params={"source_kind": "drone", "author": author.username, **extra}
@@ -623,7 +620,7 @@ def test_the_source_kind_and_level_filters_narrow_the_lists_and_the_map(db, auth
 
 
 def test_search_matches_source_titles_and_urls(db, author):
-    geo = _make_geo(db, author=author, title="Bridge", source_url="https://t.me/frontline/4242")
+    geo = make_event(db, author=author, title="Bridge", source_url="https://t.me/frontline/4242")
     geo.sources[0].title = "Thermal footage"
     db.commit()
     for q in ("thermal", "t.me/frontline/4242"):

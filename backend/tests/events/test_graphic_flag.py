@@ -10,9 +10,9 @@ import json
 
 from app.models.event import STATUS_DETECTED, Event
 from app.models.source import Source
+from tests._fixtures import make_event
 from tests.conftest import login_as
 from tests.events._helpers import (
-    _make_geo,
     client,
     filed_source,
     proof_file_part,
@@ -35,7 +35,7 @@ def _create_form(conflict, sources: str):
 
 
 def _graphic_detection(db, author) -> Event:
-    return _make_geo(
+    return make_event(
         db,
         author=author,
         status=STATUS_DETECTED,
@@ -100,7 +100,7 @@ def test_request_records_the_declared_flag(db, author):
 
 
 def test_geolocate_sets_the_flag_on_a_stored_source(db, author, conflict):
-    geo = _make_geo(
+    geo = make_event(
         db, author=author, status=STATUS_DETECTED, with_media=True, detected_from_url="https://x/2"
     )
     response = _geolocate(
@@ -149,7 +149,7 @@ def test_dropping_the_only_graphic_source_unflags_the_event(db, author, conflict
 
 def test_admin_moderation_sets_and_clears_every_source(db, author, admin_user):
     """An admin unmark clears a flag the form cannot, on every source of the event."""
-    geo = _make_geo(
+    geo = make_event(
         db,
         author=author,
         is_graphic=True,
@@ -175,8 +175,8 @@ def test_admin_moderation_sets_and_clears_every_source(db, author, admin_user):
 
 def test_flag_travels_on_the_list_and_detail_payloads(db, author):
     """Both read shapes carry the flag, so no second request is needed."""
-    graphic = _make_geo(db, author=author, is_graphic=True)
-    plain = _make_geo(db, author=author)
+    graphic = make_event(db, author=author, is_graphic=True)
+    plain = make_event(db, author=author)
 
     listing = client.get("/api/v1/events")
     assert listing.status_code == 200

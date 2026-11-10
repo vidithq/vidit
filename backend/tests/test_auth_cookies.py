@@ -2,53 +2,24 @@ import uuid
 
 import bcrypt
 import pytest
-from fastapi.testclient import TestClient
 
-from app.database import SessionLocal
-from app.main import app
-from app.models.user import User
-from app.services.auth import create_access_token, hash_password
+from app.services.auth import create_access_token
 from app.services.auth_cookies import (
     CSRF_COOKIE,
     CSRF_HEADER,
     SESSION_COOKIE,
 )
+from tests._fixtures import client
 
 
 @pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def user_with_password(db):
+def user_with_password(make_user):
     password = "correct-horse-battery-staple"
-    # ``example.com``, not ``.test``: EmailStr rejects ``.test`` as reserved.
-    user = User(
-        username=f"cookie-{uuid.uuid4().hex[:8]}",
-        email=f"{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password(password),
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    yield user, password
-    db.delete(user)
-    db.commit()
-
-
-def _client() -> TestClient:
-    # Each test gets a fresh client so cookie jars don't leak across tests.
-    return TestClient(app)
+    return make_user("cookie-", password=password), password
 
 
 def test_login_sets_session_and_csrf_cookies(user_with_password):
     user, password = user_with_password
-    client = _client()
     response = client.post(
         "/api/v1/auth/login",
         json={"email": user.email, "password": password},
@@ -63,7 +34,6 @@ def test_login_sets_session_and_csrf_cookies(user_with_password):
 
 def test_me_with_session_cookie_works(user_with_password):
     user, password = user_with_password
-    client = _client()
     client.post(
         "/api/v1/auth/login",
         json={"email": user.email, "password": password},
@@ -78,7 +48,6 @@ def test_bearer_header_ignored_on_get(user_with_password):
     The cookie + CSRF pair is the only authenticated channel."""
     user, _ = user_with_password
     token = create_access_token(user)
-    client = _client()
     response = client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {token}"},
@@ -87,14 +56,12 @@ def test_bearer_header_ignored_on_get(user_with_password):
 
 
 def test_me_without_credentials_returns_401():
-    client = _client()
     response = client.get("/api/v1/auth/me")
     assert response.status_code == 401
 
 
 def test_login_answers_an_over_long_password_like_a_wrong_one(user_with_password):
     user, _ = user_with_password
-    client = _client()
     wrong = client.post("/api/v1/auth/login", json={"email": user.email, "password": "wrong-pw"})
     # 40 characters, 80 bytes: past bcrypt's 72-byte input limit.
     for email in (user.email, f"nobody-{uuid.uuid4().hex}@example.com"):
@@ -116,7 +83,6 @@ def test_login_pays_one_bcrypt_check_for_an_over_long_password(monkeypatch, user
         return real_checkpw(password, hashed)
 
     monkeypatch.setattr(bcrypt, "checkpw", counting_checkpw)
-    client = _client()
     for email in (user.email, f"nobody-{uuid.uuid4().hex}@example.com"):
         checks.clear()
         response = client.post("/api/v1/auth/login", json={"email": email, "password": "é" * 40})
@@ -124,29 +90,17 @@ def test_login_pays_one_bcrypt_check_for_an_over_long_password(monkeypatch, user
         assert len(checks) == 1
 
 
-def test_login_does_not_truncate_a_password_to_72_bytes(db):
+def test_login_does_not_truncate_a_password_to_72_bytes(make_user):
     password = "a" * 72
-    user = User(
-        username=f"cookie-{uuid.uuid4().hex[:8]}",
-        email=f"{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password(password),
-    )
-    db.add(user)
-    db.commit()
-    try:
-        client = _client()
-        extended = {"email": user.email, "password": password + "b"}
-        assert client.post("/api/v1/auth/login", json=extended).status_code == 401
-        exact = {"email": user.email, "password": password}
-        assert client.post("/api/v1/auth/login", json=exact).status_code == 200
-    finally:
-        db.delete(user)
-        db.commit()
+    user = make_user("cookie-", password=password)
+    extended = {"email": user.email, "password": password + "b"}
+    assert client.post("/api/v1/auth/login", json=extended).status_code == 401
+    exact = {"email": user.email, "password": password}
+    assert client.post("/api/v1/auth/login", json=exact).status_code == 200
 
 
 def test_login_answers_a_lone_surrogate_like_a_wrong_password(user_with_password):
     user, _ = user_with_password
-    client = _client()
     wrong = client.post("/api/v1/auth/login", json={"email": user.email, "password": "wrong-pw"})
     # Raw JSON: the escape decodes to an unpaired surrogate that UTF-8 cannot encode.
     body = f'{{"email": "{user.email}", "password": "\\ud800"}}'
@@ -159,7 +113,7 @@ def test_login_answers_a_lone_surrogate_like_a_wrong_password(user_with_password
 
 def test_validation_error_does_not_echo_the_input():
     password = "pw-1234"
-    response = _client().post(
+    response = client.post(
         "/api/v1/auth/register",
         json={"username": "u", "email": "a@example.com", "password": password, "invite_code": "x"},
     )
@@ -173,7 +127,6 @@ def test_validation_error_does_not_echo_the_input():
 
 def test_logout_clears_cookies(user_with_password):
     user, password = user_with_password
-    client = _client()
     client.post(
         "/api/v1/auth/login",
         json={"email": user.email, "password": password},
@@ -194,7 +147,6 @@ def test_logout_clears_cookies(user_with_password):
 
 def test_csrf_blocks_cookie_auth_without_header(user_with_password):
     user, password = user_with_password
-    client = _client()
     client.post(
         "/api/v1/auth/login",
         json={"email": user.email, "password": password},
@@ -206,7 +158,6 @@ def test_csrf_blocks_cookie_auth_without_header(user_with_password):
 
 def test_csrf_blocks_cookie_auth_with_wrong_header(user_with_password):
     user, password = user_with_password
-    client = _client()
     client.post(
         "/api/v1/auth/login",
         json={"email": user.email, "password": password},
@@ -225,7 +176,6 @@ def test_login_works_with_stale_session_cookie(user_with_password):
     demand a token the login form lacks.
     """
     user, password = user_with_password
-    client = _client()
     client.cookies.set(SESSION_COOKIE, "garbage-jwt-from-a-previous-life")
 
     response = client.post(
@@ -242,7 +192,6 @@ def test_login_ignores_csrf_header_mismatch_with_stale_cookies(user_with_passwor
     session, so enforcing CSRF here would lock them out.
     """
     user, password = user_with_password
-    client = _client()
     client.cookies.set(SESSION_COOKIE, "garbage-jwt-from-a-previous-life")
     client.cookies.set(CSRF_COOKIE, "old-csrf-token")
 
@@ -263,7 +212,6 @@ def test_logout_clears_cookies_with_prod_attributes(monkeypatch, user_with_passw
     monkeypatch.setattr(settings, "cookie_samesite", "none")
 
     user, password = user_with_password
-    client = _client()
     client.post(
         "/api/v1/auth/login",
         json={"email": user.email, "password": password},

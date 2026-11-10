@@ -7,6 +7,7 @@ and leaves the rest untouched, each with a reason.
 
 from __future__ import annotations
 
+import functools
 import uuid
 
 from app.models.event import (
@@ -18,30 +19,15 @@ from app.models.event import (
 )
 from app.models.media import Media
 from app.models.source import Source, SourceLink
-from tests._fixtures import fake_sha256
+from tests._fixtures import fake_sha256, make_detection, make_event
 from tests.conftest import login_as
-from tests.events._helpers import _make_geo, client
+from tests.events._helpers import client
 from tests.events._readiness_cases import PROOF_TEXT_ONLY, PROOF_WITH_IMAGE
 
 _URL = "/api/v1/events/batch-complete"
 
-
-def _detection(db, author, *, proof: str | None = None, **kwargs) -> Event:
-    """A machine detection as the import leaves it: kind ``unknown``, no conflict."""
-    geo = _make_geo(
-        db,
-        author=author,
-        status=STATUS_DETECTED,
-        detected_from_url="https://x.com/a/status/1",
-        source_url=kwargs.pop("source_url", "https://x.com/a/status/1"),
-        with_media=kwargs.pop("with_media", True),
-        kind=kwargs.pop("kind", "unknown"),
-        **kwargs,
-    )
-    geo.proof = PROOF_WITH_IMAGE if proof is None else proof
-    db.commit()
-    db.refresh(geo)
-    return geo
+# A detection ready to complete but for its conflict and kind.
+_detection = functools.partial(make_detection, with_media=True, proof=PROOF_WITH_IMAGE)
 
 
 def _body(conflict, rows: list[tuple[Event, str]]) -> dict:
@@ -180,7 +166,7 @@ def test_batch_complete_reports_each_floor_miss_against_its_row(db, author, conf
     context_only = _detection(db, author)
     context_only.sources[0].level = "context"
     db.commit()
-    already_published = _make_geo(db, author=author)
+    already_published = make_event(db, author=author)
     gone = uuid.uuid4()
 
     response = client.post(

@@ -14,7 +14,6 @@ from shapely.geometry import Point
 
 from app.cache import points_cache
 from app.config import settings
-from app.database import SessionLocal
 from app.models.event import (
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
@@ -49,7 +48,14 @@ from app.services.tweet_ingest import (
     Resolution,
 )
 from app.services.tweet_ingest.resolve import LinkSource
-from tests._fixtures import TINY_JPEG, store_bytes, stored_bytes, stored_keys, stored_path
+from tests._fixtures import (
+    TINY_JPEG,
+    storage_key,
+    store_bytes,
+    stored_bytes,
+    stored_keys,
+    stored_path,
+)
 
 ARCHIVE = Path(__file__).parent / "data" / "synthetic_archive"
 
@@ -76,30 +82,8 @@ def _stored_objects(event_id: uuid.UUID) -> set[str]:
 
 
 @pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def owner(db):
-    user = User(
-        username=f"own{uuid.uuid4().hex[:8]}",
-        email=f"own-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        x_handle=f"own{uuid.uuid4().hex[:8]}",
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
+def owner(make_user):
+    return make_user("own", x_handle=f"own{uuid.uuid4().hex[:8]}")
 
 
 async def _image_fetcher(_parsed: ParsedMedia) -> tuple[bytes, str]:
@@ -933,12 +917,6 @@ async def test_upsert_rewrites_proof_media_and_the_body_that_carries_it(db, owne
     assert [m.storage_url for m in rows] == [new_src]
 
 
-def _key(url: str) -> str:
-    key = get_storage().key_from_url(url)
-    assert key is not None
-    return key
-
-
 def _with_derivatives(key: str) -> set[str]:
     return {key, derivative_key(key, "hero"), derivative_key(key, "thumb")}
 
@@ -958,14 +936,14 @@ def _stored_keys_of(db, row: Event) -> tuple[str, str]:
     """``(source key, proof key)`` of a row holding one of each."""
     [source] = _source_media(db, row.id)
     [proof] = row.media
-    return _key(source.storage_url), _key(proof.storage_url)
+    return storage_key(source.storage_url), storage_key(proof.storage_url)
 
 
 def _store_proof_derivatives(row: Event) -> None:
     """Stage hero and thumbnail keys beside each proof image: a sweep must take them whatever
     wrote them."""
     for media in row.media:
-        key = _key(media.storage_url)
+        key = storage_key(media.storage_url)
         for suffix in ("hero", "thumb"):
             store_bytes(TINY_JPEG, derivative_key(key, suffix))
 

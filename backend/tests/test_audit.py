@@ -8,7 +8,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app.database import SessionLocal
 from app.main import app
 from app.models.audit_log import (
     ACTION_FAILED_LOGIN,
@@ -27,29 +26,6 @@ from app.models.user import User
 from app.routers import auth as auth_router
 from app.services import audit
 from app.services import auth as auth_service
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def email_silencer(monkeypatch):
-
-    def _drop(_email_obj):
-        return None
-
-    monkeypatch.setattr(auth_router.email, "send", _drop)
 
 
 @pytest.fixture
@@ -183,7 +159,7 @@ def test_logout_without_session_writes_row_with_null_user_id(client, db):
     assert any(r.actor_id is None for r in rows)
 
 
-def test_register_pending_writes_event_with_null_user_id(client, fresh_invite, email_silencer, db):
+def test_register_pending_writes_event_with_null_user_id(client, fresh_invite, sent_emails, db):
     cutoff = datetime.now(UTC) - timedelta(seconds=5)
     email_addr = f"reg-{uuid.uuid4().hex}@example.com"
     response = client.post(
@@ -203,7 +179,7 @@ def test_register_pending_writes_event_with_null_user_id(client, fresh_invite, e
 
 
 def test_confirm_registration_writes_event_with_user_id(
-    client, fresh_invite, email_silencer, db, monkeypatch
+    client, fresh_invite, sent_emails, db, monkeypatch
 ):
     captured: dict[str, str] = {}
 
@@ -242,7 +218,7 @@ def test_confirm_registration_writes_event_with_user_id(
     db.commit()
 
 
-def test_forgot_password_writes_event_on_known_email(client, existing_user, email_silencer, db):
+def test_forgot_password_writes_event_on_known_email(client, existing_user, sent_emails, db):
     cutoff = datetime.now(UTC) - timedelta(seconds=5)
     response = client.post(
         "/api/v1/auth/forgot-password",
@@ -254,7 +230,7 @@ def test_forgot_password_writes_event_on_known_email(client, existing_user, emai
     assert any(r.actor_id == existing_user.id for r in rows)
 
 
-def test_forgot_password_writes_event_on_unknown_email(client, email_silencer, db):
+def test_forgot_password_writes_event_on_unknown_email(client, sent_emails, db):
     cutoff = datetime.now(UTC) - timedelta(seconds=5)
     response = client.post(
         "/api/v1/auth/forgot-password",
@@ -267,9 +243,7 @@ def test_forgot_password_writes_event_on_unknown_email(client, email_silencer, d
     assert any(r.actor_id is None for r in rows)
 
 
-def test_resend_confirmation_writes_event_on_matched_pending(
-    client, fresh_invite, email_silencer, db
-):
+def test_resend_confirmation_writes_event_on_matched_pending(client, fresh_invite, sent_emails, db):
     """A resend against a live pending row writes ``register_resent`` with NULL user_id."""
     email_addr = f"reg-{uuid.uuid4().hex}@example.com"
     register_resp = client.post(
@@ -298,7 +272,7 @@ def test_resend_confirmation_writes_event_on_matched_pending(
     db.commit()
 
 
-def test_resend_confirmation_writes_event_on_unknown_email(client, email_silencer, db):
+def test_resend_confirmation_writes_event_on_unknown_email(client, sent_emails, db):
     """The no-op branch still writes an audit row, so scripted resends leave a trace."""
     cutoff = datetime.now(UTC) - timedelta(seconds=5)
     response = client.post(

@@ -505,10 +505,3 @@ def test_cache_ttl_evicts_expired_on_get(monkeypatch):
 
     _t.sleep(0.05)
     assert syndication._cache_get("a") is None
-
-
-@pytest.fixture(autouse=True)
-def _clear_tweet_cache():
-    syndication._cache_clear()
-    yield
-    syndication._cache_clear()

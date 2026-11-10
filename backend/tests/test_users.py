@@ -20,24 +20,17 @@ Contracts:
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-from geoalchemy2.shape import from_shape
 from PIL import Image
-from shapely.geometry import Point
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.event import (
     STATUS_CLOSED,
     STATUS_DETECTED,
-    STATUS_GEOLOCATED,
     STATUS_REQUESTED,
-    Event,
 )
 from app.models.user import User
 from app.services import storage as storage_module
@@ -48,102 +41,8 @@ from app.services.evidence_processing import (
     UNREADABLE_IMAGE_MESSAGE,
 )
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
-from tests._fixtures import TINY_JPEG, gif_bytes
+from tests._fixtures import TINY_JPEG, client, gif_bytes, make_event
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-# ── Fixtures ──────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def live_user(db):
-    user = User(
-        username=f"live{uuid.uuid4().hex[:8]}",
-        email=f"live-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def soft_deleted_user(db):
-    user = User(
-        username=f"gone{uuid.uuid4().hex[:8]}",
-        email=f"gone-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        deleted_at=datetime.now(UTC),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-def _make_geo(
-    db,
-    *,
-    author: User,
-    title: str | None = None,
-    occurred_date: date | None = None,
-    deleted: bool = False,
-    status: str = STATUS_GEOLOCATED,
-    before_closed_status: str | None = None,
-) -> Event:
-    """One event owned by ``author``, a published geolocation by default.
-
-    ``status`` / ``before_closed_status`` build the other states, with the stamps
-    the table CHECKs (``ck_events_closed_stamp``, ``ck_events_geolocated_stamp``,
-    ``ck_events_before_closed_status``) require.
-    """
-    now = datetime.now(UTC)
-    geo = Event(
-        owner_id=author.id,
-        title=title or f"Geo {uuid.uuid4().hex[:8]}",
-        coords=from_shape(Point(34.5, 48.5), srid=4326),
-        occurred_date=occurred_date or date(2026, 5, 1),
-        status=status,
-        geolocated_at=now if status == STATUS_GEOLOCATED else None,
-        detected_at=now if status == STATUS_DETECTED else None,
-        requested_at=now if status == STATUS_REQUESTED else None,
-        closed_at=now if status == STATUS_CLOSED else None,
-        before_closed_status=before_closed_status,
-    )
-    if deleted:
-        geo.deleted_at = now
-    db.add(geo)
-    db.commit()
-    db.refresh(geo)
-    return geo
-
 
 # ── GET /users/{username} — profile ───────────────────────────────────────
 
@@ -206,8 +105,8 @@ def test_feed_returns_pagination_envelope(live_user):
 
 def test_feed_excludes_soft_deleted_geos(db, live_user):
     """The feed filters soft-deleted rows, as the rest of the site does."""
-    live = _make_geo(db, author=live_user, title="live one")
-    dead = _make_geo(db, author=live_user, title="removed", deleted=True)
+    live = make_event(db, author=live_user, title="live one")
+    dead = make_event(db, author=live_user, title="removed", deleted=True)
 
     response = client.get(f"/api/v1/users/{live_user.username}/events")
     assert response.status_code == 200
@@ -220,9 +119,9 @@ def test_feed_excludes_soft_deleted_geos(db, live_user):
 
 def test_feed_count_matches_profile_count_on_published_work(db, live_user):
     """With published work alone, `geolocations_count` and the feed `total` agree."""
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user, deleted=True)
+    make_event(db, author=live_user)
+    make_event(db, author=live_user)
+    make_event(db, author=live_user, deleted=True)
 
     profile = client.get(f"/api/v1/users/{live_user.username}").json()
     feed = client.get(f"/api/v1/users/{live_user.username}/events").json()
@@ -233,17 +132,17 @@ def test_feed_serves_published_work_only(db, live_user):
     """The portfolio lists only what the analyst vouched for: not a `detected` row
     (unvouched machine output), a closed-off detection, or a `requested` row.
     Detections stay reachable from the owner's queue and the coverage map."""
-    published = _make_geo(db, author=live_user, title="published")
-    detection = _make_geo(db, author=live_user, title="detection", status=STATUS_DETECTED)
-    rejected = _make_geo(
+    published = make_event(db, author=live_user, title="published")
+    detection = make_event(db, author=live_user, title="detection", status=STATUS_DETECTED)
+    rejected = make_event(
         db,
         author=live_user,
         title="rejected",
         status=STATUS_CLOSED,
         before_closed_status=STATUS_DETECTED,
     )
-    request = _make_geo(db, author=live_user, title="request", status=STATUS_REQUESTED)
-    removed = _make_geo(db, author=live_user, title="removed", deleted=True)
+    request = make_event(db, author=live_user, title="request", status=STATUS_REQUESTED)
+    removed = make_event(db, author=live_user, title="removed", deleted=True)
 
     body = client.get(f"/api/v1/users/{live_user.username}/events").json()
 
@@ -260,24 +159,24 @@ def test_profile_count_counts_published_work_only(db, live_user):
     An archive import leaves hundreds of machine detections; counting them would
     credit the analyst with claims they never made.
     """
-    _make_geo(db, author=live_user, title="published")
-    _make_geo(db, author=live_user, title="detection", status=STATUS_DETECTED)
-    _make_geo(
+    make_event(db, author=live_user, title="published")
+    make_event(db, author=live_user, title="detection", status=STATUS_DETECTED)
+    make_event(
         db,
         author=live_user,
         title="rejected",
         status=STATUS_CLOSED,
         before_closed_status=STATUS_DETECTED,
     )
-    _make_geo(db, author=live_user, title="request", status=STATUS_REQUESTED)
-    _make_geo(
+    make_event(db, author=live_user, title="request", status=STATUS_REQUESTED)
+    make_event(
         db,
         author=live_user,
         title="withdrawn",
         status=STATUS_CLOSED,
         before_closed_status=STATUS_REQUESTED,
     )
-    _make_geo(db, author=live_user, title="removed", deleted=True)
+    make_event(db, author=live_user, title="removed", deleted=True)
 
     profile = client.get(f"/api/v1/users/{live_user.username}").json()
     feed = client.get(f"/api/v1/users/{live_user.username}/events").json()
@@ -287,9 +186,9 @@ def test_profile_count_counts_published_work_only(db, live_user):
 def test_profile_count_and_stats_report_different_numbers(db, live_user):
     """`/stats` splits by status and sums to `total_events`; the profile counts the
     published part. Collapsing the two would drop the wider figure."""
-    _make_geo(db, author=live_user)
-    _make_geo(db, author=live_user, status=STATUS_DETECTED)
-    _make_geo(
+    make_event(db, author=live_user)
+    make_event(db, author=live_user, status=STATUS_DETECTED)
+    make_event(
         db,
         author=live_user,
         title="rejected",
@@ -307,10 +206,10 @@ def test_profile_count_and_stats_report_different_numbers(db, live_user):
 
 def test_feed_orders_published_rows_newest_event_date_first(db, live_user):
     """Order applies to the filtered set: a detection dated between two published rows takes no page slot."""
-    _make_geo(db, author=live_user, occurred_date=date(2025, 1, 1), title="old")
-    _make_geo(db, author=live_user, occurred_date=date(2026, 12, 1), title="new")
-    _make_geo(db, author=live_user, occurred_date=date(2026, 6, 1), title="mid")
-    _make_geo(
+    make_event(db, author=live_user, occurred_date=date(2025, 1, 1), title="old")
+    make_event(db, author=live_user, occurred_date=date(2026, 12, 1), title="new")
+    make_event(db, author=live_user, occurred_date=date(2026, 6, 1), title="mid")
+    make_event(
         db,
         author=live_user,
         occurred_date=date(2026, 9, 1),

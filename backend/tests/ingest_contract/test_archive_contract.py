@@ -19,12 +19,10 @@ from typing import Any
 
 import pytest
 
-from app.database import SessionLocal
 from app.models.event import STATUS_DETECTED, Event, EventDetection
 from app.models.media import Media
 from app.models.source import Source
 from app.models.user import User
-from app.services.auth import hash_password
 from app.services.detection import backfill_from_archive, persist_detections
 from app.services.sanitize import extract_image_srcs
 from app.services.tweet_ingest import (
@@ -48,31 +46,8 @@ _TG_POSTED_AT = datetime.fromisoformat("2026-03-04T09:00:00+00:00")
 
 
 @pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def owner(db):
-    user = User(
-        username=f"own{uuid.uuid4().hex[:8]}",
-        email=f"own-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        x_handle=f"own{uuid.uuid4().hex[:8]}",
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    # Sources and media rows cascade off the event FK (ondelete=CASCADE).
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
+def owner(make_user):
+    return make_user("own", x_handle=f"own{uuid.uuid4().hex[:8]}")
 
 
 def _head_url(owner: User, typology: str) -> str:

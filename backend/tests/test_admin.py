@@ -7,7 +7,6 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
 from app.config import settings
-from app.database import SessionLocal
 from app.dependencies import LAST_SEEN_THROTTLE
 from app.main import app
 from app.models.archive_import_job import ArchiveImportJob
@@ -28,67 +27,8 @@ from app.models.upload import UPLOAD_TTL, Upload
 from app.models.user import User
 from app.services import storage as storage_module
 from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG, fake_sha256, store_bytes
+from tests._fixtures import TINY_JPEG, client, fake_sha256, store_bytes
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _clear_test_client_cookies():
-    """Wipe TestClient cookies between tests: a leftover cookie would authenticate the next test as a deleted user (spurious 401)."""
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        username=f"adm{uuid.uuid4().hex[:8]}",
-        email=f"admin-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    # Reap this actor's admin events and redeemed invite codes so the row deletes without FK violations.
-    db.expire_all()
-    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
-    db.query(InviteCode).filter(InviteCode.used_by_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def regular_user(db):
-    user = User(
-        username=f"usr{uuid.uuid4().hex[:8]}",
-        email=f"user-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    # Tests may have hard-deleted the row: bulk delete by id (``db.delete(instance)`` would raise ObjectDeletedError).
-    # Drop the user's events first so the users.id FK does not block (media/claims cascade).
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    db.query(Event).filter(Event.requested_by_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 def test_admin_me_returns_200_for_admin(admin_user):

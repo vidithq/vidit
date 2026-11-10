@@ -88,7 +88,6 @@ def _url(tweet_id: str, handle: str = HANDLE) -> str:
 @pytest.fixture(autouse=True)
 def _mock_syndication(monkeypatch):
     """Serve the fixture bodies, 404 elsewhere; yields the tweet ids asked for."""
-    _cache_clear()
     asked: list[str] = []
     real_client = httpx.Client
 
@@ -108,8 +107,7 @@ def _mock_syndication(monkeypatch):
         return real_client(transport=httpx.MockTransport(handler))
 
     monkeypatch.setattr(httpx, "Client", make_client)
-    yield asked
-    _cache_clear()
+    return asked
 
 
 @pytest.fixture

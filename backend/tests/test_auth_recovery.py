@@ -10,74 +10,14 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
-from fastapi.testclient import TestClient
-
 from app.database import SessionLocal
-from app.main import app
 from app.models.password_reset_token import (
     PasswordResetToken,
 )
-from app.models.user import User
 from app.routers import auth as auth_router
-from app.services import auth as auth_service
 from app.services import email, password_reset_tokens
 
 # ── Helpers ───────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def client():
-    # Fresh client per test: a leaked session cookie makes CSRF 403 later POSTs.
-    return TestClient(app)
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def email_recorder(monkeypatch):
-    """Capture every email.send() call in order."""
-
-    sent: list[email.Email] = []
-
-    def _record(email_obj: email.Email) -> None:
-        sent.append(email_obj)
-
-    monkeypatch.setattr(auth_router.email, "send", _record)
-    return sent
-
-
-@pytest.fixture
-def user_factory(db):
-    """Create users with a known password; clean them up afterwards."""
-
-    created: list[User] = []
-
-    def _make(*, password: str | None = "originalpassword1") -> tuple[User, str | None]:
-        user = User(
-            username=f"u{uuid.uuid4().hex[:12]}",
-            email=f"{uuid.uuid4().hex}@example.com",
-            password_hash=auth_service.hash_password(password) if password is not None else None,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        created.append(user)
-        return user, password
-
-    yield _make
-
-    for user in created:
-        # Cascade deletes password_reset_tokens via the FK; just nuke the user.
-        db.query(User).filter(User.id == user.id).delete()
-    db.commit()
 
 
 def _extract_token(text: str) -> str:
@@ -92,26 +32,24 @@ def _extract_token(text: str) -> str:
 # ── Forgot password ───────────────────────────────────────────────────────
 
 
-def test_forgot_password_unknown_email_returns_204_and_sends_nothing(client, email_recorder):
+def test_forgot_password_unknown_email_returns_204_and_sends_nothing(client, sent_emails):
     response = client.post(
         "/api/v1/auth/forgot-password",
         json={"email": f"nobody-{uuid.uuid4().hex}@example.com"},
     )
     assert response.status_code == 204
-    assert email_recorder == [], "must not send to unknown addresses"
+    assert sent_emails == [], "must not send to unknown addresses"
 
 
-def test_forgot_password_known_email_mints_token_and_sends(
-    client, user_factory, email_recorder, db
-):
-    user, _ = user_factory()
+def test_forgot_password_known_email_mints_token_and_sends(client, make_user, sent_emails, db):
+    user = make_user()
     response = client.post(
         "/api/v1/auth/forgot-password",
         json={"email": user.email},
     )
     assert response.status_code == 204
-    assert len(email_recorder) == 1
-    sent = email_recorder[0]
+    assert len(sent_emails) == 1
+    sent = sent_emails[0]
     assert sent.to == user.email
     assert "Reset" in sent.subject
     assert "/reset-password?token=" in sent.text
@@ -127,10 +65,8 @@ def test_forgot_password_known_email_mints_token_and_sends(
     assert len(rows) == 1
 
 
-def test_forgot_password_revokes_previously_outstanding_tokens(
-    client, user_factory, email_recorder, db
-):
-    user, _ = user_factory()
+def test_forgot_password_revokes_previously_outstanding_tokens(client, make_user, sent_emails, db):
+    user = make_user()
     client.post("/api/v1/auth/forgot-password", json={"email": user.email})
     client.post("/api/v1/auth/forgot-password", json={"email": user.email})
 
@@ -154,10 +90,10 @@ def test_forgot_password_revokes_previously_outstanding_tokens(
     assert len(consumed) == 1, "first token is force-consumed (revoked)"
 
 
-def test_forgot_password_dispatches_work_to_background_task(client, user_factory, monkeypatch):
+def test_forgot_password_dispatches_work_to_background_task(client, make_user, monkeypatch):
     """The mint + send runs off the request thread; inline work would leak user
     existence via response time. The handler must schedule the worker, not call it."""
-    user, _ = user_factory()
+    user = make_user()
 
     called_inline = False
 
@@ -182,8 +118,8 @@ def test_forgot_password_dispatches_work_to_background_task(client, user_factory
     monkeypatch.setattr(auth_router, "_process_forgot_password", real_worker)
 
 
-def test_forgot_password_swallows_email_send_failure(client, monkeypatch, user_factory, db):
-    user, _ = user_factory()
+def test_forgot_password_swallows_email_send_failure(client, monkeypatch, make_user, db):
+    user = make_user()
 
     def _boom(_email: email.Email) -> None:
         raise email.EmailSendError("simulated outage")
@@ -201,10 +137,10 @@ def test_forgot_password_swallows_email_send_failure(client, monkeypatch, user_f
 # ── Reset password ────────────────────────────────────────────────────────
 
 
-def test_reset_password_happy_path(client, user_factory, email_recorder, db):
-    user, _ = user_factory()
+def test_reset_password_happy_path(client, make_user, sent_emails, db):
+    user = make_user()
     client.post("/api/v1/auth/forgot-password", json={"email": user.email})
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     new_password = "brandnewpassword2"
     response = client.post(
@@ -220,10 +156,10 @@ def test_reset_password_happy_path(client, user_factory, email_recorder, db):
     assert login.status_code == 200
 
 
-def test_reset_password_refuses_a_password_over_72_bytes(client, user_factory, email_recorder):
-    user, _ = user_factory()
+def test_reset_password_refuses_a_password_over_72_bytes(client, make_user, sent_emails):
+    user = make_user()
     client.post("/api/v1/auth/forgot-password", json={"email": user.email})
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     # 40 characters, 80 bytes.
     refused = client.post(
@@ -241,10 +177,10 @@ def test_reset_password_refuses_a_password_over_72_bytes(client, user_factory, e
     assert accepted.status_code == 204
 
 
-def test_reset_password_rejects_replay(client, user_factory, email_recorder):
-    user, _ = user_factory()
+def test_reset_password_rejects_replay(client, make_user, sent_emails):
+    user = make_user()
     client.post("/api/v1/auth/forgot-password", json={"email": user.email})
-    token = _extract_token(email_recorder[0].text)
+    token = _extract_token(sent_emails[0].text)
 
     r1 = client.post(
         "/api/v1/auth/reset-password",
@@ -270,8 +206,8 @@ def test_reset_password_rejects_unknown_token(client):
     assert response.status_code == 400
 
 
-def test_reset_password_rejects_expired_token(client, user_factory, db):
-    user, _ = user_factory()
+def test_reset_password_rejects_expired_token(client, make_user, db):
+    user = make_user()
     raw = password_reset_tokens.mint(
         db,
         user_id=user.id,
@@ -293,7 +229,7 @@ def test_reset_password_rejects_expired_token(client, user_factory, db):
 # ── Race-safety regression ────────────────────────────────────────────────
 
 
-def test_consume_atomic_under_parallel_use(user_factory):
+def test_consume_atomic_under_parallel_use(make_user):
     """Two concurrent consume() calls on one token must not both win.
 
     A SELECT-then-mutate under READ COMMITTED lets both see `consumed_at IS NULL`;
@@ -301,7 +237,7 @@ def test_consume_atomic_under_parallel_use(user_factory):
     """
     import threading
 
-    user, _ = user_factory()
+    user = make_user()
 
     # Own session, so the fixture session holds no row lock.
     minting_session = SessionLocal()

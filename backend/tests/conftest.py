@@ -59,6 +59,8 @@ _SESSION_STORAGE_ROOT = tempfile.mkdtemp(prefix="vidit-test-storage-")
 os.environ["LOCAL_STORAGE_DIR"] = _SESSION_STORAGE_ROOT
 
 import functools  # noqa: E402
+import uuid  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
 
 import bcrypt  # noqa: E402
 import psycopg2  # noqa: E402
@@ -70,14 +72,21 @@ from fastapi.testclient import TestClient  # noqa: E402
 bcrypt.gensalt = functools.partial(bcrypt.gensalt, 4)
 
 from app.config import settings  # noqa: E402
+from app.database import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models.conflict import Conflict  # noqa: E402
+from app.models.tag import Tag  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.schema_gate import script_directory  # noqa: E402
-from app.services.auth import create_access_token  # noqa: E402
+from app.services import email  # noqa: E402
+from app.services.auth import create_access_token, hash_password  # noqa: E402
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE  # noqa: E402
-from app.services.tweet_ingest import retry  # noqa: E402
+from app.services.tweet_ingest import retry, syndication  # noqa: E402
+from tests._fixtures import client as shared_client  # noqa: E402
+from tests._fixtures import reap_users  # noqa: E402
 
 TEST_CSRF_TOKEN = "test-csrf-token"
+DEFAULT_PASSWORD = "password123"
 
 # Serializes worker clones: Postgres refuses concurrent CREATE DATABASE from one template.
 _CLONE_LOCK_KEY = 74_215_301
@@ -217,3 +226,124 @@ def _empty_local_storage(monkeypatch) -> None:
     root.mkdir()
     monkeypatch.setattr(settings, "storage_backend", "local")
     monkeypatch.setattr(settings, "local_storage_dir", str(root))
+
+
+@pytest.fixture(autouse=True)
+def _clear_shared_state():
+    """The shared client's cookie jar and the syndication fetch cache are process-wide: a
+    leftover cookie authenticates the next test as a deleted user, a cached body answers
+    another test's fetch."""
+    shared_client.cookies.clear()
+    syndication._cache_clear()
+    yield
+    shared_client.cookies.clear()
+    syndication._cache_clear()
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return shared_client
+
+
+@pytest.fixture
+def db():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@functools.cache
+def _default_password_hash() -> str:
+    return hash_password(DEFAULT_PASSWORD)
+
+
+@pytest.fixture
+def user_ids(db):
+    """Ids of the users the test made, reaped with the rows they left
+    (``_fixtures.reap_users``) when it ends; append a user the app created."""
+    ids: list[uuid.UUID] = []
+    yield ids
+    reap_users(db, ids)
+
+
+@pytest.fixture
+def make_user(db, user_ids):
+    """``make_user(prefix, password=..., **columns)``: a committed user, reaped at teardown."""
+
+    def make(prefix: str = "u", *, password: str = DEFAULT_PASSWORD, **columns) -> User:
+        tag = uuid.uuid4().hex
+        columns.setdefault(
+            "password_hash",
+            _default_password_hash() if password == DEFAULT_PASSWORD else hash_password(password),
+        )
+        user = User(username=f"{prefix}{tag[:8]}", email=f"{prefix}-{tag}@example.com", **columns)
+        db.add(user)
+        db.commit()
+        user_ids.append(user.id)
+        return user
+
+    return make
+
+
+@pytest.fixture
+def admin_user(make_user) -> User:
+    return make_user("adm", is_admin=True)
+
+
+@pytest.fixture
+def regular_user(make_user) -> User:
+    return make_user("usr")
+
+
+@pytest.fixture
+def author(make_user) -> User:
+    return make_user("auth")
+
+
+@pytest.fixture
+def second_user(make_user) -> User:
+    return make_user("oth")
+
+
+@pytest.fixture
+def live_user(make_user) -> User:
+    return make_user("live")
+
+
+@pytest.fixture
+def soft_deleted_user(make_user) -> User:
+    return make_user("gone", deleted_at=datetime.now(UTC))
+
+
+@pytest.fixture
+def sent_emails(monkeypatch) -> list[email.Email]:
+    """Every ``email.send`` call, in order, instead of a delivery."""
+    sent: list[email.Email] = []
+    monkeypatch.setattr(email, "send", sent.append)
+    return sent
+
+
+@pytest.fixture
+def free_tag(db):
+    tag = Tag(name=f"tag-{uuid.uuid4().hex[:8]}")
+    db.add(tag)
+    db.commit()
+    tag_id = tag.id
+    yield tag
+    db.rollback()
+    db.execute(Tag.__table__.delete().where(Tag.id == tag_id))
+    db.commit()
+
+
+@pytest.fixture
+def conflict(db):
+    row = Conflict(name=f"conflict-{uuid.uuid4().hex[:8]}", is_ongoing=True, origin="manual")
+    db.add(row)
+    db.commit()
+    conflict_id = row.id
+    yield row
+    db.rollback()
+    db.execute(Conflict.__table__.delete().where(Conflict.id == conflict_id))
+    db.commit()

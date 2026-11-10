@@ -2,36 +2,16 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
-from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.event import Event
 from app.models.source import Source, SourceLink
 from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
+from tests._fixtures import client
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @pytest.fixture
@@ -296,17 +276,8 @@ def _live_event(owner: User, tags: list[Tag], source_tags: list[Tag] = (), **fie
 
 
 @pytest.fixture
-def other_user(db):
-    user = User(
-        username=f"tagother-{uuid.uuid4().hex[:8]}",
-        email=f"{uuid.uuid4().hex}@example.test",
-        password_hash=hash_password("pw"),
-    )
-    db.add(user)
-    db.commit()
-    yield user
-    db.delete(user)
-    db.commit()
+def other_user(make_user):
+    return make_user("tagother")
 
 
 @pytest.fixture

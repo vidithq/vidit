@@ -13,16 +13,9 @@ from app.config import settings
 from app.models.content_report import ContentReport
 from app.models.follow import Follow
 from app.services import email
+from tests._fixtures import make_event
 from tests.conftest import login_as
-from tests.events._helpers import WORLD_BBOX, _make_geo, client
-
-
-@pytest.fixture
-def email_recorder(monkeypatch):
-    """Capture every ``email.send()`` call in order."""
-    sent: list[email.Email] = []
-    monkeypatch.setattr(email, "send", sent.append)
-    return sent
+from tests.events._helpers import WORLD_BBOX, client
 
 
 @pytest.fixture
@@ -34,7 +27,7 @@ def notify_address(monkeypatch):
 
 
 def test_anonymous_report_is_accepted(db, author):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "illegal_content", "details": "Hosting this is unlawful."},
@@ -54,7 +47,7 @@ def test_anonymous_report_is_accepted(db, author):
 
 
 def test_authenticated_report_records_the_reporter(db, author, second_user):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "graphic_not_flagged"},
@@ -66,7 +59,7 @@ def test_authenticated_report_records_the_reporter(db, author, second_user):
 
 
 def test_report_rejects_an_unknown_reason(db, author):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "i-just-dont-like-it"},
@@ -75,7 +68,7 @@ def test_report_rejects_an_unknown_reason(db, author):
 
 
 def test_report_rejects_over_long_details(db, author):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "other", "details": "x" * 2001},
@@ -94,7 +87,7 @@ def test_report_404_for_unknown_event(author):
 
 def test_report_404_for_hidden_event(db, author):
     """A withheld event answers 404 to a reporter, like an id that never existed."""
-    geo = _make_geo(db, author=author, hidden=True)
+    geo = make_event(db, author=author, hidden=True)
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "other"},
@@ -103,17 +96,17 @@ def test_report_404_for_hidden_event(db, author):
 
 
 def test_notification_carries_the_report_for_an_anonymous_reporter(
-    db, author, email_recorder, notify_address
+    db, author, sent_emails, notify_address
 ):
-    geo = _make_geo(db, author=author, title="Shelling on Market Street")
+    geo = make_event(db, author=author, title="Shelling on Market Street")
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "illegal_content", "details": "This footage is unlawful to host."},
     )
     assert response.status_code == 201, response.text
 
-    assert len(email_recorder) == 1, "expected exactly one notification per report"
-    message = email_recorder[0]
+    assert len(sent_emails) == 1, "expected exactly one notification per report"
+    message = sent_emails[0]
     assert message.to == notify_address
     assert "illegal_content" in message.subject
     text = message.text
@@ -130,9 +123,9 @@ def test_notification_carries_the_report_for_an_anonymous_reporter(
 
 
 def test_notification_names_a_signed_in_reporter(
-    db, author, second_user, email_recorder, notify_address
+    db, author, second_user, sent_emails, notify_address
 ):
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "privacy"},
@@ -140,25 +133,25 @@ def test_notification_names_a_signed_in_reporter(
     )
     assert response.status_code == 201, response.text
 
-    assert len(email_recorder) == 1
-    text = email_recorder[0].text
+    assert len(sent_emails) == 1
+    text = sent_emails[0].text
     assert second_user.username in text
     assert "anonymous" not in text
     # An absent ``details`` leaves the block out rather than printing "None".
     assert "None" not in text
 
 
-def test_no_notification_when_no_address_is_configured(db, author, email_recorder, monkeypatch):
+def test_no_notification_when_no_address_is_configured(db, author, sent_emails, monkeypatch):
     """The shipped default sends nothing, and the row is still written and queued."""
     monkeypatch.setattr(settings, "report_notify_email", None)
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
 
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
         json={"reason": "other"},
     )
     assert response.status_code == 201, response.text
-    assert email_recorder == []
+    assert sent_emails == []
 
     db.expire_all()
     assert db.query(ContentReport).filter(ContentReport.id == response.json()["id"]).one()
@@ -171,7 +164,7 @@ def test_report_survives_a_notification_send_failure(db, author, monkeypatch, no
         raise email.EmailSendError("simulated outage")
 
     monkeypatch.setattr(email, "send", _boom)
-    geo = _make_geo(db, author=author)
+    geo = make_event(db, author=author)
 
     response = client.post(
         f"/api/v1/events/{geo.id}/report",
@@ -185,8 +178,8 @@ def test_report_survives_a_notification_send_failure(db, author, monkeypatch, no
 
 
 def test_hidden_event_absent_from_list_and_points(db, author):
-    visible = _make_geo(db, author=author)
-    hidden = _make_geo(db, author=author, hidden=True)
+    visible = make_event(db, author=author)
+    hidden = make_event(db, author=author, hidden=True)
 
     listing = client.get("/api/v1/events")
     assert listing.status_code == 200
@@ -204,8 +197,8 @@ def test_hidden_event_absent_from_list_and_points(db, author):
 
 def test_hidden_event_absent_from_search(db, author):
     token = f"takedownprobe{uuid.uuid4().hex[:8]}"
-    visible = _make_geo(db, author=author, title=f"Visible {token} convoy")
-    hidden = _make_geo(db, author=author, title=f"Withheld {token} convoy", hidden=True)
+    visible = make_event(db, author=author, title=f"Visible {token} convoy")
+    hidden = make_event(db, author=author, title=f"Withheld {token} convoy", hidden=True)
 
     response = client.get(f"/api/v1/search?q={token}")
     assert response.status_code == 200
@@ -216,7 +209,7 @@ def test_hidden_event_absent_from_search(db, author):
 
 def test_hidden_event_detail_is_404_for_everyone_but_an_admin(db, author, second_user, admin_user):
     """The owner loses the detail read too; an admin keeps it to judge the report."""
-    hidden = _make_geo(db, author=author, hidden=True)
+    hidden = make_event(db, author=author, hidden=True)
 
     assert client.get(f"/api/v1/events/{hidden.id}").status_code == 404
 
@@ -235,8 +228,8 @@ def test_hidden_event_detail_is_404_for_everyone_but_an_admin(db, author, second
 
 
 def test_hidden_event_absent_from_the_profile_feed_and_count(db, author):
-    visible = _make_geo(db, author=author)
-    hidden = _make_geo(db, author=author, hidden=True)
+    visible = make_event(db, author=author)
+    hidden = make_event(db, author=author, hidden=True)
 
     feed = client.get(f"/api/v1/users/{author.username}/events")
     assert feed.status_code == 200
@@ -251,8 +244,8 @@ def test_hidden_event_absent_from_the_profile_feed_and_count(db, author):
 
 
 def test_hidden_event_absent_from_the_follow_feed(db, author, second_user):
-    visible = _make_geo(db, author=author)
-    hidden = _make_geo(db, author=author, hidden=True)
+    visible = make_event(db, author=author)
+    hidden = make_event(db, author=author, hidden=True)
     db.add(Follow(follower_id=second_user.id, followed_id=author.id))
     db.commit()
 
@@ -265,7 +258,7 @@ def test_hidden_event_absent_from_the_follow_feed(db, author, second_user):
 
 def test_hidden_event_is_frozen_for_its_owner(db, author):
     """Every ``/{id}`` verb shares one helper: a withheld event cannot be closed or investigated."""
-    hidden = _make_geo(db, author=author, hidden=True)
+    hidden = make_event(db, author=author, hidden=True)
     headers = login_as(client, author)
 
     close = client.post(

@@ -18,13 +18,6 @@ from tests.events._helpers import client
 from tests.events.test_requests import _geolocate_fulfilment, _kept, _make_request
 
 
-@pytest.fixture
-def outbox(monkeypatch) -> list[email.Email]:
-    sent: list[email.Email] = []
-    monkeypatch.setattr(email, "send", sent.append)
-    return sent
-
-
 def _email_off(db, user: User, kind: str) -> None:
     db.add(UserPreferences(user_id=user.id, notification_overrides={kind: False}))
     db.commit()
@@ -49,17 +42,17 @@ def _fulfil(db, requester: User, fulfiller: User, conflict):
 
 
 def test_fulfilment_queues_and_the_drain_sends_one_branded_email(
-    db, author, second_user, conflict, outbox
+    db, author, second_user, conflict, sent_emails
 ):
     request = _fulfil(db, author, second_user, conflict)
     # The action only queues: nothing is sent inside the request.
-    assert outbox == []
+    assert sent_emails == []
     [row] = _deliveries(db, author)
     assert row.status == "queued"
 
     assert notification_delivery.drain(db) >= 1
 
-    [message] = [m for m in outbox if m.to == author.email]
+    [message] = [m for m in sent_emails if m.to == author.email]
     assert second_user.username in message.subject
     assert f"/events/{request.id}" in message.text
     assert f"{settings.frontend_url}/settings" in message.text
@@ -71,7 +64,7 @@ def test_fulfilment_queues_and_the_drain_sends_one_branded_email(
     assert row.sent_at is not None
 
 
-def test_no_row_when_the_switch_is_off(db, author, second_user, conflict, outbox):
+def test_no_row_when_the_switch_is_off(db, author, second_user, conflict, sent_emails):
     _email_off(db, author, "request_fulfilled")
     _fulfil(db, author, second_user, conflict)
     assert _deliveries(db, author) == []
@@ -91,24 +84,26 @@ def test_default_off_kind_queues_only_for_an_analyst_who_turned_it_on(
     assert [r.status for r in _deliveries(db, second_user)] == ["queued"]
 
 
-def test_any_account_with_an_address_gets_a_row(db, author, second_user, conflict, outbox):
+def test_any_account_with_an_address_gets_a_row(db, author, second_user, conflict, sent_emails):
     _fulfil(db, author, second_user, conflict)
     assert [r.status for r in _deliveries(db, author)] == ["queued"]
 
 
 def test_drain_skips_a_row_whose_switch_or_address_changed(
-    db, author, second_user, conflict, outbox
+    db, author, second_user, conflict, sent_emails
 ):
     _fulfil(db, author, second_user, conflict)
     _email_off(db, author, "request_fulfilled")
 
     notification_delivery.drain(db)
 
-    assert [m for m in outbox if m.to == author.email] == []
+    assert [m for m in sent_emails if m.to == author.email] == []
     assert [r.status for r in _deliveries(db, author)] == ["skipped"]
 
 
-def test_drain_skips_a_row_whose_event_was_taken_down(db, author, second_user, conflict, outbox):
+def test_drain_skips_a_row_whose_event_was_taken_down(
+    db, author, second_user, conflict, sent_emails
+):
     request = _fulfil(db, author, second_user, conflict)
     db.refresh(request)
     request.hidden_at = datetime.now(UTC)
@@ -120,7 +115,7 @@ def test_drain_skips_a_row_whose_event_was_taken_down(db, author, second_user, c
 
 
 def test_global_cap_holds_notification_email_but_not_auth_email(
-    db, author, second_user, conflict, outbox, monkeypatch
+    db, author, second_user, conflict, sent_emails, monkeypatch
 ):
     _fulfil(db, author, second_user, conflict)
     monkeypatch.setattr(settings, "notification_email_daily_cap", 0)
@@ -131,11 +126,11 @@ def test_global_cap_holds_notification_email_but_not_auth_email(
     # Auth email is sent inline and never counts against the cap.
     response = client.post("/api/v1/auth/forgot-password", json={"email": author.email})
     assert response.status_code == 204
-    assert [m.subject for m in outbox if m.to == author.email] == ["Reset your Vidit password"]
+    assert [m.subject for m in sent_emails if m.to == author.email] == ["Reset your Vidit password"]
 
 
 def test_per_user_cap_holds_only_that_recipient(
-    db, author, second_user, conflict, outbox, monkeypatch
+    db, author, second_user, conflict, sent_emails, monkeypatch
 ):
     _fulfil(db, author, second_user, conflict)
     _fulfil(db, author, second_user, conflict)
@@ -165,7 +160,7 @@ def test_the_caps_count_rows_that_may_have_gone_out(
     author,
     second_user,
     conflict,
-    outbox,
+    sent_emails,
     monkeypatch,
     status,
     attempts,
@@ -241,7 +236,9 @@ def test_unknown_outcome_stays_running_then_goes_stale(
     assert _deliveries(db, author)[0].status == "failed"
 
 
-def test_a_row_queued_too_long_is_skipped(db, author, second_user, conflict, outbox, monkeypatch):
+def test_a_row_queued_too_long_is_skipped(
+    db, author, second_user, conflict, sent_emails, monkeypatch
+):
     _fulfil(db, author, second_user, conflict)
     [row] = _deliveries(db, author)
     row.created_at = (
@@ -252,7 +249,7 @@ def test_a_row_queued_too_long_is_skipped(db, author, second_user, conflict, out
     notification_delivery.drain(db)
 
     assert _deliveries(db, author)[0].status == "skipped"
-    assert [m for m in outbox if m.to == author.email] == []
+    assert [m for m in sent_emails if m.to == author.email] == []
 
 
 def test_every_kind_that_can_email_has_copy():
@@ -271,7 +268,7 @@ def _two_queued_rows(db, author, second_user, admin_user, conflict) -> None:
 
 
 def test_a_kind_without_copy_is_skipped_and_the_drain_goes_on(
-    db, author, second_user, admin_user, conflict, outbox, monkeypatch
+    db, author, second_user, admin_user, conflict, sent_emails, monkeypatch
 ):
     _two_queued_rows(db, author, second_user, admin_user, conflict)
     copy = dict(notification_delivery._COPY)
@@ -282,11 +279,11 @@ def test_a_kind_without_copy_is_skipped_and_the_drain_goes_on(
 
     assert [r.status for r in _deliveries(db, author)] == ["skipped"]
     assert [r.status for r in _deliveries(db, second_user)] == ["done"]
-    assert [m.to for m in outbox] == [second_user.email]
+    assert [m.to for m in sent_emails] == [second_user.email]
 
 
 def test_a_row_that_raises_is_retried_and_the_drain_goes_on(
-    db, author, second_user, admin_user, conflict, outbox, monkeypatch
+    db, author, second_user, admin_user, conflict, sent_emails, monkeypatch
 ):
     _two_queued_rows(db, author, second_user, admin_user, conflict)
 
@@ -325,11 +322,11 @@ def test_a_failed_write_after_a_send_never_requeues_the_row(
 
 
 def test_the_one_click_unsubscribe_turns_off_that_kind_by_email_only(
-    db, author, second_user, conflict, outbox
+    db, author, second_user, conflict, sent_emails
 ):
     _fulfil(db, author, second_user, conflict)
     notification_delivery.drain(db)
-    [message] = [m for m in outbox if m.to == author.email]
+    [message] = [m for m in sent_emails if m.to == author.email]
     token = message.headers["List-Unsubscribe"].split("token=")[1].rstrip(">")
 
     client.cookies.clear()

@@ -15,7 +15,6 @@ import pytest
 import app.services.tweet_ingest.archive as archive_mod
 from app.config import settings
 from app.services import uploads as uploads_service
-from app.services.tweet_ingest.syndication import _cache_clear
 from tests._fixtures import TINY_JPEG, TINY_MP4, stored_path
 from tests.conftest import login_as
 from tests.events._helpers import (
@@ -99,9 +98,7 @@ def upstream(monkeypatch) -> Iterator[SimpleNamespace]:
     real_sync, real_async = httpx.Client, httpx.AsyncClient
     monkeypatch.setattr(httpx, "Client", lambda **_kw: real_sync(transport=transport))
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kw: real_async(transport=transport))
-    _cache_clear()
-    yield SimpleNamespace(routes=routes, seen=seen)
-    _cache_clear()
+    return SimpleNamespace(routes=routes, seen=seen)
 
 
 def _import(user, url: str, **extra) -> httpx.Response:

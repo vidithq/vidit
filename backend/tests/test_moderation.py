@@ -13,80 +13,17 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 from sqlalchemy.exc import IntegrityError
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.audit_log import AuditLog
 from app.models.collection import Collection
 from app.models.content_report import ContentReport
 from app.models.event import Event
 from app.models.source import Source, SourceLink
-from app.models.user import User
-from app.services.auth import hash_password
-from tests._fixtures import collection_description
+from tests._fixtures import client, collection_description
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _clear_test_client_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def admin_user(db):
-    user = User(
-        username=f"mod{uuid.uuid4().hex[:8]}",
-        email=f"mod-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-        is_admin=True,
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    # Reap this actor's audit rows so the user row deletes cleanly.
-    db.expire_all()
-    db.query(AuditLog).filter(AuditLog.actor_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
-
-
-@pytest.fixture
-def regular_user(db):
-    user = User(
-        username=f"usr{uuid.uuid4().hex[:8]}",
-        email=f"usr-{uuid.uuid4().hex}@example.com",
-        password_hash=hash_password("password123"),
-    )
-    db.add(user)
-    db.commit()
-    user_id = user.id
-    yield user
-    db.expire_all()
-    db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-    # Both id columns are SET NULL, so reap the orphaned reports.
-    db.query(ContentReport).filter(
-        ContentReport.event_id.is_(None), ContentReport.collection_id.is_(None)
-    ).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
-    db.commit()
 
 
 @pytest.fixture

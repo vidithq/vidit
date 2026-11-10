@@ -1,9 +1,8 @@
-import io
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 
@@ -17,6 +16,7 @@ from app.services.storage import (
     sweep_keys,
     upload_source_file,
 )
+from tests._fixtures import upload_file
 
 
 @pytest.fixture(autouse=True)
@@ -25,17 +25,11 @@ def _local_backend(monkeypatch, tmp_path):
     monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
 
 
-def _upload_file(name: str, content: bytes, content_type: str) -> UploadFile:
-    return UploadFile(
-        filename=name, file=io.BytesIO(content), headers={"content-type": content_type}
-    )
-
-
 async def test_local_storage_upload_writes_file_and_returns_url(tmp_path: Path):
     import hashlib
 
     backend = LocalStorage(tmp_path)
-    file = _upload_file("evidence.jpg", b"fake-image-bytes", "image/jpeg")
+    file = upload_file("evidence.jpg", b"fake-image-bytes", "image/jpeg")
 
     result = await backend.upload(file, "uploads/abc/evidence.jpg")
 
@@ -65,7 +59,7 @@ async def test_upload_source_file_helper_routes_through_local(tmp_path: Path):
 
     from tests._fixtures import TINY_JPEG
 
-    file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
+    file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
 
     [(result, _)] = await upload_source_file(file)
 
@@ -87,7 +81,7 @@ async def test_upload_source_file_writes_hero_and_thumbnail_derivatives(tmp_path
 
     from tests._fixtures import TINY_JPEG
 
-    file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
+    file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
 
     [(result, _)] = await upload_source_file(file)
 
@@ -111,7 +105,7 @@ async def test_upload_source_file_derives_extension_from_content_type_not_filena
     """The S3 key extension comes from the validated MIME type, not the
     attacker-controlled ``file.filename`` (long suffix, RTL override, lying extension)."""
     # '.html' on a video/mp4 payload: the content type wins.
-    file = _upload_file("evil.html", b"fake-mp4-bytes", "video/mp4")
+    file = upload_file("evil.html", b"fake-mp4-bytes", "video/mp4")
 
     [(result, _)] = await upload_source_file(file)
 
@@ -120,7 +114,7 @@ async def test_upload_source_file_derives_extension_from_content_type_not_filena
 
 async def test_upload_source_file_skips_derivatives_for_video(tmp_path: Path):
     """Videos produce no JPEG derivatives, so a rollback sweeps no missing sibling keys."""
-    file = _upload_file("clip.mp4", b"fake-mp4-bytes", "video/mp4")
+    file = upload_file("clip.mp4", b"fake-mp4-bytes", "video/mp4")
 
     [(result, _)] = await upload_source_file(file)
     assert result.derivative_keys == ()
@@ -173,7 +167,7 @@ async def test_upload_source_file_sweeps_partial_triple_on_mid_flight_failure(
 
     monkeypatch.setattr(LocalStorage, "upload_bytes", flaky_upload_bytes)
 
-    file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
+    file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
     with pytest.raises(RuntimeError, match="simulated hero PUT failure"):
         await upload_source_file(file)
 
@@ -191,7 +185,7 @@ async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
     from tests._fixtures import TINY_JPEG
 
     user_id = uuid4()
-    file = _upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
+    file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
     [(result, _)] = await upload_proof_image(file, user_id)
 
     assert result.derivative_keys == ()
@@ -205,7 +199,7 @@ async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
 
 async def test_local_storage_round_trips_through_static_files_mount(tmp_path: Path):
     backend = LocalStorage(tmp_path)
-    file = _upload_file("evidence.jpg", b"served-bytes", "image/jpeg")
+    file = upload_file("evidence.jpg", b"served-bytes", "image/jpeg")
     _ = await backend.upload(file, "uploads/abc/evidence.jpg")
 
     test_app = FastAPI()

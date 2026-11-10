@@ -7,7 +7,6 @@ real. The grammar itself is pinned by ``tests/ingest_contract``.
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -48,12 +47,10 @@ from app.services.tweet_ingest import (
     WARNING_MESSAGES,
     tags_bot,
 )
-from app.services.tweet_ingest.syndication import _cache_clear
 from app.services.tweet_ingest.urls import TELEGRAM_HOST_RE
-from tests._fixtures import TINY_MP4
+from tests._fixtures import BOT_USER_ID, TINY_MP4, syndication_client, write_client
 from tests.ingest_contract.loader import load_body, load_chased, load_embed, load_expected
 
-BOT_USER_ID = "999000"
 HANDLE = f"hawk{uuid.uuid4().hex[:8]}"
 OTHER_HANDLE = f"kite{uuid.uuid4().hex[:8]}"
 
@@ -348,7 +345,7 @@ BODIES = {
 def _syndication_client(fetched: list[str] | None = None) -> httpx.Client:
     """``fetched`` records every post id syndication was asked for, in order."""
 
-    def handler(req: httpx.Request) -> httpx.Response:
+    def route(req: httpx.Request) -> httpx.Response | None:
         if TELEGRAM_HOST_RE.match(req.url.host.lower()) is not None:
             # One client carries both upstreams, as in production.
             return httpx.Response(200, text=_telegram_embed())
@@ -360,12 +357,9 @@ def _syndication_client(fetched: list[str] | None = None) -> httpx.Client:
             return httpx.Response(200, json={"__typename": "TweetTombstone", "tombstone": {}})
         if tweet_id == DOWN_PARENT_ID:
             return httpx.Response(503)
-        body = BODIES.get(tweet_id)
-        if body is None:
-            return httpx.Response(404)
-        return httpx.Response(200, json=body)
+        return None
 
-    return httpx.Client(transport=httpx.MockTransport(handler))
+    return syndication_client(BODIES, route)
 
 
 def _mentions_client(
@@ -406,31 +400,8 @@ def _mentions_client(
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _write_client(posted: list[dict[str, object]], liked: list[dict[str, object]]) -> httpx.Client:
-    """``liked`` captures calls to the likes endpoint; tests assert it stays empty."""
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.path.endswith("/likes"):
-            liked.append(json.loads(req.content))
-            return httpx.Response(200, json={"data": {"liked": True}})
-        posted.append(json.loads(req.content))
-        return httpx.Response(201, json={"data": {"id": "777"}})
-
-    return httpx.Client(transport=httpx.MockTransport(handler))
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
 @pytest.fixture(autouse=True)
 def _bot_settings(monkeypatch):
-    _cache_clear()
     monkeypatch.setattr(settings, "x_bot_bearer_token", "tok")
     monkeypatch.setattr(settings, "x_bot_user_id", BOT_USER_ID)
     monkeypatch.setattr(settings, "x_api_consumer_key", "ck")
@@ -518,7 +489,7 @@ async def _run(
     with (
         _syndication_client(fetched) as syn,
         _mentions_client(mention_ids, seen_params, reply_to, handle, parent_of) as read,
-        _write_client(posted, liked) as write,
+        write_client(posted, liked) as write,
     ):
         outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
     return outcome, seen_params, posted, liked
@@ -798,7 +769,7 @@ async def test_catch_up_recovers_a_mention_the_webhook_dropped(db, linked_owner)
     with (
         _syndication_client() as syn,
         httpx.Client(transport=httpx.MockTransport(handler)) as read,
-        _write_client(posted, liked) as write,
+        write_client(posted, liked) as write,
     ):
         outcome = await _pass(db, syndication_client=syn, x_read_client=read, x_write_client=write)
 
@@ -1447,7 +1418,7 @@ async def test_gap_detector_fires_on_failed_verdict_too(db, linked_owner, monkey
         with (
             httpx.Client(transport=httpx.MockTransport(syn_handler)) as syn,
             httpx.Client(transport=httpx.MockTransport(read_handler)) as read,
-            _write_client(posted, liked) as write,
+            write_client(posted, liked) as write,
         ):
             outcome = await _pass(
                 db, syndication_client=syn, x_read_client=read, x_write_client=write

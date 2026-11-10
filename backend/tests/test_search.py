@@ -13,12 +13,9 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
-from fastapi.testclient import TestClient
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point, Polygon
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.collection import Collection, CollectionEvent
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_REQUESTED, Event
 from app.models.media import Media
@@ -29,26 +26,8 @@ from app.models.tag import Tag
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.search import HIGHLIGHT_START, HIGHLIGHT_STOP
-from tests._fixtures import collection_description, fake_sha256
+from tests._fixtures import client, collection_description, fake_sha256
 from tests.conftest import login_as
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @pytest.fixture

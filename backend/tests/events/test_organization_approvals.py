@@ -22,13 +22,11 @@ from app.models.organization import Organization, OrganizationMember
 from app.models.user import User
 from app.services import email, notification_delivery, organizations
 from app.services.approval_requests import REFUSAL_MESSAGE
-from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, error_code
 from tests.conftest import login_as
 from tests.events._helpers import (
     approve,
     client,
-    delete_user,
     notifications_of,
     published_geo,
 )
@@ -38,30 +36,6 @@ from tests.events.test_versions import _published as _published_with_floor
 
 _EVENTS = "/api/v1/events"
 _ORGS = "/api/v1/organizations"
-
-
-@pytest.fixture
-def make_user(db):
-    made: list[uuid.UUID] = []
-
-    def make(**kw) -> User:
-        user = User(
-            username=f"oa{uuid.uuid4().hex[:8]}",
-            email=f"oa-{uuid.uuid4().hex}@example.com",
-            password_hash=hash_password("password123"),
-            **kw,
-        )
-        db.add(user)
-        db.commit()
-        made.append(user.id)
-        return user
-
-    yield make
-    db.expire_all()
-    for user_id in made:
-        db.query(Event).filter(Event.owner_id == user_id).delete(synchronize_session=False)
-        delete_user(db, user_id)
-    db.commit()
 
 
 @pytest.fixture
@@ -123,10 +97,6 @@ def _decline(geo: Event, request_id: str, user: User):
     )
 
 
-def _code(response) -> str:
-    return response.json()["detail"]["code"]
-
-
 def _rows(db, user: User, kind: str) -> list[Notification]:
     db.expire_all()
     return (
@@ -180,7 +150,7 @@ def test_an_organization_approval_outlives_the_acting_org_managers_account(
     listed = client.get(f"{_ORGS}/{org.slug}/approvals").json()
     assert [item["approval"]["reviewer"] for item in listed] == [None]
     duplicate = _approve(geo, other_manager, org)
-    assert _code(duplicate) == "already_approved"
+    assert error_code(duplicate) == "already_approved"
 
 
 def test_an_organization_approval_stays_listed_when_its_member_is_banned(
@@ -267,7 +237,7 @@ def test_any_member_approves_in_its_name_and_an_outsider_is_refused(
 
     outsider = _approve(geo, make_user(), org)
     assert outsider.status_code == 403
-    assert _code(outsider) == "not_organization_member"
+    assert error_code(outsider) == "not_organization_member"
 
     approved = _approve(geo, member, org)
     assert approved.status_code == 201, approved.text
@@ -281,7 +251,7 @@ def test_any_member_approves_in_its_name_and_an_outsider_is_refused(
         headers=headers,
     )
     assert unknown.status_code == 404
-    assert _code(unknown) == "organization_not_found"
+    assert error_code(unknown) == "organization_not_found"
 
 
 def test_a_geolocator_cannot_approve_for_an_organization(db, author, make_user, make_org):
@@ -296,7 +266,7 @@ def test_a_geolocator_cannot_approve_for_an_organization(db, author, make_user, 
     for user in (author, co):
         response = _approve(geo, user, org)
         assert response.status_code == 403
-        assert _code(response) == "geolocator_cannot_approve"
+        assert error_code(response) == "geolocator_cannot_approve"
 
 
 # ── One standing approval per organization and version ──────────────
@@ -310,7 +280,7 @@ def test_one_standing_approval_per_organization_and_version(db, author, make_use
     placed = _approve(geo, first, org).json()
     duplicate = _approve(geo, second, org)
     assert duplicate.status_code == 409
-    assert _code(duplicate) == "already_approved"
+    assert error_code(duplicate) == "already_approved"
 
     # The org manager's own approval is a separate attestation.
     assert _approve(geo, first).status_code == 201
@@ -401,7 +371,7 @@ def test_following_admits_an_analyst_an_org_manager_follows(db, author, make_use
 
     refused = _ask(geo, author, org)
     assert refused.status_code == 403
-    assert _code(refused) == "requests_not_accepted"
+    assert error_code(refused) == "requests_not_accepted"
     assert refused.json()["detail"]["message"] == REFUSAL_MESSAGE
 
     db.add(Follow(follower_id=manager.id, followed_id=author.id))
@@ -437,7 +407,7 @@ def test_the_org_managers_set_the_audience(db, author, make_user, make_org):
     db.add(Follow(follower_id=manager.id, followed_id=author.id))
     db.commit()
     refused = _ask(other, author, org)
-    assert _code(refused) == "requests_not_accepted"
+    assert error_code(refused) == "requests_not_accepted"
     assert refused.json()["detail"]["message"] == REFUSAL_MESSAGE
 
 
@@ -470,7 +440,7 @@ def test_the_picker_suggests_organizations_without_revealing_their_audience(
     assert own_org.slug not in listed
     # Another organization's org manager following the requester admits nothing here.
     unfollowed = make_org(managers=[make_user()])
-    assert _code(_ask(geo, author, unfollowed)) == "requests_not_accepted"
+    assert error_code(_ask(geo, author, unfollowed)) == "requests_not_accepted"
     assert picked(open_org.slug[4:]) == {open_org.slug}
 
     assert _ask(geo, author, open_org).status_code == 201
@@ -478,7 +448,7 @@ def test_the_picker_suggests_organizations_without_revealing_their_audience(
 
     refused = _ask(geo, author, own_org)
     assert refused.status_code == 403
-    assert _code(refused) == "target_is_geolocator"
+    assert error_code(refused) == "target_is_geolocator"
 
 
 def test_a_request_reaches_every_member_and_an_approval_resolves_it(
@@ -509,7 +479,7 @@ def test_a_request_reaches_every_member_and_an_approval_resolves_it(
     assert client.get(f"{_EVENTS}/{geo.id}/approval-requests").json() == []
 
     duplicate = _ask(geo, author, org)
-    assert _code(duplicate) == "already_requested"
+    assert error_code(duplicate) == "already_requested"
 
     assert _approve(geo, member, org).status_code == 201
     db.expire_all()
@@ -518,7 +488,7 @@ def test_a_request_reaches_every_member_and_an_approval_resolves_it(
     assert received.organization_id == org.id
 
     again = _ask(geo, author, org)
-    assert _code(again) == "already_approved"
+    assert error_code(again) == "already_approved"
 
 
 def test_any_member_declines_for_the_organization(db, author, make_user, make_org):

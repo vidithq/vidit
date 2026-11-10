@@ -7,70 +7,20 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.database import SessionLocal
-from app.main import app
 from app.models.audit_log import AuditLog
 from app.models.follow import Follow
 from app.models.notification import Notification
-from app.models.organization import Organization, OrganizationMember
+from app.models.organization import OrganizationMember
 from app.models.user import User
-from app.services.auth import hash_password
-from tests._fixtures import TINY_JPEG
+from tests._fixtures import TINY_JPEG, client, error_code
 from tests.conftest import login_as
-
-client = TestClient(app)
 
 _ADMIN_CREATE = "/api/v1/admin/organizations"
 
 
 def _org(slug: str) -> str:
     return f"/api/v1/organizations/{slug}"
-
-
-@pytest.fixture(autouse=True)
-def _clear_cookies():
-    client.cookies.clear()
-    yield
-    client.cookies.clear()
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-@pytest.fixture
-def make_user(db):
-    created: list[uuid.UUID] = []
-
-    def _make(*, is_admin: bool = False) -> User:
-        tag = uuid.uuid4().hex[:8]
-        user = User(
-            username=f"org{tag}",
-            email=f"org-{tag}@example.com",
-            password_hash=hash_password("password123"),
-            is_admin=is_admin,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        created.append(user.id)
-        return user
-
-    yield _make
-    db.rollback()
-    db.query(Organization).filter(Organization.created_by_id.in_(created)).delete(
-        synchronize_session=False
-    )
-    db.query(AuditLog).filter(AuditLog.actor_id.in_(created)).delete(synchronize_session=False)
-    db.query(User).filter(User.id.in_(created)).delete(synchronize_session=False)
-    db.commit()
 
 
 @pytest.fixture
@@ -125,13 +75,6 @@ def _join(db, inviter: User, slug: str, invitee: User) -> None:
     assert client.post(f"{_org(slug)}/invite/accept", headers=headers).status_code == 204
 
 
-def _code(response) -> str:
-    return response.json()["detail"]["code"]
-
-
-# Create
-
-
 def test_site_admin_creates_an_organization_with_its_first_manager(
     db, org, site_admin, org_manager
 ):
@@ -156,7 +99,7 @@ def test_analysts_and_organizations_share_one_x_handle_namespace(
         json={"x_handle": org["x_handle"]},
         headers=headers,
     )
-    assert (taken.status_code, _code(taken)) == (409, "x_handle_conflict")
+    assert (taken.status_code, error_code(taken)) == (409, "x_handle_conflict")
 
     handle = f"an{uuid.uuid4().hex[:8]}"
     analyst.x_handle = handle
@@ -171,7 +114,7 @@ def test_analysts_and_organizations_share_one_x_handle_namespace(
             "manager_username": org_manager.username,
         },
     )
-    assert (refused.status_code, _code(refused)) == (409, "x_handle_conflict")
+    assert (refused.status_code, error_code(refused)) == (409, "x_handle_conflict")
 
 
 def test_create_is_site_admin_only(make_user, org_manager):
@@ -203,7 +146,7 @@ def test_create_refuses_a_taken_slug_and_an_unknown_admin(org, site_admin, org_m
         json={"name": "Copy", "slug": org["slug"], "manager_username": org_manager.username},
     )
     assert taken.status_code == 409
-    assert _code(taken) == "slug_taken"
+    assert error_code(taken) == "slug_taken"
     unknown = client.post(
         _ADMIN_CREATE,
         headers=headers,
@@ -263,18 +206,18 @@ def test_invite_requires_mutual_follow(db, org, org_manager, make_user):
     invitee = make_user()
     refused = _invite(org_manager, org["slug"], invitee)
     assert refused.status_code == 403
-    assert _code(refused) == "not_mutual_follow"
+    assert error_code(refused) == "not_mutual_follow"
 
     db.add(Follow(follower_id=org_manager.id, followed_id=invitee.id))
     db.commit()
-    assert _code(_invite(org_manager, org["slug"], invitee)) == "not_mutual_follow"
+    assert error_code(_invite(org_manager, org["slug"], invitee)) == "not_mutual_follow"
 
     db.add(Follow(follower_id=invitee.id, followed_id=org_manager.id))
     db.commit()
     assert _invite(org_manager, org["slug"], invitee).status_code == 201
     again = _invite(org_manager, org["slug"], invitee)
     assert again.status_code == 409
-    assert _code(again) == "already_invited"
+    assert error_code(again) == "already_invited"
 
 
 def test_only_an_org_manager_invites(db, org, org_manager, make_user):
@@ -283,7 +226,7 @@ def test_only_an_org_manager_invites(db, org, org_manager, make_user):
     _follow_both(db, member, outsider)
     refused = _invite(member, org["slug"], outsider)
     assert refused.status_code == 403
-    assert _code(refused) == "not_organization_manager"
+    assert error_code(refused) == "not_organization_manager"
 
 
 def test_candidates_are_mutual_follows_not_yet_in_or_invited(db, org, org_manager, make_user):
@@ -383,10 +326,10 @@ def test_last_manager_cannot_leave_or_be_demoted(org, org_manager):
     members = f"{_org(org['slug'])}/members/{org_manager.username}"
     demote = client.patch(members, headers=headers, json={"role": "member"})
     assert demote.status_code == 409
-    assert _code(demote) == "last_manager"
+    assert error_code(demote) == "last_manager"
     leave = client.delete(members, headers=headers)
     assert leave.status_code == 409
-    assert _code(leave) == "last_manager"
+    assert error_code(leave) == "last_manager"
 
 
 def test_promote_then_the_former_manager_may_leave(db, org, org_manager, make_user):
