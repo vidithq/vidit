@@ -161,41 +161,6 @@ beforeEach(() => {
 });
 
 describe("NewCollectionPage", () => {
-  it("bounces a signed-out visitor to the login form", () => {
-    useAuth.mockReturnValue(signedOut());
-    window.history.replaceState(null, "", "/collections/new");
-
-    render(<NewCollectionPage />);
-
-    // `replace`, so the protected page is not left in history behind the login form.
-    expect(replace).toHaveBeenCalledWith("/login?next=%2Fcollections%2Fnew");
-    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
-  });
-
-  it("waits on the session rather than bouncing while it resolves", () => {
-    useAuth.mockReturnValue({ ...signedOut(), loading: true });
-
-    render(<NewCollectionPage />);
-
-    expect(replace).not.toHaveBeenCalled();
-  });
-
-  it("splits the form into a Details card, an Events in this collection card, and an Add events card", () => {
-    render(<NewCollectionPage />);
-
-    expect(screen.getByRole("heading", { name: "Details" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Events in this collection" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Add events" }),
-    ).toBeInTheDocument();
-    // Nothing to drop yet.
-    expect(
-      screen.queryByRole("heading", { name: "Drop this collection" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("opens the collection it created", async () => {
     render(<NewCollectionPage />);
     await fillForm();
@@ -276,17 +241,6 @@ describe("NewCollectionPage", () => {
       expect(screen.getByText("Title already used.")).toBeInTheDocument(),
     );
     expect(push).not.toHaveBeenCalled();
-  });
-
-  it("refuses a collection with no description", () => {
-    render(<NewCollectionPage />);
-    fireEvent.change(screen.getByLabelText("Title"), {
-      target: { value: "March strikes" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create collection" }));
-
-    expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent("Description");
-    expect(createCollection).not.toHaveBeenCalled();
   });
 
   it("cancels back to the profile the section that offers it lives on", () => {

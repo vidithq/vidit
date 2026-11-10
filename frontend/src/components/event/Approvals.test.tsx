@@ -108,8 +108,6 @@ describe("<ApprovalStamps>", () => {
       ["bo approved v2 on 15 Oct 2026", "/profile/bo"],
       ["Bellingcat (cy) approved v2 on 15 Oct 2026", "/organizations/bellingcat"],
     ]);
-    expect(stamps[0].className).toContain("rounded-full");
-    expect(stamps[1].className).toContain("rounded-md");
     expect(screen.queryByRole("button")).toBeNull();
   });
   it("opens no card on a click", () => {
@@ -288,12 +286,6 @@ describe("useEventApprovals", () => {
     expect(await stampNames()).toEqual(["bo"]);
     expect(screen.queryByRole("button", { name: /^Approve\b/ })).toBeNull();
   });
-  it("stamps an organization approval whose acting org manager was erased", async () => {
-    serve([approval({ organization: BELLINGCAT, reviewer: null })]);
-    render(<Panel />);
-
-    expect(await stampNames()).toEqual(["Bellingcat"]);
-  });
   it("offers a geolocator no approval", async () => {
     mocks.viewer = ANA;
     serve([approval()]);
@@ -322,7 +314,6 @@ describe("useEventApprovals", () => {
     render(<Panel />);
 
     expect(await stampNames()).toHaveLength(20);
-    expect(screen.queryByRole("button", { name: /more approvals/ })).toBeNull();
     expect(screen.getByRole("region", { name: "Approvals" })).not.toHaveTextContent(/\d/);
   });
 

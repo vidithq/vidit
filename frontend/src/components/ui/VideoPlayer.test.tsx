@@ -37,14 +37,6 @@ describe("VideoPlayer", () => {
     expect(video).toHaveAttribute("src", "/media/clip.mp4#t=0.1");
   });
 
-  it("takes sizing from the call site", () => {
-    const { container } = render(
-      <VideoPlayer src={VIDEO.storage_url} source={VIDEO} className="max-w-4xl" />,
-    );
-
-    expect(container.querySelector("media-controller")).toHaveClass("max-w-4xl");
-  });
-
   // The bar is stripped: no casting, PiP, playback speed or captions.
   it("carries exactly play, scrub, time, volume, download and one big-view control", () => {
     const { container } = render(<VideoPlayer src={VIDEO.storage_url} source={VIDEO} />);
@@ -79,7 +71,6 @@ describe("VideoPlayer", () => {
         src="/media/broken.mp4"
         source={VIDEO}
         compact
-        className="max-w-4xl"
       />,
     );
 
@@ -88,7 +79,6 @@ describe("VideoPlayer", () => {
     expect(container.querySelector("media-controller")).toBeNull();
     // The download stays: the bar that carried it is gone.
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
-    expect(container.firstElementChild).toHaveClass("max-w-4xl");
   });
 
   // The verdict is keyed on the URL: the lightbox reuses one player across

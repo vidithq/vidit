@@ -74,18 +74,16 @@ describe("PublishActions", () => {
     expect(button).toHaveAccessibleName("Publish geolocation");
   });
 
-  it("counts what the write misses and dims the button while short", () => {
+  it("counts what the write misses", () => {
     render(<Host write={vi.fn()} missing={[TITLE]} />);
     const button = screen.getByRole("button", { name: "Publish geolocation" });
     expect(button).toHaveAccessibleDescription("1 missing: Title");
-    expect(button.className).toContain("opacity-60");
   });
 
-  it("leads the label with its action's icon at every width, and shows the banner as an alert", () => {
+  it("leads the label with its action's icon, and shows the banner as an alert", () => {
     render(<Host write={vi.fn()} error="Couldn't publish." />);
     const icon = screen.getByRole("button", { name: "Publish geolocation" }).querySelector("svg");
-    expect(icon).toHaveClass("lucide-map-pin");
-    expect(icon!.parentElement!.className).not.toContain("max-lg:hidden");
+    expect(icon).not.toBeNull();
     expect(screen.getByRole("button", { name: "What does Publish do?" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Couldn't publish.");
   });

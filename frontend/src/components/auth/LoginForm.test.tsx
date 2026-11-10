@@ -5,7 +5,6 @@ const login = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ login }) }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
 
-import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import LoginForm from "./LoginForm";
 
 describe("LoginForm", () => {
@@ -32,8 +31,8 @@ describe("LoginForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent("Password");
-    expect(screen.getByLabelText("Password")).toHaveClass(...FORM_INVALID_FIELD.split(" "));
-    expect(screen.getByLabelText("Email")).not.toHaveClass(...FORM_INVALID_FIELD.split(" "));
+    expect(screen.getByLabelText("Password")).toBeInvalid();
+    expect(screen.getByLabelText("Email")).not.toBeInvalid();
     expect(login).not.toHaveBeenCalled();
   });
 });

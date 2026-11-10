@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "@/test/apiStub";
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
-import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { SingleEmailFlow } from "./SingleEmailFlow";
 
 function renderFlow() {
@@ -37,7 +36,7 @@ describe("SingleEmailFlow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send link" }));
 
     expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent("Email");
-    expect(screen.getByLabelText("Email")).toHaveClass(...FORM_INVALID_FIELD.split(" "));
+    expect(screen.getByLabelText("Email")).toBeInvalid();
     await waitFor(() => expect(apiFetch).not.toHaveBeenCalled());
   });
 });

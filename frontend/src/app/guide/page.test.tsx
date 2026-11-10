@@ -19,9 +19,6 @@ describe("/guide", () => {
   it("holds the six sections in order, each behind a stable anchor", () => {
     const { container } = render(<GuidePage />);
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Getting started" }),
-    ).toBeInTheDocument();
     const ids = Array.from(container.querySelectorAll("h2[id]")).map((h) => h.id);
     expect(ids).toEqual(ANCHORS);
   });

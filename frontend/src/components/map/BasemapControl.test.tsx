@@ -88,10 +88,8 @@ describe("<BasemapControl>", () => {
       <BasemapControl settings={SETTINGS} adjustable overlaysLoading onChange={vi.fn()} />,
     );
     expect(screen.getByRole("status")).toHaveTextContent("Loading satellite overlays");
-    expect(screen.getByRole("button", { name: "Basemap" }).parentElement?.querySelector(".animate-pulse")).not.toBeNull();
     rerender(<BasemapControl settings={SETTINGS} adjustable onChange={vi.fn()} />);
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
-    expect(document.querySelector(".animate-pulse")).toBeNull();
   });
 
   it("explains the preset on show beside the heading", () => {

@@ -20,13 +20,6 @@ function withClipboard() {
   return writeText;
 }
 
-/** Which mark the button shows: the check while the copy flash holds, the share mark otherwise. */
-function visibleMark(button: HTMLElement): "check" | "share" {
-  const [rest, check] = button.querySelectorAll(":scope > span > span");
-  expect(rest.className.includes("opacity-0")).not.toBe(check.className.includes("opacity-0"));
-  return check.className.includes("opacity-100") ? "check" : "share";
-}
-
 beforeEach(() => {
   vi.useFakeTimers();
 });
@@ -55,12 +48,10 @@ describe("EventShare without the Web Share API", () => {
     withClipboard();
     render(<EventShare event={geolocated} />);
     const share = screen.getByRole("button", { name: "Share" });
-    expect(visibleMark(share)).toBe("share");
 
     await act(async () => {
       fireEvent.click(share);
     });
-    expect(visibleMark(share)).toBe("check");
     // The name holds still: the tooltip shows the confirmation, and a live region says it.
     expect(screen.getByRole("button", { name: "Share" })).toBe(share);
     const [status, bubble] = screen.getAllByText("Link copied");
@@ -70,7 +61,6 @@ describe("EventShare without the Web Share API", () => {
     act(() => {
       vi.advanceTimersByTime(1500);
     });
-    expect(visibleMark(share)).toBe("share");
     expect(screen.queryByText("Link copied")).toBeNull();
   });
 

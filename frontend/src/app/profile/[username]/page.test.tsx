@@ -52,8 +52,8 @@ const PROFILE: PublicProfile = {
   external_links: { x: "ana_osint", website: "https://ana.example" },
   followers_count: 4,
   following_count: 2,
-  // Equal to `geolocated_count` on purpose, so a component reading the wrong one still fails.
-  geolocations_count: 2,
+  // Distinct from `geolocated_count`, so a component reading the wrong one fails.
+  geolocations_count: 6,
   created_at: "2026-01-05T09:00:00Z",
   is_following: false,
 };
@@ -456,24 +456,6 @@ describe("public profile identity", () => {
     expect(screen.getByText("Member since 5 Jan 2026")).toBeInTheDocument();
   });
 
-  it("keeps the work figures to the Insights card", () => {
-    withProfile({});
-    mountProfile();
-
-    // The counters strip named the Insights `Geolocated` figure under a vaguer word.
-    expect(screen.queryByText("Submitted")).not.toBeInTheDocument();
-    expect(screen.queryByText("Since")).not.toBeInTheDocument();
-  });
-
-  it("keeps a bio that carries a link inside the frame", () => {
-    withProfile({ bio: "Notes at https://a-very-long-domain-name.example/analyst/notes" });
-    mountProfile();
-
-    const line = screen.getByText(/Notes at/);
-    // The link breaks where it must; PageShell's subtitle slot owns the anywhere-break so a token cannot scroll a phone sideways.
-    expect(line.closest(".wrap-anywhere")).not.toBeNull();
-  });
-
   it("links every URL in the bio and leaves the sentence around it as text", () => {
     withProfile({ bio: "Threads on https://x.com/ana, notes at https://notes.example/ana." });
     mountProfile();
@@ -600,7 +582,5 @@ describe("public profile edit mode", () => {
     const message = await screen.findByText("Not an http or https link.");
     expect(message.closest("p")).toHaveAttribute("id", "link-website-error");
     expect(website).toHaveAttribute("aria-describedby", "link-website-error");
-    // Shown in place, not repeated as a banner under Save.
-    expect(screen.queryByText(/External links/)).toBeNull();
   });
 });

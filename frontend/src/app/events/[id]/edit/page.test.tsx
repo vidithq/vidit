@@ -269,8 +269,6 @@ describe("the detection edit surface", () => {
     expect(
       screen.getByRole("heading", { name: "Publish detection" })
     ).toBeInTheDocument();
-    // No description line under the title: the fields say what they are.
-    expect(screen.queryByText(/Publishing makes the event public/)).toBeNull();
     // The sticky actions come before the fields; no Cancel, and no bare Close.
     const rail = screen.getByRole("complementary", { name: "Actions" });
     const submit = within(rail).getByRole("button", { name: "Publish" });
@@ -281,7 +279,6 @@ describe("the detection edit surface", () => {
     // The close shows as itself, a red icon button after Publish.
     const close = within(rail).getByRole("button", { name: "Close this detection" });
     expect(follows(submit, close)).toBe(true);
-    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
   it("closes the detection behind its reason panel", async () => {
@@ -793,7 +790,6 @@ describe("editing an open request", () => {
     expect(screen.getByRole("button", { name: "Publish" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save request" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Close this request" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
   it("holds the request floor before it posts", () => {

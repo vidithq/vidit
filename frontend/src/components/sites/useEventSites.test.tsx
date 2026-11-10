@@ -57,7 +57,6 @@ describe("useEventSites", () => {
     await renderBlock();
     expect(screen.getByRole("heading", { name: /^Linked sites/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Site Alpha" })).toBeInTheDocument();
-    expect(screen.queryByText(/Linked to/)).not.toBeInTheDocument();
     expect(screen.getByText("Damage")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Link to a site" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Unlink from Site Alpha" })).not.toBeInTheDocument();

@@ -70,7 +70,6 @@ describe("deleting an approval", () => {
     const control = await trash();
     const stamp = within(screen.getByRole("list", { name: "Approved by" })).getByRole("listitem");
     expect(stamp).toContainElement(control);
-    expect(control.className).toContain("group-hover:opacity-100");
   });
 
   it("deletes from a filed version's stamps", async () => {

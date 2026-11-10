@@ -1,7 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import type { CoordinatePair } from "@/lib/coordinates";
 
 // MapLibre cannot load under jsdom: the stub records what the form hands its map.
@@ -47,8 +46,8 @@ describe("LocationPicker", () => {
 
   it("flags the Latitude and Longitude fields red when the coordinates are missing", () => {
     render(<LocationPicker {...baseProps} invalid />);
-    expect(screen.getByLabelText("Latitude").className).toContain(FORM_INVALID_FIELD);
-    expect(screen.getByLabelText("Longitude").className).toContain(FORM_INVALID_FIELD);
+    expect(screen.getByLabelText("Latitude")).toBeInvalid();
+    expect(screen.getByLabelText("Longitude")).toBeInvalid();
   });
 
   it("shows the map with no pin while the pair is empty or refused", () => {

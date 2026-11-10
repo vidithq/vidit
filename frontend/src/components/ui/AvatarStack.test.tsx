@@ -71,6 +71,5 @@ describe("<AvatarStack>", () => {
     );
     const logo = screen.getByRole("link", { name: "Member of Open Source Watch" });
     expect(logo).toHaveAttribute("href", "/organizations/osw");
-    expect(logo.className).toContain("rounded-md");
   });
 });

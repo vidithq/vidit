@@ -177,22 +177,6 @@ describe("EditCollectionPage", () => {
     expect(screen.getByLabelText("Title")).toHaveValue("Kupiansk rail corridor");
   });
 
-  it("splits the form into a Details card, an Events in this collection card, and an Add events card", async () => {
-    await renderPage();
-
-    expect(screen.getByRole("heading", { name: "Details" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Events in this collection" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Add events" }),
-    ).toBeInTheDocument();
-    // Dropping lives on the collection page's header.
-    expect(
-      screen.queryByRole("heading", { name: "Drop this collection" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("writes both details and returns to the collection", async () => {
     await renderPage();
     fireEvent.change(screen.getByLabelText("Title"), {

@@ -7,7 +7,6 @@ import { apiFetch } from "@/test/apiStub";
 
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
-import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { InviteAnalystsCard } from "./InviteAnalystsCard";
 
 const USED: SponsoredInviteCode = {
@@ -167,7 +166,7 @@ describe("InviteAnalystsCard", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Mint invite code" }));
 
     expect(screen.getByText(/^Fill in the required fields/)).toHaveTextContent("Invitee's X handle");
-    expect(screen.getByLabelText("Invitee's X handle")).toHaveClass(...FORM_INVALID_FIELD.split(" "));
+    expect(screen.getByLabelText("Invitee's X handle")).toBeInvalid();
     expect(apiFetch.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
@@ -202,7 +201,7 @@ describe("InviteAnalystsCard", () => {
     await mintThroughTheForm("this_handle_is_too_long");
 
     const field = screen.getByLabelText("Invitee's X handle");
-    await waitFor(() => expect(field).toHaveClass(...FORM_INVALID_FIELD.split(" ")));
+    await waitFor(() => expect(field).toBeInvalid());
     const message = screen.getByText("15 characters at most: letters, digits and _.");
     expect(field).toHaveAttribute("aria-describedby", message.closest("p")!.id);
     expect(screen.queryByText(/Value error|\^\[a-z/)).toBeNull();

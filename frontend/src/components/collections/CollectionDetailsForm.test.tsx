@@ -117,12 +117,12 @@ describe("CollectionDetailsForm", () => {
       "Fill in the required fields before continuing: Title, Description.",
     );
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(titleField().className).toContain("border-red-500");
+    expect(titleField()).toBeInvalid();
     expect(descriptionField()).toHaveAttribute("data-invalid", "true");
 
     // Filling a field clears its flag and its line.
     fireEvent.change(titleField(), { target: { value: "March strikes" } });
-    expect(titleField().className).not.toContain("border-red-500");
+    expect(titleField()).not.toBeInvalid();
     expect(screen.getByText(/^Fill in the required fields/)).not.toHaveTextContent("Title");
   });
 
@@ -140,7 +140,7 @@ describe("CollectionDetailsForm", () => {
       "Fill in the required fields before continuing: Description.",
     );
     expect(descriptionField()).toHaveAttribute("data-invalid", "true");
-    expect(titleField().className).not.toContain("border-red-500");
+    expect(titleField()).not.toBeInvalid();
   });
 
   it("refuses a description whose text is blank", async () => {

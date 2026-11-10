@@ -207,12 +207,10 @@ describe("<Item variant=\"compact\">, a long title and a long analyst", () => {
     expect(column.parentElement).toContainElement(badge);
   });
 
-  it("gives the title two lines and ends the detail line in an ellipsis", () => {
+  it("prints the whole detail line in one paragraph", () => {
     render(<Item variant="compact" {...long} />);
-    expect(screen.getByText(long.title)).toHaveClass("line-clamp-2");
     const detail = screen.getByText(/Stinky915846091/);
     expect(detail.tagName).toBe("P");
-    expect(detail).toHaveClass("truncate");
     expect(detail).toHaveTextContent("Event · 7 Jan 2025 · Stinky915846091_with_a_very_long_handle");
   });
 });

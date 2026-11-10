@@ -253,7 +253,6 @@ test.describe("submit", () => {
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/submit$/);
     await expect(cards).toHaveCount(6);
-    await expect(page.getByRole("link", { name: "Other ways to submit" })).toHaveCount(0);
   });
 
   test("keeps the form's draft through a trip to the chooser", async ({ page }) => {

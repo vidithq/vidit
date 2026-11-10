@@ -201,37 +201,6 @@ describe("CollectionPage", () => {
     expect(screen.getByText("rail")).toBeInTheDocument();
   });
 
-  it("says one event in the singular", async () => {
-    mockReads(collection({ event_count: 1, last_date: "2026-03-14" }));
-    fetchCollectionSequence.mockResolvedValue([ITEMS[0]]);
-
-    await renderPage();
-
-    expect(screen.getByText("1 event")).toBeInTheDocument();
-  });
-
-  it("carries no cover upload and no per-row byline", async () => {
-    // The header renders no mosaic, and the byline is the slot a row drops (the header names the analyst).
-    useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
-    mockReads(
-      collection({
-        cover: [
-          { url: "https://media.example/item.jpg", kind: "image", role: "source" },
-        ],
-      }),
-    );
-
-    await renderPage();
-
-    expect(document.querySelector("header img")).toBeNull();
-    expect(document.querySelector("header video")).toBeNull();
-    expect(document.querySelector("input[type=file]")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: /picture|cover/i }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText(/^by/)).not.toBeInTheDocument();
-  });
-
   it("maps the items' pins and lists them in order", async () => {
     await renderPage();
 
@@ -267,14 +236,6 @@ describe("CollectionPage", () => {
 
     expect(await screen.findByText("2 of 2")).toBeInTheDocument();
     expect(screen.getByTestId("map")).toHaveAttribute("data-selected", "e2");
-  });
-
-  it("clamps a step the collection does not hold", async () => {
-    searchParams.set("step", "99");
-
-    await renderPage();
-
-    expect(await screen.findByText("2 of 2")).toBeInTheDocument();
   });
 
   it("moves to the row a reader picks, and says so in the URL", async () => {

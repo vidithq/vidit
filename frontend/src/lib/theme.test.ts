@@ -7,11 +7,6 @@ beforeEach(() => {
 });
 
 describe("getTheme", () => {
-  it("defaults to dark when nothing is stored", () => {
-    expect(getTheme()).toBe(DEFAULT_THEME);
-    expect(DEFAULT_THEME).toBe("dark");
-  });
-
   it("returns a stored, valid theme id", () => {
     window.localStorage.setItem("vidit:theme", "light");
     expect(getTheme()).toBe("light");

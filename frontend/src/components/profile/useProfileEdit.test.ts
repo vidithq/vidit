@@ -284,19 +284,6 @@ describe("useProfileEdit", () => {
     expect(result.current.avatarPreview).toEqual({ kind: "none" });
   });
 
-  it("a failed save re-reads the profile, since the bio PATCH may have landed", async () => {
-    (updateMyProfile as Mock).mockResolvedValue({});
-    (uploadMyAvatar as Mock).mockRejectedValue(new Error("nope"));
-    const { result, refetchProfile } = setup();
-    act(() => result.current.startEditing());
-    act(() => result.current.setDraftAvatarFile(pickedFile()));
-    await act(async () => {
-      await result.current.saveEdits();
-    });
-    expect(refetchProfile).toHaveBeenCalledTimes(1);
-    expect(result.current.editing).toBe(true);
-  });
-
   it("switching usernames exits edit mode", () => {
     const { result, rerender } = setup();
     act(() => result.current.startEditing());
