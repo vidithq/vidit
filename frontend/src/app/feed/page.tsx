@@ -23,7 +23,7 @@ import { useTimelines } from "@/components/filters/useTimelines";
 import { FEED_PAGE, feedDatesPath, feedPath } from "@/lib/feed";
 import { formatDate } from "@/lib/format";
 import { eventItem } from "@/lib/items";
-import type { PublicProfile } from "@/lib/users";
+import { userPath, type PublicProfile } from "@/lib/users";
 import type { components } from "@/lib/api-types";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
@@ -74,7 +74,7 @@ function FeedPageBody() {
     !error &&
     items.length === 0;
   const { data: profile, error: profileError } = useApiResource<PublicProfile>(
-    emptyFollowing && user ? `/users/${user.username}` : null
+    emptyFollowing && user ? userPath(user.username) : null
   );
 
   if (authLoading || !user) {

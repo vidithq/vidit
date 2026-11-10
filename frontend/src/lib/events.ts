@@ -2,7 +2,7 @@ import { apiFetch } from "./api";
 import type { components, operations } from "@/lib/api-types";
 import { archiveTooLarge } from "./archive";
 import { appendEventFilterParams, type EventFilterParams } from "./search";
-import { cleanNumber, inBounds } from "./coordinates";
+import { coordinatePair, parsePair, type CoordinatePair } from "./coordinates";
 import { hhmm } from "./format";
 import { proofHasImage } from "./proof";
 import { snapshotProvider } from "./snapshots";
@@ -25,7 +25,15 @@ import type {
 import type { FieldName } from "./fieldHelp";
 import { withCursor } from "./pagination";
 import { eventHref } from "./routes";
-import { sameSet, versionSteps, type VersionedRecord, type VersionEntry } from "./versions";
+import {
+  sameSet,
+  versionEntries,
+  versionEntry,
+  type VersionedRecord,
+  type VersionEntry,
+  type VersionEntryRows,
+  type VersionReader,
+} from "./versions";
 
 /** A required field a create/edit form is still missing; `key` drives the in-form highlight. */
 export type MissingFieldKey =
@@ -143,11 +151,8 @@ export function eventListPath(params: EventListParams = {}): string {
 export function parseGuessCoords(
   latStr: string,
   lngStr: string
-): { lat: number; lng: number } | Record<string, never> {
-  const lat = cleanNumber(latStr);
-  const lng = cleanNumber(lngStr);
-  if (lat === null || lng === null) return {};
-  return { lat, lng };
+): CoordinatePair | Record<string, never> {
+  return parsePair(latStr, lngStr) ?? {};
 }
 
 /** The fields every event write posts: the whole row state, its sources included. */
@@ -243,7 +248,7 @@ export function eventVersionHref(id: string, versionNo: number): string {
   return `${eventHref(id)}/v${versionNo}`;
 }
 
-export function eventHistoryHref(id: string): string {
+function eventHistoryHref(id: string): string {
   return `${eventHref(id)}/history`;
 }
 
@@ -507,11 +512,6 @@ export interface EventVersionFormState {
   conflictIds: string[];
 }
 
-const coordsOf = (lat: string, lng: string): EventDetail["coords"] => {
-  const [parsedLat, parsedLng] = [cleanNumber(lat), cleanNumber(lng)];
-  return parsedLat === null || parsedLng === null ? null : { lat: parsedLat, lng: parsedLng };
-};
-
 /** Whether saving would file a version that differs from the one on screen. The server
  *  refuses the same edit with `nothing_changed` and is the authority (the row may have
  *  moved). Delegates to `changedFields` over a candidate built from the form, except the
@@ -524,7 +524,7 @@ export function hasVersionChanges(
   const candidate: EventDetail = {
     ...geo,
     title: state.title.trim(),
-    coords: coordsOf(state.lat, state.lng),
+    coords: parsePair(state.lat, state.lng),
     occurred_date: state.eventDate || null,
     occurred_time: state.eventTime || null,
     // Only the ids are compared, so the rest of each row is the loaded one.
@@ -542,71 +542,43 @@ export const nothingChangedMessage = (versionNo: number): string =>
 
 export type EventVersionEntry = VersionEntry<EventDetail>;
 
-/** Rows one version is assembled from. `own` is its content (absent for the live row);
- *  `producedBy` is the row numbered one lower, since the API files an edit's byline on the
- *  version it superseded; `previous` is that lower version's view, the diff base. */
-interface EventVersionEntryRows {
-  own?: EventVersion | null;
-  producedBy?: EventVersion | null;
-  previous?: EventDetail | null;
-}
-
-/** One version, described by the edit that produced it. Content comes from row `n`,
- *  authorship from row `n - 1`. Version 0 was opened, not edited: it takes the requester (or
- *  the owner, for a detection) and `created_at`. Version 1 without a version 0 takes the
- *  publisher and `geolocated_at` (not `created_at`, which is when the record was opened). Any
- *  other version with no producing row states neither byline nor date rather than crediting
- *  the publication. */
-export function eventVersion(
-  current: EventDetail,
-  number: number,
-  { own = null, producedBy = null, previous = null }: EventVersionEntryRows = {}
-): EventVersionEntry {
-  const isCurrent = number === current.version_no;
-  const view = isCurrent
-    ? current
-    : own && !own.redacted
-      ? snapshotToEventView(current, own)
-      : null;
+/** How an event reads its version rows. Version 0 was opened, not edited: it takes the
+ *  requester (or the owner, for a detection) and `created_at`. Version 1 without a version 0
+ *  takes the publisher and `geolocated_at` (not `created_at`, which is when the record was
+ *  opened). Any other version with no producing row states neither byline nor date rather
+ *  than crediting the publication. */
+function eventVersionReader(current: EventDetail): VersionReader<EventDetail, EventVersion> {
   return {
-    number,
-    current: isCurrent,
-    view,
-    editor: producedBy
-      ? producedBy.edited_by
-      : number === 0
-        ? current[current.version_zero ? VERSION_ZERO_META[current.version_zero].credit : "owner"]
+    first: firstVersion(current),
+    viewOf: (row) => (row.redacted ? null : snapshotToEventView(current, row)),
+    origin: (number) =>
+      number === 0
+        ? {
+            editor:
+              current[current.version_zero ? VERSION_ZERO_META[current.version_zero].credit : "owner"],
+            createdAt: current.created_at,
+          }
         : number === 1 && !current.version_zero
-          ? current.owner
-          : null,
-    createdAt: producedBy
-      ? producedBy.created_at
-      : number === 0
-        ? current.created_at
-        : number === 1 && !current.version_zero
-          ? current.geolocated_at
-          : null,
-    note: producedBy?.note ?? null,
-    redacted: own?.redacted ?? false,
-    changed: view && previous ? changedFields(view, previous) : null,
+          ? { editor: current.owner, createdAt: current.geolocated_at }
+          : { editor: null, createdAt: null },
+    changedFields,
   };
 }
 
-/** Versions newest first, on the walk of `versionSteps`. */
+export function eventVersion(
+  current: EventDetail,
+  number: number,
+  rows: VersionEntryRows<EventDetail, EventVersion> = {}
+): EventVersionEntry {
+  return versionEntry(current, number, rows, eventVersionReader(current));
+}
+
 export function eventVersions(
   current: EventDetail,
   rows: EventVersion[],
   hasMore = false
 ): EventVersionEntry[] {
-  const first = firstVersion(current);
-  return versionSteps(current.version_no, first, rows, hasMore).map(({ number, own, below }) =>
-    eventVersion(current, number, {
-      own,
-      producedBy: below,
-      // Diff base only; the content is the same snapshot.
-      previous: number > first ? eventVersion(current, number - 1, { own: below }).view : null,
-    })
-  );
+  return versionEntries(current, rows, hasMore, eventVersionReader(current));
 }
 
 /** The event as the version selector, the history rows and the banner address it. */
@@ -749,24 +721,18 @@ function getImportJob(jobId: string): Promise<ArchiveImportJob> {
  *  email is the durable signal. */
 export class ImportPollLost extends Error {}
 
-/** Poll until the job is `done` or `failed`. Transient errors retry; `maxErrors`
- *  consecutive misses or `timeoutMs` throw `ImportPollLost`. */
+const IMPORT_POLL_INTERVAL_MS = 2500;
+const IMPORT_POLL_MAX_ERRORS = 8;
+const IMPORT_POLL_TIMEOUT_MS = 15 * 60_000;
+
+/** Poll until the job is `done` or `failed`. Transient errors retry; `IMPORT_POLL_MAX_ERRORS`
+ *  consecutive misses or `IMPORT_POLL_TIMEOUT_MS` throw `ImportPollLost`. `onUpdate` fires on
+ *  every successful poll, for live progress. */
 export async function awaitImportJob(
   jobId: string,
-  {
-    intervalMs = 2500,
-    maxErrors = 8,
-    timeoutMs = 15 * 60_000,
-    onUpdate,
-  }: {
-    intervalMs?: number;
-    maxErrors?: number;
-    timeoutMs?: number;
-    /** Fires on every successful poll, for live progress. */
-    onUpdate?: (job: ArchiveImportJob) => void;
-  } = {}
+  onUpdate?: (job: ArchiveImportJob) => void,
 ): Promise<ArchiveImportJob> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + IMPORT_POLL_TIMEOUT_MS;
   let consecutiveErrors = 0;
   for (;;) {
     try {
@@ -776,14 +742,14 @@ export async function awaitImportJob(
       if (job.status === "done" || job.status === "failed") return job;
     } catch {
       consecutiveErrors += 1;
-      if (consecutiveErrors >= maxErrors) {
+      if (consecutiveErrors >= IMPORT_POLL_MAX_ERRORS) {
         throw new ImportPollLost("import job polling lost after repeated errors");
       }
     }
     if (Date.now() >= deadline) {
       throw new ImportPollLost("import job polling timed out");
     }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await new Promise((resolve) => setTimeout(resolve, IMPORT_POLL_INTERVAL_MS));
   }
 }
 
@@ -827,40 +793,8 @@ export function closeEvent(id: string, closeReason: string): Promise<EventDetail
   });
 }
 
-/** Report buckets, aliased from the generated spec so a backend rename fails `tsc`. */
-export type ContentReportReason =
-  components["schemas"]["ContentReportCreate"]["reason"];
-
-/** One report as the admin queue reads it (`resolved_at === null` means open). */
-export type ContentReport = components["schemas"]["ContentReportRead"];
-
-/** Mirrors `schemas/report.DETAILS_MAX_LENGTH`; change both. */
-export const REPORT_DETAILS_MAX_LEN = 2000;
-
 /** Mirrors `schemas/event.CLOSE_REASON_MAX_LENGTH`; change both. */
 export const CLOSE_REASON_MAX_LEN = 2000;
-
-/** One label per report bucket, shared by the report form and the admin queue. Keyed by the
- *  generated union so a new backend reason fails `tsc`. */
-export const REPORT_REASON_LABELS: Record<ContentReportReason, string> = {
-  illegal_content: "Illegal content",
-  graphic_not_flagged: "Graphic content, not flagged",
-  copyright: "Copyright",
-  privacy: "Privacy",
-  other: "Something else",
-};
-
-/** `POST /events/{id}/report`. Open to anyone: `apiFetch` omits the CSRF header with no
- *  session cookie. The backend caps it per IP. */
-export function reportEvent(
-  id: string,
-  body: components["schemas"]["ContentReportCreate"]
-): Promise<ContentReport> {
-  return apiFetch<ContentReport>(`/events/${id}/report`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
 
 /** What a form's source editors hold against the floor (`sourceFloor`). */
 export interface SourceFloorState {
@@ -889,10 +823,8 @@ export interface EventFieldsState {
  *  (`docs/api.md#evidence-floor`). Proof must carry an image (`proofHasImage`): text alone
  *  can't be audited. */
 export function missingEventFields(s: EventFieldsState): MissingField[] {
-  // Strict parse like `cleanNumber`: `"48.85abc"` is missing, not truncated to 48.85.
-  const lat = cleanNumber(s.lat);
-  const lng = cleanNumber(s.lng);
-  const coordsValid = lat !== null && lng !== null && inBounds(lat, lng);
+  // Strict parse: `"48.85abc"` is missing, not truncated to 48.85.
+  const coordsValid = coordinatePair(s.lat, s.lng) !== null;
 
   // The request floor, then the rest in page order.
   const missing = missingEventRequestFields(s);

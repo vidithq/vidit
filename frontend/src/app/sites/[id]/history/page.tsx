@@ -1,13 +1,9 @@
 "use client";
 
-import { useCallback } from "react";
-import { useParams } from "next/navigation";
-
-import { useApiResource } from "@/hooks/useApiResource";
-import { useCursorList } from "@/hooks/useCursorList";
+import { useVersionHistory } from "@/hooks/useVersionPage";
 import { VersionHistory } from "@/components/event/VersionHistory";
 import { VersionRow } from "@/components/event/VersionRow";
-import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   sitePath,
   siteVersioned,
@@ -16,11 +12,7 @@ import {
   type Site,
   type SiteVersion,
   type SiteVersionEntry,
-  type SiteVersionList,
 } from "@/lib/sites";
-
-/** The history read answers an envelope; module-level because `useCursorList` keys fetches on this function's identity. */
-const versionRows = (page: SiteVersionList): SiteVersion[] => page.items;
 
 /** What a version's write did to the site: version 1 is the creation. */
 function changeSummary(version: SiteVersionEntry): string | null {
@@ -36,15 +28,11 @@ function changeSummary(version: SiteVersionEntry): string | null {
  * unfinished walk until *Load more* brings the page that completes it.
  */
 export default function SiteHistoryPage() {
-  const params = useParams();
-  const siteId = typeof params.id === "string" ? params.id : "";
-  const { data: site, error, refetch } = useApiResource<Site>(siteId ? sitePath(siteId) : null);
-
-  const buildPath = useCallback((cursor: string | null) => siteVersionsPath(siteId, cursor), [siteId]);
-  const walk = useCursorList<SiteVersion, SiteVersionList>(buildPath, versionRows);
-
-  if (error) return <PageError error={error} onRetry={refetch} />;
-  if (!site) return <PageLoading />;
+  const { gate, record: site, walk } = useVersionHistory<Site, SiteVersion>({
+    recordPath: sitePath,
+    versionsPath: siteVersionsPath,
+  });
+  if (gate) return gate;
 
   const record = siteVersioned(site);
 

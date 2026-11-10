@@ -9,7 +9,6 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import type { components } from "@/lib/api-types";
 import type { User } from "@/types";
 import { ApiError, apiFetch } from "@/lib/api";
 import { hasSessionCookie } from "@/lib/auth";
@@ -17,20 +16,10 @@ import { hardNavigate } from "@/lib/navigation";
 import { clearDisplay } from "@/lib/preferences";
 import { markSessionHeld, onSessionRejected, takeEndedSession } from "@/lib/session";
 
-type RegisterResponse = components["schemas"]["RegisterResponse"];
-
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  /** Stage a registration: returns once the confirmation email is queued and does not sign
-   *  in (the session cookie is set by /confirm-registration). */
-  register: (
-    username: string,
-    email: string,
-    password: string,
-    invite_code: string
-  ) => Promise<RegisterResponse>;
   logout: () => Promise<void>;
   /** Re-pull the user from /auth/me (used by /confirm-registration after the session cookie is set). */
   refresh: () => Promise<void>;
@@ -152,18 +141,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionEnded(false);
   };
 
-  const register = async (
-    username: string,
-    email: string,
-    password: string,
-    invite_code: string
-  ) => {
-    return apiFetch<RegisterResponse>("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ username, email, password, invite_code }),
-    });
-  };
-
   const logout = async () => {
     try {
       await apiFetch("/auth/logout", { method: "POST" });
@@ -188,7 +165,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         login,
-        register,
         logout,
         refresh: fetchUser,
         sessionEnded,

@@ -147,7 +147,7 @@ export type SourceFile =
   | { state: "failed"; name: string; error: string };
 
 /** The GIF a staged file is the first frame of, and how many frames it split into. */
-export type GifSplitOf = { name: string; frames: number };
+type GifSplitOf = { name: string; frames: number };
 
 /** Whether a source file is still on its way to the server: the write waits for it. */
 export const fileRunning = (

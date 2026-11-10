@@ -42,15 +42,14 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
   fetchCollectionSequence: vi.fn(),
   deleteCollection: vi.fn(),
-  reportCollection: vi.fn(),
+}));
+vi.mock("@/lib/reports", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/reports")>()),
+  reportContent: vi.fn(),
 }));
 
-import {
-  deleteCollection,
-  fetchCollectionSequence,
-  reportCollection,
-  type Collection,
-} from "@/lib/collections";
+import { deleteCollection, fetchCollectionSequence, type Collection } from "@/lib/collections";
+import { reportContent } from "@/lib/reports";
 
 import CollectionPage from "./page";
 import { signedInAs, signedOut } from "@/test/auth";
@@ -337,7 +336,7 @@ describe("CollectionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send report" }));
 
     await waitFor(() =>
-      expect(reportCollection).toHaveBeenCalledWith("c1", {
+      expect(reportContent).toHaveBeenCalledWith("collection", "c1", {
         reason: "copyright",
         details: null,
       }),

@@ -3,10 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api";
 import { useMutation } from "@/hooks/useMutation";
-import { FORM_INVALID_LABEL, FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
-import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { ErrorNotice, FieldError } from "@/components/ui/ErrorNotice";
@@ -87,15 +87,12 @@ export function SingleEmailFlow({
       <ErrorNotice error={errorMessage} />
 
       <div className="space-y-1">
-        <label
+        <FieldLabel
           htmlFor="email"
-          className={cn(
-            incomplete.labelClass("email", FORM_LABEL_COMPACT),
-            emailRefused && FORM_INVALID_LABEL,
-          )}
-        >
-          Email
-        </label>
+          label="Email"
+          invalid={incomplete.invalidKeys.has("email") || emailRefused}
+          className={FORM_LABEL_COMPACT}
+        />
         <Input
           id="email"
           invalid={incomplete.invalidKeys.has("email") || emailRefused}

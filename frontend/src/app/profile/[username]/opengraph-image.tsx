@@ -1,5 +1,5 @@
 import { ogCount, ogProfileCounts, ogTruncate } from "@/lib/og";
-import type { PublicProfile, UserStats } from "@/lib/users";
+import { userPath, type PublicProfile, type UserStats } from "@/lib/users";
 
 import {
   OG_CONTENT_TYPE,
@@ -10,14 +10,6 @@ import {
 } from "../../_og/card";
 import { ogImageDataUri, ogFetch } from "../../_og/data";
 import { PortfolioCard } from "../../_og/portfolio";
-
-// `og:image` for `/profile/{username}`: the analyst's portfolio as a share
-// card. Reads the same two public payloads the page itself renders from, in
-// parallel (`GET /users/{username}` for the identity and the follow counts,
-// `GET /users/{username}/stats` for the shape of the work), so an unfurl costs
-// one round of requests and never a chain of them. Both are anonymous reads of
-// live rows only, which is what keeps the card inside the page's visibility:
-// a soft-deleted analyst 404s upstream and lands on the fallback below.
 
 export const runtime = "nodejs";
 export const size = OG_SIZE;
@@ -31,11 +23,10 @@ export default async function ProfileOpenGraphImage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const path = encodeURIComponent(username);
 
   const [profileRead, statsRead] = await Promise.all([
-    ogFetch<PublicProfile>(`/users/${path}`),
-    ogFetch<UserStats>(`/users/${path}/stats`),
+    ogFetch<PublicProfile>(userPath(username)),
+    ogFetch<UserStats>(`${userPath(username)}/stats`),
   ]);
 
   if (profileRead.status === "missing") {

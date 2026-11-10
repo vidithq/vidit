@@ -2,14 +2,22 @@ import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { withCursor } from "./pagination";
 import { sourceCreatePayload, draftUrls, newSourceDraft, type SourceDraft } from "./sources";
-import { sameSet, versionSteps, type VersionedRecord, type VersionEntry } from "./versions";
+import {
+  sameSet,
+  versionEntries,
+  versionEntry,
+  type VersionedRecord,
+  type VersionEntry,
+  type VersionEntryRows,
+  type VersionReader,
+} from "./versions";
 import type { EventStatus } from "@/types";
 
 export type Site = components["schemas"]["SiteRead"];
-export type SiteCreated = components["schemas"]["SiteCreatedRead"];
+type SiteCreated = components["schemas"]["SiteCreatedRead"];
 export type SiteListItem = components["schemas"]["SiteList"];
 export type SiteSource = components["schemas"]["SiteSourceRead"];
-export type SiteSourceFiled = components["schemas"]["SiteSourceFiledRead"];
+type SiteSourceFiled = components["schemas"]["SiteSourceFiledRead"];
 export type SiteSourceCreate = components["schemas"]["SiteSourceCreate"];
 export type SiteContour = components["schemas"]["SiteContourRead"];
 export type SiteLinkedEvent = components["schemas"]["SiteLinkedEventRead"];
@@ -18,7 +26,6 @@ export type SiteSuggestion = components["schemas"]["SiteSuggestionRead"];
 export type EventSiteLink = components["schemas"]["EventSiteLinkRead"];
 export type Zone = components["schemas"]["ZonePolygon"];
 export type SiteVersion = components["schemas"]["SiteVersionRead"];
-export type SiteVersionList = components["schemas"]["SiteVersionList"];
 export type SiteVersionCreate = components["schemas"]["SiteVersionCreate"];
 export type SiteVersionEntry = VersionEntry<Site>;
 
@@ -75,11 +82,11 @@ export function siteEditHref(id: string, sourceId?: string): string {
 }
 
 /** Past versions only; the current one keeps `/sites/{id}`. */
-export function siteVersionHref(id: string, versionNo: number): string {
+function siteVersionHref(id: string, versionNo: number): string {
   return `${siteHref(id)}/v${versionNo}`;
 }
 
-export function siteHistoryHref(id: string): string {
+function siteHistoryHref(id: string): string {
   return `${siteHref(id)}/history`;
 }
 
@@ -155,13 +162,6 @@ export function removeSiteSource(siteId: string, sourceId: string): Promise<void
   });
 }
 
-export function reportSite(
-  id: string,
-  body: components["schemas"]["ContentReportCreate"],
-): Promise<components["schemas"]["ContentReportRead"]> {
-  return apiFetch(`${sitePath(id)}/report`, { method: "POST", body: JSON.stringify(body) });
-}
-
 /** Idempotent: the same effect again writes nothing, a new one rewrites the link. */
 export function linkEventToSite(
   eventId: string,
@@ -174,7 +174,7 @@ export function linkEventToSite(
   });
 }
 
-export function unlinkEventFromSite(eventId: string, siteId: string): Promise<void> {
+function unlinkEventFromSite(eventId: string, siteId: string): Promise<void> {
   return apiFetch<void>(`${eventSiteLinksPath(eventId)}/${encodeURIComponent(siteId)}`, {
     method: "DELETE",
   });
@@ -365,7 +365,7 @@ export function siteVersioned(site: Pick<Site, "id" | "version_no">): VersionedR
 
 /** One filed version as the site shape the site page renders. Links have no history, so a
  *  version shows none. */
-export function siteVersionView(current: Site, row: SiteVersion): Site {
+function siteVersionView(current: Site, row: SiteVersion): Site {
   return {
     ...current,
     version_no: row.version_no,
@@ -405,42 +405,32 @@ export function siteChangedFields(version: Site, previous: Site): string[] {
     .map((field) => SITE_VERSION_FIELD_LABELS[field]);
 }
 
-/** One version, described by the write that produced it: content from row `n`, authorship from
- *  row `n - 1`. Version 1 has no producing row and takes the owner and the creation date. */
-export function siteVersion(
-  current: Site,
-  number: number,
-  {
-    own,
-    producedBy,
-    previous = null,
-  }: { own?: SiteVersion; producedBy?: SiteVersion; previous?: Site | null } = {},
-): SiteVersionEntry {
-  const view = number === current.version_no ? current : own ? siteVersionView(current, own) : null;
-  const first = number === 1;
+/** How a site reads its version rows. Version 1 has no producing row and takes the owner and
+ *  the creation date. */
+function siteVersionReader(current: Site): VersionReader<Site, SiteVersion> {
   return {
-    number,
-    current: number === current.version_no,
-    view,
-    editor: producedBy ? producedBy.edited_by : first ? current.owner : null,
-    createdAt: producedBy ? producedBy.created_at : first ? current.created_at : null,
-    note: producedBy?.note ?? null,
-    redacted: false,
-    changed: view && previous ? siteChangedFields(view, previous) : null,
+    first: 1,
+    viewOf: (row) => siteVersionView(current, row),
+    origin: (number) =>
+      number === 1
+        ? { editor: current.owner, createdAt: current.created_at }
+        : { editor: null, createdAt: null },
+    changedFields: siteChangedFields,
   };
 }
 
-/** Versions newest first, on the walk of `versionSteps`. */
+export function siteVersion(
+  current: Site,
+  number: number,
+  rows: VersionEntryRows<Site, SiteVersion> = {},
+): SiteVersionEntry {
+  return versionEntry(current, number, rows, siteVersionReader(current));
+}
+
 export function siteVersions(
   current: Site,
   rows: SiteVersion[],
   hasMore = false,
 ): SiteVersionEntry[] {
-  return versionSteps(current.version_no, 1, rows, hasMore).map(({ number, own, below }) =>
-    siteVersion(current, number, {
-      own,
-      producedBy: below,
-      previous: below ? siteVersionView(current, below) : null,
-    }),
-  );
+  return versionEntries(current, rows, hasMore, siteVersionReader(current));
 }

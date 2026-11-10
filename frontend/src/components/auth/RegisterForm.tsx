@@ -1,18 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
 import { PASSWORD_MAX_BYTES, validateNewPassword } from "@/lib/auth";
-import {
-  FORM_LABEL_COMPACT,
-} from "@/components/ui/form-styles";
+import { register } from "@/lib/users";
 import { Button } from "@/components/ui/Button";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -27,7 +26,6 @@ export default function RegisterForm({
   onSuccess,
   initialInviteCode = "",
 }: Props) {
-  const { register } = useAuth();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,7 +37,7 @@ export default function RegisterForm({
   const submitRegister = useMutation(
     async () => {
       try {
-        const result = await register(username, email, password, inviteCode);
+        const result = await register({ username, email, password, invite_code: inviteCode });
         return result.email;
       } catch (err) {
         // Already registered but unconfirmed: recoverable, so route to the pending screen's Resend rather
@@ -108,12 +106,12 @@ export default function RegisterForm({
         )}
 
         <div className="space-y-1">
-          <label
+          <FieldLabel
             htmlFor="invite_code"
-            className={incomplete.labelClass("invite_code", FORM_LABEL_COMPACT)}
-          >
-            Invite code
-          </label>
+            label="Invite code"
+            invalid={invalidKeys.has("invite_code")}
+            className={FORM_LABEL_COMPACT}
+          />
           <Input
             id="invite_code"
             invalid={invalidKeys.has("invite_code")}
@@ -132,12 +130,12 @@ export default function RegisterForm({
         </div>
 
         <div className="space-y-1">
-          <label
+          <FieldLabel
             htmlFor="username"
-            className={incomplete.labelClass("username", FORM_LABEL_COMPACT)}
-          >
-            Username
-          </label>
+            label="Username"
+            invalid={invalidKeys.has("username")}
+            className={FORM_LABEL_COMPACT}
+          />
           <Input
             id="username"
             invalid={invalidKeys.has("username")}
@@ -148,12 +146,12 @@ export default function RegisterForm({
         </div>
 
         <div className="space-y-1">
-          <label
+          <FieldLabel
             htmlFor="email"
-            className={incomplete.labelClass("email", FORM_LABEL_COMPACT)}
-          >
-            Email
-          </label>
+            label="Email"
+            invalid={invalidKeys.has("email")}
+            className={FORM_LABEL_COMPACT}
+          />
           <Input
             id="email"
             invalid={invalidKeys.has("email")}
@@ -164,12 +162,12 @@ export default function RegisterForm({
         </div>
 
         <div className="space-y-1">
-          <label
+          <FieldLabel
             htmlFor="password"
-            className={incomplete.labelClass("password", FORM_LABEL_COMPACT)}
-          >
-            Password
-          </label>
+            label="Password"
+            invalid={invalidKeys.has("password")}
+            className={FORM_LABEL_COMPACT}
+          />
           <Input
             id="password"
             invalid={invalidKeys.has("password")}
