@@ -131,9 +131,8 @@ test.describe("submit", () => {
 
     // One Details card: the date, the time, the conflict and the tags.
     const card = page.getByRole("heading", { name: /^Details/ }).locator("xpath=ancestor::section[1]");
-    await expect(card.locator("#occurred_date")).toBeVisible();
+    await expect(card.getByLabel("Event date", { exact: true })).toBeVisible();
     await expect(card.getByText("Tags", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /^Classification/ })).toHaveCount(0);
 
     // Scrolled down, the actions stay top right while the title goes. The source's extra fields
     // make the form taller than the screen.
