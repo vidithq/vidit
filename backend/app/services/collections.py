@@ -36,6 +36,7 @@ from sqlalchemy import ColumnElement, func, select, union
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.errors import CodedError
 from app.models.collection import Collection, CollectionEvent
 from app.models.content_report import ContentReport
 from app.models.event import Event
@@ -58,7 +59,7 @@ from app.services.sanitize import html_text, sanitize_html
 from app.services.thumbnails import has_thumbnail, thumbnail_candidates, thumbnail_loads
 
 
-class CollectionError(Exception):
+class CollectionError(CodedError):
     """A collection write or read the rules refuse.
 
     Stable ``code`` per subclass, the same contract as
@@ -72,49 +73,42 @@ class CollectionNotFoundError(CollectionError):
     """No collection with that id is readable by this caller."""
 
     code = "collection_not_found"
+    status_code = 404
 
 
 class EventNotFoundError(CollectionError):
     """No event with that id exists at all."""
 
     code = "event_not_found"
+    status_code = 404
 
 
 class EventNotCollectableError(CollectionError):
     """The event exists but a collection may not hold it."""
 
     code = "event_not_collectable"
+    status_code = 409
 
 
 class NotCreditedError(CollectionError):
     """The caller is not credited on the event (:func:`credited_to`)."""
 
     code = "not_credited"
+    status_code = 403
 
 
 class InvalidDescriptionError(CollectionError):
-    """The description breaks one of the rules in :func:`_checked_description`.
-
-    Maps to 400, like :class:`services.events.InvalidProofError`.
-    """
+    """The description breaks one of the rules in :func:`_checked_description`."""
 
     code = "invalid_description"
+    status_code = 400
 
 
 class TooManyEventsError(CollectionError):
     """One write names more events than ``schemas/collection.MAX_CREATE_EVENTS``."""
 
     code = "too_many_events"
-
-
-COLLECTION_ERROR_STATUS: dict[str, int] = {
-    "collection_not_found": 404,
-    "event_not_found": 404,
-    "event_not_collectable": 409,
-    "not_credited": 403,
-    "invalid_description": 400,
-    "too_many_events": 422,
-}
+    status_code = 422
 
 
 # Stand-ins for a missing date and hour: they make the order NULLS LAST and

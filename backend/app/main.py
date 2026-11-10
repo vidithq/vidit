@@ -17,6 +17,7 @@ from starlette.types import ASGIApp
 
 from app.config import settings
 from app.database import bound_lock_waits
+from app.errors import CodedError
 from app.middleware.csrf import CSRFMiddleware
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.observability import configure_logging, init_sentry
@@ -121,6 +122,15 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         status_code=429,
         content={"detail": {"code": code, "message": message}},
         headers={"Retry-After": str(retry_after)} if retry_after is not None else None,
+    )
+
+
+@app.exception_handler(CodedError)
+async def coded_error_handler(_request: Request, exc: CodedError):
+    """A business error a route lets escape, as the typed ``{code, message}`` body."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": {"code": exc.code, "message": str(exc)}},
     )
 
 

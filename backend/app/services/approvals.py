@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from sqlalchemy import ColumnElement, Select, and_, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
+from app.errors import CodedError
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.event import (
@@ -47,7 +48,7 @@ from app.services.organizations import is_organization_member
 from app.services.pagination import keyset_before
 
 
-class ApprovalError(Exception):
+class ApprovalError(CodedError):
     """An approval write the rules refuse, with a stable ``code``."""
 
     code: str
@@ -55,37 +56,33 @@ class ApprovalError(Exception):
 
 class EventNotApprovableError(ApprovalError):
     code = "invalid_state"
+    status_code = 409
 
 
 class VersionMismatchError(ApprovalError):
     code = "version_mismatch"
+    status_code = 409
 
 
 class GeolocatorCannotApproveError(ApprovalError):
     code = "geolocator_cannot_approve"
+    status_code = 403
 
 
 class AlreadyApprovedError(ApprovalError):
     code = "already_approved"
+    status_code = 409
 
 
 class ApprovalNotFoundError(ApprovalError):
     # Mirrored by the frontend's components/event/Approvals.deleteErrorMessage; change both.
     code = "approval_not_found"
+    status_code = 404
 
 
 class NotOrganizationMemberError(ApprovalError):
     code = "not_organization_member"
-
-
-APPROVAL_ERROR_STATUS: dict[str, int] = {
-    "invalid_state": 409,
-    "version_mismatch": 409,
-    "geolocator_cannot_approve": 403,
-    "already_approved": 409,
-    "approval_not_found": 404,
-    "not_organization_member": 403,
-}
+    status_code = 403
 
 
 def is_geolocator(db: Session, *, geo: Event, user_id: uuid.UUID) -> bool:

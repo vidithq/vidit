@@ -13,6 +13,7 @@ from typing import Any, Literal, Protocol
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from app.errors import CodedError
 from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.user import UserUpdate
@@ -24,17 +25,11 @@ from app.services.storage import (
 )
 
 
-class AvatarError(Exception):
-    """The submitted file cannot become an avatar.
-
-    Carries a stable ``code`` for the router, like
-    :class:`app.services.evidence_intake.EvidenceIntakeError`.
-    """
+class AvatarError(CodedError):
+    """The submitted file cannot become an avatar."""
 
     code: str = "invalid_avatar"
-
-
-AVATAR_ERROR_STATUS: dict[str, int] = {"invalid_avatar": 422}
+    status_code = 422
 
 
 class ProfileOwner(Protocol):

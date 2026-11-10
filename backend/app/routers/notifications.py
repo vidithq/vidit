@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers._errors import raise_typed_error
 from app.schemas.notification import (
     NotificationRead,
     NotificationReadUpdate,
@@ -24,7 +23,6 @@ from app.services.pagination import (
     page_size,
     paged,
 )
-from app.services.unsubscribe_tokens import InvalidUnsubscribeTokenError
 
 router = APIRouter()
 
@@ -123,9 +121,6 @@ def unsubscribe_email(
     ``List-Unsubscribe`` header. Idempotent; 400 on a token that does not
     verify.
     """
-    try:
-        preferences_service.unsubscribe_email(db, token)
-    except InvalidUnsubscribeTokenError as exc:
-        raise_typed_error(exc, {exc.code: 400})
+    preferences_service.unsubscribe_email(db, token)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

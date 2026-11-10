@@ -24,6 +24,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
+from app.errors import CodedError
 from app.models.source import SOURCE_URL_MAX_LENGTH, ArchiveProvider
 from app.services.sanitize import normalised_host
 
@@ -64,14 +65,12 @@ _GHOSTARCHIVE_PATH_RE = re.compile(r"^/v?archive/[A-Za-z0-9_-]{4,20}/?$")
 SNAPSHOT_URL_MAX_LENGTH = SOURCE_URL_MAX_LENGTH
 
 
-class SnapshotRejected(Exception):
-    """The pasted URL is not a snapshot address.
-
-    The per-instance ``code`` is translated by
-    :func:`app.routers._errors.raise_typed_error` and says which check failed.
-    """
+class SnapshotRejected(CodedError):
+    """The pasted URL is not a snapshot address; the per-instance ``code`` says which check
+    failed."""
 
     code: str = "snapshot_url_invalid"
+    status_code = 400
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)

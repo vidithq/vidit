@@ -33,6 +33,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.errors import CodedError
 from app.models.archive_import_job import ArchiveImportJob
 from app.models.user import User
 from app.services import email
@@ -51,7 +52,7 @@ MAX_ATTEMPTS = 3
 PROGRESS_EVERY = 10
 
 
-class StagedUploadError(Exception):
+class StagedUploadError(CodedError):
     """Base: the ``upload_key`` handed to the enqueue can't back a job.
 
     Abstract: every raise names a subclass, so the router's ``code`` map sees a concrete value.
@@ -62,14 +63,17 @@ class StagedUploadError(Exception):
 
 class StagedUploadInvalidError(StagedUploadError):
     code = "archive_upload_invalid"
+    status_code = 400
 
 
 class StagedUploadMissingError(StagedUploadError):
     code = "archive_upload_missing"
+    status_code = 404
 
 
 class StagedUploadTooLargeError(StagedUploadError):
     code = "archive_too_large"
+    status_code = 413
 
 
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"

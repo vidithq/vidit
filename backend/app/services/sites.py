@@ -45,6 +45,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
+from app.errors import CodedError
 from app.models.event import Event
 from app.models.media import Media
 from app.models.site import EventSiteLink, LinkEffect, Site, SiteContour, SiteVersion
@@ -85,7 +86,6 @@ from app.services.events.sources import build_source_read, file_source
 from app.services.evidence_intake import StoredObject, media_objects
 from app.services.imagery import LinkCheck, can_reopen, image_provider
 from app.services.thumbnails import pick_thumbnail, thumbnail_loads
-from app.services.uploads import UPLOAD_ERROR_STATUS
 from app.services.versions import MAX_VERSIONS_PER_EVENT, VersionLimitError
 
 # Sites one map read returns; past it the oldest sites are absent from the response.
@@ -99,7 +99,7 @@ DEFAULT_MARGIN_M = 10_000
 MAX_MARGIN_M = 10_000
 
 
-class SiteError(Exception):
+class SiteError(CodedError):
     """A site write or read the rules refuse. Stable ``code`` per subclass."""
 
     code: str
@@ -107,114 +107,103 @@ class SiteError(Exception):
 
 class SiteNotFoundError(SiteError):
     code = "site_not_found"
+    status_code = 404
 
 
 class NotSiteOwnerError(SiteError):
     """Only the site's owner saves a version of the site."""
 
     code = "not_site_owner"
+    status_code = 403
 
 
 class NotSourceAuthorError(SiteError):
     """Only the analyst who filed a source removes it."""
 
     code = "not_source_author"
+    status_code = 403
 
 
 class SourceCarriesContourError(SiteError):
     """A source is removed only once it carries no contour."""
 
     code = "source_carries_contour"
+    status_code = 409
 
 
 class SiteContourRequiredError(SiteError):
     """A site keeps at least one source with a contour."""
 
     code = "site_contour_required"
+    status_code = 409
 
 
 class SiteVersionMismatchError(SiteError):
     """The site moved past the version the write was prepared on."""
 
     code = "version_mismatch"
+    status_code = 409
 
 
 class SiteNothingChangedError(SiteError):
     """A version write that changes nothing."""
 
     code = "nothing_changed"
+    status_code = 409
 
 
 class SiteVersionNotFoundError(SiteError):
     code = "site_version_not_found"
+    status_code = 404
 
 
 class NotEventOwnerError(SiteError):
     """Only the event's owner links it to a site or unlinks it."""
 
     code = "not_event_owner"
+    status_code = 403
 
 
 class InvalidZoneError(SiteError):
     """A vertex is out of range, or the polygon is not valid (self-crossing, no area)."""
 
     code = "invalid_zone"
+    status_code = 400
 
 
 class ZoneTooLargeError(SiteError):
     """The zone covers more than ``MAX_ZONE_AREA_KM2``."""
 
     code = "zone_too_large"
+    status_code = 400
 
 
 class ZoneTooWideError(SiteError):
     """The zone spans ``MAX_ZONE_LNG_SPAN_DEG`` degrees of longitude or more."""
 
     code = "zone_too_wide"
+    status_code = 400
 
 
 class EventNotLinkableError(SiteError):
     """The event is not one a site shows (:func:`site_linkable_events`)."""
 
     code = "event_not_linkable"
+    status_code = 409
 
 
 class SiteSourceNotFoundError(SiteError):
     """The source is not one of the site's live sources."""
 
     code = "site_source_not_found"
+    status_code = 404
 
 
 class ImageryNotReopenableError(SiteError):
     """No link of a site source lets a reader reopen it (``services/imagery.can_reopen``)."""
 
     code = "imagery_not_reopenable"
-
-
-SITE_ERROR_STATUS: dict[str, int] = {
-    **UPLOAD_ERROR_STATUS,
-    "site_not_found": 404,
-    "site_version_not_found": 404,
-    "not_site_owner": 403,
-    "not_source_author": 403,
-    "not_event_owner": 403,
-    "invalid_zone": 400,
-    "zone_too_large": 400,
-    "zone_too_wide": 400,
-    "event_not_linkable": 409,
-    "invalid_coordinates": 400,
-    "source_carries_contour": 409,
-    "site_contour_required": 409,
-    "version_mismatch": 409,
-    "nothing_changed": 409,
-    "site_source_not_found": 404,
-    "imagery_not_reopenable": 400,
-    "invalid_source_url": 400,
-    "source_link_required": 400,
-    "too_many_source_links": 400,
-    "source_media_not_found": 400,
-    "version_limit": 409,
-}
+    status_code = 400
 
 
 def visible_sites() -> tuple[ColumnElement[bool], ColumnElement[bool]]:

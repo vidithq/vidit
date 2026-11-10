@@ -39,7 +39,7 @@ flowchart LR
   router["`**routers/**
   parse and validate the request`"]:::core --> service["`**services/**
   business rules, one transaction`"]:::core
-  typed["`**raise_typed_error**
+  typed["`**coded_error_handler**
   detail: code + message`"]:::exit
 
   e403["`403 plain string`"]:::exit
@@ -4523,7 +4523,7 @@ A non-2xx response carries one of three shapes on its `detail` field. The fronte
 |---|---|---|
 | Plain string | `{"detail": "Invite code not found"}` | A direct `HTTPException` in a router or middleware |
 | Validation array | `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}` | A request-body or query-string validation failure (422). The entries never echo the submitted value |
-| Typed envelope | `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` | A business-rule error from the service layer |
+| Typed envelope | `{"detail": {"code": "<stable_id>", "message": "<human prose>"}}` | A business-rule error from the service layer, with the status its error class declares |
 
 Branch on `code`, not on `message`: `code` is the stable contract, and each endpoint section lists its codes. The `429` responses of the [rate limiter](#rate-limits) use the typed envelope (`rate_limited`, `read_quota_exceeded`). Any endpoint that touches the database answers `409` with code `lock_timeout` when a statement waits longer than the [lock timeout](engineering.md#request-concurrency) for a lock another transaction holds; retry the request.
 

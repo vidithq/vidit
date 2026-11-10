@@ -4,7 +4,6 @@ Business rules live in ``services/approvals``; this module maps its typed errors
 """
 
 import uuid
-from typing import NoReturn
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
@@ -12,17 +11,11 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._errors import raise_typed_error
 from app.routers.events._common import resolve_live_event, resolve_readable_event
 from app.schemas.approval import ApprovalCreate, ApprovalList, ApprovalRead
 from app.services import approvals, organizations
-from app.services.approvals import APPROVAL_ERROR_STATUS, ApprovalError
 
 router = APIRouter()
-
-
-def _raise(exc: ApprovalError) -> NoReturn:
-    raise_typed_error(exc, APPROVAL_ERROR_STATUS)
 
 
 @router.get("/{geolocation_id}/approvals", response_model=ApprovalList)
@@ -69,22 +62,14 @@ def approve_event(
     """Approve the live version of a published geolocation you are not credited on, as
     yourself or, as one of its members, for an organization."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        organization = (
-            organizations.get_by_slug(db, body.organization)
-            if body.organization is not None
-            else None
-        )
-    except organizations.OrganizationError as exc:
-        raise_typed_error(exc, organizations.ORGANIZATION_ERROR_STATUS)
-    try:
-        row = approvals.approve(
-            db,
-            geo=geo,
-            reviewer=current_user,
-            version_no=body.version_no,
-            organization=organization,
-        )
-    except ApprovalError as exc:
-        _raise(exc)
+    organization = (
+        organizations.get_by_slug(db, body.organization) if body.organization is not None else None
+    )
+    row = approvals.approve(
+        db,
+        geo=geo,
+        reviewer=current_user,
+        version_no=body.version_no,
+        organization=organization,
+    )
     return approvals.build_read(row, live_version=geo.version_no)

@@ -8,8 +8,7 @@ sweep on rollback. Verbs: :func:`create_with_evidence` (``geolocated``),
 the superseded state), :func:`complete_detections` (publish detections in a batch),
 :func:`close` (withdraw / reject / retract, any live state).
 
-Errors are `EventError` subclasses with stable `.code` strings. Add each new
-code to `_EVENT_ERROR_STATUS` in `routers/events/_common.py`.
+Errors are `EventError` subclasses, each with a stable `.code` and its HTTP `status_code`.
 
 One module per verb over shared modules. A verb module imports shared modules,
 a shared module imports only other shared modules, ``errors`` imports no sibling, and

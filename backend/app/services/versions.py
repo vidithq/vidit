@@ -40,6 +40,7 @@ from shapely.geometry import Point
 from sqlalchemy import exists
 from sqlalchemy.orm import Session, joinedload
 
+from app.errors import CodedError
 from app.models.conflict import Conflict
 from app.models.event import Event, EventVersion, VersionZero
 from app.models.media import Media
@@ -74,14 +75,15 @@ COMPARED_FIELDS: tuple[str, ...] = (
 )
 
 
-class VersionLimitError(Exception):
+class VersionLimitError(CodedError):
     """The event already carries :data:`MAX_VERSIONS_PER_EVENT` versions.
 
     Raised by :func:`file_version` for an edit, never for a save whose only
-    change is archived copies. Maps to 409.
+    change is archived copies.
     """
 
     code = "version_limit"
+    status_code = 409
 
 
 def point_shape(value: Any) -> dict[str, float] | None:

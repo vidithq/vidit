@@ -22,6 +22,7 @@ from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.errors import CodedError
 from app.models.invite_code import InviteCode
 from app.models.pending_registration import PendingRegistration
 from app.models.user import User
@@ -42,14 +43,16 @@ CONFIRMATION_TOKEN_MINUTES = 60 * 24  # 24h
 _TOKEN_BYTES = 32
 
 
-class RegistrationError(Exception):
+class RegistrationError(CodedError):
     """Friendly error; ``code`` lets the router map to an HTTP status."""
 
     code: str = "registration_error"
+    status_code = 400
 
 
 class InvalidInviteError(RegistrationError):
     code = "invalid_invite"
+    status_code = 400
 
 
 # Confirm-time rejection names the actual reason so the analyst knows
@@ -65,24 +68,29 @@ class EmailAlreadyRegisteredError(RegistrationError):
     """The email already belongs to a real user (live or soft-deleted)."""
 
     code = "email_already_registered"
+    status_code = 409
 
 
 class UsernameAlreadyTakenError(RegistrationError):
     code = "username_already_taken"
+    status_code = 409
 
 
 class EmailPendingError(RegistrationError):
     """A live pending registration exists for this email."""
 
     code = "email_pending_confirmation"
+    status_code = 409
 
 
 class UsernamePendingError(RegistrationError):
     code = "username_pending_confirmation"
+    status_code = 409
 
 
 class InvalidOrExpiredTokenError(RegistrationError):
     code = "invalid_or_expired_token"
+    status_code = 400
 
 
 @dataclass(frozen=True)

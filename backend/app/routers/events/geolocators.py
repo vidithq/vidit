@@ -11,10 +11,9 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import raise_credit_error, resolve_live_event
+from app.routers.events._common import resolve_live_event
 from app.schemas.event import GeolocatorInviteCreate, GeolocatorInviteRead
 from app.services import geolocator_credit
-from app.services.geolocator_credit import GeolocatorCreditError
 
 router = APIRouter()
 
@@ -48,10 +47,7 @@ def invite_geolocator(
 ):
     """Invite an analyst to share this published event's credit (owner only)."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        return geolocator_credit.invite(db, geo=geo, owner=current_user, username=body.username)
-    except GeolocatorCreditError as exc:
-        raise_credit_error(exc)
+    return geolocator_credit.invite(db, geo=geo, owner=current_user, username=body.username)
 
 
 @router.delete(
@@ -68,10 +64,7 @@ def withdraw_geolocator_invite(
 ) -> None:
     """Withdraw a pending invitation (owner only)."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        geolocator_credit.withdraw(db, geo=geo, owner=current_user, username=username)
-    except GeolocatorCreditError as exc:
-        raise_credit_error(exc)
+    geolocator_credit.withdraw(db, geo=geo, owner=current_user, username=username)
 
 
 @router.post("/{geolocation_id}/geolocator-invites/accept", status_code=status.HTTP_204_NO_CONTENT)
@@ -84,10 +77,7 @@ def accept_geolocator_invite(
 ) -> None:
     """Accept your invitation: you join this event's geolocators."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        geolocator_credit.accept(db, geo=geo, user=current_user)
-    except GeolocatorCreditError as exc:
-        raise_credit_error(exc)
+    geolocator_credit.accept(db, geo=geo, user=current_user)
 
 
 @router.post("/{geolocation_id}/geolocator-invites/decline", status_code=status.HTTP_204_NO_CONTENT)
@@ -100,10 +90,7 @@ def decline_geolocator_invite(
 ) -> None:
     """Decline your invitation."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        geolocator_credit.decline(db, geo=geo, user=current_user)
-    except GeolocatorCreditError as exc:
-        raise_credit_error(exc)
+    geolocator_credit.decline(db, geo=geo, user=current_user)
 
 
 @router.delete(
@@ -120,7 +107,4 @@ def remove_geolocator(
 ) -> None:
     """Take a co-geolocator's credit off this event: the owner removes one, or you leave."""
     geo = resolve_live_event(db, geolocation_id)
-    try:
-        geolocator_credit.remove(db, geo=geo, actor=current_user, username=username)
-    except GeolocatorCreditError as exc:
-        raise_credit_error(exc)
+    geolocator_credit.remove(db, geo=geo, actor=current_user, username=username)

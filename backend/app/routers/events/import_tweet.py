@@ -16,7 +16,7 @@ from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.tweet_import import ImportNote, TweetImportRead, TweetImportRequest
-from app.services.detection import NotYourPost, import_pasted_post
+from app.services.detection import import_pasted_post
 from app.services.storage import scrub_log
 from app.services.tweet_ingest import (
     POST_UNREADABLE,
@@ -64,8 +64,6 @@ def import_from_tweet(
     """
     try:
         outcome = asyncio.run(import_pasted_post(db, owner=current_user, url=body.url))
-    except NotYourPost as exc:
-        _refuse(400, exc.code, str(exc))
     except InvalidTweetUrl as exc:
         _refuse(400, "invalid_tweet_url", str(exc))
     except TweetNotAccessible:
