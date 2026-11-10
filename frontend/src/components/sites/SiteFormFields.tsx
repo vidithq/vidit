@@ -50,7 +50,6 @@ export function SiteKindCard({
         <FieldLabel label="Kind" concept="site_kind" htmlFor="site-kind" invalid={invalid} />
         <OptionSearch
           single
-          required
           id="site-kind"
           aria-label="Kind"
           placeholder="Search site kinds"

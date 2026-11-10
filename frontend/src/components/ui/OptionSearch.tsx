@@ -20,14 +20,13 @@ const rowKey = (row: Row) => ("option" in row ? row.option.value : `create:${row
  * The one selector over a vocabulary (a kind, a level, a conflict, a tag): a `Combobox` whose list
  * holds the unpicked options whose label holds the typed text, every one of them on focus. A pick
  * empties the field and closes the list, and the picks show under the field as removable accent
- * pills. `single` keeps one pick, which a new pick replaces; `required` keeps it from removal.
+ * pills. `single` keeps one pick, which a new pick replaces and nothing removes.
  */
 export function OptionSearch({
   options,
   selected,
   onChange,
   single = false,
-  required = false,
   placeholder,
   creatable,
   suggestions = [],
@@ -42,8 +41,6 @@ export function OptionSearch({
   selected: string[];
   onChange: (next: string[]) => void;
   single?: boolean;
-  /** A single pick that a new pick replaces but nothing removes. */
-  required?: boolean;
   placeholder: string;
   /** Offers to create the typed name when no option bears it exactly. */
   creatable?: { onCreate: (name: string) => void; maxLength?: number };
@@ -132,7 +129,7 @@ export function OptionSearch({
       {picks && selected.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {selected.map((value) =>
-            single && required ? (
+            single ? (
               <Pill key={value} tone="accent">
                 {labelOf(value)}
               </Pill>

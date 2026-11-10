@@ -143,7 +143,6 @@ export function EffectControl({
   return (
     <OptionSearch
       single
-      required
       aria-label={ariaLabel}
       placeholder="Search effects"
       options={EFFECT_OPTIONS}

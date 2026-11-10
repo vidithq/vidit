@@ -259,7 +259,6 @@ export function SourceEditor({
         <FieldLabel {...SOURCE_FIELDS.level} />
         <OptionSearch
           single
-          required
           aria-label={`${name} level`}
           placeholder="Search levels"
           options={LEVEL_OPTIONS}
@@ -274,7 +273,6 @@ export function SourceEditor({
         <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} invalid={invalid.kind} />
         <OptionSearch
           single
-          required
           id={id("kind")}
           aria-label={`${name} kind`}
           placeholder="Search source kinds"
