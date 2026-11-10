@@ -71,7 +71,7 @@ import {
   SITE_ZONE_FILL_OPACITY,
   STACK_COUNT_LAYER,
   STACK_LAYER,
-  TAP_TARGET_LAYERS,
+  presentTapLayers,
   clusterColor,
   clusterCountLayout,
   clusterRadius,
@@ -322,13 +322,10 @@ function StackInteractions({
       clickPoint(e.features?.[0]);
     };
 
-    // Tap targets present on the style, resolved on first use: the `<Layer>` children add them from
-    // effects that run after this one. Filtered because `queryRenderedFeatures` throws on an unknown id.
+    // Resolved on first use: the `<Layer>` children add them from effects that run after this one.
     let tapLayers: string[] = [];
     const layersForTap = () => {
-      if (tapLayers.length === 0) {
-        tapLayers = TAP_TARGET_LAYERS.filter((id) => map.getLayer(id));
-      }
+      if (tapLayers.length === 0) tapLayers = presentTapLayers(map);
       return tapLayers;
     };
 
