@@ -33,13 +33,13 @@ function PaletteMediaLightbox() {
 }
 
 function PaletteMediaManager() {
-  const [staged, setStaged] = useState<File[]>([]);
+  const [picked, setPicked] = useState<File | null>(null);
   return (
     <div className="w-64">
       <MediaManager
-        staged={staged}
-        onAddFiles={staged.length ? undefined : setStaged}
-        onRemoveStaged={() => setStaged([])}
+        file={picked}
+        onAdd={picked ? undefined : setPicked}
+        onRemove={() => setPicked(null)}
       />
     </div>
   );

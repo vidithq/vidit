@@ -29,14 +29,13 @@ function VideoTile({ src }: { src: string }) {
 }
 
 interface MediaManagerProps {
-  /** The stored or staged file; empty while the source has none. */
-  existing?: Media[];
+  /** The stored or staged file, or a picked file while it uploads; null while the source has
+   *  none. */
+  file: Media | File | null;
   /** Omit for a file that stays. */
-  onRemoveExisting?: (id: string) => void;
-  /** A picked file while it uploads, with a local preview. */
-  staged: File[];
-  onAddFiles?: (files: File[]) => void;
-  onRemoveStaged?: (index: number) => void;
+  onRemove?: () => void;
+  /** Omit once the source holds a file: the analyst removes it to swap. */
+  onAdd?: (file: File) => void;
   /** Covers the stored tile with the age gate. A picked file stays ungated: the analyst
    *  chose it. */
   isGraphic?: boolean;
@@ -44,89 +43,75 @@ interface MediaManagerProps {
 
 /**
  * One source's file slot, in each `SourceEditor`. A thin specialisation of `FileManager`: it
- * supplies the thumbnails (a stored or staged file, or a picked file while it uploads) as items.
- * Staged object URLs are revoked on change and unmount.
- *
- * **One file per source**, so this is a single-file picker: the caller withholds `onAddFiles`
- * once the source holds a file, and the analyst removes it to swap. `multiple={false}` also caps
- * a multi-file drop to the first file.
+ * supplies the thumbnail of the source's one file as its item. A picked file previews from an
+ * object URL, revoked on change and unmount.
  */
-export function MediaManager({
-  existing = [],
-  onRemoveExisting,
-  staged,
-  onAddFiles,
-  onRemoveStaged,
-  isGraphic = false,
-}: MediaManagerProps) {
-  const [stagedUrls, setStagedUrls] = useState<string[]>([]);
+export function MediaManager({ file, onRemove, onAdd, isGraphic = false }: MediaManagerProps) {
+  const picked = file instanceof File ? file : null;
+  const [preview, setPreview] = useState<{ file: File; url: string } | null>(null);
   useEffect(() => {
-    const made = staged.map((f) => URL.createObjectURL(f));
-    setStagedUrls(made);
-    return () => {
-      for (const u of made) URL.revokeObjectURL(u);
-    };
-  }, [staged]);
+    if (!picked) return;
+    const url = URL.createObjectURL(picked);
+    setPreview({ file: picked, url });
+    return () => URL.revokeObjectURL(url);
+  }, [picked]);
+  // Only once the object URL is the picked file's, else a broken preview flashes.
+  const pickedUrl = picked && preview?.file === picked ? preview.url : null;
 
-  const items: FileManagerItem[] = [
-    ...existing.map((m) => ({
-      key: m.id,
+  let item: FileManagerItem | null = null;
+  if (file && !(file instanceof File)) {
+    item = {
+      key: file.id,
       content:
-        m.kind === "image" ? (
+        file.kind === "image" ? (
           <Image
-            src={displayUrlsFor(m).hero}
+            src={displayUrlsFor(file).hero}
             alt=""
             fill
             sizes="(min-width: 768px) 50vw, 100vw"
             className="object-cover"
           />
         ) : (
-          <VideoTile src={m.storage_url} />
+          <VideoTile src={file.storage_url} />
         ),
-      onRemove: onRemoveExisting ? () => onRemoveExisting(m.id) : undefined,
+      onRemove,
       removeLabel: "Remove media",
       // The tile is a muted, cropped preview; the lightbox (the same
       // `MediaLightboxBody` viewer) is where the source is reviewable.
-      viewContent: <MediaLightboxBody source={m} />,
+      viewContent: <MediaLightboxBody source={file} />,
       // A clip's download is in the player's bar (same rule as MediaLightbox).
-      viewActions:
-        m.kind === "image" ? <MediaDownloadButton source={m} /> : undefined,
-      viewLabel: m.kind === "image" ? "View image" : "Play video",
+      viewActions: file.kind === "image" ? <MediaDownloadButton source={file} /> : undefined,
+      viewLabel: file.kind === "image" ? "View image" : "Play video",
       gated: isGraphic,
-    })),
-    // Only once the object URLs line up 1:1, else a broken preview flashes.
-    ...(stagedUrls.length === staged.length
-      ? staged.map((f, i) => ({
-          key: `${f.name}-${i}`,
-          content: f.type.startsWith("video/") ? (
-            <VideoTile src={stagedUrls[i]} />
-          ) : (
-            // Object-URL bytes can't round-trip Next's image optimiser.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={stagedUrls[i]} alt={f.name} className="h-full w-full object-cover" />
-          ),
-          onRemove: onRemoveStaged ? () => onRemoveStaged(i) : undefined,
-          removeLabel: "Remove file",
-          // No id or derivatives: the plain `{src, kind}` source shape.
-          viewContent: (
-            <MediaLightboxBody
-              source={{
-                src: stagedUrls[i],
-                kind: f.type.startsWith("video/") ? "video" : "image",
-                filename: f.name,
-              }}
-              alt={f.name}
-            />
-          ),
-          viewLabel: f.type.startsWith("video/") ? "Play video" : "View image",
-        }))
-      : []),
-  ];
+    };
+  } else if (picked && pickedUrl) {
+    const video = picked.type.startsWith("video/");
+    item = {
+      key: `${picked.name}-0`,
+      content: video ? (
+        <VideoTile src={pickedUrl} />
+      ) : (
+        // Object-URL bytes can't round-trip Next's image optimiser.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={pickedUrl} alt={picked.name} className="h-full w-full object-cover" />
+      ),
+      onRemove,
+      removeLabel: "Remove file",
+      // No id or derivatives: the plain `{src, kind}` source shape.
+      viewContent: (
+        <MediaLightboxBody
+          source={{ src: pickedUrl, kind: video ? "video" : "image", filename: picked.name }}
+          alt={picked.name}
+        />
+      ),
+      viewLabel: video ? "Play video" : "View image",
+    };
+  }
 
   return (
     <FileManager
-      items={items}
-      onAddFiles={onAddFiles}
+      items={item ? [item] : []}
+      onAddFiles={onAdd && ((files) => onAdd(files[0]))}
       accept={ACCEPTED_MEDIA_MIME}
       addLabel="Add media"
       layout="grid"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Download } from "lucide-react";
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
@@ -140,7 +140,6 @@ export function SourceEditor({
 
   // A picked file previews from its object URL until the staged copy answers.
   const pending = file?.state === "uploading" ? file.file : null;
-  const pendingFiles = useMemo(() => (pending ? [pending] : []), [pending]);
   // A staged upload is a source file, so it has derivatives like a stored one.
   const shown: Media | null =
     file?.state === "stored"
@@ -164,11 +163,9 @@ export function SourceEditor({
         <GifSplit name={file.file.name} frames={file.frames} />
       ) : (
         <MediaManager
-          existing={shown ? [shown] : []}
-          onRemoveExisting={() => update({ file: null })}
-          staged={pendingFiles}
-          onRemoveStaged={() => update({ file: null })}
-          onAddFiles={hasFile ? undefined : (files) => files[0] && onPickFile(files[0])}
+          file={shown ?? pending}
+          onRemove={() => update({ file: null })}
+          onAdd={hasFile ? undefined : onPickFile}
           isGraphic={draft.graphicLocked}
         />
       )}

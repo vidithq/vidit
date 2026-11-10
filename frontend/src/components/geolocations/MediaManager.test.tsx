@@ -15,7 +15,7 @@ const CLIP: Media = {
 
 describe("MediaManager", () => {
   it("says a stored clip whose file does not load is unavailable, rather than a black box", () => {
-    const { container } = render(<MediaManager existing={[CLIP]} staged={[]} />);
+    const { container } = render(<MediaManager file={CLIP} />);
 
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
