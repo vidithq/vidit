@@ -65,7 +65,7 @@ class UserNotFoundError(AdminError):
 
 
 class EventNotFoundError(AdminError):
-    code = "geolocation_not_found"
+    code = "event_not_found"
     status_code = 404
 
 

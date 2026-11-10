@@ -4390,7 +4390,7 @@ Idempotent: redacting an already-redacted version returns it unchanged and appen
 | Code | Case |
 |------|------|
 | 403 | Not an admin, the event's owner included |
-| 404 | `geolocation_not_found`: unknown or soft-deleted event. `version_not_found`: no version under that number |
+| 404 | `event_not_found`: unknown or soft-deleted event. `version_not_found`: no version under that number |
 
 ### `POST /admin/maintenance/reap-password-reset-tokens` 🛡️
 
