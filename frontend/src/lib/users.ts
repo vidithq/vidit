@@ -8,6 +8,11 @@ import type { ExternalLinks, User } from "@/types";
  *  wholesale. */
 export type UserProfileUpdate = components["schemas"]["UserUpdate"];
 
+/** One analyst's API path. */
+export function userPath(username: string): string {
+  return `/users/${encodeURIComponent(username)}`;
+}
+
 /** Stage a registration: resolves once the confirmation email is queued and does not sign
  *  in (`/confirm-registration` sets the session cookie). */
 export function register(
@@ -49,7 +54,7 @@ export type PublicProfile = Omit<
 export type UserStats = components["schemas"]["UserStatsRead"];
 
 export function getUserStats(username: string): Promise<UserStats> {
-  return apiFetch<UserStats>(`/users/${encodeURIComponent(username)}/stats`);
+  return apiFetch<UserStats>(`${userPath(username)}/stats`);
 }
 
 /** Security: `<a href>` is only safe if the destination parses as http(s). Auto-links pasted

@@ -3,6 +3,7 @@ import type { components } from "./api-types";
 import type { InviteAnswer } from "./geolocatorCredit";
 import type { AuthorRef, ExternalLinks } from "@/types";
 import { countLabel } from "./format";
+import { userPath } from "./users";
 
 /** `GET /organizations/{slug}`, with `external_links` kept as the narrow per-platform shape. */
 export type Organization = Omit<
@@ -41,7 +42,7 @@ export function organizationByline(org: OrganizationRef) {
 }
 
 export function userOrganizationsPath(username: string): string {
-  return `/users/${encodeURIComponent(username)}/organizations`;
+  return `${userPath(username)}/organizations`;
 }
 
 export function createOrganization(body: OrganizationCreate): Promise<Organization> {

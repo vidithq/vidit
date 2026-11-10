@@ -13,6 +13,7 @@ import type {
   SearchEventHit,
 } from "@/types";
 import { withCursor } from "./pagination";
+import { userPath } from "./users";
 
 /** The collections surface: routes, the hand-kept caps, and the meta line and item pins
  *  every collection surface prints. */
@@ -68,7 +69,7 @@ export function newCollectionHref(eventId?: string): string {
 
 /** An analyst's collections, newest first. `perPage` is the profile grid's own size. */
 export function userCollectionsPath(username: string, perPage: number): string {
-  return `/users/${encodeURIComponent(username)}/collections?per_page=${perPage}`;
+  return `${userPath(username)}/collections?per_page=${perPage}`;
 }
 
 export function eventCollectionsPath(eventId: string): string {
