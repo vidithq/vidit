@@ -8040,7 +8040,7 @@ export interface operations {
     list_events_api_v1_events_get: {
         parameters: {
             query?: {
-                view?: string;
+                view?: "located" | "requested";
                 status?: string[] | null;
                 bbox?: string | null;
                 sort?: "newest" | "oldest";
@@ -8168,7 +8168,7 @@ export interface operations {
             query?: {
                 page?: number;
                 per_page?: number;
-                readiness?: string;
+                readiness?: "all" | "ready" | "incomplete";
             };
             header?: never;
             path?: never;

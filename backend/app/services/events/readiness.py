@@ -5,6 +5,8 @@ A change to a floor leg in ``batch._publish_detection`` is a change here.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from sqlalchemy import ColumnElement, and_
 
 from app.models.event import Event
@@ -19,10 +21,8 @@ from app.models.source import EVIDENCE_LEVELS, Source
 _PROOF_IMAGE_PATTERN = r'<img(\s[a-z-]+="[^"]*")*\ssrc="'
 
 
-# Queue filter values of ``GET /events/detections`` (422 on anything else);
-# ``all`` does not narrow. Sibling of ``event_filters.VIEWS``.
-# Mirrored by frontend lib/events.ts DetectionReadiness; change both.
-DETECTION_READINESS = frozenset({"all", "ready", "incomplete"})
+# Queue filter values of ``GET /events/detections``; ``all`` does not narrow.
+DetectionReadiness = Literal["all", "ready", "incomplete"]
 
 
 def detection_ready_predicate() -> ColumnElement[bool]:

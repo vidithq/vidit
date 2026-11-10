@@ -92,9 +92,11 @@ const DETECTIONS_PER_PAGE = 10;
  *  leaving the queue can't shift the position. The backend caps lists at 100 rows. */
 const DETECTIONS_REVIEW_QUEUE = 100;
 
-/** Queue filter for `GET /events/detections`. Hand-written like `EventView` (the router
- *  takes a plain `str`). Mirrors `services/events/readiness.py` `DETECTION_READINESS`; change both. */
-export type DetectionReadiness = "all" | "ready" | "incomplete";
+export type DetectionReadiness = NonNullable<
+  NonNullable<
+    operations["list_detections_api_v1_events_detections_get"]["parameters"]["query"]
+  >["readiness"]
+>;
 
 /** Shape of `GET /events/detections`. `total` counts the set `readiness` selected;
  *  `ready_total` and `incomplete_total` count the whole queue under any filter. */
@@ -115,9 +117,9 @@ export function detectionsReviewPath(): string {
   return detectionsPath(1, DETECTIONS_REVIEW_QUEUE);
 }
 
-/** Read views over the `events` table. Mirrors `event_filters.VIEWS`; see
- *  `docs/data-model.md`. */
-type EventView = "located" | "requested";
+type EventView = NonNullable<
+  NonNullable<operations["list_events_api_v1_events_get"]["parameters"]["query"]>["view"]
+>;
 
 /** The filter set of `GET /events`, plus its view, order and page. */
 interface EventListParams extends EventFilterParams {

@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, fields, replace
 from datetime import date, timedelta
-from typing import Any, get_args
+from typing import Any, Literal, get_args
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
@@ -94,7 +94,7 @@ def published_events() -> ColumnElement[bool]:
       count and feed at once; the page, its version history, credits and archives stay,
       marked as withdrawn with the reason.
     * ``requested`` is an open call for help with no vouched location, on its own read view
-      (see :data:`VIEWS`). ``closed`` off ``requested`` is a withdrawn ask.
+      (see :data:`EventView`). ``closed`` off ``requested`` is a withdrawn ask.
 
     Deliberate non-callers: the ``located`` catalog view, which shows detections beside vouched
     rows (:func:`view_predicate`); the profile coverage map, which plots both and splits the
@@ -244,7 +244,7 @@ STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STAT
 # The two read views over the one table. ``located`` is the catalog (vouched and machine rows,
 # plus a rejected detection). ``requested`` is the open-call queue (plus a withdrawn request).
 # Neither serves a retraction, which is reachable by its URL alone: see :func:`view_predicate`.
-VIEWS = frozenset({"located", "requested"})
+EventView = Literal["located", "requested"]
 
 
 def owner_username_matches(author: str) -> ColumnElement[bool]:
@@ -266,7 +266,7 @@ def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
 
 
 def view_predicate(view: str):
-    """The status predicate for a read view (see ``VIEWS``).
+    """The status predicate for a read view (see ``EventView``).
 
     Each view keeps the closed rows that left its own cohort, so a decision stays legible where
     it was taken. A retraction (``closed`` off ``geolocated``) is in neither: the catalog would
@@ -513,7 +513,7 @@ def apply_filters(
     The visibility filters live here, so every public read excludes soft-deleted and withheld
     rows; the admin path bypasses this helper.
 
-    ``view`` scopes to one of the two views (see ``VIEWS``), or to none when the caller scopes
+    ``view`` scopes to one of the two views (see ``EventView``), or to none when the caller scopes
     the statuses itself (``services/search``); ``status`` narrows within it (any-match). Status-scoping rather than a coordinate predicate, since a ``requested`` event
     may carry an approximate guess and must not leak into the located catalog. Callers gate
     values through :func:`validate_status_filter`.
