@@ -4,17 +4,23 @@ conftest's autouse `_disable_rate_limiter` turns the limiter off; these
 re-enable it via `live_limiter`. Each test keys its bucket on a unique
 X-Forwarded-For IP, so buckets don't bleed between tests.
 
-`_READ_LIMITS` and `_DOCUMENTED_LIMITS` pin one case per row of docs/api.md
--> Rate limits, so dropping a `@limiter.limit` decorator fails here.
+The docs/api.md -> Rate limits tests compare that section with the limits the routes
+carry, so a decorator the docs miss, or a documented limit no route carries, fails here.
+`_READ_LIMITS` and `_DOCUMENTED_LIMITS` send N+1 requests to the limits they pin.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import json
+import re
 import uuid
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import pytest
+from fastapi.routing import APIRoute
+from slowapi.wrappers import Limit
 from starlette.requests import Request
 
 from app.main import (
@@ -169,55 +175,110 @@ def test_documented_detections_queue_limit(live_limiter, regular_user):
 
 _READ_QUOTA = int(AUTHENTICATED_READ_LIMIT.split("/")[0])
 
-# Paths covered by the quota (docs/api.md -> Per-user read quota), as route templates.
-_QUOTA_ROUTES = [
-    "/api/v1/events",
-    "/api/v1/events/{geolocation_id}",
-    "/api/v1/events/points",
-    "/api/v1/events/detections",
-    "/api/v1/events/possible-duplicates",
-    "/api/v1/events/{geolocation_id}/approvals",
-    "/api/v1/search",
-    "/api/v1/search/sections",
-    "/api/v1/search/dates",
-    "/api/v1/search/authors",
-    "/api/v1/tags",
-    "/api/v1/conflicts",
-    "/api/v1/users/{username}",
-    "/api/v1/users/{username}/stats",
-    "/api/v1/users/{username}/events",
-    "/api/v1/users/{username}/collections",
-    "/api/v1/users/{username}/organizations",
-    "/api/v1/organizations/{slug}",
-    "/api/v1/organizations/{slug}/members",
-    "/api/v1/organizations/{slug}/approvals",
-    "/api/v1/collections/{collection_id}",
-    "/api/v1/collections/{collection_id}/events",
-    "/api/v1/sites",
-    "/api/v1/sites/suggestions",
-    "/api/v1/sites/{site_id}",
-    "/api/v1/sites/{site_id}/versions",
-    "/api/v1/sites/{site_id}/versions/{version_no}",
-    "/api/v1/events/{geolocation_id}/site-links",
-    "/api/v1/events/{geolocation_id}/site-suggestions",
-    "/api/v1/feed",
-    "/api/v1/feed/dates",
-]
+
+def _route_limits() -> dict[tuple[str, str], list[Limit]]:
+    """Every (method, path template) the limiter decorates, with its limits in registration order."""
+    found: dict[tuple[str, str], list[Limit]] = {}
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        name = f"{route.endpoint.__module__}.{route.endpoint.__name__}"
+        limits = app.state.limiter._route_limits.get(name)
+        if limits:
+            for method in route.methods:
+                found[(method, route.path)] = limits
+    return found
 
 
-@pytest.mark.parametrize("path", _QUOTA_ROUTES, ids=_QUOTA_ROUTES)
-def test_quota_is_wired_on_every_documented_read(path):
-    # Reads the registration so all thirteen routes are covered cheaply, and
-    # pins the decorator order: the per-IP limit (scope `""`) must register
-    # first so a rejected request never spends the account's hourly budget.
-    route = next(
-        r
-        for r in app.routes
-        if getattr(r, "path", None) == path and "GET" in getattr(r, "methods", ())
-    )
-    name = f"{route.endpoint.__module__}.{route.endpoint.__name__}"
-    scopes = [lim.scope for lim in app.state.limiter._route_limits.get(name, [])]
+_QUOTA_ROUTES = sorted(
+    key
+    for key, limits in _route_limits().items()
+    if any(lim.scope == AUTHENTICATED_READ_SCOPE for lim in limits)
+)
+
+
+@pytest.mark.parametrize("route", _QUOTA_ROUTES, ids=[" ".join(r) for r in _QUOTA_ROUTES])
+def test_quota_registers_after_the_per_ip_limit(route):
+    # The per-IP limit (scope `""`) must register first so a rejected request
+    # never spends the account's hourly budget.
+    scopes = [lim.scope for lim in _route_limits()[route]]
     assert scopes == ["", AUTHENTICATED_READ_SCOPE]
+
+
+# docs/api.md -> Rate limits is the one statement of each limit: its table and its quota list
+# must name exactly the routes the code decorates, with the same limits.
+
+_API_DOC = Path(__file__).resolve().parents[2] / "docs" / "api.md"
+_METHOD = re.compile(r"^(GET|POST|PUT|PATCH|DELETE)$")
+_DOC_LIMIT = re.compile(r"(\d+)/(min|hour)")
+
+
+def _rate_limit_section() -> tuple[str, str]:
+    text = _API_DOC.read_text()
+    section = text.split("\n## Rate limits\n", 1)[1].split("\n## ", 1)[0]
+    table, quota = section.split("\n### Per-user read quota\n", 1)
+    return table, quota
+
+
+def _doc_routes(cell: str, default_method: str | None = None) -> list[tuple[str, str]]:
+    """The (method, path pattern) pairs a cell names: `PUT`/`DELETE /x` names two, and a bare
+    path takes `default_method`. Path parameters become `{}`, `*` stays a wildcard."""
+    routes: list[tuple[str, str]] = []
+    pending: list[str] = []
+    for token in re.findall(r"`([^`]+)`", cell):
+        if _METHOD.match(token):
+            pending.append(token)
+            continue
+        method, _, path = token.rpartition(" ")
+        methods = [*pending, method] if method else [default_method or ""]
+        pending = []
+        pattern = "/api/v1" + re.sub(r"\{[^}]+\}", "{}", path)
+        routes.extend((m, pattern) for m in methods)
+    return routes
+
+
+def _code_key(method: str, path: str) -> tuple[str, str]:
+    return method, re.sub(r"\{[^}]+\}", "{}", path)
+
+
+def _match(patterns: dict[tuple[str, str], Any], key: tuple[str, str]) -> list[tuple[str, str]]:
+    return [p for p in patterns if p[0] == key[0] and fnmatch.fnmatchcase(key[1], p[1])]
+
+
+@pytest.mark.skipif(not _API_DOC.is_file(), reason="the docs tree is not checked out")
+def test_rate_limit_table_matches_the_decorators():
+    table, _ = _rate_limit_section()
+    documented: dict[tuple[str, str], list[str]] = {}
+    for row in table.splitlines():
+        cells = [c.strip() for c in row.strip("|").split("|")]
+        if not row.startswith("| `") or len(cells) != 2:
+            continue
+        unit = {"min": "minute", "hour": "hour"}
+        limits = [f"{n} per 1 {unit[u]}" for n, u in _DOC_LIMIT.findall(cells[1])]
+        for key in _doc_routes(cells[0]):
+            documented[key] = limits
+
+    code = {
+        _code_key(*key): [str(lim.limit) for lim in limits if lim.scope != AUTHENTICATED_READ_SCOPE]
+        for key, limits in _route_limits().items()
+    }
+    undocumented = [key for key in code if len(_match(documented, key)) != 1]
+    assert undocumented == [], "limited routes missing from the docs/api.md table"
+    unknown = [p for p in documented if not any(_match({p: None}, key) for key in code)]
+    assert unknown == [], "docs/api.md table rows that no route carries"
+    wrong = {key: code[key] for key in code if documented[_match(documented, key)[0]] != code[key]}
+    assert wrong == {}, "limits that differ from docs/api.md"
+
+
+@pytest.mark.skipif(not _API_DOC.is_file(), reason="the docs tree is not checked out")
+def test_read_quota_list_matches_the_decorators():
+    _, quota = _rate_limit_section()
+    paragraph = next(line for line in quota.splitlines() if line.startswith("`GET "))
+    documented = sorted(_doc_routes(paragraph, default_method="GET"))
+    count = re.search(r"these (\d+) read paths", quota)
+    assert count is not None
+    assert documented == sorted(_code_key(*key) for key in _QUOTA_ROUTES)
+    assert int(count.group(1)) == len(documented)
 
 
 # Two cheap 404 reads on different routers: alternating proves one shared budget.
@@ -676,6 +737,7 @@ _DOCUMENTED_LIMITS = [
     ),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}", 30, "admin"),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),
+    _Case("post", f"/api/v1/admin/users/{_MISSING_ID}/restore", 30, "admin"),
     _Case("delete", f"/api/v1/admin/events/{_MISSING_ID}", 60, "admin"),
     _Case("delete", f"/api/v1/admin/collections/{_MISSING_ID}", 60, "admin"),
     _Case(

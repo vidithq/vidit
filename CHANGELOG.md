@@ -12,6 +12,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 - A reader west of UTC sees an event's date on its own day, not the day before, and every date on the site reads the same for every reader.
 - The **New collection** button in the **Add to collection** popovers shows one icon instead of two.
+- The API reference lists the 30/hour limit on `POST /admin/users/{id}/restore` and counts `POST /collections/collectable-events` in the per-user read quota, and CI fails when the rate-limit tables and the code disagree.
 
 ## v0.8.2, 2026-10-30
 
