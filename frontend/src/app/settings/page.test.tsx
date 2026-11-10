@@ -42,7 +42,7 @@ function patchBodies(): unknown[] {
 describe("SettingsPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    apiFetch.mockReset().mockImplementation((_path: string, init?: RequestInit) =>
+    apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
       Promise.resolve(
         init?.method === "PATCH" &&
           JSON.parse(String(init.body)).notifications?.request_fulfilled === false
@@ -142,7 +142,7 @@ describe("SettingsPage", () => {
   it.each([[[]], [{}], [{ notifications: [{ kind: "retired_kind" }] }]])(
     "renders without switches on a partial preferences payload (%j)",
     async (payload) => {
-      apiFetch.mockReset().mockResolvedValue(payload);
+      apiFetch.mockResolvedValue(payload);
       render(<SettingsPage />);
 
       await waitFor(() => expect(apiFetch).toHaveBeenCalled());

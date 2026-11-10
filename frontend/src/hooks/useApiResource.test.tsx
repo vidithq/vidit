@@ -18,7 +18,6 @@ let calls: CapturedCall[];
 
 beforeEach(() => {
   calls = [];
-  apiFetch.mockReset();
   apiFetch.mockImplementation(
     (path: string, options?: RequestInit) =>
       new Promise((resolve, reject) => {

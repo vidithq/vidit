@@ -59,12 +59,10 @@ beforeEach(seedOpenFilterGroups);
 
 beforeEach(() => {
   nav.query = "";
-  nav.replace.mockReset();
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
   useApiResource.mockImplementation((path: string | null) => ({
     data: path === "/tags" ? TAGS : path?.startsWith("/conflicts") ? CONFLICTS : null,
   }));
-  apiFetchPage.mockReset();
   apiFetchPage.mockResolvedValue({ items: [REQUEST], nextCursor: null });
 });
 

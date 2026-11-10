@@ -7,35 +7,25 @@ vi.mock("next/navigation", () => import("@/test/navigationStub"));
 import { useApiResource } from "@/test/apiResourceStub";
 vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
-const addEventsToCollection = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  addEventsToCollection: (c: string, t: unknown) => addEventsToCollection(c, t),
+  addEventsToCollection: vi.fn(),
 }));
 
 import { ApiError } from "@/lib/api";
 import {
+  addEventsToCollection,
   readSelectionHandoff,
   type Collection,
   type PickableEvent,
 } from "@/lib/collections";
 
+import { collection } from "@/test/collection";
+
 import { BulkAddToCollectionPanel } from "./BulkAddToCollectionPanel";
 
-const shelf = (id: string, title: string, event_count: number): Collection => ({
-  id,
-  owner: { id: "u1", username: "ana", avatar_url: null },
-  title,
-  description: "<p>x</p>",
-  description_text: "x",
-  cover: [],
-  tags: [],
-  event_count,
-  first_date: null,
-  last_date: null,
-  created_at: "2026-06-20T09:00:00Z",
-  hidden_at: null,
-});
+const shelf = (id: string, title: string, event_count: number) =>
+  collection({ id, title, event_count });
 
 const page = (items: Collection[]) => ({ items, total: items.length, page: 1, per_page: 100 });
 
@@ -58,9 +48,6 @@ const pickable = (id: string, title: string): PickableEvent => ({
 const ROWS = [pickable("e1", "Kakhovka spillway"), pickable("e2", "Nova Kakhovka quay")];
 
 beforeEach(() => {
-  push.mockReset();
-  useApiResource.mockReset();
-  addEventsToCollection.mockReset();
   window.sessionStorage.clear();
   useApiResource.mockReturnValue({ data: PAGE, error: null });
 });
@@ -102,7 +89,7 @@ describe("BulkAddToCollectionPanel", () => {
   });
 
   it("adds on a row, then marks it Added N, moves its count and says what the write did", async () => {
-    addEventsToCollection.mockResolvedValue({
+    vi.mocked(addEventsToCollection).mockResolvedValue({
       added: 44,
       skipped: { already_in_collection: 3, not_collectable: 0 },
     });
@@ -127,7 +114,7 @@ describe("BulkAddToCollectionPanel", () => {
   });
 
   it("keeps the row actionable after a refusal and shows why", async () => {
-    addEventsToCollection.mockRejectedValue(
+    vi.mocked(addEventsToCollection).mockRejectedValue(
       new ApiError("Add at most 500 events at once; narrow the selection", 422, "too_many_events"),
     );
     render(<BulkAddToCollectionPanel username="ana" target={ids} rows={ROWS} count={2} />);

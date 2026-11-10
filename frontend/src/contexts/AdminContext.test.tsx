@@ -30,7 +30,6 @@ function Readers() {
 const adminProbes = () => apiFetch.mock.calls.filter(([path]) => path === "/admin/me").length;
 
 beforeEach(() => {
-  apiFetch.mockReset();
   session.user = null;
 });
 

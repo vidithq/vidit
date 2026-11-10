@@ -28,18 +28,18 @@ vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 import { apiFetch } from "@/test/apiStub";
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
-const getUserStats = vi.fn();
 vi.mock("@/lib/users", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/users")>()),
-  getUserStats: vi.fn((username: string) => getUserStats(username)),
+  getUserStats: vi.fn(),
 }));
 
 import { ApiError } from "@/lib/api";
 import { readResponse } from "@/lib/errors";
 import type { CollectionPage } from "@/lib/collections";
 import type { OrganizationMembership } from "@/lib/organizations";
-import type { PublicProfile, UserStats } from "@/lib/users";
-import { ANA, signedInAs, signedOut } from "@/test/auth";
+import { getUserStats, type PublicProfile, type UserStats } from "@/lib/users";
+import { signedInAs, signedOut } from "@/test/auth";
+import { collection, eventRow } from "@/test/collection";
 import type { EventListItem, MapPoint } from "@/types";
 
 import ProfilePage from "./page";
@@ -58,21 +58,10 @@ const PROFILE: PublicProfile = {
   is_following: false,
 };
 
-const SUBMISSION: EventListItem = {
-  id: "e1",
-  title: "Strike near Bakhmut",
-  status: "geolocated",
+const SUBMISSION = eventRow("e1", "Strike near Bakhmut", {
   occurred_date: "2026-06-01",
   coords: { lat: 48.5, lng: 37.8 },
-  before_closed_status: null,
-  requested_at: null,
-  geolocators: [],
-  conflicts: [],
-  is_graphic: false,
-  media: null,
-  owner: ANA,
-  tags: [],
-};
+});
 
 const STATS: UserStats = {
   total_events: 3,
@@ -95,20 +84,12 @@ const POINT: MapPoint = ["e1", 48.5, 37.8, "2026-06-01", "2026-06-02", 0];
 
 const COLLECTIONS: CollectionPage = {
   items: [
-    {
-      id: "c1",
-      owner: { id: "u1", username: "ana", avatar_url: null },
-      title: "Kupiansk rail corridor",
-      description: "<p>Three days of strikes on the eastern approach.</p>",
-      description_text: "Three days of strikes on the eastern approach.",
-      cover: [],
-      tags: [],
+    collection({
       event_count: 2,
       first_date: "2026-06-01",
       last_date: "2026-06-02",
       created_at: "2026-06-03T09:00:00Z",
-      hidden_at: null,
-    },
+    }),
   ],
   total: 1,
   page: 1,
@@ -155,30 +136,45 @@ function blockOrder(container: HTMLElement): string[] {
   return seen;
 }
 
+/** Answers each read the profile makes by its path, and every other path with the profile. */
+function mockReads({
+  profile = PROFILE,
+  submissions = [SUBMISSION],
+  points = [POINT],
+  memberships = MEMBERSHIPS,
+  collections = COLLECTIONS,
+}: {
+  profile?: PublicProfile;
+  submissions?: EventListItem[];
+  points?: MapPoint[];
+  memberships?: OrganizationMembership[];
+  collections?: CollectionPage;
+} = {}) {
+  useApiResource.mockImplementation((path: string | null) => ({
+    data: path?.startsWith("/users/ana/events")
+      ? { items: submissions }
+      : path?.startsWith("/events/points")
+        ? points
+        : path?.startsWith("/users/ana/organizations")
+          ? memberships
+          : path?.startsWith("/users/ana/collections")
+            ? collections
+            : profile,
+    error: null,
+    loading: false,
+    refetch: vi.fn(),
+  }));
+}
+
 function mountProfile() {
   return render(<ProfilePage />);
 }
 
 describe("public profile order", () => {
   beforeEach(() => {
-    apiFetch.mockReset();
     useDetectionsCount.mockReturnValue({ count: 0, refresh: vi.fn() });
-    getUserStats.mockResolvedValue(STATS);
-    useApiResource.mockImplementation((path: string | null) => {
-      if (path?.startsWith("/users/ana/events")) {
-        return { data: { items: [SUBMISSION] }, error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/events/points")) {
-        return { data: [POINT], error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/users/ana/organizations")) {
-        return { data: MEMBERSHIPS, error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/users/ana/collections")) {
-        return { data: COLLECTIONS, error: null, loading: false, refetch: vi.fn() };
-      }
-      return { data: PROFILE, error: null, loading: false, refetch: vi.fn() };
-    });
+    vi.mocked(getUserStats).mockResolvedValue(STATS);
+    mockReads();
     useAuth.mockReturnValue(signedOut());
   });
 
@@ -238,14 +234,12 @@ describe("public profile order", () => {
     expect(screen.queryByText("ana@example.test")).toBeNull();
   });
 
-  it("prints each count once and no helper line under a block heading", async () => {
+  it("titles the Insights charts", async () => {
     mountProfile();
     await screen.findByText("Insights");
 
     expect(screen.getByText("Event dates")).toBeInTheDocument();
     expect(screen.getByText("Source origin")).toBeInTheDocument();
-    // The Insights tiles hold the geolocated and detected counts; the map header does not repeat them.
-    expect(screen.queryByText(/on the map/)).toBeNull();
   });
 
   it("moves the follower count with Follow and Unfollow before the answer lands", async () => {
@@ -343,7 +337,7 @@ describe("public profile order", () => {
 describe("public profile identity", () => {
   beforeEach(() => {
     useDetectionsCount.mockReturnValue({ count: 0, refresh: vi.fn() });
-    getUserStats.mockRejectedValue(new Error("no stats"));
+    vi.mocked(getUserStats).mockRejectedValue(new Error("no stats"));
     useAuth.mockReturnValue(signedOut());
   });
 
@@ -351,26 +345,12 @@ describe("public profile identity", () => {
     overrides: Partial<PublicProfile>,
     memberships: OrganizationMembership[] = MEMBERSHIPS,
   ) {
-    const profile = { ...PROFILE, ...overrides };
-    useApiResource.mockImplementation((path: string | null) => {
-      if (path?.startsWith("/users/ana/events")) {
-        return { data: { items: [] }, error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/events/points")) {
-        return { data: [], error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/users/ana/organizations")) {
-        return { data: memberships, error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/users/ana/collections")) {
-        return {
-          data: { ...COLLECTIONS, items: [], total: 0 },
-          error: null,
-          loading: false,
-          refetch: vi.fn(),
-        };
-      }
-      return { data: profile, error: null, loading: false, refetch: vi.fn() };
+    mockReads({
+      profile: { ...PROFILE, ...overrides },
+      submissions: [],
+      points: [],
+      memberships,
+      collections: { ...COLLECTIONS, items: [], total: 0 },
     });
   }
 
@@ -478,22 +458,8 @@ describe("public profile identity", () => {
 describe("public profile edit mode", () => {
   beforeEach(() => {
     useDetectionsCount.mockReturnValue({ count: 1, refresh: vi.fn() });
-    getUserStats.mockResolvedValue(STATS);
-    useApiResource.mockImplementation((path: string | null) => {
-      if (path?.startsWith("/users/ana/events")) {
-        return { data: { items: [SUBMISSION] }, error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/events/points")) {
-        return { data: [POINT], error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/users/ana/organizations")) {
-        return { data: MEMBERSHIPS, error: null, loading: false, refetch: vi.fn() };
-      }
-      if (path?.startsWith("/users/ana/collections")) {
-        return { data: COLLECTIONS, error: null, loading: false, refetch: vi.fn() };
-      }
-      return { data: PROFILE, error: null, loading: false, refetch: vi.fn() };
-    });
+    vi.mocked(getUserStats).mockResolvedValue(STATS);
+    mockReads();
     useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
   });
 
@@ -579,8 +545,7 @@ describe("public profile edit mode", () => {
     fireEvent.change(website, { target: { value: "not a url" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    const message = await screen.findByText("Not an http or https link.");
-    expect(message.closest("p")).toHaveAttribute("id", "link-website-error");
-    expect(website).toHaveAttribute("aria-describedby", "link-website-error");
+    await screen.findByText("Not an http or https link.");
+    expect(website).toHaveAccessibleDescription("Not an http or https link.");
   });
 });

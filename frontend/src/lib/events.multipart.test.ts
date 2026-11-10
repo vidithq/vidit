@@ -16,7 +16,6 @@ vi.mock("./api", () => ({ apiFetch: vi.fn() }));
 const mockFetch = apiFetch as unknown as Mock;
 
 beforeEach(() => {
-  mockFetch.mockReset();
   mockFetch.mockResolvedValue({ id: "e1" });
 });
 

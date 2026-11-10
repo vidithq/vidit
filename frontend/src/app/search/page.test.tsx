@@ -75,24 +75,21 @@ import { ApiError } from "@/lib/api";
 import { NO_ANSWER } from "@/lib/errors";
 import SearchPage from "./page";
 import { seedOpenFilterGroups, sheetButton } from "@/test/filters";
+import { collection } from "@/test/collection";
+import { OWNER } from "@/test/eventDetail";
 import { pickOption } from "@/test/options";
 
-const OWNER = { id: "u1", username: "ana", avatar_url: null };
 
 const collectionHit = (over: Partial<SearchCollectionHit> = {}): SearchCollectionHit => ({
   type: "collection",
-  id: "c1",
-  owner: OWNER,
-  title: "Nova Kakhovka dam",
-  description: "<p>The breach and the flooding downstream of it.</p>",
-  description_text: "The breach and the flooding downstream of it.",
-  cover: [],
-  tags: [],
-  event_count: 5,
-  first_date: "2026-06-06",
-  last_date: "2026-06-09",
-  created_at: "2026-06-20T09:00:00Z",
-  hidden_at: null,
+  ...collection({
+    title: "Nova Kakhovka dam",
+    description: "<p>The breach and the flooding downstream of it.</p>",
+    description_text: "The breach and the flooding downstream of it.",
+    first_date: "2026-06-06",
+    last_date: "2026-06-09",
+    created_at: "2026-06-20T09:00:00Z",
+  }),
   ...over,
 });
 
@@ -195,7 +192,6 @@ beforeEach(seedOpenFilterGroups);
 afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {
-  vi.clearAllMocks();
   searchParams = new URLSearchParams("q=kakhovka");
   reads.dates = { occurred_date: [], submitted: [] };
   reads.paths = [];

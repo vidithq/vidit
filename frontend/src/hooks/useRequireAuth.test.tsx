@@ -12,7 +12,6 @@ describe("useRequireAuth", () => {
   beforeEach(() => {
     auth.user = null;
     auth.loading = false;
-    router.replace.mockReset();
     window.history.replaceState(null, "", "/sites/s1/sources/new?from=map");
   });
 

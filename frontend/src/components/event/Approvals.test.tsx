@@ -85,7 +85,6 @@ const confirmApproval = () =>
 const listReads = () => apiFetch.mock.calls.filter(([path]) => path === ALL).length;
 
 beforeEach(() => {
-  apiFetch.mockReset();
   mocks.viewer = null;
   mocks.mayApprove = null;
 });

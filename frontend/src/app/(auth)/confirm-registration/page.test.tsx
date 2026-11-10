@@ -21,9 +21,6 @@ describe("ConfirmRegistrationPage", () => {
   afterEach(() => vi.useRealTimers());
 
   beforeEach(() => {
-    apiFetch.mockReset();
-    refresh.mockReset();
-    push.mockReset();
     search.token = "a-valid-looking-token";
   });
 

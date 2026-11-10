@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ANA, signedInAs, signedOut } from "@/test/auth";
+import { signedInAs } from "@/test/auth";
+import { collection, eventRow } from "@/test/collection";
 import { textHtml } from "@/test/proofEditorStub";
 
 const push = vi.fn();
@@ -24,19 +25,11 @@ vi.mock("@/components/map/Map", () => import("@/test/mapStub"));
 import { useApiResource } from "@/test/apiResourceStub";
 vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
-const createCollection = vi.fn();
-const addEventsToCollection = vi.fn();
-const searchPickableEvents = vi.fn();
 vi.mock("@/lib/collections", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/collections")>()),
-  createCollection: (
-    title: string,
-    description: string,
-    ids: string[],
-  ) => createCollection(title, description, ids),
-  addEventsToCollection: (id: string, target: unknown) => addEventsToCollection(id, target),
-  searchPickableEvents: (username: string, q: string) =>
-    searchPickableEvents(username, q),
+  createCollection: vi.fn(),
+  addEventsToCollection: vi.fn(),
+  searchPickableEvents: vi.fn(),
 }));
 
 // The add block's first page of the analyst's events.
@@ -57,29 +50,17 @@ vi.mock("@/hooks/useCursorList", () => ({
 
 import { ApiError } from "@/lib/api";
 import {
+  addEventsToCollection,
+  createCollection,
   newCollectionFromSelectionHref,
-  type Collection,
-  type PickableEvent,
+  searchPickableEvents,
   type SelectionHandoff,
 } from "@/lib/collections";
 
 import NewCollectionPage from "./page";
 
-
 /** One of the analyst's own events, as listed and as the `?event=` read answers. */
-const EVENT = {
-  id: "e1",
-  title: "Strike on the rail junction",
-  status: "geolocated",
-  media: null,
-  is_graphic: false,
-  occurred_date: "2026-03-14",
-  coords: { lat: 49.71, lng: 37.616 },
-  tags: [],
-  owner: ANA,
-  conflicts: [],
-  before_closed_status: null,
-};
+const EVENT = eventRow("e1", "Strike on the rail junction");
 
 /** The same event as its detail read. */
 const EVENT_DETAIL = { ...EVENT, media: [] };
@@ -102,27 +83,28 @@ function mockBrowse(items: unknown[]) {
   apiFetchPage.mockResolvedValue({ items, nextCursor: null });
 }
 
-/** The pages of a search match so far, beside an empty add block. */
-function mockMatchPages(items: unknown[], more: Partial<{ hasMore: boolean; loadMore: () => void }> = {}) {
-  useCursorList.mockImplementation((path: string | null) =>
-    path?.startsWith("/collections/collectable-events") ? walkOf(items, more) : walkOf([]),
+/** The pages of the search match posted as `body` so far, beside an empty add block. */
+function mockMatchPages(
+  body: string,
+  items: unknown[],
+  more: Partial<{ hasMore: boolean; loadMore: () => void }> = {},
+) {
+  useCursorList.mockImplementation((path: string | null, sent?: string) =>
+    path === "/collections/collectable-events?limit=20" && sent === body
+      ? walkOf(items, more)
+      : walkOf([]),
   );
 }
 
-const created: Collection = {
+const created = collection({
   id: "c9",
-  owner: { id: "u1", username: "ana", avatar_url: null },
   title: "March strikes",
   description: "<p>Strikes on the corridor through March.</p>",
   description_text: "Strikes on the corridor through March.",
-  cover: [],
-  tags: [],
   event_count: 0,
   first_date: null,
   last_date: null,
-  created_at: "2026-03-21T09:00:00Z",
-  hidden_at: null,
-};
+});
 
 /** Fill both required fields; awaits the description first (the editor loads through `next/dynamic`). */
 async function fillForm() {
@@ -135,30 +117,23 @@ async function fillForm() {
 }
 
 beforeEach(() => {
-  push.mockReset();
-  replace.mockReset();
-  useAuth.mockReset();
-  useApiResource.mockReset();
-  createCollection.mockReset();
-  searchPickableEvents.mockReset();
-  useCursorList.mockReset();
   searchParams.delete("event");
   searchParams.delete("selection");
   window.sessionStorage.clear();
-  addEventsToCollection.mockReset();
 
   useAuth.mockReturnValue(signedInAs("ana", { id: "u1" }));
-  // The hook reads nothing while the path is null (every render without `?event=`).
+  // Only the `?event=e1` read answers; the hook reads nothing while the path is null.
   useApiResource.mockImplementation((path: string | null) => ({
-    data: path === null ? null : EVENT_DETAIL,
+    data: path === "/events/e1" ? EVENT_DETAIL : null,
     error: null,
     loading: false,
     refetch: vi.fn(),
   }));
-  createCollection.mockResolvedValue(created);
-  searchPickableEvents.mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(createCollection).mockResolvedValue(created);
+  vi.mocked(searchPickableEvents).mockResolvedValue({ items: [], total: 0 });
   mockBrowse([]);
 });
+
 
 describe("NewCollectionPage", () => {
   it("opens the collection it created", async () => {
@@ -184,7 +159,6 @@ describe("NewCollectionPage", () => {
     // Details counts what the create holds.
     expect(screen.getByText("1 event")).toBeInTheDocument();
     // The event's own row, read off `/events/{id}`.
-    expect(useApiResource).toHaveBeenCalledWith("/events/e1");
     expect(
       screen.getByRole("button", {
         name: "Remove Strike on the rail junction from this collection",
@@ -231,7 +205,7 @@ describe("NewCollectionPage", () => {
   });
 
   it("stays on the page and says why when the create is refused", async () => {
-    createCollection.mockRejectedValue(new Error("Title already used."));
+    vi.mocked(createCollection).mockRejectedValue(new Error("Title already used."));
 
     render(<NewCollectionPage />);
     await fillForm();
@@ -270,16 +244,9 @@ describe("NewCollectionPage with a search selection", () => {
   }
 
   it("holds the checked rows it was handed, removable, and the create sends what is left", async () => {
-    const row = (id: string, title: string): PickableEvent => ({
-      ...EVENT,
-      id,
-      title,
-      status: "geolocated",
-      media: null,
-    });
     handOff({
       target: { eventIds: ["e7", "e8"] },
-      rows: [row("e7", "Depot fire"), row("e8", "Bridge strike")],
+      rows: [eventRow("e7", "Depot fire"), eventRow("e8", "Bridge strike")],
       count: 2,
       from: "/search?q=dam",
     });
@@ -308,28 +275,19 @@ describe("NewCollectionPage with a search selection", () => {
     const match = { q: "dam", tags: ["flood"] };
     handOff({ target: { match }, rows: [], count: 44, from: "/search?q=dam" });
     const loadMore = vi.fn();
-    const row = (id: string, title: string): PickableEvent => ({
-      ...EVENT,
-      id,
-      title,
-      status: "geolocated",
-      media: null,
-    });
-    mockMatchPages([row("m1", "Dam breach"), row("m2", "Flooded village")], {
-      hasMore: true,
-      loadMore,
-    });
-    addEventsToCollection.mockResolvedValue({
+    // The match's own search, posted as the walk's body.
+    mockMatchPages(
+      JSON.stringify({ q: "dam", filters: { tag: ["flood"] } }),
+      [eventRow("m1", "Dam breach"), eventRow("m2", "Flooded village")],
+      { hasMore: true, loadMore },
+    );
+    vi.mocked(addEventsToCollection).mockResolvedValue({
       added: 43,
       skipped: { already_in_collection: 0, not_collectable: 0 },
     });
     render(<NewCollectionPage />);
 
-    // The match's own search, posted as the walk's body; no count card any more.
-    expect(useCursorList).toHaveBeenCalledWith(
-      "/collections/collectable-events?limit=20",
-      JSON.stringify({ q: "dam", filters: { tag: ["flood"] } }),
-    );
+    // No count card any more.
     expect(screen.getByText("Dam breach")).toBeInTheDocument();
     expect(screen.getByText("44 events, ordered by event date, earliest first.")).toBeInTheDocument();
     expect(screen.getByText("44 events")).toBeInTheDocument();
@@ -350,8 +308,7 @@ describe("NewCollectionPage with a search selection", () => {
 
   it("keeps the collection it made when the match add fails, and a retry only adds", async () => {
     handOff({ target: { match: { q: "dam" } }, rows: [], count: 600, from: "/search?q=dam" });
-    mockMatchPages([]);
-    addEventsToCollection.mockRejectedValueOnce(
+    vi.mocked(addEventsToCollection).mockRejectedValueOnce(
       new ApiError("Add at most 500 events at once; narrow the selection", 422, "too_many_events"),
     );
     render(<NewCollectionPage />);
@@ -363,7 +320,7 @@ describe("NewCollectionPage with a search selection", () => {
     ).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
 
-    addEventsToCollection.mockResolvedValueOnce({
+    vi.mocked(addEventsToCollection).mockResolvedValueOnce({
       added: 1,
       skipped: { already_in_collection: 0, not_collectable: 0 },
     });

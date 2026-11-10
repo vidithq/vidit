@@ -46,7 +46,6 @@ vi.mock("@/hooks/useApiResource", () => ({
 
 import { apiFetch } from "@/test/apiStub";
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
-apiFetch.mockResolvedValue([]);
 
 vi.mock("@/lib/events", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/events")>()),
@@ -223,11 +222,7 @@ function closeDetection(reason: string) {
 
 beforeEach(() => {
   siteLinks = [];
-  apiFetch.mockClear();
-  push.mockReset();
-  saveVersionMock.mockReset();
-  updateRequestMock.mockReset();
-  closeMock.mockReset();
+  apiFetch.mockResolvedValue([]);
   saveVersionMock.mockResolvedValue(publishedFixture({ version_no: 2 }));
   updateRequestMock.mockResolvedValue(requestFixture());
   row = detectionFixture();
@@ -308,7 +303,7 @@ describe("the detection edit surface", () => {
     expect(publish).not.toHaveAccessibleDescription(/Title/);
   });
 
-  it("publishes through the versioned write, naming version 0", async () => {
+  it("publishes through the versioned write, naming version 0, then returns to the queue list", async () => {
     render(<EditEventPage />);
     await publishDetection();
     await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
@@ -317,6 +312,10 @@ describe("the detection edit surface", () => {
     expect(input.version_no).toBe(0);
     expect(input.note).toBeUndefined();
     expect(input.geolocator_invites).toEqual([]);
+    // Outside a review pass, the publish leaves for the queue list.
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/profile/ana/detections")
+    );
   });
 
   it("invites the co-geolocators picked in the byline with the publish", async () => {
@@ -333,14 +332,6 @@ describe("the detection edit surface", () => {
     expect(saveVersionMock.mock.calls[0][1].geolocator_invites).toEqual(["dee"]);
   });
 
-  it("returns to the queue list after a publish made outside a pass", async () => {
-    render(<EditEventPage />);
-    await publishDetection();
-    await waitFor(() => expect(saveVersionMock).toHaveBeenCalledTimes(1));
-    await waitFor(() =>
-      expect(push).toHaveBeenCalledWith("/profile/ana/detections")
-    );
-  });
 });
 
 describe("a review pass over the queue", () => {

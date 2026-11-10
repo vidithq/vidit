@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ProfileInsights } from "./ProfileInsights";
 import type { UserStats } from "@/lib/users";
@@ -29,10 +29,6 @@ async function renderCard(stats: UserStats) {
   render(<ProfileInsights username="ana" />);
   return screen.findByText("Insights");
 }
-
-afterEach(() => {
-  getUserStats.mockReset();
-});
 
 describe("ProfileInsights", () => {
   it("opens the rows behind every tile, scoped to the analyst", async () => {

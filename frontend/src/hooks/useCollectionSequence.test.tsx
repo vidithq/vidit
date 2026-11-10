@@ -14,7 +14,6 @@ import { useCollectionSequence } from "./useCollectionSequence";
 const ITEMS = [{ id: "e1" }, { id: "e2" }] as unknown as EventListItem[];
 
 beforeEach(() => {
-  fetchCollectionSequence.mockReset();
   fetchCollectionSequence.mockResolvedValue(ITEMS);
 });
 

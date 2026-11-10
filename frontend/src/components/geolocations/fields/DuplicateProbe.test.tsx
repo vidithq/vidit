@@ -20,7 +20,6 @@ let calls: CapturedCall[];
 beforeEach(() => {
   vi.useFakeTimers();
   calls = [];
-  apiFetch.mockReset();
   apiFetch.mockImplementation(
     (path: string, options?: RequestInit) =>
       new Promise((resolve, reject) => {

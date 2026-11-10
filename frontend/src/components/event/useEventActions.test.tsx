@@ -26,7 +26,6 @@ const ANALYST = { id: "u3", username: "cy" };
 beforeEach(() => {
   mocks.approvals = [];
   mocks.viewer = ANA;
-  apiFetch.mockReset();
   apiFetch.mockImplementation((path: string) =>
     Promise.resolve(
       path === "/events/e1/approvals?all_versions=true"

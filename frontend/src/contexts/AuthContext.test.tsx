@@ -72,7 +72,6 @@ function meAnswers(...later: (typeof ANA | number)[]) {
 const meReads = () => apiFetch.mock.calls.filter(([path]) => path === "/auth/me").length;
 
 describe("AuthProvider and a rejected session", () => {
-  beforeEach(() => apiFetch.mockReset());
 
   async function signedIn() {
     render(
@@ -133,7 +132,6 @@ describe("AuthProvider and a rejected session", () => {
 
 describe("AuthProvider and a session that ended between loads", () => {
   beforeEach(() => {
-    apiFetch.mockReset();
     window.localStorage.clear();
     cookie.present = true;
   });

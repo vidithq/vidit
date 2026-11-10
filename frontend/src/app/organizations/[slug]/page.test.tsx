@@ -114,8 +114,7 @@ function signIn(username: string | null) {
 
 describe("OrganizationPage", () => {
   beforeEach(() => {
-    apiFetch.mockReset().mockResolvedValue(undefined);
-    useApiResource.mockClear();
+    apiFetch.mockResolvedValue(undefined);
   });
 
   it("shows a visitor the profile and the members, with no controls", () => {

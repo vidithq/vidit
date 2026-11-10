@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { textHtml } from "@/test/proofEditorStub";
 
@@ -65,11 +65,6 @@ function fill(title: string, description: string) {
   fireEvent.change(titleField(), { target: { value: title } });
   fireEvent.change(descriptionField(), { target: { value: description } });
 }
-
-beforeEach(() => {
-  onSubmit.mockReset();
-  onCancel.mockReset();
-});
 
 describe("CollectionDetailsForm", () => {
   it("writes the description in the proof editor, without images", async () => {
