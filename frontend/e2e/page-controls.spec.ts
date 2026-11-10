@@ -2,15 +2,14 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { grantSession, mockApi } from "./support/mockApi";
 import { expectNoHorizontalOverflow } from "./support/narrowLayout";
+import { runAtOneWidth } from "./support/wideViewport";
 
 /**
  * `PageShell`'s `controls` slot: the view's segmented control sits under the
  * title, on the title's left edge, at the phone width and on a wide screen.
  */
-const PAGES = [{ name: "requests", path: "/requests", control: "Sort requests" }];
-
-async function expectUnderTitle(page: Page, control: string) {
-  const group = page.getByRole("group", { name: control });
+async function expectUnderTitle(page: Page) {
+  const group = page.getByRole("group", { name: "Sort requests" });
   await expect(group).toBeVisible();
   const title = page.getByRole("heading", { level: 1 });
   const [titleBox, groupBox] = [(await title.boundingBox())!, (await group.boundingBox())!];
@@ -23,23 +22,22 @@ async function expectUnderTitle(page: Page, control: string) {
   ).toBeLessThanOrEqual(1);
 }
 
-for (const target of PAGES) {
-  test.describe(target.name, () => {
-    test.beforeEach(async ({ context, page }) => {
-      await grantSession(context);
-      await mockApi(page);
-    });
-
-    test("puts the segmented control under the title", async ({ page }) => {
-      await page.goto(target.path);
-      await expectUnderTitle(page, target.control);
-      await expectNoHorizontalOverflow(page);
-    });
-
-    test("keeps the control under the title on a wide screen", async ({ page }) => {
-      await page.setViewportSize({ width: 1280, height: 800 });
-      await page.goto(target.path);
-      await expectUnderTitle(page, target.control);
-    });
+test.describe("requests", () => {
+  test.beforeEach(async ({ context, page }) => {
+    await grantSession(context);
+    await mockApi(page);
   });
-}
+
+  test("puts the segmented control under the title", async ({ page }) => {
+    await page.goto("/requests");
+    await expectUnderTitle(page);
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("keeps the control under the title on a wide screen", async ({ page }) => {
+    runAtOneWidth();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/requests");
+    await expectUnderTitle(page);
+  });
+});

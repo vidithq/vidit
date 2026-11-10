@@ -1,10 +1,10 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { API_BASE_URL } from "./support/environment";
-import { CONFLICTS, EVENT_ID, ONE_PIXEL_PNG } from "./support/fixtures";
-import { answerWith, grantSession, mockApi } from "./support/mockApi";
+import { EVENT_ID, ONE_PIXEL_PNG } from "./support/fixtures";
+import { grantSession, mockApi } from "./support/mockApi";
 import { expectNarrowViewportLayout, expectNoHorizontalOverflow } from "./support/narrowLayout";
 import { swipeLeft } from "./support/touch";
+import { runAtOneWidth } from "./support/wideViewport";
 
 /** The boxes of the controls `labels` name inside `scope`, read in one frame, so a layout that
  *  settles between two reads (a row of suggestions measuring its lines) cannot move one box
@@ -109,6 +109,7 @@ test.describe("submit", () => {
   test("puts the actions top right, over the location then the details, on a wide screen", async ({
     page,
   }) => {
+    runAtOneWidth();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/submit?mode=single");
 
@@ -147,6 +148,7 @@ test.describe("submit", () => {
   test("puts the Title field in the event title's place, the byline and its picker under it", async ({
     page,
   }) => {
+    runAtOneWidth();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/events/${EVENT_ID}`);
     const eventTitle = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
@@ -427,6 +429,7 @@ test.describe("submit", () => {
   }
 
   test("lays each link out on one row under column headers on a wide screen", async ({ page }) => {
+    runAtOneWidth();
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/submit?mode=single");
 
@@ -468,87 +471,19 @@ test.describe("submit", () => {
     await expectNoHorizontalOverflow(page);
   });
 
-  test("picks, changes and removes a conflict through the search field", async ({ page }) => {
-    const unlisted = { wikidata_id: null, start_year: null, end_year: null, tier: null };
-    await answerWith(page, "/conflicts", [
-      ...CONFLICTS,
-      { ...unlisted, id: "44444444-4444-4444-8444-444444444442", name: "Other", is_ongoing: true },
-      {
-        ...unlisted,
-        id: "44444444-4444-4444-8444-444444444443",
-        name: "Falklands War",
-        start_year: 1982,
-        end_year: 1982,
-        is_ongoing: false,
-      },
-    ]);
-    await page.goto("/submit?mode=single");
-    const publish = page.getByRole("button", { name: "Publish geolocation" });
-    await expect(publish).toHaveAccessibleDescription(/Conflict$/);
-
-    // At rest the field lists nothing; focus lists the ongoing conflicts, Other last.
-    const field = page.getByRole("combobox", { name: "Conflict" });
-    const list = page.getByRole("listbox", { name: "Conflict" });
-    await expect(list).toHaveCount(0);
-    await field.focus();
-    await expect(list.getByRole("option")).toHaveText(["Russian invasion of Ukraine (2022-present)", "Other"]);
-    await expectNoHorizontalOverflow(page);
-    await list.getByRole("option", { name: "Russian invasion of Ukraine (2022-present)" }).click();
-    const chip = page.getByRole("button", { name: "Remove Russian invasion of Ukraine (2022-present)" });
-    await expect(chip).toBeVisible();
-    await expect(publish).not.toHaveAccessibleDescription(/Conflict/);
-
-    // The switch adds the ended conflicts; the arrows and Enter pick one.
-    await page.getByRole("switch", { name: "Include ended conflicts" }).click();
-    await field.fill("falk");
-    await expect(list.getByRole("option")).toHaveText(["Falklands War (1982)"]);
-    await field.press("Enter");
-    await expect(list).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Remove Falklands War (1982)" })).toBeVisible();
-
-    // The chips remove the picks, and the conflict is missing again.
-    await chip.click();
-    await page.getByRole("button", { name: "Remove Falklands War (1982)" }).click();
-    await expect(publish).toHaveAccessibleDescription(/Conflict$/);
-    await expectNoHorizontalOverflow(page);
-  });
-
-  test("picks, creates and removes tags through the search fields", async ({ page }) => {
-    await page.route(`${API_BASE_URL}/tags`, (route) =>
-      route.request().method() === "POST"
-        ? route.fulfill({
-            status: 201,
-            contentType: "application/json",
-            body: JSON.stringify({ id: "33333333-3333-4333-8333-333333333339", name: "Rubble" }),
-          })
-        : route.fallback(),
-    );
+  // The pickers' behaviour is TagPicker's and OptionSearch's unit tests; this measures the open lists.
+  test("opens the conflict and source tag lists inside the page", async ({ page }) => {
     await page.goto("/submit?mode=single");
 
-    // The Details card: the arrows and Enter pick a suggestion.
-    const details = page.getByRole("combobox", { name: "Tags", exact: true });
-    await details.fill("dro");
-    await expect(page.getByRole("listbox", { name: "Tags", exact: true }).getByRole("option")).toHaveText([
-      "Drone",
-      'Create "dro"',
-    ]);
-    await details.press("Enter");
-    await expect(page.getByRole("button", { name: "Remove Drone" })).toBeVisible();
-    await expect(details).toHaveValue("");
+    await page.getByRole("combobox", { name: "Conflict" }).focus();
+    await expect(page.getByRole("listbox", { name: "Conflict" })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
 
-    // A source: a click creates the typed tag and picks it, a chip click removes it.
     const source = page.getByRole("region", { name: "Source 1" });
     await source.getByRole("button", { name: "Capture details" }).click();
-    const field = source.getByRole("combobox", { name: "Source 1 tags" });
-    await field.fill("Rubble");
-    const list = page.getByRole("listbox", { name: "Source 1 tags" });
-    await expect(list).toBeInViewport({ ratio: 1 });
-    await list.getByRole("option", { name: 'Create "Rubble"' }).click();
-    const chip = source.getByRole("button", { name: "Remove Rubble" });
-    await expect(chip).toBeVisible();
+    await source.getByRole("combobox", { name: "Source 1 tags" }).fill("Rubble");
+    await expect(page.getByRole("listbox", { name: "Source 1 tags" })).toBeInViewport({ ratio: 1 });
     await expectNoHorizontalOverflow(page);
-    await chip.click();
-    await expect(chip).toHaveCount(0);
   });
 
   // A source's capture time and a link's post time are the longest values a form
