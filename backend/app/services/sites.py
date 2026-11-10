@@ -85,7 +85,7 @@ from app.services.events.errors import SourceMediaNotFoundError
 from app.services.events.sources import build_source_read, file_source
 from app.services.evidence_intake import StoredObject, media_objects
 from app.services.imagery import LinkCheck, can_reopen, image_provider
-from app.services.thumbnails import pick_thumbnail, thumbnail_loads
+from app.services.thumbnails import thumbnail_loads, thumbnail_media
 from app.services.versions import MAX_VERSIONS_PER_EVENT, VersionLimitError
 
 # Sites one map read returns; past it the oldest sites are absent from the response.
@@ -515,10 +515,6 @@ def _contours(db: Session, *criteria: ColumnElement[bool]) -> list[SiteContourRe
     ]
 
 
-def _thumbnail(event: Event) -> MediaRead | None:
-    return _media_read(pick_thumbnail(event))
-
-
 def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]:
     """Visible linked events, each measured against the live contour valid on its date.
 
@@ -572,7 +568,7 @@ def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]
             coords=CoordsRead(lat=lat, lng=lng),
             owner=event.owner,
             is_graphic=event.is_graphic,
-            media=_thumbnail(event),
+            media=thumbnail_media(event),
             effect=effect,
             linked_at=linked_at,
             inside_zone=inside,
@@ -647,7 +643,7 @@ def _snapshot(db: Session, site: Site) -> SiteSnapshot:
         db.query(Source.id, SiteContour.id)
         .outerjoin(SiteContour, (SiteContour.source_id == Source.id) & live_contours())
         .filter(Source.site_id == site.id, *live_sources())
-        .order_by(Source.captured_at, Source.created_at, Source.id)
+        .order_by(*SITE_SOURCE_ORDER)
         .all()
     )
     return SiteSnapshot(

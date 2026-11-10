@@ -354,8 +354,7 @@ def _recipient(db: Session, row: NotificationDelivery) -> User | None:
     recipient = db.get(User, n.user_id)
     if (
         recipient is None
-        or recipient.deleted_at is not None
-        or not recipient.is_active
+        or not recipient.is_live
         or not email_enabled(db, user_id=recipient.id, kind=n.kind)
         or not is_visible(db, notification_id=n.id, user=recipient)
     ):

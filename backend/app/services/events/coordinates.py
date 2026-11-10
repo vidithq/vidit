@@ -5,15 +5,17 @@ from __future__ import annotations
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
+from app.models.event import LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN
+
 from .errors import InvalidCoordinatesError
 
 
 def validate_coordinates(lat: float, lng: float) -> None:
     """Reject out-of-range coordinates. Mirrored by `frontend/src/lib/coordinates.ts`."""
-    if not -90 <= lat <= 90:
-        raise InvalidCoordinatesError("Latitude must be between -90 and 90")
-    if not -180 <= lng <= 180:
-        raise InvalidCoordinatesError("Longitude must be between -180 and 180")
+    if not LAT_MIN <= lat <= LAT_MAX:
+        raise InvalidCoordinatesError(f"Latitude must be between {LAT_MIN:g} and {LAT_MAX:g}")
+    if not LNG_MIN <= lng <= LNG_MAX:
+        raise InvalidCoordinatesError(f"Longitude must be between {LNG_MIN:g} and {LNG_MAX:g}")
 
 
 def _optional_point(lat: float | None, lng: float | None, *, field: str):

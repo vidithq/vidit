@@ -525,14 +525,7 @@ async def upload_prepared_media(prepared: PreparedMedia, key: str) -> UploadResu
         await storage.upload_bytes(prepared.thumb, thumb_key, DERIVATIVE_CONTENT_TYPE)
         uploaded.append(thumb_key)
     except Exception:
-        if uploaded:
-            try:
-                storage.delete_many(uploaded)
-            except Exception:
-                logger.exception(
-                    "Failed to sweep partial-upload derivatives after error: %s",
-                    uploaded,
-                )
+        sweep_keys(uploaded, context=f"partial upload of {key}")
         raise
     return result._replace(derivative_keys=(hero_key, thumb_key))
 

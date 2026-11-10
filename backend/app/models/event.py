@@ -72,6 +72,10 @@ def _initial_version(context: DefaultExecutionContext) -> int:
 # ``frontend/src/lib/events.ts::EVENT_TITLE_MAX_LEN``; change both.
 TITLE_MAX_LENGTH = 255
 
+# WGS 84 bounds of ``Event.coords``; ``services.events.validate_coordinates`` enforces them.
+LAT_MIN, LAT_MAX = -90.0, 90.0
+LNG_MIN, LNG_MAX = -180.0, 180.0
+
 
 # Where an analyst stands on one event's credit. ``invited``: the owner asked
 # them to share it. ``active``: they hold it. ``departed``: they held it and

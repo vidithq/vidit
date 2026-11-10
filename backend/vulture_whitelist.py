@@ -17,7 +17,6 @@
 processed_at  # app/models/bot_mention.py, audit stamp written at insert only
 # ``edited_by_id`` is read only through the `edited_by` relationship.
 edited_by_id  # app/models/event.py EventVersion
-email_verified_at  # app/models/user.py, audit stamp written at registration only
 
 # ── Write-only audit columns ──────────────────────────────────────────────────
 # Stamped by app code and queried by an operator over SQL, with no wire field
@@ -44,7 +43,6 @@ _.handle_data  # app/services/sanitize.py
 # Set by the service layer and serialized by Pydantic; never read back in app/.
 redeemer  # schemas/admin.py AdminInviteCodeRead
 username_highlight  # schemas/search.py SearchUserHit
-geolocations_cursor  # schemas/search.py SearchResponse
 in_collection  # schemas/collection.py CollectionMembershipRead
 cover  # schemas/collection.py CollectionRead, the card's mosaic
 share_of_existing_zone  # schemas/site.py SiteOverlapRead
@@ -67,7 +65,6 @@ analysts_notified  # schemas/admin.py AdminMaintenanceResponse
 detections_pending  # schemas/admin.py AdminMaintenanceResponse
 digest_send_failures  # schemas/admin.py AdminMaintenanceResponse
 source_urls  # schemas/event.py PossibleDuplicateRead + schemas/search.py SearchRequestHit
-event_title  # schemas/source.py SourcePickRead
 machine_total  # schemas/admin.py AdminDetectionStatsRead
 machine_rejected  # schemas/admin.py AdminDetectionStatsRead
 reject_rate  # schemas/admin.py AdminDetectionStatsRead

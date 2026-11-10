@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from app.models.event import LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN
+
 
 @dataclass(frozen=True)
 class ParsedCoord:
@@ -88,7 +90,7 @@ _COORD_RES = (
 
 
 def _coord_in_bounds(lat: float, lng: float) -> bool:
-    return -90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0
+    return LAT_MIN <= lat <= LAT_MAX and LNG_MIN <= lng <= LNG_MAX
 
 
 def _dms_to_decimal(deg: str, mnt: str, sec: str | None, hemi: str) -> float:

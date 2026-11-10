@@ -17,6 +17,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.models.event import Event
 from app.models.media import Media
 from app.models.source import Source
+from app.schemas.media import MediaRead
 
 
 def thumbnail_loads() -> tuple[_AbstractLoad, ...]:
@@ -48,3 +49,9 @@ def pick_thumbnail(geo: Event) -> Media | None:
     """First source file, else first proof image, else None."""
     candidates = thumbnail_candidates(geo)
     return candidates[0] if candidates else None
+
+
+def thumbnail_media(geo: Event) -> MediaRead | None:
+    """The card thumbnail as its wire shape, or None."""
+    row = pick_thumbnail(geo)
+    return MediaRead.model_validate(row) if row is not None else None
