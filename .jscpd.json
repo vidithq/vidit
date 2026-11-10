@@ -4,10 +4,9 @@
   "gitignore": true,
   "ignore": [
     "**/api-types.ts",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/conftest.py",
     "**/alembic/versions/**"
   ],
-  "reporters": ["console"]
+  "reporters": [
+    "console"
+  ]
 }

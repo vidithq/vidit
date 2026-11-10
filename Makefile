@@ -78,7 +78,7 @@ gen-api-types:
 	cd frontend && npx openapi-typescript openapi.json -o src/lib/api-types.ts
 
 check-dup:
-	npx --yes jscpd@4.2.5 backend/app frontend/src
+	npx --yes jscpd@4.2.5 backend/app backend/tests frontend/src frontend/e2e
 
 # Backend dead-code gate (the analogue of the frontend's knip).
 vulture:
