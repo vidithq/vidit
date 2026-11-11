@@ -1,14 +1,8 @@
-"""Persist machine detections: a ``Resolution``'s detections become ``detected`` rows.
+"""Persist machine detections: the one write path every entry shares.
 
-:func:`persist_detections` is the one write path for every entry (the bot,
-:func:`import_pasted_post`, :func:`backfill_from_archive`) over what
-``tweet_ingest.resolve_threads`` returns. Each ``Detection`` becomes an ``Event`` owned by the
-importer, with media through the evidence pipeline and idempotency on ``(the thread's post ids
-OR a source URL, coordinate)``. The ``Detection`` never reaches the ORM, which keeps the engine
-pure.
-
-:func:`open_request` is the second write path: a ``RequestDraft`` becomes a ``requested`` row
-through ``events.create_request``. Only the bot's request branch calls it.
+A ``Resolution``'s detections become ``detected`` rows (:func:`persist_detections`) and a
+``RequestDraft`` a ``requested`` row (:func:`open_request`). The ``Detection`` never reaches
+the ORM, which keeps the engine pure.
 """
 
 from __future__ import annotations
@@ -142,18 +136,11 @@ def _media_type(content_type: str) -> str:
 
 
 def _row_disposition(row: Event) -> Verdict:
-    """What a re-import may do with one matched row.
+    """What a re-import may do with one matched row (the matrix in ``docs/ingestion.md``).
 
-    1. An admin removal (``deleted_at``) stays removed, so a re-import cannot undo a takedown.
-    2. A withheld row (``hidden_at``) is frozen for its owner too
-       (``routers/events/_common.resolve_live_event``).
-    3. A row past version 0 carries a version a person saved (the publish files version 0 and
-       the row becomes version 1), so a machine never touches it, whatever its status.
-    4. An open detection at version 0 is machine-authored and no analyst path edits it in
-       place, so a newer parse overwrites it.
-    5. A ``closed`` row (rejected, withdrawn or retracted) is not the import's to reopen.
-    6. Anything else live (a ``requested`` event matched through its source URL) belongs to a
-       human flow.
+    Only an open detection at version 0 is machine-authored with no analyst path editing it in
+    place; anything else live, a ``requested`` row matched through its source URL included,
+    belongs to a human flow.
     """
     if row.deleted_at is not None:
         return "skip"
@@ -204,20 +191,9 @@ def _match_legs(
 def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdict, Event | None]:
     """Verdict for one detection, with the row it applies to (only ``create`` has none).
 
-    Scoped to ``owner``. Matches every row the detection's provenance or source URL hits,
-    in any state, on the coordinate to ``_COORD_PLACES``. Each match is read by
-    :func:`_row_disposition`, and a single ``skip`` wins. No match creates.
-
-    The provenance leg is the thread's post ids, not a URL (one post spells its URL several
-    ways) and not the anchor alone (entries anchor differently on one self-thread, so one
-    geolocation through two entries would land twice). It is an array overlap, which holds
-    whichever entry ran first. The anchor equality stays for rows written before the array.
-
-    The source leg catches delete-and-repost duplicates (same footage and coordinate, different
-    provenance posts): any source link equal to the declared source URL. A source-less detection
-    matches on provenance only. The leg reads version history too, since correcting a source
-    files a version that still carries the imported URL. A redacted snapshot is blank and matches
-    nothing.
+    Matches the owner's rows in any state on the coordinate to ``_COORD_PLACES`` (the legs:
+    ``docs/ingestion.md``, Re-import); a single ``skip`` wins. The anchor equality stays for
+    rows written before ``thread_post_ids``.
     """
     legs = _match_legs(
         tweet_id=detection.detected_from_post_id,
@@ -744,21 +720,9 @@ async def persist_detections(
 ) -> Outcome:
     """Persist each of the resolution's detections as a ``detected`` ``Event`` owned by ``owner``.
 
-    The one write path for every entry (bot, paste, archive). ``owner`` is the importer, the
-    account whose verified handle the posts belong to. ``via`` stamps every created row
-    (``event_detections.via``); an upsert leaves it alone.
-
-    A detection is matched on its provenance (the thread's post ids) or its ``source_url``,
-    plus the coordinate, across states, then dispatched by :func:`_row_disposition`. A second
-    pass over the same export writes nothing and counts as ``skipped``.
-
-    Each detection commits in its own transaction: a raise is caught, counted in
-    ``outcome.failed``, rolled back, and the loop moves on, so one failure neither loses the
-    others nor strands S3 objects. A detection may carry no media.
-
-    ``on_progress(done, total)`` fires after every handled detection (skips and failures
-    included), between per-row transactions, so a callback that commits on the same session
-    never splits one.
+    Each detection commits in its own transaction, so one failure neither loses the others nor
+    strands S3 objects. ``on_progress(done, total)`` fires after every handled detection, between
+    per-row transactions, so a callback that commits on the same session never splits one.
     """
     detections = resolution.detections
     outcome = Outcome(refusals=resolution.refusals)

@@ -63,12 +63,9 @@ def import_from_tweet(
 ):
     """Import the caller's own X post as detections.
 
-    Runs the same engine and write path as the bot and the archive backfill
-    (``detection.import_pasted_post``): one detection per coordinate, owned by
-    the caller, and a repeat paste overwrites the open detection.
-
-    Auth-only, own posts only (the author must be the handle linked to the
-    caller). Per-IP 30/minute bounds the shared syndication budget.
+    One detection per coordinate, owned by the caller; a repeat paste overwrites the open
+    detection. Own posts only: the author must be the handle linked to the caller. Per-IP
+    30/minute bounds the shared syndication budget.
     """
     try:
         outcome = asyncio.run(import_pasted_post(db, owner=current_user, url=body.url))

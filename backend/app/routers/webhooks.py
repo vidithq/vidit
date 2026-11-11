@@ -7,11 +7,8 @@ bodies if it signed arbitrary input; the ``crc_token`` charset gate closes
 that (a JSON body never fits it). No rate limiter: a signature rejection is
 one HMAC, cheaper than limiter bookkeeping.
 
-The POST does no pipeline work: it verifies, reduces the payload to the
-internal ``Mention`` shape, inserts ``queued`` ``bot_mentions`` rows through
-``services/bot.enqueue_mentions`` (which drops the bot's own posts and the
-mentions settled without a read) and answers 200 (one insert batch, one
-commit, since X retries on slow answers). The import worker drains them.
+The POST does no pipeline work, since X retries on slow answers: it verifies, queues the
+mentions in one insert batch and answers 200. The import worker drains them.
 """
 
 from __future__ import annotations

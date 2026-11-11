@@ -1,20 +1,7 @@
-"""The durable archive-import queue: enqueue at upload, drain in the worker.
+"""The durable archive-import queue (``docs/ingestion.md``, Archive import worker).
 
 A backfill never runs inside the request: unzip and parse take minutes and would freeze the
-single-process event loop. The browser uploads the zip straight to storage under a presigned
-POST (``/import-archive/presign`` mints the key), ``POST /events/import-archive`` verifies the
-staged object and inserts an ``archive_import_jobs`` row, and the worker
-(``scripts/run_import_worker.py``) claims rows with ``FOR UPDATE SKIP LOCKED``, runs the
-backfill, stamps the counts, deletes the staged object and emails the owner. Postgres is the
-queue: no broker, jobs survive restarts, and two workers can't double-run a job.
-
-A worker killed mid-job leaves the row ``running``; a later pass reclaims it once
-``started_at`` is older than ``STALE_RUNNING_AFTER``. A dedicated thread re-stamps
-``started_at`` every ``HEARTBEAT_INTERVAL`` while the job runs (a thread, so beats land during
-long synchronous stretches), so a long import never crosses the stale window while alive and a
-reclaim never races a live run (e.g. overlapping workers in a rolling deploy). ``MAX_ATTEMPTS``
-bounds the reclaim loop: a job that keeps dying lands ``failed``. The backfill is idempotent,
-so a reclaimed half-applied run never duplicates rows.
+single-process event loop.
 """
 
 from __future__ import annotations
