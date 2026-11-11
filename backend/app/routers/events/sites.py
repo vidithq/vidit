@@ -38,11 +38,7 @@ def link_site(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> EventSiteLinkRead:
-    """Link your published event to a site, or change the effect of its link (idempotent).
-
-    403 ``not_event_owner`` for anyone but the event's owner, 409 ``event_not_linkable`` for an
-    event that is not published, 404 ``site_not_found`` for an unknown or withheld site.
-    """
+    """Link your published event to a site, or change the effect of its link (idempotent)."""
     geo = resolve_live_event(db, geolocation_id)
     return sites_service.link_event(
         db, event=geo, user=current_user, site_id=body.site_id, effect=body.effect

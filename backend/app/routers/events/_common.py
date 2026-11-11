@@ -1,9 +1,4 @@
-"""Shared helpers for the events sub-routers (``read`` / ``write`` / ``item``),
-kept here so none imports another: the
-``EventRead`` / ``EventList`` assemblers (also imported by the users and social
-routers), the projection helpers, :func:`resolve_live_event` and
-:func:`resolve_readable_event`.
-"""
+"""Helpers the events sub-routers share, kept here so none imports another."""
 
 import uuid
 from dataclasses import dataclass
@@ -65,7 +60,6 @@ _INVITES_ADAPTER: TypeAdapter[list[GeolocatorInviteCreate]] = TypeAdapter(
     Annotated[list[GeolocatorInviteCreate], Field(max_length=MAX_EVENT_GEOLOCATORS)]
 )
 
-# Help text of the ``geolocator_invites`` form field, shared by the two publishing writes.
 GEOLOCATOR_INVITES_FIELD_DESCRIPTION = (
     "JSON array of GeolocatorInviteCreate: the analysts invited to share the credit once the "
     "event is published, in the same transaction."
@@ -94,7 +88,6 @@ def _parse_json_field[T](adapter: TypeAdapter[list[T]], raw: str | None, *, fiel
 
 
 def parse_sources(raw: str | None) -> list[SourceCreate]:
-    """The ``sources`` form field: a JSON array of ``SourceCreate``."""
     return _parse_json_field(_SOURCES_ADAPTER, raw, field="sources")
 
 
@@ -176,8 +169,6 @@ def resolve_readable_event(
 
 
 def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
-    """Fold a projected ``(lat, lng)`` pair into the nested wire shape; a
-    ``None`` on either side means no point."""
     if lat is None or lng is None:
         return None
     return CoordsRead(lat=lat, lng=lng)
@@ -206,22 +197,15 @@ def build_event_list(
     lat: float | None,
     lng: float | None,
 ) -> EventList:
-    """Assemble the ``EventList`` card for one event.
-
-    The list twin of :func:`build_event_read`; coordinates come in
-    re-projected by the caller, which eager-loads ``geolocator_credit.CREDIT_LOAD``.
-    """
+    """The caller re-projects the coordinates and eager-loads ``CREDIT_LOAD``."""
     return EventList(
         **_card_fields(geo, lat, lng), requested_at=geo.requested_at, media=thumbnail_media(geo)
     )
 
 
 def build_version_read(row: EventVersion) -> EventVersionRead:
-    """Assemble one superseded version's wire shape.
-
-    The snapshot travels as stored. A soft-deleted editor is dropped, as
-    :func:`build_event_read` does for requesters and geolocators.
-    """
+    """A soft-deleted editor is dropped, as :func:`build_event_read` does for requesters and
+    geolocators."""
     editor = row.edited_by
     return EventVersionRead(
         id=row.id,
@@ -240,10 +224,7 @@ def build_event_read(
     lat: float | None,
     lng: float | None,
 ) -> EventRead:
-    """Assemble the ``EventRead`` response for one event.
-
-    Coordinates are passed in (re-projected by the caller) so every response
-    site builds an identical shape. Callers eager-load ``requested_by``,
+    """Callers re-project the coordinates and eager-load ``requested_by``,
     ``geolocators`` and their users, and the sources (``SOURCE_LOAD``).
     ``thumbnail`` may be a proof image on an event without a source file;
     callers wanting it there eager-load ``Event.media``.

@@ -1,7 +1,4 @@
-"""Approvals of one event: the per-version read and approving the live version.
-
-Business rules live in ``services/approvals``; this module maps its typed errors.
-"""
+"""Approvals of one event: the per-version read and approving the live version."""
 
 import uuid
 

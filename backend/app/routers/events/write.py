@@ -1,6 +1,4 @@
-"""Write endpoints: create a geolocated event, and open a request.
-
-Proof images ride inside the create multipart (``proof_files`` matched to
+"""Proof images ride inside the create multipart (``proof_files`` matched to
 ``placeholder://`` srcs), so there is no standalone proof-image endpoint. Source
 files are staged first (``POST /uploads``) and named in ``sources``.
 """
@@ -36,7 +34,6 @@ router = APIRouter()
 @limiter.limit("30/minute")
 def create_event(
     request: Request,
-    # ``max_length`` rejects over-length input before any work.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
@@ -45,12 +42,7 @@ def create_event(
     db: Session = Depends(get_db),
     fields: EventFormFields = Depends(),
 ):
-    """Direct geolocate: create an event born ``geolocated``.
-
-    A pasted archived copy that is not a snapshot is a 400 with the failing check's code and no
-    event is created. Each analyst in ``geolocator_invites`` is invited to share the credit,
-    refused as ``POST /events/{id}/geolocator-invites`` refuses, and a refusal creates no event.
-    """
+    """Direct geolocate: create an event born ``geolocated``."""
     form = fields.parse(title)
     geo = asyncio.run(
         events_service.create_with_evidence(
@@ -77,11 +69,7 @@ def create_event_request(
     db: Session = Depends(get_db),
     fields: EventFormFields = Depends(),
 ):
-    """Open a request (a ``requested`` event).
-
-    The footage the poster has must be on the row from the start: a direct or
-    indirect source with its file.
-    """
+    """Open a request (a ``requested`` event)."""
     form = fields.parse(title, reject_blank_title=True)
     geo = asyncio.run(
         events_service.submit_request(db, current_user=current_user, form=form, lat=lat, lng=lng)

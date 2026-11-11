@@ -1,10 +1,4 @@
-"""Single-event ops by id: detail, the versioned write that publishes or corrects an
-event (save_version + version history), the open-request correction (update_request) and
-close.
-
-No delete: an owner takes a row back with ``close``; destruction is
-``DELETE /admin/events/{id}``.
-"""
+"""Single-event routes by id."""
 
 import asyncio
 import uuid
@@ -91,14 +85,7 @@ def report_event(
     current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> ContentReport:
-    """Report an event for moderation.
-
-    Open to anonymous viewers: the people footage harms rarely hold an account
-    here. A signed-in reporter is recorded; an anonymous one leaves
-    ``reporter_id`` NULL. The per-IP limit is the abuse floor.
-
-    An unknown, soft-deleted or already-withheld event answers 404.
-    """
+    """Report an event for moderation."""
     return reports_service.create_event_report(
         db,
         event_id=geolocation_id,
@@ -141,16 +128,6 @@ def get_event(
     return read
 
 
-# ── Lifecycle verbs ───────────────────────────────────────────────────
-# ``save_version`` is the one write that files a version: it publishes a
-# ``requested`` or ``detected`` event (version 0 becomes version 1) and corrects
-# a ``geolocated`` one. A detection and a published row are owner-only; a
-# request is answerable by anyone (the fulfiller becomes the owner). The
-# requester corrects an open request in place through ``update_request``
-# (owner-only, it stays version 0). Close is the terminal withdraw / reject /
-# retract, in every live state. An owner's way out of a published claim is the
-# retraction; destruction is admin-only. See ``api.md``.
-#
 # The two multipart writes are plain ``def`` driving their async service
 # through ``asyncio.run``, so their queries and the row lock held across the
 # upload stay off the event loop (``engineering.md``, Request concurrency).
@@ -169,17 +146,7 @@ def update_event_request(
     db: Session = Depends(get_db),
     fields: EventFormFields = Depends(),
 ):
-    """Correct an open request, overwriting it in place (owner-only).
-
-    No version is filed: the request stays version 0 until it is published
-    through ``POST /events/{id}/versions``. The row keeps its id,
-    ``requested_at``, requester and provenance, and moves ``updated_at``.
-    Allowed only while ``requested`` (409 otherwise).
-
-    Every create-form field is editable, the coordinate guess included; the
-    publication floor stays unenforced until the publish, but the row must still
-    hold a direct or indirect source with its file. Soft-deleted rows read as 404.
-    """
+    """Correct an open request, overwriting it in place (owner-only)."""
     form = fields.parse(title, reject_blank_title=True)
     # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
@@ -211,28 +178,7 @@ def save_event_version(
     db: Session = Depends(get_db),
     fields: EventFormFields = Depends(),
 ):
-    """Publish a request or a detection, or correct a published event, filing a version.
-
-    The caller posts the whole form (title, coordinates, dates, proof + images, tags,
-    conflicts, sources). The pre-edit state is filed as an ``event_versions`` row and the
-    event moves to the next ``version_no``, in one transaction under a row lock.
-
-    On a ``requested`` or ``detected`` event (version 0) this publishes: the event becomes
-    ``geolocated`` at version 1 and the caller is credited as a geolocator. A detection is
-    owner-only (403 otherwise); a request is answerable by anyone, and the fulfiller becomes
-    its owner (``requested_by`` keeps the poster). A publish invites each analyst in
-    ``geolocator_invites`` to share the credit, refused as
-    ``POST /events/{id}/geolocator-invites`` refuses, and a refusal publishes nothing; a
-    ``geolocated`` event takes none (409). On a ``geolocated`` event it is an
-    owner-only correction, refused when nothing changed. Other statuses 409, and 409
-    ``version_mismatch`` when ``version_no`` names a version the event has moved past.
-
-    The sources are versioned too: the posted list replaces the stored one and the filed
-    version keeps what it supersedes, files included. The publication floor (coordinates, a
-    direct or indirect source with its file, a proof image, a conflict) is checked on the
-    post-edit state. A save whose only change is a link's archived copy is accepted even at
-    the version ceiling. Soft-deleted rows read as 404.
-    """
+    """Publish a request or a detection, or correct a published event, filing a version."""
     form = fields.parse(title)
     invites = parse_geolocator_invites(geolocator_invites)
     # The service re-checks ownership and status under the row lock (race-free).
@@ -265,16 +211,7 @@ def list_event_versions(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ):
-    """The event's superseded versions, newest first.
-
-    Public: a corrected record is only auditable if corrections are readable.
-    The live row is the current version and is not listed. Visibility as
-    ``GET /{id}``.
-
-    Paged: ``services/versions.HISTORY_PAGE_SIZE`` rows by default, capped at
-    100, following the ``Link: rel="next"`` cursor. ``total`` is the whole
-    history.
-    """
+    """The event's superseded versions, newest first."""
     geo = resolve_readable_event(db, geolocation_id, current_user)
 
     size = page_size(limit)
@@ -301,13 +238,7 @@ def get_event_version(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ):
-    """One superseded version of an event, by its number.
-
-    The direct read behind the ``/vN`` address, visibility-gated like the list.
-    The live row's number answers 404 (read it at ``GET /{id}``), as does a
-    number the event never carried. A redacted version answers with its
-    blanked shape.
-    """
+    """One superseded version of an event, by its number."""
     geo = resolve_readable_event(db, geolocation_id, current_user)
     row = versions_service.get_version(db, event_id=geo.id, version_no=version_no)
     if row is None:
@@ -323,12 +254,7 @@ def list_event_collections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Your collections, each saying whether this event is already on it.
-
-    The add-to-collection popover's read, for an analyst credited on the event
-    (its owner or a co-geolocator). Empty collections are listed. 404 on a
-    soft-deleted or withheld event, 403 when you are not credited.
-    """
+    """Your collections, each saying whether this event is already on it."""
     geo = resolve_live_event(db, geolocation_id)
     collections_service.ensure_credited(db, event_id=geo.id, user=current_user)
     return CollectionMembershipList(
@@ -345,16 +271,7 @@ def close_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Close an event: withdraw, reject or retract it (owner-only).
-
-    One terminal verb for all three, in every live state;
-    ``before_closed_status`` records the state left and the required
-    ``close_reason`` is public. The row stays readable and drops off the map. A
-    closed detection stays in the located catalog and re-importable; closing a
-    ``geolocated`` row is a public retraction that keeps the page, versions,
-    credits and archives and leaves the published set for good. Already closed
-    409; soft-deleted 404; not the owner 403.
-    """
+    """Close an event: withdraw, reject or retract it (owner-only)."""
     geo = resolve_live_event(db, geolocation_id)
     closed = events_service.close(
         db, geo=geo, current_user=current_user, close_reason=body.close_reason
