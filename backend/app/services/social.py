@@ -30,15 +30,8 @@ FeedScope = Literal["following", "all"]
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
-    """Insert a follow row and notify the followed analyst. Idempotent: returns
-    ``False`` if the edge exists.
-
-    The router resolves the target user and rejects self-follows first.
-
-    Two requests can race past the existence check. The INSERT runs in a
-    SAVEPOINT so the loser's ``IntegrityError`` rolls back without poisoning
-    the outer transaction (same pattern as ``routers/tags``).
-    """
+    """Two requests can race past the existence check. The INSERT runs in a SAVEPOINT so the
+    loser's ``IntegrityError`` rolls back without poisoning the outer transaction."""
     if is_following(db, follower_id=follower_id, followed_id=followed_user.id):
         return False
     try:
@@ -51,7 +44,6 @@ def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> 
 
 
 def unfollow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
-    """Delete a follow row. Idempotent: returns ``False`` if no edge exists."""
     follow = db.get(Follow, (follower_id, followed_user.id))
     if follow is None:
         return False
@@ -64,7 +56,6 @@ def is_following(db: Session, *, follower_id: uuid.UUID, followed_id: uuid.UUID)
 
 
 def is_mutual_follow(db: Session, *, a_id: uuid.UUID, b_id: uuid.UUID) -> bool:
-    """Whether ``a`` and ``b`` follow each other."""
     return is_following(db, follower_id=a_id, followed_id=b_id) and is_following(
         db, follower_id=b_id, followed_id=a_id
     )
@@ -113,23 +104,12 @@ def get_feed(
     filters: EventFilters,
     cursor: tuple[datetime, uuid.UUID] | None = None,
 ) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
-    """One window of the feed, newest first, over-fetched by one row for ``pagination.paged``.
+    """One window of the feed, over-fetched by one row for ``pagination.paged``.
 
-    The feed carries three kinds of row: a geolocation an analyst published
-    (:func:`services.event_filters.published_events`), a request an analyst has open
-    (:func:`services.event_filters.open_requests`) and a machine detection
-    (:func:`services.event_filters.live_detections`). An open request's owner is its requester:
-    ownership moves only when a request is geolocated. A detection's owner is the analyst whose
-    post was imported. ``scope="following"`` keeps the geolocations credited to an analyst
-    ``user_id`` follows (owner or co-geolocator) and the requests and detections such an analyst
-    owns; ``"all"`` keeps every row.
-
-    ``filters`` narrows the rows as on ``GET /events``
-    (:class:`services.event_filters.EventFilters`): its ``status`` keeps the named kinds.
-
-    Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
-    (:func:`models.event.feed_at`), a total order over the three kinds, so a keyset walk
-    neither repeats nor skips a row.
+    An open request's owner is its requester: ownership moves only when a request is
+    geolocated. A detection's owner is the analyst whose post was imported. ``feed_at DESC, id
+    DESC`` is a total order over the three kinds, so a keyset walk neither repeats nor skips a
+    row.
     """
     key = feed_at()
     query = _feed_rows(

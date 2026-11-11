@@ -48,8 +48,6 @@ from app.services.users import (
 
 
 class OrganizationError(CodedError):
-    """A refused organization action. Carries a stable ``code`` for the router."""
-
     code: str = "organization_error"
     status_code = 400
 
@@ -124,7 +122,6 @@ def _live_user(db: Session, username: str) -> User:
 
 
 def _row(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> OrganizationMember | None:
-    """The analyst's row in the organization, an invitation or a membership."""
     return db.get(OrganizationMember, (org_id, user_id))
 
 
@@ -171,7 +168,6 @@ def live_member_ids(
 def live_manager_ids(
     org_id: uuid.UUID | ColumnExpressionArgument[uuid.UUID],
 ) -> Select[tuple[uuid.UUID]]:
-    """The live org managers of ``org_id`` (:func:`live_member_ids` narrowed to the role)."""
     return live_member_ids(org_id).where(OrganizationMember.role == "manager")
 
 
@@ -182,8 +178,7 @@ def require_manager(db: Session, org: Organization, user: User) -> None:
 
 
 def get_managed(db: Session, slug: str, user: User, *, lock: bool = False) -> Organization:
-    """The organization ``slug`` names, for an org manager of it or a site admin
-    (:func:`require_manager`)."""
+    """The organization ``slug`` names, for an org manager of it or a site admin."""
     org = get_by_slug(db, slug, lock=lock)
     require_manager(db, org, user)
     return org
@@ -246,8 +241,7 @@ def live_member_counts(db: Session):
 
 
 def list_for_admin(db: Session) -> list[AdminOrganizationRead]:
-    """Every organization with its live member and org manager counts, those
-    without an org manager first."""
+    """Those without an org manager first."""
     live = live_member_counts(db)
     managers = func.coalesce(live.c.managers, 0)
     rows = (
@@ -269,7 +263,6 @@ def list_for_admin(db: Session) -> list[AdminOrganizationRead]:
 
 
 def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -> Organization:
-    """Create an organization with ``body.manager_username`` as its first org manager, with audit."""
     first_manager = _live_user(db, body.manager_username)
     if db.query(Organization.id).filter(Organization.slug == body.slug).first() is not None:
         raise SlugTakenError("An organization already uses this slug")
@@ -317,10 +310,8 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
 def appoint_manager(
     db: Session, *, actor: User, org: Organization, username: str
 ) -> OrganizationMemberRead:
-    """Make the live analyst ``username`` an org manager of ``org``, with audit: a site admin's
-    way back into an organization left without one. A member is promoted; anyone else joins as
-    an org manager without an invite, as the first org manager does at creation. ``org`` must be
-    locked by the caller. 404 ``user_not_found`` for an unknown or soft-deleted analyst."""
+    """A site admin's way back into an organization left without an org manager. ``org`` must be
+    locked by the caller."""
     user = _live_user(db, username)
     member = _row(db, org.id, user.id)
     if member is None:
@@ -342,16 +333,9 @@ def appoint_manager(
     return OrganizationMemberRead.model_validate(member)
 
 
-def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, object]:
-    """Delete the organization ``slug`` and everything in its name, with audit. Site admin only
-    (the router's guard).
-
-    In one transaction, after locking the organization row: the approvals given in its name,
-    the approval requests addressed to it, its pending invites, its memberships, then the row
-    itself (the notifications naming it cascade with it). The owner of each event that loses a
-    standing approval receives one ``organization_approval_removed`` notification per event.
-    After the commit, the picture is swept from storage. 404 ``organization_not_found``.
-    """
+def delete_organization(db: Session, *, actor: User, slug: str) -> None:
+    """Delete the organization ``slug`` and everything in its name in one transaction, under the
+    organization row lock, then sweep its picture."""
     org = get_by_slug(db, slug, lock=True)
     affected = list(
         db.execute(
@@ -397,11 +381,9 @@ def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, obj
     )
     db.commit()
     sweep_keys([avatar_key] if avatar_key else [], context=f"organization {slug} delete")
-    return target
 
 
 def apply_update(org: Organization, body: OrganizationUpdate) -> None:
-    """Apply the profile fields and the approval request audience ``body`` sets."""
     apply_profile_update(org, body)
     if body.approval_request_audience is not None:
         org.approval_request_audience = body.approval_request_audience
@@ -437,7 +419,6 @@ def build_read(db: Session, org: Organization, *, viewer: User | None) -> Organi
 
 
 def list_members(db: Session, org: Organization) -> list[OrganizationMemberRead]:
-    """Live members, org managers first, then by join date."""
     rows = (
         _live_members(db, org.id)
         .options(joinedload(OrganizationMember.user))
@@ -452,7 +433,6 @@ def list_members(db: Session, org: Organization) -> list[OrganizationMemberRead]
 
 
 def list_memberships(db: Session, user: User) -> list[OrganizationMembershipRead]:
-    """The organizations ``user`` belongs to, by name."""
     rows = (
         db.query(OrganizationMember)
         .join(Organization, Organization.id == OrganizationMember.organization_id)
@@ -482,8 +462,7 @@ def invite_candidates(db: Session, org: Organization, *, inviter: User) -> list[
 
 
 def invite(db: Session, org: Organization, *, inviter: User, username: str) -> OrganizationMember:
-    """Invite ``username`` and notify them. Only an org manager invites, and only
-    an analyst in mutual follow with them."""
+    """Only an org manager invites, and only an analyst in mutual follow with them."""
     if not is_organization_manager(db, org_id=org.id, user_id=inviter.id):
         raise NotOrganizationManagerError("Only an org manager can invite")
     invitee = _live_user(db, username)
@@ -534,7 +513,6 @@ def list_invites(db: Session, org: Organization) -> list[OrganizationInviteRead]
 
 
 def cancel_invite(db: Session, org: Organization, *, username: str) -> None:
-    """Withdraw the pending invitation of ``username`` (404 ``invite_not_found``)."""
     invitee = get_live_by_username(db, username)
     row = _invitation(db, org.id, invitee.id) if invitee is not None else None
     if row is None:
@@ -559,7 +537,6 @@ def _locked_invitation(db: Session, org: Organization, user: User) -> Organizati
 
 
 def accept_invite(db: Session, org: Organization, *, user: User) -> None:
-    """Join as a member and tell the inviter. The row turns ``active``."""
     row = _locked_invitation(db, org, user)
     row.state = "active"
     row.role = "member"
@@ -568,7 +545,6 @@ def accept_invite(db: Session, org: Organization, *, user: User) -> None:
 
 
 def decline_invite(db: Session, org: Organization, *, user: User) -> None:
-    """Drop the invite. Nobody is notified."""
     db.delete(_locked_invitation(db, org, user))
 
 

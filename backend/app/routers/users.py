@@ -29,8 +29,7 @@ router = APIRouter()
 
 
 def _get_live_user_or_404(db: Session, username: str) -> User:
-    """Resolve ``username`` to a live ``User`` or 404. Unknown and soft-deleted
-    both 404 so the URL space isn't a soft-delete oracle."""
+    """Unknown and soft-deleted both 404 so the URL space isn't a soft-delete oracle."""
     user = users_service.get_live_by_username(db, username)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -45,12 +44,7 @@ def update_my_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Edit your own profile.
-
-    ``exclude_unset`` separates omitted (column untouched) from null (clears
-    it; empty string normalises to ``None``). ``external_links`` replaces the
-    whole JSONB blob, since the form submits the entire panel.
-    """
+    """Edit your own profile."""
     users_service.apply_profile_update(current_user, body)
     db.commit()
     db.refresh(current_user)
@@ -69,12 +63,7 @@ def set_my_avatar(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Replace your profile picture with an uploaded image.
-
-    Accepts one JPEG / PNG / WebP, stores a stripped and resized JPEG on our
-    own media host (the only thing ``avatar_url`` points at), and deletes the
-    picture it replaced.
-    """
+    """Replace your profile picture with an uploaded image."""
     return asyncio.run(users_service.set_avatar(db, owner=current_user, file=file))
 
 
@@ -184,8 +173,7 @@ def get_user_stats(
     username: str,
     db: Session = Depends(get_db),
 ) -> UserStatsRead:
-    """Aggregated shape-of-work stats for a public profile (anonymous, live
-    rows only; aggregation lives in ``services/user_stats``)."""
+    """Aggregated shape-of-work stats for a public profile."""
     user = _get_live_user_or_404(db, username)
     return user_stats.get_user_stats(db, user_id=user.id)
 
@@ -201,12 +189,7 @@ def get_user_collections(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> CollectionList:
-    """One analyst's collections, newest first.
-
-    A collection with nothing showable is scaffolding, so readers get the
-    non-empty ones and the owner gets all. ``total`` is narrowed too; withheld
-    collections are in neither view. Offset-paged, capped at 100 per page.
-    """
+    """One analyst's collections, newest first."""
     user = _get_live_user_or_404(db, username)
     per_page = page_size(per_page)
     rows, total = collections_service.list_owned_collections(
@@ -245,8 +228,7 @@ def follow_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Follow another analyst. Idempotent (204, no extra row). Self-follow is
-    a 400 (``ck_follows_no_self_follow``)."""
+    """Follow another analyst."""
     target = _get_live_user_or_404(db, username)
     if target.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot follow yourself")
@@ -262,8 +244,7 @@ def unfollow_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Unfollow an analyst. Idempotent (204). A typo username is still a 404
-    so the UI can surface it."""
+    """Unfollow an analyst."""
     target = _get_live_user_or_404(db, username)
     social.unfollow_user(db, follower_id=current_user.id, followed_user=target)
     db.commit()
@@ -279,21 +260,12 @@ def get_user_geolocations(
     per_page: int = Query(20, ge=1),
     db: Session = Depends(get_db),
 ):
-    """One analyst's published geolocations, newest event date first, capped
-    at 100 per page.
-
-    Published, not merely visible: :func:`published_events` narrows to
-    ``geolocated``, so detections and rejected rows are never credited. The
-    filter applies to the count and the rows, and ``geolocations_count`` on the
-    profile counts the same set. The wider live total is ``total_events`` on
-    :func:`get_user_stats`.
+    """One analyst's published geolocations, newest event date first.
 
     Offset-paged: the profile orders by ``occurred_date``, which is nullable and
     editable, so it cannot key a cursor.
     """
     user = _get_live_user_or_404(db, username)
-    # Over-asking is clamped; ``ge=1`` keeps a page below 1 from becoming a
-    # negative OFFSET (a 500).
     per_page = page_size(per_page)
     rows, total = social.list_published_geolocations(
         db, user_id=user.id, page=page, per_page=per_page

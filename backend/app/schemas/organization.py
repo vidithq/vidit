@@ -104,16 +104,12 @@ class OrganizationInviteRead(BaseModel):
 
 
 class OrganizationInviteCreate(BaseModel):
-    """Body for ``POST /organizations/{slug}/invites``."""
-
     model_config = ConfigDict(extra="forbid")
 
     username: UsernameRef
 
 
 class OrganizationMemberUpdate(BaseModel):
-    """Body for ``PATCH /organizations/{slug}/members/{username}``."""
-
     model_config = ConfigDict(extra="forbid")
 
     role: OrganizationRole

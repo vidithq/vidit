@@ -120,8 +120,6 @@ class AdminUserRead(BaseModel):
 
 
 class UserInviteMintingUpdate(BaseModel):
-    """Body for `PATCH /admin/users/{id}/invite-minting`."""
-
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
@@ -145,8 +143,6 @@ class AdminUserDeleteResponse(BaseModel):
 
 
 class AdminUserRestoreResponse(BaseModel):
-    """Response for `POST /admin/users/{id}/restore`."""
-
     user_id: uuid.UUID
     username: str
     # Events the soft delete hid, now live again.
@@ -154,9 +150,6 @@ class AdminUserRestoreResponse(BaseModel):
 
 
 class AdminEventDeleteResponse(BaseModel):
-    """Response for `DELETE /admin/events/{id}`: which row, soft vs hard, what
-    was swept."""
-
     geolocation_id: uuid.UUID
     title: str
     mode: Literal["soft", "hard"]
