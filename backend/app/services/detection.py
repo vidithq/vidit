@@ -792,42 +792,41 @@ async def persist_detections(
         if verdict == "skip":
             if matched is not None:  # always: a skip names the row it protects
                 outcome.skipped.append(matched.id)
-        elif matched is not None:  # ``upsert``: the verdict carries its row
-            try:
-                changed = await _upsert_one(
-                    db,
-                    row=matched,
-                    detection=detection,
-                    fetch_media=fetch_media,
-                    media_cache=media_cache,
-                )
-            except Exception:
-                logger.exception("Detection upsert failed for %s", detection.detected_from_url)
-                db.rollback()
-                outcome.failed += 1
-            else:
-                if changed:
-                    outcome.updated.append(matched.id)
-                    persisted.append((matched.id, detection))
-                else:
-                    outcome.skipped.append(matched.id)
         else:
             try:
-                geo = await _persist_one(
-                    db,
-                    owner=owner,
-                    detection=detection,
-                    via=via,
-                    fetch_media=fetch_media,
-                    media_cache=media_cache,
-                )
+                if matched is not None:  # ``upsert``: the verdict carries its row
+                    changed = await _upsert_one(
+                        db,
+                        row=matched,
+                        detection=detection,
+                        fetch_media=fetch_media,
+                        media_cache=media_cache,
+                    )
+                    event_id = matched.id
+                else:
+                    geo = await _persist_one(
+                        db,
+                        owner=owner,
+                        detection=detection,
+                        via=via,
+                        fetch_media=fetch_media,
+                        media_cache=media_cache,
+                    )
+                    changed, event_id = True, geo.id
             except Exception:
-                logger.exception("Detection persist failed for %s", detection.detected_from_url)
+                logger.exception(
+                    "Detection %s failed for %s",
+                    "persist" if matched is None else "upsert",
+                    detection.detected_from_url,
+                )
                 db.rollback()
                 outcome.failed += 1
             else:
-                outcome.created.append(geo.id)
-                persisted.append((geo.id, detection))
+                if not changed:
+                    outcome.skipped.append(event_id)
+                else:
+                    (outcome.created if matched is None else outcome.updated).append(event_id)
+                    persisted.append((event_id, detection))
         if on_progress is not None:
             on_progress(index, total)
     for counts in (_engine_warnings(persisted), _write_warnings(db, persisted)):
