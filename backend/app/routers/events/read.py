@@ -13,7 +13,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy import ColumnElement, func, not_
+from sqlalchemy import func, not_
 from sqlalchemy.orm import Session, selectinload
 
 from app.cache import points_cache
@@ -111,11 +111,7 @@ def list_points(
 
     cached_bytes = points_cache.get(cache_key)
     if cached_bytes is not None:
-        return Response(
-            content=cached_bytes,
-            media_type="application/json",
-            headers={"Cache-Control": "public, max-age=30", "X-Cache": "HIT"},
-        )
+        return _points_response(cached_bytes, "HIT")
 
     q = db.query(
         Event.id,
@@ -150,11 +146,14 @@ def list_points(
 
     json_bytes = orjson.dumps(result)
     points_cache.set(cache_key, json_bytes)
+    return _points_response(json_bytes, "MISS")
 
+
+def _points_response(content: bytes, cache: str) -> Response:
     return Response(
-        content=json_bytes,
+        content=content,
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=30", "X-Cache": "MISS"},
+        headers={"Cache-Control": "public, max-age=30", "X-Cache": cache},
     )
 
 
@@ -293,17 +292,11 @@ def list_detections(
         .filter(*detected)
         .one()
     )
-    total = {
-        "ready": ready_total,
-        "incomplete": incomplete_total,
-        "all": ready_total + incomplete_total,
+    total, page_filters = {
+        "all": (ready_total + incomplete_total, detected),
+        "ready": (ready_total, (*detected, ready)),
+        "incomplete": (incomplete_total, (*detected, not_(ready))),
     }[readiness]
-
-    page_filters: tuple[ColumnElement[bool], ...] = detected
-    if readiness == "ready":
-        page_filters = (*detected, ready)
-    elif readiness == "incomplete":
-        page_filters = (*detected, not_(ready))
 
     window = (
         db.query(

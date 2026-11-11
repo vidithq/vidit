@@ -125,7 +125,7 @@ def approved_organization_ids(geo: Event) -> Select[tuple[uuid.UUID | None]]:
     )
 
 
-def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
+def build_read(row: EventApproval) -> ApprovalRead:
     """``current`` holds while the approval covers the live version of a published event: a
     closed event keeps its approvals readable, none of them current."""
     return ApprovalRead(
@@ -144,7 +144,7 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
             else None
         ),
         created_at=row.created_at,
-        current=row.version_no == live_version and row.event.status == STATUS_GEOLOCATED,
+        current=row.version_no == row.event.version_no and row.event.status == STATUS_GEOLOCATED,
     )
 
 
@@ -325,5 +325,5 @@ def list_for_organization(
 def build_organization_read(row: EventApproval) -> OrganizationApprovalRead:
     return OrganizationApprovalRead(
         event=NotificationEventRef.model_validate(row.event),
-        approval=build_read(row, live_version=row.event.version_no),
+        approval=build_read(row),
     )

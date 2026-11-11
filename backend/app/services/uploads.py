@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 
 from fastapi import UploadFile
@@ -76,30 +76,33 @@ class TooManyUploadsError(EvidenceIntakeError):
     status_code = 429
 
 
-_LINK_REFUSALS = {
-    "unsupported_link": "Import works with an X post, a public Telegram post or a TikTok post link.",
-    "link_not_accessible": "The post or its file is gone, restricted or unreadable without a login.",
-    "upstream_busy": "The post's host or its file host is not answering. Try again in a minute.",
-}
-
-
-_LINK_STATUS = {
-    "unsupported_link": 400,
-    "link_not_accessible": 404,
-    "link_has_no_file": 404,
-    "upstream_busy": 503,
+# Each refusal's status and default message; ``link_has_no_file`` always names its own.
+_LINK_REFUSALS: dict[str, tuple[int, str]] = {
+    "unsupported_link": (
+        400,
+        "Import works with an X post, a public Telegram post or a TikTok post link.",
+    ),
+    "link_not_accessible": (
+        404,
+        "The post or its file is gone, restricted or unreadable without a login.",
+    ),
+    "link_has_no_file": (404, ""),
+    "upstream_busy": (
+        503,
+        "The post's host or its file host is not answering. Try again in a minute.",
+    ),
 }
 
 
 class LinkImportError(EvidenceIntakeError):
     """A post link whose file cannot be staged; ``code`` names why and sets the status."""
 
-    instance_codes = tuple(_LINK_STATUS)
+    instance_codes = tuple(_LINK_REFUSALS)
 
     def __init__(self, code: str, message: str | None = None) -> None:
-        super().__init__(message or _LINK_REFUSALS[code])
+        self.status_code, default = _LINK_REFUSALS[code]
+        super().__init__(message or default)
         self.code = code
-        self.status_code = _LINK_STATUS[code]
 
 
 class ProofImageNotFoundError(EvidenceIntakeError):
@@ -169,6 +172,26 @@ async def _named(store: Awaitable[UploadResult], name: str | None = None) -> lis
     return [StoredFile(await store, name)]
 
 
+async def _stage_bytes(
+    db: Session,
+    *,
+    uploader: User,
+    data: bytes,
+    content_type: str,
+    now: datetime,
+    store: Callable[[bytes, str], Awaitable[UploadResult]],
+    name: str | None = None,
+) -> Upload:
+    try:
+        kind = validate_bytes(data, content_type)
+    except ValueError as exc:
+        raise InvalidFileError(str(exc)) from exc
+    [upload] = await _record(
+        db, uploader=uploader, kind=kind, store=_named(store(data, content_type), name), now=now
+    )
+    return upload
+
+
 async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> list[Upload]:
     """Store one picked file and record it for a later event write; commits.
 
@@ -223,16 +246,13 @@ async def stage_from_link(
         raise LinkImportError("upstream_busy") from exc
     except TweetImportError as exc:
         raise LinkImportError("link_not_accessible") from exc
-    try:
-        kind = validate_bytes(data, parsed.content_type)
-    except ValueError as exc:
-        raise InvalidFileError(str(exc)) from exc
-    [upload] = await _record(
+    upload = await _stage_bytes(
         db,
         uploader=uploader,
-        kind=kind,
-        store=_named(upload_source_bytes(data, parsed.content_type)),
+        data=data,
+        content_type=parsed.content_type,
         now=now,
+        store=upload_source_bytes,
     )
     return upload, [item.kind for item in media]
 
@@ -265,18 +285,15 @@ async def stage_from_proof(db: Session, *, uploader: User, event_id: uuid.UUID, 
             "This image is not a stored proof image of an event you edit."
         )
     data = await asyncio.to_thread(read_stored_bytes, key)
-    try:
-        kind = validate_bytes(data, content_type)
-    except ValueError as exc:
-        raise InvalidFileError(str(exc)) from exc
-    [upload] = await _record(
+    return await _stage_bytes(
         db,
         uploader=uploader,
-        kind=kind,
-        store=_named(upload_source_copy(data, content_type), proof.original_filename),
+        data=data,
+        content_type=content_type,
         now=now,
+        store=upload_source_copy,
+        name=proof.original_filename,
     )
-    return upload
 
 
 def storage_url_of(upload: Upload) -> str:

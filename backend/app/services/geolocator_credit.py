@@ -15,6 +15,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import cast
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -106,16 +107,16 @@ def _state(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGeoloca
     return db.get(EventGeolocator, (event_id, user_id))
 
 
-def _invite_row(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGeolocator:
-    row = _state(db, event_id, user_id)
-    if row is None or row.state != "invited":
-        raise InviteNotFoundError("No pending invitation")
-    return row
-
-
 def has_pending_invite(db: Session, *, event_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     row = _state(db, event_id, user_id)
     return row is not None and row.state == "invited"
+
+
+def _invite_row(db: Session, event_id: uuid.UUID, user_id: uuid.UUID) -> EventGeolocator:
+    if not has_pending_invite(db, event_id=event_id, user_id=user_id):
+        raise InviteNotFoundError("No pending invitation")
+    # ``db.get`` answers the second read from the identity map.
+    return cast(EventGeolocator, _state(db, event_id, user_id))
 
 
 def list_invites(db: Session, *, geo: Event, viewer: User) -> list[EventGeolocator]:
@@ -228,7 +229,7 @@ def _end_invitation(db: Session, row: EventGeolocator) -> None:
         db.delete(row)
 
 
-def accept(db: Session, *, geo: Event, user: User) -> Event:
+def accept(db: Session, *, geo: Event, user: User) -> None:
     """Turn ``user``'s pending invitation into geolocator credit, in one transaction. The open
     approval requests asking ``user`` to approve the event go, since a geolocator cannot approve it.
 
@@ -249,8 +250,6 @@ def accept(db: Session, *, geo: Event, user: User) -> Event:
         )
     )
     db.commit()
-    db.refresh(geo)
-    return geo
 
 
 def decline(db: Session, *, geo: Event, user: User) -> None:
