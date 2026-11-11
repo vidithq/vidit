@@ -1,10 +1,10 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, CreatedAt, UpdatedAt
 from app.models.event import TITLE_MAX_LENGTH
 
 
@@ -39,22 +39,13 @@ class Collection(Base):
     # 500-character cap is the API's.
     description_text: Mapped[str] = mapped_column(Text, nullable=False)
     # Takedown: NULL = visible; same axis and reversal as ``Event.hidden_at``.
-    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hidden_at: Mapped[datetime | None]
     # The owner deleted it while a content report on it was open: withheld from every read but an
     # admin's until the last open report is resolved, which erases the row
     # (``services/collections.delete_collection``, ``erase_if_released``). Never cleared.
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    deleted_at: Mapped[datetime | None]
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
 
     owner = relationship("User")
     # Membership rows. Order is the events' chronology (``services/collections``).
@@ -86,11 +77,7 @@ class CollectionEvent(Base):
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
     )
-    added_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    added_at: Mapped[CreatedAt]
 
     collection = relationship("Collection", back_populates="items")
 

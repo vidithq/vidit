@@ -1,11 +1,10 @@
 import uuid
-from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 
 # Media kind domain. Value-domain source of truth for the column, the Read
 # schema, the tweet-import ``kind`` field and the generated frontend type.
@@ -44,11 +43,7 @@ class Media(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     # Sanitised client filename, public so investigators can trace evidence to a post.
     original_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
 
     event = relationship("Event", back_populates="media")
     source = relationship("Source", back_populates="media")

@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal, get_args
 
 from geoalchemy2 import Geometry
@@ -7,7 +7,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
-    DateTime,
     ForeignKey,
     Index,
     SmallInteger,
@@ -19,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, UpdatedAt, literal_check
 
 # Evidence level of a source: how close it stands to the act (``docs/data-model.md``).
 # ``direct`` shows the act while it happens, ``indirect`` its direct consequences after the
@@ -106,7 +105,7 @@ class Source(Base):
     # A site source's plain-text note, capped at ``schemas/site.SITE_SOURCE_NOTE_MAX_LENGTH``.
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # A site source's removal from the live state; the row stays for the versions that name it.
-    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_at: Mapped[datetime | None]
     # ``""`` is no title.
     title: Mapped[str] = mapped_column(
         String(SOURCE_TITLE_MAX_LENGTH), nullable=False, default="", server_default=text("''")
@@ -120,7 +119,7 @@ class Source(Base):
     kind: Mapped[SourceKind] = mapped_column(String(20), nullable=False)
     # When the media was captured (UTC). Distinct from the event's ``occurred_date`` and a
     # link's ``posted_at``.
-    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    captured_at: Mapped[datetime | None]
     # Where a capture was shot from. Unindexed: no spatial read uses it.
     capture_position = mapped_column(
         Geometry("POINT", srid=4326, spatial_index=False), nullable=True
@@ -130,15 +129,8 @@ class Source(Base):
     is_graphic: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
 
     event = relationship("Event", back_populates="sources")
     author = relationship("User")
@@ -188,14 +180,12 @@ class SourceLink(Base):
     )
     url: Mapped[str] = mapped_column(Text, nullable=False)
     # When the media was posted at this URL (UTC). NULL unless known.
-    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    posted_at: Mapped[datetime | None]
     # The archived copy the analyst recorded (``services/source_archive.validate_snapshot``).
     snapshot_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # When that copy was recorded; set exactly with ``snapshot_url``.
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
-    )
+    archived_at: Mapped[datetime | None]
+    created_at: Mapped[CreatedAt]
 
     source = relationship("Source", back_populates="links")
 

@@ -1,11 +1,10 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
-    DateTime,
     Index,
     Integer,
     SmallInteger,
@@ -15,7 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 
 # What one mention did with a tagged tweet. ``created``: at least one
 # ``detected`` row landed. ``updated``: no row created, but a newer parse
@@ -77,14 +76,10 @@ class BotMention(Base):
     # The bot's in-thread reply, if posted. NULL when none was owed, credentials
     # are absent, the budget was spent, or the post failed (fail-soft).
     reply_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
     # When the worker last took the row: its claim while ``running``, its finish
     # once ``done`` or ``failed``.
-    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processed_at: Mapped[datetime | None]
 
     __table_args__ = (
         literal_check("status", BotMentionStatus, "ck_bot_mentions_status_valid"),
@@ -113,6 +108,6 @@ class BotCatchUpCursor(Base):
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
     # The newest mention id a pull returned: the next pull's ``since_id``.
     newest_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    pulled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    pulled_at: Mapped[datetime]
 
     __table_args__ = (CheckConstraint("id = 1", name="ck_bot_catch_up_cursor_single_row"),)

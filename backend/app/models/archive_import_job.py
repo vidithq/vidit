@@ -1,11 +1,11 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 
 # Lifecycle of one uploaded archive. ``queued``: staged. ``running``: claimed
 # by a worker pass (reclaimed past the stale window, ``services/archive_jobs``).
@@ -48,13 +48,9 @@ class ArchiveImportJob(Base):
     skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[CreatedAt]
+    started_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
 
     __table_args__ = (
         literal_check("status", ArchiveImportJobStatus, "ck_archive_import_jobs_status_valid"),

@@ -1,10 +1,10 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import Base, CreatedAt
 
 
 class PasswordResetToken(Base):
@@ -22,13 +22,9 @@ class PasswordResetToken(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    expires_at: Mapped[datetime]
+    consumed_at: Mapped[datetime | None]
+    created_at: Mapped[CreatedAt]
 
     __table_args__ = (
         UniqueConstraint("token_hash", name="uq_password_reset_tokens_token_hash"),

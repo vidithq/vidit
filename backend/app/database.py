@@ -1,7 +1,8 @@
-from typing import Any, get_args
+from datetime import UTC, datetime
+from typing import Annotated, Any, get_args
 
-from sqlalchemy import CheckConstraint, create_engine, event
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy import CheckConstraint, DateTime, create_engine, event
+from sqlalchemy.orm import DeclarativeBase, mapped_column, sessionmaker
 
 from app.config import settings
 
@@ -22,7 +23,15 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 class Base(DeclarativeBase):
-    pass
+    type_annotation_map = {datetime: DateTime(timezone=True)}
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+CreatedAt = Annotated[datetime, mapped_column(default=_utcnow)]
+UpdatedAt = Annotated[datetime, mapped_column(default=_utcnow, onupdate=_utcnow)]
 
 
 def literal_check(

@@ -1,10 +1,9 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
 from sqlalchemy import (
     CheckConstraint,
-    DateTime,
     ForeignKey,
     Index,
     String,
@@ -13,7 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 
 # Why a viewer flagged an event, a collection or a site. ``illegal_content`` is the legal
 # escalation; ``graphic_not_flagged`` is footage of death, injury or human
@@ -76,12 +75,8 @@ class ContentReport(Base):
     reporter_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[CreatedAt]
+    resolved_at: Mapped[datetime | None]
     # See ``ContentReportResolution``; non-NULL exactly when ``resolved_at`` is.
     resolution: Mapped[ContentReportResolution | None] = mapped_column(String(30), nullable=True)
     # NULL until resolved, and after a GDPR erasure of that admin.

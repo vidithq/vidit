@@ -1,9 +1,7 @@
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import (
     CheckConstraint,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -11,7 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, CreatedAt
 
 
 class EventApproval(Base):
@@ -45,11 +43,7 @@ class EventApproval(Base):
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
 
     reviewer = relationship("User", foreign_keys=[reviewer_id])
     organization = relationship("Organization")

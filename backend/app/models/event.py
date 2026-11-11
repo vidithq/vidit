@@ -1,6 +1,6 @@
 import uuid
-from datetime import UTC, date, datetime, time
-from typing import Literal
+from datetime import date, datetime, time
+from typing import Any, Literal
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
@@ -8,7 +8,6 @@ from sqlalchemy import (
     CheckConstraint,
     ColumnElement,
     Date,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -27,7 +26,7 @@ from sqlalchemy.engine.default import DefaultExecutionContext
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, UpdatedAt, literal_check
 from app.models.source import Source, source_order
 
 # Lifecycle status (value-domain source of truth: the ORM column, the Read
@@ -105,10 +104,10 @@ class EventGeolocator(Base):
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     state: Mapped[GeolocatorState] = mapped_column(String(20), nullable=False)
-    invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invited_at: Mapped[datetime | None]
+    joined_at: Mapped[datetime | None]
     # The first departure; a later one leaves it as it is.
-    departed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    departed_at: Mapped[datetime | None]
 
     event = relationship("Event", viewonly=True)
     user = relationship("User")
@@ -167,15 +166,11 @@ class EventVersion(Base):
     )
     # Unbounded ``Text``; the API caps input at ``schemas/event.VERSION_NOTE_MAX_LENGTH``.
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    snapshot = mapped_column(JSONB, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    snapshot: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[CreatedAt]
     # NULL on every ordinary row (moderation exit for a version the record must
     # not keep serving).
-    redacted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    redacted_at: Mapped[datetime | None]
     # SET NULL for the same reason as ``edited_by_id``.
     redacted_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -219,7 +214,7 @@ class EventDetection(Base):
     thread_post_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger), nullable=True)
     # When the analyst published this geolocation on X: the precedence signal for the
     # claim/dispute pipeline.
-    post_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    post_at: Mapped[datetime | None]
 
     event = relationship("Event", back_populates="detection")
 
@@ -273,9 +268,9 @@ class Event(Base):
     occurred_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     # Per-state entry stamps, set on entry and never cleared; the
     # ``geolocated`` / ``closed`` ones are tied to ``status`` by CHECKs.
-    requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    geolocated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    requested_at: Mapped[datetime | None]
+    detected_at: Mapped[datetime | None]
+    geolocated_at: Mapped[datetime | None]
     # See ``STATUS_*``. server_default keeps a human submit correct without
     # setting it; the requested / detected paths pass it explicitly.
     status: Mapped[EventStatus] = mapped_column(
@@ -298,19 +293,10 @@ class Event(Base):
     def _is_machine_detection_expression(cls) -> ColumnElement[bool]:
         return and_(exists().where(EventDetection.event_id == cls.id), cls.requested_at.is_(None))
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
     # Set when the event reaches ``closed``.
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None]
     # Free-text reason shown for transparency.
     close_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # See ``BeforeClosedStatus``; non-NULL exactly when ``status='closed'``.
@@ -318,10 +304,10 @@ class Event(Base):
         String(20), nullable=True
     )
     # Soft-delete: NULL = live. Filtered out by every public read.
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None]
     # Takedown after a content report: withheld from public reads alongside
     # ``deleted_at``, but reversible by an admin.
-    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hidden_at: Mapped[datetime | None]
     # Which version this row IS: 0 until the row is published, then 1 and up. Incremented
     # under the row lock by ``services/events.save_version``, which first files the
     # superseded state as an ``EventVersion``. A public address (``/events/{id}/v{n}``), so

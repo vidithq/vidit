@@ -1,11 +1,11 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 
 # Where a conflict row came from: ``sync`` (daily Wikipedia ongoing-conflicts
 # sync), ``seed`` (one-shot Wikidata historical seed), ``manual`` (operator;
@@ -58,13 +58,9 @@ class Conflict(Base):
     is_ongoing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Last time the daily sync saw it on the ongoing page. NULL rows are never
     # touched by the grace-period deactivation.
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None]
     origin: Mapped[ConflictOrigin] = mapped_column(String(20), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
 
     events = relationship("Event", secondary=event_conflicts, back_populates="conflicts")
 

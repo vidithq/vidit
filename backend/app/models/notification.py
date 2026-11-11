@@ -1,9 +1,8 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal, get_args
 
 from sqlalchemy import (
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -13,7 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 
 # What happened, one value per emitter. Value-domain source of truth: the ORM
 # column, the Read schemas and the generated frontend type derive from it, and
@@ -90,16 +89,12 @@ class Notification(Base):
     approval_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("event_approvals.id", ondelete="CASCADE"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
     # Set when the feed shows this row to its recipient; NULL is unread. Per
     # row rather than one marker: ``created_at`` is stamped at flush, and an
     # action that commits late would otherwise land behind a marker already
     # moved past it.
-    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    read_at: Mapped[datetime | None]
 
     actor = relationship("User", foreign_keys=[actor_id])
     event = relationship("Event")
@@ -160,15 +155,11 @@ class NotificationDelivery(Base):
     )
     # Provider refusals so far; the row fails at ``MAX_ATTEMPTS``.
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
     # The latest claim: the stale clock while ``running``, the retry clock once
     # a refusal puts the row back in ``queued``.
-    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_at: Mapped[datetime | None]
+    sent_at: Mapped[datetime | None]
     # SET NULL: a deleted notification leaves its sent rows behind for the daily
     # email cap (``services/notifications.delete`` removes the unsent ones).
     notification_id: Mapped[uuid.UUID | None] = mapped_column(

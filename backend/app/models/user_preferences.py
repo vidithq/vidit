@@ -1,12 +1,11 @@
 import uuid
-from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import DateTime, ForeignKey, String, text
+from sqlalchemy import ForeignKey, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base, literal_check
+from app.database import Base, UpdatedAt, literal_check
 
 # Who may send this analyst an approval request: analysts they follow, any signed-in analyst, or
 # nobody. Value-domain source of truth; ``ck_user_preferences_approval_request_audience_valid`` pins it
@@ -39,12 +38,7 @@ class UserPreferences(Base):
         server_default=text(f"'{APPROVAL_REQUEST_AUDIENCE_DEFAULT}'"),
         nullable=False,
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    updated_at: Mapped[UpdatedAt]
 
     __table_args__ = (
         literal_check(

@@ -1,12 +1,12 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, text
+from sqlalchemy import Boolean, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, CreatedAt
 
 
 class User(Base):
@@ -23,18 +23,14 @@ class User(Base):
     x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
     # Most recent authenticated request, throttled: ``dependencies.get_current_user``
     # refreshes it once per ``LAST_SEEN_THROTTLE`` window; login and
     # register-confirm stamp it too. NULL if no request since the column landed.
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None]
     # Soft-delete: NULL = live. Auth checks reject soft-deleted users and public
     # reads filter them; it cascade-soft-deletes their geolocations.
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None]
     # Session-invalidation counter: the session JWT embeds it as `tv` and
     # `get_current_user` 401s on mismatch. Bumped on logout, password change,
     # password reset and soft-delete (clearing the cookie doesn't kill the token).

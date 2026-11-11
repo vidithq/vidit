@@ -1,10 +1,9 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from sqlalchemy import (
     CheckConstraint,
-    DateTime,
     ForeignKey,
     Index,
     String,
@@ -14,7 +13,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 from app.models.user_preferences import APPROVAL_REQUEST_AUDIENCE_DEFAULT, ApprovalRequestAudience
 
 # Value-domain source of truth for a member's role: the ORM column, the Read
@@ -56,11 +55,7 @@ class Organization(Base):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
 
     __table_args__ = (
         literal_check(
@@ -98,8 +93,8 @@ class OrganizationMember(Base):
     state: Mapped[OrganizationMemberState] = mapped_column(String(20), nullable=False)
     # The role the analyst holds once ``active``; an invitation joins as ``member``.
     role: Mapped[OrganizationRole] = mapped_column(String(20), nullable=False)
-    invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invited_at: Mapped[datetime | None]
+    joined_at: Mapped[datetime | None]
 
     user = relationship("User", foreign_keys=[user_id])
     invited_by = relationship("User", foreign_keys=[invited_by_id])

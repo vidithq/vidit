@@ -1,10 +1,9 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -17,7 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, UpdatedAt, literal_check
 from app.models.event import TITLE_MAX_LENGTH
 
 # Value domains (source of truth: the ORM CHECKs, the schemas and the generated frontend types
@@ -61,18 +60,9 @@ class Site(Base):
         Integer, nullable=False, default=1, server_default=text("1")
     )
     # Takedown: NULL = visible; same axis and reversal as ``Collection.hidden_at``.
-    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    hidden_at: Mapped[datetime | None]
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
 
     owner = relationship("User")
 
@@ -105,12 +95,8 @@ class SiteVersion(Base):
     # input at ``schemas/event.VERSION_NOTE_MAX_LENGTH``.
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # ``schemas/site.SiteSnapshot``: the name, the kind, and each source with its contour.
-    snapshot = mapped_column(JSONB, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    snapshot: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[CreatedAt]
 
     edited_by = relationship("User")
 
@@ -140,13 +126,9 @@ class SiteContour(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     zone = mapped_column(Geometry("POLYGON", srid=4326, spatial_index=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
     # NULL while the contour is in the live state; set by the write that redrew or dropped it.
-    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    superseded_at: Mapped[datetime | None]
 
     author = relationship("User")
 
@@ -180,10 +162,7 @@ class EventSiteLink(Base):
     )
     effect: Mapped[LinkEffect] = mapped_column(String(20), nullable=False)
     linked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        server_default=func.now(),
-        nullable=False,
+        default=lambda: datetime.now(UTC), server_default=func.now()
     )
 
     event = relationship("Event")

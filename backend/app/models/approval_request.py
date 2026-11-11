@@ -1,11 +1,11 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 
 # Where a request stands. Value-domain source of truth for the column and the Read schema;
 # ``ck_approval_requests_status_valid`` pins it at the DB (keep the two in step).
@@ -44,12 +44,8 @@ class ApprovalRequest(Base):
     status: Mapped[ApprovalRequestStatus] = mapped_column(
         String(20), nullable=False, default="open", server_default=text("'open'")
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[CreatedAt]
+    resolved_at: Mapped[datetime | None]
 
     requester = relationship("User", foreign_keys=[requester_id])
     target_user = relationship("User", foreign_keys=[target_user_id])

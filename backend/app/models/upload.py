@@ -1,10 +1,10 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 from app.models.media import MediaKind
 
 # How long a staged file waits for the event write that references it; the reaper deletes
@@ -33,10 +33,8 @@ class Upload(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     # Sanitised client filename, carried onto the media row.
     original_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
-    )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[CreatedAt]
+    expires_at: Mapped[datetime]
 
     __table_args__ = (
         literal_check("kind", MediaKind, "ck_uploads_kind_valid"),

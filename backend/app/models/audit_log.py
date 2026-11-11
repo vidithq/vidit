@@ -1,11 +1,10 @@
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Text
+from sqlalchemy import JSON, ForeignKey, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import Base, CreatedAt
 
 # Account actions: plain strings (not a DB enum) so a new action needs no
 # migration; only the writer must agree on spelling. Admin actions name
@@ -39,11 +38,7 @@ class AuditLog(Base):
     )
     action: Mapped[str] = mapped_column(Text, nullable=False)
     target: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    created_at: Mapped[CreatedAt]
 
     __table_args__ = (
         # "What did this account do, latest first?", and the SET NULL of an erased account.
