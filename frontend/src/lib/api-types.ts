@@ -3990,12 +3990,8 @@ export interface components {
         };
         /**
          * ConflictRead
-         * @description One row of the conflicts referential on the wire.
-         *
-         *     ``last_seen_at`` and ``source`` are sync internals and stay off it.
-         *     ``is_ongoing`` drives the picker default; ``start_year`` / ``end_year``
-         *     disambiguate same-named entries; ``tier`` (NULL when unknown) ranks ongoing
-         *     conflicts.
+         * @description One row of the conflicts referential. ``last_seen_at`` and ``origin`` are sync internals
+         *     and stay off it.
          */
         ConflictRead: {
             /** End Year */
