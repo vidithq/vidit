@@ -321,7 +321,7 @@ def test_create_request_event_time_without_occurred_date(author):
 
 
 def test_create_request_blank_proof_stores_an_empty_body(db, author):
-    """The model default must fire: ``events.proof`` is NOT NULL and ``create_request``
+    """The model default must fire: ``events.proof`` is NOT NULL and ``submit_request``
     omits ``proof=``."""
     response = _create_request(author, title="No proof yet")
     assert response.status_code == 201, response.text

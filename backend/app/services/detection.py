@@ -41,7 +41,8 @@ from app.models.user import User
 from app.schemas.source import SourceCreate, SourceLinkCreate
 from app.services import uploads
 from app.services.event_filters import lock_event
-from app.services.events import ImportProvenance, create_request, stamp_provenance
+from app.services.events import ImportProvenance, stamp_provenance, submit_request
+from app.services.events.form import EventForm
 from app.services.evidence_intake import (
     EvidenceIntakeError,
     StoredObject,
@@ -832,7 +833,7 @@ async def open_request(
     """Write one :class:`RequestDraft` as a ``requested`` row owned by ``owner``.
 
     The bot's request branch is the one caller. The row is born through
-    ``events.create_request`` like a person's request, plus provenance (``event_detections.via='bot'``)
+    ``events.submit_request`` like a person's request, plus provenance (``event_detections.via='bot'``)
     so a second mention recognises it. The footage is the draft's ordered candidates; the first
     that fetches is staged like a person's upload (``uploads.stage_upload``, which validates
     it) and becomes the file of the declared source. Each mirror and context link becomes a source
@@ -874,12 +875,11 @@ async def open_request(
     )
     try:
         [staged] = await uploads.stage_upload(db, uploader=owner, file=upload)
-        row = await create_request(
-            db,
-            current_user=owner,
+        form = EventForm(
             title=draft.title,
             proof_data=html_from_text(draft.proof_text),
             occurred_date=draft.occurred_date,
+            occurred_time=None,
             tag_ids=[],
             conflict_ids=[],
             sources=[
@@ -895,10 +895,12 @@ async def open_request(
                 )
             ],
             proof_files=[],
-            provenance=_provenance(draft, "bot"),
+        )
+        row = await submit_request(
+            db, current_user=owner, form=form, provenance=_provenance(draft, "bot")
         )
     except EvidenceIntakeError:
-        # Roll back what ``create_request`` staged (event row, sources) so it does not ride
+        # Roll back what ``submit_request`` staged (event row, sources) so it does not ride
         # the caller's ledger commit. A staged upload left behind expires with the reaper.
         logger.warning(
             "The request drafted from %s was refused by the evidence intake",
@@ -913,7 +915,7 @@ async def open_request(
         logger.exception("The request drafted from %s failed to write", draft.detected_from_url)
         db.rollback()
         return None
-    # The publish floor ``create_request`` checks holds footage on the row, so only the date and
+    # The publish floor ``submit_request`` checks holds footage on the row, so only the date and
     # duplicate warnings can apply.
     warnings = [SOURCE_DATE_UNKNOWN] if draft.source_posted_at is None else []
     if _rows_with_duplicate_media(db, [row.id]):

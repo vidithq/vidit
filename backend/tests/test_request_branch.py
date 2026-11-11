@@ -89,7 +89,7 @@ def test_a_video_with_no_link_and_no_quote_drafts_nothing() -> None:
 
 
 def test_a_telegram_link_with_no_footage_anywhere_drafts_nothing() -> None:
-    """``events.create_request`` requires a file, so a source with nothing to store is refused."""
+    """``events.submit_request`` requires a file, so a source with nothing to store is refused."""
     assert (
         _draft([_rec(text="Worth reading\nhttps://t.co/fakeTG", external_sources=[_TELEGRAM])])
         is None
@@ -114,7 +114,7 @@ def test_a_photo_is_not_promoted_into_the_footage_slot() -> None:
 
 
 def test_a_blank_title_drafts_nothing() -> None:
-    """``create_request`` requires a title and a link-only post has no text line."""
+    """``submit_request`` requires a title and a link-only post has no text line."""
     assert (
         _draft([_rec(text="https://t.co/fakeTG", media=[_VIDEO], external_sources=[_TELEGRAM])])
         is None

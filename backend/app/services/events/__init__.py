@@ -19,7 +19,6 @@ from .errors import EventStateError, InvalidCoordinatesError
 from .readiness import DetectionReadiness, detection_ready_predicate
 from .request import (
     ImportProvenance,
-    create_request,
     stamp_provenance,
     submit_request,
     update_request,
@@ -33,7 +32,6 @@ __all__ = [
     "InvalidCoordinatesError",
     "close",
     "complete_detections",
-    "create_request",
     "create_with_evidence",
     "detection_ready_predicate",
     "save_version",

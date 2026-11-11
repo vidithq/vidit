@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, datetime
 
-from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.models.event import STATUS_REQUESTED, DetectedVia, Event, EventDetection
 from app.models.user import User
-from app.schemas.source import SourceCreate
 from app.services.event_filters import lock_event
 from app.services.permissions import ensure_owner
 
@@ -45,38 +43,6 @@ def stamp_provenance(row: Event, provenance: ImportProvenance) -> None:
         from_post_id=provenance.tweet_id,
         thread_post_ids=provenance.thread_tweet_ids or None,
         post_at=provenance.post_at,
-    )
-
-
-async def create_request(
-    db: Session,
-    *,
-    current_user: User,
-    title: str,
-    proof_data: str | None,
-    lat: float | None = None,
-    lng: float | None = None,
-    occurred_date: date | None = None,
-    occurred_time: time | None = None,
-    tag_ids: list,
-    conflict_ids: list,
-    sources: list[SourceCreate],
-    proof_files: list[UploadFile],
-    provenance: ImportProvenance | None = None,
-) -> Event:
-    """:func:`submit_request` for a caller holding the fields one by one (``detection``)."""
-    form = EventForm(
-        title=title,
-        proof_data=proof_data,
-        occurred_date=occurred_date,
-        occurred_time=occurred_time,
-        tag_ids=tag_ids,
-        conflict_ids=conflict_ids,
-        sources=sources,
-        proof_files=proof_files,
-    )
-    return await submit_request(
-        db, current_user=current_user, form=form, lat=lat, lng=lng, provenance=provenance
     )
 
 
