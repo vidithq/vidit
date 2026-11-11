@@ -20,7 +20,7 @@ CI enforces a floor: every PR to `main` must touch `docs/`. See the `docs-pairin
 
 - Every issue has a type: Feature, Debt, Task, Bug or Epic.
 - An epic is a parent issue for one finishable outcome, with the issues that deliver it as sub-issues. Its body opens with the condition that closes it.
-- Every issue belongs to exactly one epic. An epic names one finishable outcome. Every Debt issue goes under the standing [Debt](https://github.com/vidithq/vidit/issues/636) epic, and every Bug under the standing [Bugs](https://github.com/vidithq/vidit/issues/637) epic. These two epics never close.
+- Every issue belongs to exactly one epic. An epic names one finishable outcome. Every Debt issue goes under the standing [Debt](https://github.com/vidithq/vidit/issues/636) epic, every Bug under the standing [Bugs](https://github.com/vidithq/vidit/issues/637) epic, and a feature that takes one issue and one pull request and belongs to no outcome epic under the standing [Small features](https://github.com/vidithq/vidit/issues/832) epic. These three epics never close. An epic that would hold a single issue is not created: a small feature goes under Small features, and a larger one is split into the issues that deliver it.
 - A private maintainer board schedules the issues with three fields: Status, Version (the release it ships in, or Unscheduled) and Area (a category such as Moderation, Accounts, Ingestion or Map). Versions say when; epics say what.
 - Operations of the vidit.app instance are tracked separately, outside this repo.
 
