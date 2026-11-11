@@ -7,7 +7,6 @@ each, then names them in ``latest.json``, which the frontend reads
 done, and a failure leaves the files ``latest.json`` names in place.
 """
 
-import gzip
 import hashlib
 import io
 import json
@@ -28,6 +27,7 @@ import boto3
 import httpx
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from pmtiles.reader import Reader
 from pmtiles.tile import Compression, TileType, deserialize_header, tileid_to_zxy
 from pmtiles.writer import Writer
 
@@ -75,6 +75,7 @@ IMMUTABLE = "public, max-age=31536000, immutable"
 MIN_PART_SIZE = 64 * 1024 * 1024
 MAX_PART_SIZE = 5 * 1024**3
 MAX_PARTS = 10_000
+NOT_FOUND_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 RESUME_ATTEMPTS = 5
 TILE_ATTEMPTS = 4
 FETCH_WORKERS = 32
@@ -281,8 +282,6 @@ class MultipartUpload:
         part_size: int,
         metadata: dict[str, str] | None = None,
     ) -> None:
-        if not 0 < part_size <= MAX_PART_SIZE:
-            raise MapUpdateError(f"part size {part_size} is outside the S3 limits")
         self.s3, self.bucket, self.key, self.part_size = s3, bucket, key, part_size
         self.upload_id: str = s3.create_multipart_upload(
             Bucket=bucket,
@@ -350,7 +349,7 @@ def _exists(s3: Any, bucket: str, key: str) -> bool:
     try:
         s3.head_object(Bucket=bucket, Key=key)
     except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+        if exc.response.get("Error", {}).get("Code") in NOT_FOUND_CODES:
             return False
         raise
     return True
@@ -383,10 +382,8 @@ def check_archive(
         )
     if not vector_layers:
         return
-    metadata = _range(s3, bucket, key, header["metadata_offset"], header["metadata_length"])
-    if header["internal_compression"] == Compression.GZIP:
-        metadata = gzip.decompress(metadata)
-    layers = {layer.get("id") for layer in json.loads(metadata).get("vector_layers", [])}
+    metadata = Reader(lambda offset, length: _range(s3, bucket, key, offset, length)).metadata()
+    layers = {layer.get("id") for layer in metadata.get("vector_layers", [])}
     if missing := vector_layers - layers:
         raise MapUpdateError(f"{key}: no vector layer {', '.join(sorted(missing))}")
 
@@ -615,7 +612,6 @@ def build_raster_archive(
     max_zoom: int,
     name: str,
     attribution: str,
-    fetch: Callable[[httpx.Client, str, int], bytes] = _fetch_tile,
 ) -> None:
     """Copies every PNG tile of zooms 0 to ``max_zoom`` into one PMTiles archive.
 
@@ -636,7 +632,7 @@ def build_raster_archive(
         for start in range(0, total, FETCH_BATCH):
             ids = range(start, min(start + FETCH_BATCH, total))
             for tile_id, data in zip(
-                ids, pool.map(lambda i: fetch(http, template, i), ids), strict=True
+                ids, pool.map(lambda i: _fetch_tile(http, template, i), ids), strict=True
             ):
                 writer.write_tile(tile_id, data)
             progress.update(ids.stop)
@@ -664,7 +660,6 @@ def update_raster(
     key: str,
     template: str,
     max_zoom: int,
-    fetch: Callable[[httpx.Client, str, int], bytes] = _fetch_tile,
 ) -> dict[str, Any]:
     """A raster archive that never changes upstream: built once per max zoom, then checked."""
     if _exists(s3, config.bucket, config.key(key)):
@@ -680,7 +675,6 @@ def update_raster(
             max_zoom=max_zoom,
             name=field,
             attribution=ATTRIBUTION[field],
-            fetch=fetch,
         )
     try:
         check_archive(s3, config.bucket, config.key(key), tile_type=TileType.PNG, max_zoom=max_zoom)
@@ -694,7 +688,7 @@ def read_latest(s3: Any, config: MapConfig) -> dict[str, Any] | None:
     try:
         body = s3.get_object(Bucket=config.bucket, Key=config.key(LATEST_KEY))["Body"].read()
     except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+        if exc.response.get("Error", {}).get("Code") in NOT_FOUND_CODES:
             return None
         raise
     latest: dict[str, Any] = json.loads(body)
@@ -723,7 +717,6 @@ def run(
     http: httpx.Client,
     s3: Any,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
-    fetch: Callable[[httpx.Client, str, int], bytes] = _fetch_tile,
 ) -> dict[str, Any]:
     """One pass. Raises ``MapUpdateError`` (or a storage error) with ``latest.json`` untouched."""
     current = read_latest(s3, config)
@@ -737,7 +730,6 @@ def run(
         key=f"natural-earth/ne2sr-z{config.natural_earth_max_zoom}.pmtiles",
         template=NATURAL_EARTH_TILES,
         max_zoom=config.natural_earth_max_zoom,
-        fetch=fetch,
     )
     relief = update_raster(
         http,
@@ -747,7 +739,6 @@ def run(
         key=f"relief/terrarium-z{config.relief_max_zoom}.pmtiles",
         template=RELIEF_TILES,
         max_zoom=config.relief_max_zoom,
-        fetch=fetch,
     )
     files = (planet, sprite, natural_earth, relief)
     latest: dict[str, Any] = {

@@ -13,6 +13,7 @@ from app.services.storage import (
     LocalStorage,
     StorageDeleteError,
     derivative_key,
+    store,
     sweep_keys,
     upload_source_file,
 )
@@ -25,13 +26,13 @@ def _local_backend(monkeypatch, tmp_path):
     monkeypatch.setattr(storage_module.settings, "local_storage_dir", str(tmp_path))
 
 
-async def test_local_storage_upload_writes_file_and_returns_url(tmp_path: Path):
+async def test_local_storage_stores_a_file_and_returns_url(tmp_path: Path):
     import hashlib
 
     backend = LocalStorage(tmp_path)
     file = upload_file("evidence.jpg", b"fake-image-bytes", "image/jpeg")
 
-    result = await backend.upload(file, "uploads/abc/evidence.jpg")
+    result = await store(backend, file.file, "uploads/abc/evidence.jpg", "image/jpeg")
 
     written = tmp_path / "uploads" / "abc" / "evidence.jpg"
     assert written.read_bytes() == b"fake-image-bytes"
@@ -40,12 +41,12 @@ async def test_local_storage_upload_writes_file_and_returns_url(tmp_path: Path):
     assert result.sha256 == hashlib.sha256(b"fake-image-bytes").hexdigest()
 
 
-async def test_local_storage_upload_bytes_writes_payload(tmp_path: Path):
+async def test_local_storage_stores_bytes(tmp_path: Path):
     import hashlib
 
     backend = LocalStorage(tmp_path)
 
-    result = await backend.upload_bytes(b"raw-bytes", "seed/demo/x.png", "image/png")
+    result = await store(backend, b"raw-bytes", "seed/demo/x.png", "image/png")
 
     assert (tmp_path / "seed" / "demo" / "x.png").read_bytes() == b"raw-bytes"
     assert result.url.endswith("/seed/demo/x.png")
@@ -145,17 +146,17 @@ async def test_upload_source_file_sweeps_partial_triple_on_mid_flight_failure(
     from tests._fixtures import TINY_JPEG
 
     # Patch the class: ``get_storage`` builds a fresh backend per call.
-    real_upload_bytes = LocalStorage.upload_bytes
+    real_put = LocalStorage.put
     call_count = {"n": 0}
 
-    async def flaky_upload_bytes(self, data, key, content_type):
+    async def flaky_put(self, body, key, content_type):
         call_count["n"] += 1
         # Call 1 is the original, call 2 the hero (fails).
         if call_count["n"] == 2:
             raise RuntimeError("simulated hero PUT failure")
-        return await real_upload_bytes(self, data, key, content_type)
+        return await real_put(self, body, key, content_type)
 
-    monkeypatch.setattr(LocalStorage, "upload_bytes", flaky_upload_bytes)
+    monkeypatch.setattr(LocalStorage, "put", flaky_put)
 
     file = upload_file("photo.jpg", TINY_JPEG, "image/jpeg")
     with pytest.raises(RuntimeError, match="simulated hero PUT failure"):
@@ -190,7 +191,7 @@ async def test_upload_proof_image_skips_derivatives(tmp_path: Path):
 async def test_local_storage_round_trips_through_static_files_mount(tmp_path: Path):
     backend = LocalStorage(tmp_path)
     file = upload_file("evidence.jpg", b"served-bytes", "image/jpeg")
-    _ = await backend.upload(file, "uploads/abc/evidence.jpg")
+    await store(backend, file.file, "uploads/abc/evidence.jpg", "image/jpeg")
 
     test_app = FastAPI()
     test_app.mount(LOCAL_STORAGE_MOUNT_PATH, StaticFiles(directory=tmp_path))

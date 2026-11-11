@@ -590,6 +590,8 @@ Every table, column, constraint and API field follows these rules. The API field
 | Creation stamp | Every entity table has `created_at`. A join table has none. | `tags.created_at`, `conflicts.created_at` |
 | Queue status | Background queues share `queued`, `running`, `done`, `failed`, `skipped`, and use the subset they need | `notification_deliveries.status` |
 
+A model declares a column through its `Mapped[...]` annotation alone wherever the annotation says enough: `Mapped[str | None]` makes the column nullable, and `Base` in `app/database.py` maps every `datetime` to `TIMESTAMPTZ`. Declare a creation stamp as `created_at: Mapped[CreatedAt]` and an update stamp as `updated_at: Mapped[UpdatedAt]`; both aliases in `app/database.py` stamp the current UTC time.
+
 ### Migration house style
 
 - Data backfills run through `op.execute` with plain SQL, never through ORM models (application code drifts ahead of the schema a migration targets).

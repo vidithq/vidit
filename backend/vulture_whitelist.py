@@ -132,3 +132,7 @@ _body  # main.py enforce_request_body_size
 _is_machine_detection_expression  # models/event.py Event
 # The SQL half of ``Event.is_graphic``, bound the same way.
 _is_graphic_expression  # models/event.py Event
+
+# ── SQLAlchemy declarative configuration ──────────────────────────────────────
+# Read by DeclarativeBase when the subclass is created.
+type_annotation_map  # app/database.py Base

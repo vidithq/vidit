@@ -1,34 +1,21 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import Base, CreatedAt
 
 
 class PasswordResetToken(Base):
-    """One row per outstanding password-reset token.
-
-    Only `sha256(secret)` is stored in `token_hash`, so a DB read reveals who
-    holds tokens but not live values. Single-use: `consume` flips
-    `consumed_at`, and the router refuses a non-null one.
-    """
-
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime]
+    consumed_at: Mapped[datetime | None]
+    created_at: Mapped[CreatedAt]
 
     __table_args__ = (
         UniqueConstraint("token_hash", name="uq_password_reset_tokens_token_hash"),
