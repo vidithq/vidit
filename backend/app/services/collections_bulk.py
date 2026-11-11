@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import NamedTuple
 
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session
 
 from app.models.collection import Collection
 from app.models.event import Event
@@ -29,10 +29,9 @@ from app.services.collections import (
     insert_memberships,
     split_collectable,
 )
-from app.services.geolocator_credit import CREDIT_LOAD
+from app.services.geolocator_credit import CARD_LOADS
 from app.services.pagination import keyset_before
 from app.services.search import collectable_matches
-from app.services.thumbnails import thumbnail_loads
 
 
 class BulkAddOutcome(NamedTuple):
@@ -63,13 +62,7 @@ def list_matches(
         query=match.q,
         filters=match.filters,
         user=user,
-    ).options(
-        joinedload(Event.owner),
-        selectinload(Event.tags),
-        selectinload(Event.conflicts),
-        *thumbnail_loads(),
-        CREDIT_LOAD,
-    )
+    ).options(*CARD_LOADS)
     if after is not None:
         query = query.filter(keyset_before(Event.created_at, Event.id, after))
     return query.order_by(Event.created_at.desc(), Event.id.desc()).limit(limit + 1).all()

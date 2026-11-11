@@ -14,7 +14,7 @@ from typing import Any, NamedTuple
 
 from sqlalchemy import ColumnElement, func, select, union
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload
 
 from app.errors import CodedError
 from app.models.collection import Collection, CollectionEvent
@@ -33,7 +33,7 @@ from app.schemas.collection import (
 from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events, credited_to
 from app.services.events.errors import EventNotFoundError
-from app.services.geolocator_credit import CREDIT_LOAD
+from app.services.geolocator_credit import CARD_LOADS
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
 from app.services.row_locks import lock_row
@@ -535,13 +535,7 @@ def list_items(
         db.query(Event)
         .select_from(CollectionEvent)
         .join(Event, Event.id == CollectionEvent.event_id)
-        .options(
-            joinedload(Event.owner),
-            selectinload(Event.tags),
-            selectinload(Event.conflicts),
-            *thumbnail_loads(),
-            CREDIT_LOAD,
-        )
+        .options(*CARD_LOADS)
         .filter(CollectionEvent.collection_id == collection_id, collectable_events())
     )
     if cursor is not None:

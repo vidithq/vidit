@@ -5,7 +5,7 @@ from typing import Any, Literal
 from sqlalchemy import Row, Select, and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query as SAQuery
-from sqlalchemy.orm import Session, aliased, joinedload, selectinload
+from sqlalchemy.orm import Session, aliased
 
 from app.models.event import Event, feed_at
 from app.models.follow import Follow
@@ -21,9 +21,8 @@ from app.services.event_filters import (
     published_events,
     visible_events,
 )
-from app.services.geolocator_credit import CREDIT_LOAD
+from app.services.geolocator_credit import CARD_LOADS
 from app.services.pagination import keyset_before
-from app.services.thumbnails import thumbnail_loads
 
 FeedScope = Literal["following", "all"]
 
@@ -118,14 +117,7 @@ def get_feed(
         user_id=user_id,
         scope=scope,
         filters=filters,
-    ).options(
-        # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
-        joinedload(Event.owner),
-        selectinload(Event.tags),
-        selectinload(Event.conflicts),
-        *thumbnail_loads(),
-        CREDIT_LOAD,
-    )
+    ).options(*CARD_LOADS)
     if cursor is not None:
         query = query.filter(keyset_before(key, Event.id, cursor))
     return query.order_by(key.desc(), Event.id.desc()).limit(size + 1).all()
@@ -187,14 +179,7 @@ def list_published_geolocations(
     total = db.query(Event).filter(*credited_and_published).count()
     rows = (
         db.query(Event)
-        # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
-        .options(
-            joinedload(Event.owner),
-            selectinload(Event.tags),
-            selectinload(Event.conflicts),
-            *thumbnail_loads(),
-            CREDIT_LOAD,
-        )
+        .options(*CARD_LOADS)
         .filter(*credited_and_published)
         # ``occurred_date`` is neither unique nor non-null, so ties could repeat or
         # skip rows across OFFSET pages; ``created_at, id`` makes it total.
