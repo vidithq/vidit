@@ -8,12 +8,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request, Response, status
 
-from app.dependencies import (
-    DB,
-    CurrentUser,
-    Cursor,
-    OptionalUser,
-)
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.content_report import ContentReport
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list

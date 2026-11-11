@@ -4,12 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
-from app.dependencies import (
-    DB,
-    AdminUser,
-    CurrentUser,
-    Cursor,
-)
+from app.dependencies import DB, AdminUser, CurrentUser, Cursor
 from app.models.collection import Collection
 from app.models.site import Site
 from app.models.user import User

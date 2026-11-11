@@ -4,11 +4,7 @@ import uuid
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.dependencies import (
-    DB,
-    CurrentUser,
-    OptionalUser,
-)
+from app.dependencies import DB, CurrentUser, OptionalUser
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list

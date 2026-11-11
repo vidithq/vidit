@@ -10,12 +10,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request, Response, status
 
-from app.dependencies import (
-    DB,
-    CurrentUser,
-    Cursor,
-    OptionalUser,
-)
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.content_report import ContentReport
 from app.models.site import SiteVersion
 from app.ratelimit import authenticated_read_quota, limiter

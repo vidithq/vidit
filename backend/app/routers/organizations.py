@@ -2,12 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, File, Query, Request, Response, UploadFile, status
 
-from app.dependencies import (
-    DB,
-    CurrentUser,
-    Cursor,
-    OptionalUser,
-)
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.approval import OrganizationApprovalRead

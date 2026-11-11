@@ -4,11 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Query, Request, status
 
-from app.dependencies import (
-    DB,
-    CurrentUser,
-    OptionalUser,
-)
+from app.dependencies import DB, CurrentUser, OptionalUser
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import resolve_live_event, resolve_readable_event
 from app.schemas.site import EventSiteLinkCreate, EventSiteLinkRead, SiteSuggestionRead

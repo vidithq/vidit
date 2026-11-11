@@ -16,12 +16,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
-from app.dependencies import (
-    DB,
-    CurrentUser,
-    Cursor,
-    OptionalUser,
-)
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.content_report import ContentReport
 from app.models.event import TITLE_MAX_LENGTH, Event, EventVersion
 from app.ratelimit import authenticated_read_quota, limiter
