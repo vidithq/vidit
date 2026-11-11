@@ -325,6 +325,10 @@ const asMedia = (value: unknown): Media | null =>
     ? (value as Media)
     : null;
 
+// A snapshot keeps its tags in the order the write stored them; a live read serves them by name.
+const byName = <T extends { name: string }>(tags: T[]): T[] =>
+  [...tags].sort((a, b) => a.name.localeCompare(b.name));
+
 /** One snapshot source (`services/versions.source_entry`) in the read shape. The snapshot keeps
  *  no id, so the position stands in. Its graphic flag is ratcheted against the live source
  *  showing the same file, since the file shown is the live object. */
@@ -361,7 +365,7 @@ function snapshotSource(
             : null,
       };
     }),
-    tags: asList<Source["tags"][number]>(entry.tags),
+    tags: byName(asList<Source["tags"][number]>(entry.tags)),
     media,
     // A version shows what it said, not what the provider check says today.
     warnings: [],
@@ -401,7 +405,7 @@ export function snapshotToEventView(
     coords: asCoords(snapshot.coords),
     occurred_date: asNullableString(snapshot.occurred_date),
     occurred_time: asNullableString(snapshot.occurred_time),
-    tags: asList<EventDetail["tags"][number]>(snapshot.tags),
+    tags: byName(asList<EventDetail["tags"][number]>(snapshot.tags)),
     conflicts: asList<{ id: string; name: string }>(snapshot.conflicts).map(
       (stored) =>
         conflictsById.get(stored.id) ?? {

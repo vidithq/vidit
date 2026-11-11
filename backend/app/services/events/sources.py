@@ -152,7 +152,9 @@ def plan_sources(
     files = _readable_files(db, [s.media_id for s in specs if s.media_id], geo=geo)
     tag_ids = {tag_id for spec in specs for tag_id in spec.tag_ids}
     tags_by_id = (
-        {tag.id: tag for tag in db.query(Tag).filter(Tag.id.in_(tag_ids))} if tag_ids else {}
+        {tag.id: tag for tag in db.query(Tag).filter(Tag.id.in_(tag_ids)).order_by(Tag.name)}
+        if tag_ids
+        else {}
     )
 
     planned: list[PlannedSource] = []
@@ -169,7 +171,7 @@ def plan_sources(
             PlannedSource(
                 spec=spec,
                 links=_clean_links(spec.links),
-                tags=[tags_by_id[t] for t in dict.fromkeys(spec.tag_ids) if t in tags_by_id],
+                tags=[tag for tag_id, tag in tags_by_id.items() if tag_id in spec.tag_ids],
                 capture_position=_optional_point(
                     position.lat if position else None,
                     position.lng if position else None,

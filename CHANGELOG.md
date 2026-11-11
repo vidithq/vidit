@@ -13,6 +13,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The admin event routes answer an unknown event with the error code `event_not_found`, the code every other route uses, instead of `geolocation_not_found` ([#835](https://github.com/vidithq/vidit/pull/835)).
 - A request body over the size cap answers 413 with the typed body, code `upload_too_large` and the same message, instead of a plain string `detail` ([#835](https://github.com/vidithq/vidit/pull/835)).
 - The OpenAPI spec lists the values of `view` on `GET /events` and `readiness` on `GET /events/detections`; an unknown value still answers 422, now with the standard validation body that names the parameter ([#835](https://github.com/vidithq/vidit/pull/835)).
+- An event's tags and a source's tags read in alphabetical order on every page and in the API, instead of the order they were added ([#836](https://github.com/vidithq/vidit/pull/836)).
 - The bot reads its mentions once a day at 12:00 UTC from where its last read stopped, so each mention is read once and a worker restart reads none; the bot's own posts, and replies under them that only inherit the tag, no longer enter the queue ([#830](https://github.com/vidithq/vidit/pull/830)).
 
 ### Removed
