@@ -167,7 +167,7 @@ def list_site_versions(
         SiteVersion,
         site.id,
         limit=size,
-        cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
+        cursor=decode_ordinal_cursor(cursor),
     )
     rows = paged(request, response, window, size, lambda r: encode_ordinal_cursor(r.version_no))
     return SiteVersionList(

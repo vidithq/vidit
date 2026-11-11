@@ -90,7 +90,7 @@ def list_collectable_matches(
         match=body,
         user=current_user,
         limit=size,
-        after=decode_cursor(cursor) if cursor is not None else None,
+        after=decode_cursor(cursor),
     )
     rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     return [build_event_list(event) for event in rows]
@@ -190,7 +190,7 @@ def list_collection_events(
         db,
         collection_id=collection.id,
         limit=size,
-        cursor=decode_chronological_cursor(cursor) if cursor is not None else None,
+        cursor=decode_chronological_cursor(cursor),
     )
     rows = paged(
         request,

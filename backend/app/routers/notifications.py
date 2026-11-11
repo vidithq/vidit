@@ -44,7 +44,7 @@ def list_notifications(
         db,
         user=current_user,
         limit=size,
-        cursor=decode_cursor(cursor) if cursor is not None else None,
+        cursor=decode_cursor(cursor),
     )
     rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     answered = notifications_service.answered_approval_requests(db, user=current_user, rows=rows)

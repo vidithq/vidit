@@ -107,7 +107,7 @@ def list_invite_codes(
     window = admin_service.list_invite_codes(
         db,
         limit=size,
-        cursor=decode_cursor(cursor) if cursor is not None else None,
+        cursor=decode_cursor(cursor),
     )
     rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     return admin_service.serialize_invite_codes(db, rows)

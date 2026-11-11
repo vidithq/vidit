@@ -90,7 +90,7 @@ def search(
     ),
 ) -> SearchResponse:
     """One ranked list of events, sites, collections, analysts and organizations."""
-    after = decode_ranked_cursor(cursor) if cursor is not None else None
+    after = decode_ranked_cursor(cursor)
     page = search_service.search(
         db,
         query=params.q,

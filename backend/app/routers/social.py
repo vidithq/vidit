@@ -49,7 +49,7 @@ def get_feed(
         user_id=current_user.id,
         scope=scope,
         size=size,
-        cursor=decode_cursor(cursor) if cursor is not None else None,
+        cursor=decode_cursor(cursor),
         filters=replace(filters, status=status),
     )
     rows = paged(request, response, window, size, lambda r: encode_cursor(r[1], r[0].id))

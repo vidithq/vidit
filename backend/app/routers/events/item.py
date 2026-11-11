@@ -210,7 +210,7 @@ def list_event_versions(
         EventVersion,
         geo.id,
         limit=size,
-        cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
+        cursor=decode_ordinal_cursor(cursor),
     )
     rows = paged(request, response, window, size, lambda r: encode_ordinal_cursor(r.version_no))
     return EventVersionList(

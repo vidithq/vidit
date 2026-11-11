@@ -176,8 +176,8 @@ def list_events(
         if oldest
         else (Event.created_at.desc(), Event.id.desc())
     )
-    if cursor is not None:
-        after = decode_cursor(cursor)
+    after = decode_cursor(cursor)
+    if after is not None:
         id_query = id_query.filter(
             keyset_after((Event.created_at, Event.id), after)
             if oldest
