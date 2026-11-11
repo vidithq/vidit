@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.organization import OrganizationRole
 from app.models.user_preferences import ApprovalRequestAudience
 from app.schemas import UsernameRef
-from app.schemas.admin import normalize_x_handle
+from app.schemas.admin import XHandle
 from app.schemas.user import AuthorRef, UserUpdate
 
 # Lowercase letters, digits and inner hyphens, 2 to 50 characters.
@@ -135,7 +135,7 @@ class OrganizationCreate(OrganizationUpdate):
 
     name: str = Field(min_length=1, max_length=ORGANIZATION_NAME_MAX_LEN)
     slug: str
-    x_handle: str | None = None
+    x_handle: XHandle | None = None
     manager_username: UsernameRef
 
     @field_validator("name")
@@ -153,8 +153,3 @@ class OrganizationCreate(OrganizationUpdate):
         if not ORGANIZATION_SLUG_PATTERN.fullmatch(cleaned):
             raise ValueError("2 to 50 lowercase letters, digits or inner hyphens")
         return cleaned
-
-    @field_validator("x_handle")
-    @classmethod
-    def _x_handle(cls, v: str | None) -> str | None:
-        return normalize_x_handle(v)
