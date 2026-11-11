@@ -62,8 +62,8 @@ const CONTACT = [
   {
     icon: MessageCircle,
     label: "Discord",
-    value: "discord.gg/9wPtsrrKyJ",
-    href: "https://discord.gg/9wPtsrrKyJ",
+    value: "discord.gg/T5syUscsqr",
+    href: "https://discord.gg/T5syUscsqr",
     external: true,
   },
   {
