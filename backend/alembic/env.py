@@ -20,21 +20,10 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Exclude PostGIS/Tiger/AGE internal tables from autogenerate
-EXCLUDE_TABLES = {
-    "spatial_ref_sys",
-    "topology",
-    "layer",
-}
-
 
 def include_object(object, name, type_, reflected, compare_to):
-    if type_ == "table":
-        if name in EXCLUDE_TABLES:
-            return False
-        if object.schema in ("tiger", "tiger_data", "topology"):
-            return False
-    return True
+    # PostGIS creates spatial_ref_sys in the public schema; no model declares it.
+    return not (type_ == "table" and name == "spatial_ref_sys")
 
 
 def run_migrations_offline() -> None:
@@ -44,7 +33,6 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         include_object=include_object,
-        include_schemas=False,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -61,7 +49,6 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             include_object=include_object,
-            include_schemas=False,
         )
         with context.begin_transaction():
             context.run_migrations()
