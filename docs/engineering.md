@@ -410,7 +410,7 @@ flowchart LR
 | **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response`, never raises `HTTPException`. Raises a subclass of [`errors.CodedError`](../backend/app/errors.py) that declares its stable `code` and its HTTP `status_code` next to each other. |
 | **models/** | SQLAlchemy tables | Structure only, no logic |
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
-| **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |
+| **dependencies.py** | FastAPI injection | `get_db`, `get_current_user`, and the `Annotated` aliases a handler declares them with: `DB`, `CurrentUser`, `OptionalUser`, `AdminUser` |
 
 ### Eager-load sets
 
@@ -421,6 +421,7 @@ A query that builds a read model loads every relationship the assembler reads, o
 | `DETAIL_LOADS` | [`routers/events/_common.py`](../backend/app/routers/events/_common.py) | Everything `build_event_read` reads | The event page, the detection queue |
 | `SOURCE_LOAD` | [`routers/events/_common.py`](../backend/app/routers/events/_common.py) | Sources with their links, tags and files | `DETAIL_LOADS` |
 | `CREDIT_LOAD` | [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py) | Geolocator rows and their users | Every surface that prints the byline |
+| `CARD_LOADS` | [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py) | Everything `build_event_list` reads: owner, tags, conflicts, thumbnail and credit | The feed, a profile's geolocations, a collection's events and its collectable matches |
 | `thumbnail_loads()` | [`services/thumbnails.py`](../backend/app/services/thumbnails.py) | The candidates of the card thumbnail pick | Every card surface |
 | `_HIT_LOADS` | [`services/search.py`](../backend/app/services/search.py) | Owner, credit, thumbnail and tags of a search hit | The event hits of `GET /search` |
 

@@ -6,12 +6,10 @@ the verb its arguments.
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, BackgroundTasks, Query, Request, Response, status
 
-from app.dependencies import get_current_user, get_current_user_optional, get_db
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.content_report import ContentReport
-from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list
 from app.schemas.collection import (
@@ -45,10 +43,7 @@ router = APIRouter()
 @router.post("", response_model=CollectionRead, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 def create_collection(
-    request: Request,
-    body: CollectionCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, body: CollectionCreate, db: DB, current_user: CurrentUser
 ) -> CollectionRead:
     """Open a collection under a title and description, holding ``event_ids``."""
     collection = collections_service.create_collection(
@@ -65,10 +60,7 @@ def create_collection(
 @router.post("/collectable-count", response_model=CollectableCount)
 @limiter.limit("60/minute")
 def count_collectable_matches(
-    request: Request,
-    body: SearchMatch,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, body: SearchMatch, db: DB, current_user: CurrentUser
 ) -> CollectableCount:
     """Count your events a search lists in its Geolocations group that a collection can hold."""
     return CollectableCount(total=collections_bulk.count_matches(db, match=body, user=current_user))
@@ -81,10 +73,10 @@ def list_collectable_matches(
     request: Request,
     response: Response,
     body: SearchMatch,
+    db: DB,
+    current_user: CurrentUser,
     limit: int = Query(20, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    cursor: Cursor = None,
 ) -> list[EventList]:
     """Page through the events ``POST /collections/collectable-count`` counts, newest first."""
     size = page_size(limit)
@@ -93,10 +85,10 @@ def list_collectable_matches(
         match=body,
         user=current_user,
         limit=size,
-        after=decode_cursor(cursor) if cursor is not None else None,
+        after=decode_cursor(cursor),
     )
-    rows = paged(request, response, window, size, lambda r: encode_cursor(r[0].created_at, r[0].id))
-    return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
+    return [build_event_list(event) for event in rows]
 
 
 @router.post(
@@ -110,8 +102,8 @@ def report_collection(
     collection_id: uuid.UUID,
     body: ContentReportCreate,
     background_tasks: BackgroundTasks,
-    current_user: User | None = Depends(get_current_user_optional),
-    db: Session = Depends(get_db),
+    current_user: OptionalUser,
+    db: DB,
 ) -> ContentReport:
     """Report a collection for moderation."""
     return reports_service.create_report(
@@ -128,10 +120,7 @@ def report_collection(
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def get_collection(
-    request: Request,
-    collection_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    request: Request, collection_id: uuid.UUID, db: DB, current_user: OptionalUser
 ) -> CollectionRead:
     """One collection's header: owner, title, item count and date range."""
     collection = collections_service.resolve_collection(
@@ -146,8 +135,8 @@ def update_collection(
     request: Request,
     collection_id: uuid.UUID,
     body: CollectionUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> CollectionRead:
     """Write your collection's title and description (owner only, else 403)."""
     collection = collections_service.resolve_collection(
@@ -166,10 +155,7 @@ def update_collection(
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
 def delete_collection(
-    request: Request,
-    collection_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, collection_id: uuid.UUID, db: DB, current_user: CurrentUser
 ) -> None:
     """Drop your collection (owner only)."""
     collection = collections_service.resolve_collection(
@@ -185,10 +171,10 @@ def list_collection_events(
     request: Request,
     response: Response,
     collection_id: uuid.UUID,
+    db: DB,
+    current_user: OptionalUser,
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    cursor: Cursor = None,
 ):
     """The collection's items in the order the events happened."""
     collection = collections_service.resolve_collection(
@@ -199,16 +185,16 @@ def list_collection_events(
         db,
         collection_id=collection.id,
         limit=size,
-        cursor=decode_chronological_cursor(cursor) if cursor is not None else None,
+        cursor=decode_chronological_cursor(cursor),
     )
     rows = paged(
         request,
         response,
         window,
         size,
-        lambda r: encode_chronological_cursor(*collections_service.cursor_values(r[0])),
+        lambda r: encode_chronological_cursor(*collections_service.cursor_values(r)),
     )
-    return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
+    return [build_event_list(event) for event in rows]
 
 
 @router.post("/{collection_id}/events", response_model=CollectionBulkAddResult)
@@ -217,8 +203,8 @@ def add_events_to_collection(
     request: Request,
     collection_id: uuid.UUID,
     body: CollectionBulkAdd,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> CollectionBulkAddResult:
     """Put many of your events on one of your collections, by id or by search, in one write."""
     collection = collections_service.resolve_collection(
@@ -247,8 +233,8 @@ def add_event_to_collection(
     request: Request,
     collection_id: uuid.UUID,
     event_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> None:
     """Put one of your events on one of your collections."""
     collection = collections_service.resolve_collection(
@@ -263,8 +249,8 @@ def remove_event_from_collection(
     request: Request,
     collection_id: uuid.UUID,
     event_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> None:
     """Take one event off your collection (owner only)."""
     collection = collections_service.resolve_collection(

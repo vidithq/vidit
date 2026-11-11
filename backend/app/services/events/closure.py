@@ -30,6 +30,5 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     geo.closed_at = datetime.now(UTC)
     geo.close_reason = close_reason
     db.commit()
-    db.refresh(geo)
     points_cache.invalidate()
     return geo

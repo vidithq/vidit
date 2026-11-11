@@ -413,7 +413,7 @@ class RequestDraft:
     thread_tweet_ids: tuple[int, ...]
     secondary_sources: list[LinkSource]
     # Best first: the source's footage, then the analyst's own video.
-    # ``events.create_request`` requires a file; the write path takes the first
+    # ``events.submit_request`` requires a file; the write path takes the first
     # that fetches (as ``detection._resolve_media`` does).
     footage_candidates: list[ParsedMedia]
 

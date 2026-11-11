@@ -106,7 +106,6 @@ async def set_avatar[Owner: ProfileOwner](db: Session, *, owner: Owner, file: Up
         if key is not None:
             sweep_keys([key], context="avatar commit failed")
         raise
-    db.refresh(owner)
     _sweep_replaced_avatar(previous)
     return owner
 
@@ -115,6 +114,5 @@ def clear_avatar[Owner: ProfileOwner](db: Session, *, owner: Owner) -> Owner:
     previous = owner.avatar_url
     owner.avatar_url = None
     db.commit()
-    db.refresh(owner)
     _sweep_replaced_avatar(previous)
     return owner

@@ -1,12 +1,10 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
-from app.dependencies import get_current_user, get_db
+from app.dependencies import DB, CurrentUser
 from app.models.tag import Tag
-from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.tag import TagCreate, TagRead
 from app.services.pagination import REFERENTIAL_MAX_ROWS
@@ -35,44 +33,22 @@ def _warn_if_truncated(rows: list[Tag]) -> list[Tag]:
 @router.get("", response_model=list[TagRead])
 @authenticated_read_quota
 @limiter.limit("60/minute")
-def list_tags(
-    request: Request,
-    db: Session = Depends(get_db),
-):
+def list_tags(request: Request, db: DB):
     """Return tags referenced by at least one *live* event or one of its sources, so the map
-    filter shows no chips that match nothing.
-
-    Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: pickers and
-    the filter panel hydrate the vocabulary whole and filter client-side. A
-    response landing on the ceiling is logged because the payload can't say it
-    was cut.
-    """
+    filter shows no chips that match nothing."""
     return _warn_if_truncated(live_tags(db))
 
 
 @router.get("/suggested", response_model=list[TagRead])
 @limiter.limit("60/minute")
-def list_suggested_tags(
-    request: Request,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Return the tags a form offers in one click: your most used tags, then the platform's.
-
-    Ranked by uses on live events you own and their sources, then filled with the most used
-    live tags. The list never holds an orphan tag.
-    """
+def list_suggested_tags(request: Request, current_user: CurrentUser, db: DB):
+    """Return the tags a form offers in one click: your most used tags, then the platform's."""
     return suggested_tags(db, current_user.id)
 
 
 @router.post("", response_model=TagRead, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
-def create_tag(
-    request: Request,
-    body: TagCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def create_tag(request: Request, body: TagCreate, current_user: CurrentUser, db: DB):
     """Create a free tag, or return the one already named so (200).
 
     The lookup covers every tag, orphans included, because ``GET /tags`` hides
@@ -95,5 +71,4 @@ def create_tag(
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Tag already exists") from exc
     db.commit()
-    db.refresh(tag)
     return tag

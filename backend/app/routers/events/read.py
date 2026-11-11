@@ -4,25 +4,23 @@ from dataclasses import asdict, replace
 import orjson
 from fastapi import (
     APIRouter,
-    Depends,
     Query,
     Request,
 )
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import func, not_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import selectinload
 
 from app.cache import points_cache
-from app.dependencies import get_current_user, get_db
+from app.dependencies import DB, CurrentUser, Cursor
 from app.models.event import (
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
     Event,
 )
-from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._filters import event_filters
+from app.routers._filters import Filters
 from app.routers.events._common import DETAIL_LOADS, build_event_list, build_event_read
 from app.schemas.event import (
     EventList,
@@ -83,11 +81,11 @@ def _points_cache_key(bbox: tuple[float, float, float, float], filters: EventFil
 @limiter.limit("60/minute")
 def list_points(
     request: Request,
+    filters: Filters,
+    db: DB,
     # Required so the payload tracks the asked area; missing or malformed is a
     # 422. Uncapped because the map asks for the world box at low zoom.
     bbox: str = Query(..., description="south,west,north,east, four floats"),
-    filters: EventFilters = Depends(event_filters),
-    db: Session = Depends(get_db),
 ):
     """Return the map's events inside ``bbox`` as a compact array:
     ``[[id, lat, lng, occurred_date, added_date, detected], ...]``."""
@@ -149,15 +147,15 @@ def _points_response(content: bytes, cache: str) -> Response:
 def list_events(
     request: Request,
     response: Response,
+    filters: Filters,
+    db: DB,
     view: EventView = Query("located"),
     # Multi-value, any-match; a single value parses to a one-item list.
     status: list[str] | None = Query(None),
-    filters: EventFilters = Depends(event_filters),
     bbox: str | None = None,
     sort: EventListSort = Query("newest"),
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
-    db: Session = Depends(get_db),
+    cursor: Cursor = None,
 ):
     """Cards for one lifecycle view, newest or oldest first.
 
@@ -178,8 +176,8 @@ def list_events(
         if oldest
         else (Event.created_at.desc(), Event.id.desc())
     )
-    if cursor is not None:
-        after = decode_cursor(cursor)
+    after = decode_cursor(cursor)
+    if after is not None:
         id_query = id_query.filter(
             keyset_after((Event.created_at, Event.id), after)
             if oldest
@@ -195,11 +193,7 @@ def list_events(
     ids = [key.id for key in keys]
 
     rows = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-        )
+        db.query(Event)
         .options(
             # ``selectinload``, never ``subqueryload``: with ``.and_()`` criteria
             # subqueryload loses the outer correlation on a compiled-cache hit
@@ -216,7 +210,7 @@ def list_events(
         .all()
     )
 
-    return [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
+    return [build_event_list(geo) for geo in rows]
 
 
 @router.get("/detections", response_model=PaginatedEventDetails)
@@ -224,11 +218,11 @@ def list_events(
 @limiter.limit("120/minute")
 def list_detections(
     request: Request,
+    current_user: CurrentUser,
+    db: DB,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1),
     readiness: DetectionReadiness = Query("all"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     """The caller's ``detected`` events awaiting a publish, newest first."""
     # Over-large sizes are clamped; below 1 is a 422 at ``Query(ge=1)`` (a
@@ -259,11 +253,7 @@ def list_detections(
     }[readiness]
 
     window = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-        )
+        db.query(Event)
         .options(*DETAIL_LOADS)
         .filter(*page_filters)
         .order_by(Event.created_at.desc(), Event.id.desc())
@@ -271,7 +261,7 @@ def list_detections(
         .limit(per_page)
     )
 
-    items = [build_event_read(geo, lat=lat, lng=lng) for geo, lat, lng in window.all()]
+    items = [build_event_read(geo) for geo in window.all()]
 
     return PaginatedEventDetails(
         items=items,

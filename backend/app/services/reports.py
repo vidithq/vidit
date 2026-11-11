@@ -20,7 +20,6 @@ from app.errors import CodedError
 from app.models.collection import Collection
 from app.models.content_report import (
     ContentReport,
-    ContentReportReason,
     ContentReportResolution,
 )
 from app.models.event import Event
@@ -28,7 +27,7 @@ from app.models.site import Site
 from app.models.user import User
 from app.schemas.report import ContentReportCreate
 from app.services import email
-from app.services.admin import log_admin_event, move_site_takedown, withhold_collection
+from app.services.admin import log_admin_event, move_takedown
 from app.services.collections import (
     CollectionNotFoundError,
     erase_if_released,
@@ -69,7 +68,6 @@ class _Target(NamedTuple):
     model: Any
     title: Any
     visible: Callable[[], tuple[ColumnElement[bool], ...]]
-    link: Callable[[str], str]
     not_found: type[CodedError]
     not_found_message: str
 
@@ -80,70 +78,16 @@ ReportKind = Literal["event", "collection", "site"]
 # visibility read is viewer-blind: an admin reads a withheld collection or site, but nobody files
 # a report against one.
 _TARGETS: dict[str, _Target] = {
-    "event": _Target(
-        Event, Event.title, visible_events, email.event_link, EventNotFoundError, "Event not found"
-    ),
+    "event": _Target(Event, Event.title, visible_events, EventNotFoundError, "Event not found"),
     "collection": _Target(
         Collection,
         Collection.title,
         visible_collections,
-        email.collection_link,
         CollectionNotFoundError,
         "Collection not found",
     ),
-    "site": _Target(
-        Site, Site.name, visible_sites, email.site_link, SiteNotFoundError, "Site not found"
-    ),
+    "site": _Target(Site, Site.name, visible_sites, SiteNotFoundError, "Site not found"),
 }
-
-
-def _file_report(
-    db: Session,
-    *,
-    kind: ReportKind,
-    target_id: uuid.UUID,
-    reason: ContentReportReason,
-    details: str | None,
-    reporter_id: uuid.UUID | None,
-    reporter_username: str | None,
-    background_tasks: BackgroundTasks,
-) -> ContentReport:
-    target = _TARGETS[kind]
-    visible = (
-        db.query(target.model.id, target.title.label("title"))
-        .filter(target.model.id == target_id, *target.visible())
-        .first()
-    )
-    if visible is None:
-        raise target.not_found(target.not_found_message)
-
-    report = ContentReport(
-        reason=reason, details=details, reporter_id=reporter_id, **{f"{kind}_id": target_id}
-    )
-    db.add(report)
-    db.commit()
-    db.refresh(report)
-
-    address = settings.report_notify_email
-    if address:
-        # Built here, so no ORM row reaches the task, which runs after the session closes.
-        message = email.content_report_email(
-            to=address,
-            target=kind,
-            target_id=str(target_id),
-            target_title=visible.title,
-            target_link=target.link(str(target_id)),
-            reason=report.reason,
-            details=report.details,
-            reporter=reporter_username or "anonymous",
-            created_at=report.created_at,
-        )
-        background_tasks.add_task(
-            email.send_best_effort,
-            message,
-            what=f"content report notification for report {report.id}",
-        )
-    return report
 
 
 def create_report(
@@ -156,38 +100,43 @@ def create_report(
     background_tasks: BackgroundTasks,
 ) -> ContentReport:
     """File one report against a target a reader can see, or raise the target's not-found error."""
-    return _file_report(
-        db,
-        kind=kind,
-        target_id=target_id,
+    target = _TARGETS[kind]
+    visible = (
+        db.query(target.model.id, target.title.label("title"))
+        .filter(target.model.id == target_id, *target.visible())
+        .first()
+    )
+    if visible is None:
+        raise target.not_found(target.not_found_message)
+
+    report = ContentReport(
         reason=body.reason,
         details=body.details,
         reporter_id=reporter.id if reporter is not None else None,
-        reporter_username=reporter.username if reporter is not None else None,
-        background_tasks=background_tasks,
+        **{f"{kind}_id": target_id},
     )
+    db.add(report)
+    db.commit()
 
-
-def create_event_report(
-    db: Session,
-    *,
-    event_id: uuid.UUID,
-    reason: ContentReportReason,
-    details: str | None,
-    reporter_id: uuid.UUID | None,
-    reporter_username: str | None,
-    background_tasks: BackgroundTasks,
-) -> ContentReport:
-    return _file_report(
-        db,
-        kind="event",
-        target_id=event_id,
-        reason=reason,
-        details=details,
-        reporter_id=reporter_id,
-        reporter_username=reporter_username,
-        background_tasks=background_tasks,
-    )
+    address = settings.report_notify_email
+    if address:
+        # Built here, so no ORM row reaches the task, which runs after the session closes.
+        message = email.content_report_email(
+            to=address,
+            target=kind,
+            target_id=str(target_id),
+            target_title=visible.title,
+            reason=report.reason,
+            details=report.details,
+            reporter=(reporter and reporter.username) or "anonymous",
+            created_at=report.created_at,
+        )
+        background_tasks.add_task(
+            email.send_best_effort,
+            message,
+            what=f"content report notification for report {report.id}",
+        )
+    return report
 
 
 def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[ContentReport], int]:
@@ -225,20 +174,6 @@ def _mark_graphic(db: Session, *, event: Event, actor_id: uuid.UUID, graphic: bo
         db,
         actor_id=actor_id,
         action="event_marked_graphic" if graphic else "event_unmarked_graphic",
-        target={"event_id": str(event.id)},
-    )
-    return True
-
-
-def _set_hidden(db: Session, *, event: Event, actor_id: uuid.UUID, hidden: bool) -> bool:
-    """Withhold the event from public reads, or restore it, and return whether it changed."""
-    if hidden == (event.hidden_at is not None):
-        return False
-    event.hidden_at = datetime.now(UTC) if hidden else None
-    log_admin_event(
-        db,
-        actor_id=actor_id,
-        action="event_hidden" if hidden else "event_unhidden",
         target={"event_id": str(event.id)},
     )
     return True
@@ -283,16 +218,16 @@ def resolve_report(
             if resolution == "marked_graphic":
                 _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
             elif resolution == "hidden":
-                hidden_changed = _set_hidden(db, event=event, actor_id=actor_id, hidden=True)
+                hidden_changed = move_takedown(db, row=event, hidden=True, actor_id=actor_id)
         elif collection is not None or site is not None:
             if resolution == "marked_graphic":
                 raise ReportVerdictNotApplicableError(
                     "Only an event carries footage, so only an event can be marked graphic"
                 )
             if collection is not None:
-                withhold_collection(db, collection=collection, actor_id=actor_id)
+                move_takedown(db, row=collection, hidden=True, actor_id=actor_id)
             elif site is not None:
-                move_site_takedown(db, site=site, hidden=True, actor_id=actor_id)
+                move_takedown(db, row=site, hidden=True, actor_id=actor_id)
         else:
             raise ReportTargetGoneError(
                 "The reported item was deleted, so this report can only be dismissed"
@@ -318,7 +253,6 @@ def resolve_report(
         if erase_if_released(db, collection=collection):
             log_admin_event(db, actor_id=actor_id, action="collection_erased", target=erased)
     db.commit()
-    db.refresh(report)
     return report, hidden_changed
 
 
@@ -342,11 +276,10 @@ def set_event_moderation(
     if is_graphic is not None:
         _mark_graphic(db, event=event, actor_id=actor_id, graphic=is_graphic)
     hidden_changed = (
-        _set_hidden(db, event=event, actor_id=actor_id, hidden=hidden)
+        move_takedown(db, row=event, hidden=hidden, actor_id=actor_id)
         if hidden is not None
         else False
     )
 
     db.commit()
-    db.refresh(event)
     return event, hidden_changed

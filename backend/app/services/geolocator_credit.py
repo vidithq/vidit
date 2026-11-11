@@ -30,10 +30,21 @@ from app.schemas.user import AuthorRef
 from app.services import notifications
 from app.services.event_filters import lock_event
 from app.services.permissions import ensure_owner
+from app.services.thumbnails import thumbnail_loads
 from app.services.users import get_live_by_username
 
 # Every relationship ``build_event_read`` and ``build_event_list`` read for the credit line.
 CREDIT_LOAD = selectinload(Event.geolocators).joinedload(EventGeolocator.user)
+
+# Every relationship ``build_event_list`` reads. Safe under ``LIMIT``: the one ``joinedload`` is
+# the many-to-one owner.
+CARD_LOADS = (
+    joinedload(Event.owner),
+    selectinload(Event.tags),
+    selectinload(Event.conflicts),
+    *thumbnail_loads(),
+    CREDIT_LOAD,
+)
 
 # Geolocators plus pending invitations, per event, the owner included. Bounds the byline every
 # card prints. Mirrored by ``frontend/src/lib/geolocatorCredit.ts::MAX_EVENT_GEOLOCATORS``;
@@ -147,7 +158,6 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
     ensure_owner(geo, owner)
     row = _stage_invite(db, geo=geo, username=username)
     db.commit()
-    db.refresh(row)
     return row
 
 

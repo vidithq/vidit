@@ -1,9 +1,8 @@
 import logging
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Request
 
-from app.dependencies import get_db
+from app.dependencies import DB
 from app.models.conflict import Conflict, event_conflicts
 from app.models.event import Event
 from app.ratelimit import authenticated_read_quota, limiter
@@ -19,26 +18,12 @@ router = APIRouter()
 @router.get("", response_model=list[ConflictRead])
 @authenticated_read_quota
 @limiter.limit("60/minute")
-def list_conflicts(
-    request: Request,
-    used: bool = False,
-    db: Session = Depends(get_db),
-):
+def list_conflicts(request: Request, db: DB, used: bool = False):
     """Return the conflicts referential, ongoing first then by name.
 
-    The default returns every row: the submit picker needs the whole
-    referential (ended conflicts behind its toggle) so analysts can tag
-    archival footage. It is server-managed (Wikipedia sync, Wikidata seed,
-    operator rows); there is no create endpoint.
-
-    ``used=true`` is the map-filter view: only conflicts on at least one live
-    event. Mirrors the orphan filter on ``GET /tags``.
-
-    Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: the picker
-    filters the whole referential client-side. The daily sync's sanity band
-    bounds one parse pass, not the table (rows accumulate across passes), so
-    the ceiling bounds the response. A response landing on it is logged because
-    the payload can't say it was cut.
+    The daily sync's sanity band bounds one parse pass, not the table (rows accumulate across
+    passes), so ``REFERENTIAL_MAX_ROWS`` bounds the response. A response landing on it is logged
+    because the payload can't say it was cut.
     """
     query = db.query(Conflict)
     if used:

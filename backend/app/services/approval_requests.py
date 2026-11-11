@@ -559,7 +559,6 @@ def request_approval(
         organization_id=organization_id,
     )
     db.commit()
-    db.refresh(row)
     return row
 
 
@@ -593,5 +592,4 @@ def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> Ap
         organization_id=row.target_organization_id,
     )
     db.commit()
-    db.refresh(row)
     return row

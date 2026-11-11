@@ -6,14 +6,11 @@ from typing import Literal, NoReturn, get_args
 
 from fastapi import (
     APIRouter,
-    Depends,
     Request,
 )
-from sqlalchemy.orm import Session
 
-from app.dependencies import get_current_user, get_db
+from app.dependencies import DB, CurrentUser
 from app.errors import CodedError
-from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.tweet_import import ImportNote, TweetImportRead, TweetImportRequest
 from app.services.detection import import_pasted_post
@@ -56,10 +53,7 @@ def _refuse(status_code: int, code: TweetImportRefusalCode, message: str) -> NoR
 @router.post("/import-from-tweet", response_model=TweetImportRead)
 @limiter.limit("30/minute")
 def import_from_tweet(
-    request: Request,
-    body: TweetImportRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    request: Request, body: TweetImportRequest, current_user: CurrentUser, db: DB
 ):
     """Import the caller's own X post as detections.
 

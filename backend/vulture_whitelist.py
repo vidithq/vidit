@@ -58,6 +58,7 @@ archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 detected_via  # schemas/event.py EventRead, read from event_detections
 last_seen_at  # schemas/admin.py AdminInviteRedeemerRead
+reporter_id  # schemas/report.py ContentReportRead, from models/content_report.py
 deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py

@@ -216,7 +216,6 @@ class EventRead(BaseModel):
     hidden_at: datetime | None
     # Whether any source is graphic (``Source.is_graphic``); derived, never stored.
     is_graphic: bool
-    # See ``models.event.STATUS_*``.
     status: EventStatus
     # Version this payload is: 0 while a request or a detection, 1 once published, then one
     # higher per edit (``save_version``).
@@ -258,9 +257,7 @@ class EventList(BaseModel):
     # Required-nullable like ``EventRead.coords``.
     coords: CoordsRead | None
     occurred_date: date | None
-    # See ``EventRead.is_graphic``.
     is_graphic: bool
-    # See ``EventRead.status``.
     status: EventStatus
     # Tells a withdrawn request, rejected detection and retracted geolocation apart.
     before_closed_status: BeforeClosedStatus | None
@@ -268,7 +265,6 @@ class EventList(BaseModel):
     # that was never a request.
     requested_at: datetime | None
     owner: AuthorRef
-    # See ``EventRead.geolocators``; the card's byline.
     geolocators: list[AuthorRef]
     # Card thumbnail (``services.thumbnails``), None when neither exists. One
     # media keeps the list light; ``EventRead.sources`` has the full set. No

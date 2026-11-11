@@ -1,16 +1,14 @@
 from dataclasses import replace
 
-from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query, Request, Response
 
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
+from app.dependencies import DB, CurrentUser, Cursor
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._filters import event_filters
+from app.routers._filters import Filters
 from app.routers.events._common import build_event_list
 from app.schemas.event import DateHistogram, FeedItemRead
 from app.services import social
-from app.services.event_filters import EventFilters, validate_status_filter
+from app.services.event_filters import validate_status_filter
 from app.services.pagination import (
     decode_cursor,
     encode_cursor,
@@ -28,13 +26,13 @@ router = APIRouter()
 def get_feed(
     request: Request,
     response: Response,
+    filters: Filters,
+    db: DB,
+    current_user: CurrentUser,
     scope: FeedScope = Query("following"),
     limit: int = Query(10, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
+    cursor: Cursor = None,
     status: list[str] | None = Query(None),
-    filters: EventFilters = Depends(event_filters),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> list[FeedItemRead]:
     """Published geolocations, open requests and machine detections, newest first.
 
@@ -51,14 +49,11 @@ def get_feed(
         user_id=current_user.id,
         scope=scope,
         size=size,
-        cursor=decode_cursor(cursor) if cursor is not None else None,
+        cursor=decode_cursor(cursor),
         filters=replace(filters, status=status),
     )
-    rows = paged(request, response, window, size, lambda r: encode_cursor(r[3], r[0].id))
-    return [
-        FeedItemRead(**build_event_list(geo, lat=lat, lng=lng).model_dump(), feed_at=at)
-        for geo, lat, lng, at in rows
-    ]
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r[1], r[0].id))
+    return [FeedItemRead(**build_event_list(geo).model_dump(), feed_at=at) for geo, at in rows]
 
 
 @router.get("/feed/dates", response_model=DateHistogram)
@@ -66,18 +61,13 @@ def get_feed(
 @limiter.limit("120/minute")
 def get_feed_dates(
     request: Request,
+    filters: Filters,
+    db: DB,
+    current_user: CurrentUser,
     scope: FeedScope = Query("following"),
     status: list[str] | None = Query(None),
-    filters: EventFilters = Depends(event_filters),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> DateHistogram:
-    """The rows ``GET /feed`` walks for the request, counted per day on each date axis.
-
-    Takes the ``scope``, ``status`` and filters of ``GET /feed``. ``occurred_date`` ignores the
-    request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
-    ``submitted_from`` / ``submitted_to``. ``total`` counts the rows under every filter.
-    """
+    """The rows ``GET /feed`` walks for the request, counted per day on each date axis."""
     validate_status_filter(status)
     return DateHistogram.model_validate(
         social.get_feed_dates(

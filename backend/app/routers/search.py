@@ -9,11 +9,12 @@ abuse floor. FTS plumbing is in ``services/search.py``.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_db
+from app.dependencies import DB
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._filters import event_filters
 from app.schemas.event import DateHistogram
@@ -63,6 +64,9 @@ def _search_request(
     )
 
 
+SearchParams = Annotated[_SearchRequest, Depends(_search_request)]
+
+
 def _suggestion(db: Session, params: _SearchRequest) -> str | None:
     return search_service.spelling_suggestion(
         db, query=params.q, types=params.types, filters=params.filters
@@ -74,7 +78,8 @@ def _suggestion(db: Session, params: _SearchRequest) -> str | None:
 @limiter.limit("60/minute")
 def search(
     request: Request,
-    params: _SearchRequest = Depends(_search_request),
+    params: SearchParams,
+    db: DB,
     limit: int = Query(20, ge=1, le=50, description="Hits per page"),
     cursor: str | None = Query(
         None,
@@ -83,10 +88,9 @@ def search(
             " filters of the request that returned it"
         ),
     ),
-    db: Session = Depends(get_db),
 ) -> SearchResponse:
     """One ranked list of events, sites, collections, analysts and organizations."""
-    after = decode_ranked_cursor(cursor) if cursor is not None else None
+    after = decode_ranked_cursor(cursor)
     page = search_service.search(
         db,
         query=params.q,
@@ -104,9 +108,9 @@ def search(
 @limiter.limit("60/minute")
 def search_sections(
     request: Request,
-    params: _SearchRequest = Depends(_search_request),
+    params: SearchParams,
+    db: DB,
     limit: int = Query(5, ge=1, le=10, description="Hits per section"),
-    db: Session = Depends(get_db),
 ) -> SearchSections:
     """The top hits of each type, one section per type with a hit."""
     sections = search_service.search_sections(
@@ -122,11 +126,7 @@ def search_sections(
 @router.get("/dates", response_model=DateHistogram)
 @authenticated_read_quota
 @limiter.limit("60/minute")
-def search_dates(
-    request: Request,
-    params: _SearchRequest = Depends(_search_request),
-    db: Session = Depends(get_db),
-) -> DateHistogram:
+def search_dates(request: Request, params: SearchParams, db: DB) -> DateHistogram:
     """The events ``GET /search`` lists for the request, counted per day on each date axis."""
     return DateHistogram.model_validate(
         search_service.search_dates(db, query=params.q, types=params.types, filters=params.filters)
@@ -138,12 +138,12 @@ def search_dates(
 @limiter.limit("60/minute")
 def suggest_authors(
     request: Request,
+    db: DB,
     q: str = Query(
         "",
         description="Username fragment; same charset gate as ?author=",
         pattern=r"^$|" + AUTHOR_FILTER_PATTERN,
     ),
-    db: Session = Depends(get_db),
 ) -> AuthorSuggestions:
     """Usernames for the author-filter typeahead."""
     return AuthorSuggestions(authors=search_service.suggest_authors(db, query=q))

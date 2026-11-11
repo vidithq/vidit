@@ -252,7 +252,6 @@ def approve(
     ).all()
     notifications.notify_approval_received(db, event=geo, approval=row, requester_ids=requester_ids)
     db.commit()
-    db.refresh(row)
     return row
 
 

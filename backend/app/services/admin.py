@@ -37,6 +37,8 @@ from app.schemas.admin import (
 from app.schemas.user import AuthorRef
 from app.services import geolocator_credit, organizations, versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
+from app.services.collections import CollectionNotFoundError
+from app.services.events.errors import EventNotFoundError
 from app.services.evidence_intake import (
     StoredObject,
     event_objects,
@@ -46,7 +48,7 @@ from app.services.evidence_intake import (
     sweep_unreferenced,
 )
 from app.services.pagination import keyset_before
-from app.services.sites import owned_site_objects
+from app.services.sites import SiteNotFoundError, owned_site_objects
 from app.services.storage import avatar_key_of, sweep_keys
 from app.services.uploads import upload_object
 from app.services.users import UserNotFoundError, XHandleConflictError, x_handle_holder
@@ -55,11 +57,6 @@ from app.services.users import UserNotFoundError, XHandleConflictError, x_handle
 class AdminError(CodedError):
     code: str = "admin_error"
     status_code = 400
-
-
-class EventNotFoundError(AdminError):
-    code = "event_not_found"
-    status_code = 404
 
 
 class VersionNotFoundError(AdminError):
@@ -72,16 +69,6 @@ class InviteCodeUsedError(AdminError):
 
     code = "invite_code_used"
     status_code = 409
-
-
-class CollectionNotFoundError(AdminError):
-    code = "collection_not_found"
-    status_code = 404
-
-
-class SiteNotFoundError(AdminError):
-    code = "site_not_found"
-    status_code = 404
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
@@ -243,7 +230,6 @@ def mint_invite_code(
         target["x_handle"] = x_handle
     log_admin_event(db, actor_id=actor_id, action=action, target=target)
     db.commit()
-    db.refresh(invite)
     return invite
 
 
@@ -285,7 +271,6 @@ def revoke_invite_code(
         target={"invite_code_id": str(invite.id)},
     )
     db.commit()
-    db.refresh(invite)
     return invite
 
 
@@ -387,7 +372,6 @@ def set_invite_minting(
             target={"user_id": str(user.id)},
         )
         db.commit()
-        db.refresh(user)
     return user
 
 
@@ -409,42 +393,38 @@ def soft_delete_geolocation(
             target={"geolocation_id": str(geo.id), "title": geo.title},
         )
         db.commit()
-        db.refresh(geo)
     return AdminEventDeleteResponse(
         geolocation_id=geo.id, title=geo.title, mode="soft", deleted_at=geo.deleted_at
     )
 
 
 def move_takedown(
-    db: Session, *, row: Collection | Site, hidden: bool, actor_id: uuid.UUID
-) -> None:
-    """Stamp or clear one row's ``hidden_at`` and file the ``<table>_hidden`` or
-    ``<table>_restored`` audit row. No commit. A row already in that state files nothing."""
+    db: Session, *, row: Event | Collection | Site, hidden: bool, actor_id: uuid.UUID
+) -> bool:
+    """Stamp or clear one row's ``hidden_at`` and file the ``<table>_hidden`` audit row, or
+    ``event_unhidden`` / ``<table>_restored``. No commit. A row already in that state files
+    nothing and returns ``False``."""
     if hidden == (row.hidden_at is not None):
-        return
+        return False
     row.hidden_at = datetime.now(UTC) if hidden else None
-    if isinstance(row, Collection):
-        noun, target = "collection", {"collection_id": str(row.id), "title": row.title}
+    target: dict[str, str]
+    if isinstance(row, Event):
+        noun, restored, target = "event", "unhidden", {"event_id": str(row.id)}
+    elif isinstance(row, Collection):
+        noun, restored = "collection", "restored"
+        target = {"collection_id": str(row.id), "title": row.title}
     else:
-        noun, target = "site", {"site_id": str(row.id), "name": row.name}
+        noun, restored, target = "site", "restored", {"site_id": str(row.id), "name": row.name}
     log_admin_event(
         db,
         actor_id=actor_id,
-        action=f"{noun}_hidden" if hidden else f"{noun}_restored",
+        action=f"{noun}_hidden" if hidden else f"{noun}_{restored}",
         target=target,
     )
+    return True
 
 
-# The two names services/reports imports.
-def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
-    move_takedown(db, row=collection, hidden=True, actor_id=actor_id)
-
-
-def move_site_takedown(db: Session, *, site: Site, hidden: bool, actor_id: uuid.UUID) -> None:
-    move_takedown(db, row=site, hidden=hidden, actor_id=actor_id)
-
-
-_TAKEDOWN_NOT_FOUND: dict[type[Collection | Site], tuple[type[AdminError], str]] = {
+_TAKEDOWN_NOT_FOUND: dict[type[Collection | Site], tuple[type[CodedError], str]] = {
     Collection: (CollectionNotFoundError, "Collection not found"),
     Site: (SiteNotFoundError, "Site not found"),
 }
@@ -461,7 +441,6 @@ def set_takedown[T: (Collection, Site)](
         raise error(message)
     move_takedown(db, row=row, hidden=hidden, actor_id=actor_id)
     db.commit()
-    db.refresh(row)
     return row
 
 
@@ -520,7 +499,7 @@ def redact_version(
     )
     if event is None:
         raise EventNotFoundError("Event not found")
-    row = versions.get_version(db, event_id=event.id, version_no=version_no)
+    row = versions.get_version(db, EventVersion, event.id, version_no)
     if row is None:
         raise VersionNotFoundError("Version not found")
     # Read what this version rendered before it is blanked; the flush puts the redaction ahead
@@ -544,7 +523,6 @@ def redact_version(
         },
     )
     db.commit()
-    db.refresh(row)
 
     context = f"event {event.id} version {version_no} redaction"
     sweep_unreferenced(db, removed_proofs, context=context)
@@ -625,7 +603,6 @@ def soft_delete_user(
         },
     )
     db.commit()
-    db.refresh(user)
     return AdminUserDeleteResponse(
         user_id=user.id,
         username=user.username,

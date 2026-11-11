@@ -1,12 +1,10 @@
 import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
 
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
+from app.dependencies import DB, CurrentUser, Cursor
 from app.ratelimit import limiter
 from app.schemas.notification import (
     NotificationRead,
@@ -32,21 +30,18 @@ router = APIRouter()
 def list_notifications(
     request: Request,
     response: Response,
+    db: DB,
+    current_user: CurrentUser,
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    cursor: Cursor = None,
 ) -> list[NotificationRead]:
-    """Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
-
-    Listing marks nothing read; ``POST /notifications/read`` does.
-    """
+    """Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor)."""
     size = page_size(limit)
     window = notifications_service.list_feed(
         db,
         user=current_user,
         limit=size,
-        cursor=decode_cursor(cursor) if cursor is not None else None,
+        cursor=decode_cursor(cursor),
     )
     rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     answered = notifications_service.answered_approval_requests(db, user=current_user, rows=rows)
@@ -56,9 +51,7 @@ def list_notifications(
 @router.get("/unread-count", response_model=NotificationUnreadCount)
 @limiter.limit("120/minute")
 def get_unread_count(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, db: DB, current_user: CurrentUser
 ) -> NotificationUnreadCount:
     """How many visible notifications you have not been shown yet."""
     return NotificationUnreadCount(count=notifications_service.unread_count(db, user=current_user))
@@ -67,10 +60,7 @@ def get_unread_count(
 @router.post("/read", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/minute")
 def mark_notifications_read(
-    request: Request,
-    body: NotificationReadUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, body: NotificationReadUpdate, db: DB, current_user: CurrentUser
 ) -> None:
     """Mark the listed notifications read. Ids that are not yours change nothing."""
     notifications_service.mark_read(db, user=current_user, ids=body.ids)
@@ -80,10 +70,7 @@ def mark_notifications_read(
 @router.delete("/{notification_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/minute")
 def delete_notification(
-    request: Request,
-    notification_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, notification_id: uuid.UUID, db: DB, current_user: CurrentUser
 ) -> None:
     """Delete one of your notifications. 404 when it is not yours."""
     if not notifications_service.delete(db, user=current_user, notification_id=notification_id):
@@ -97,11 +84,7 @@ def unsubscribe_email_page(
     request: Request,
     token: str = Query(min_length=1, max_length=200),
 ) -> RedirectResponse:
-    """Send a mail client that opens the ``List-Unsubscribe`` URL to the confirmation page.
-
-    Changes nothing: a mail scanner opens links too. The page posts the token back here once
-    the reader confirms.
-    """
+    """Send a mail client that opens the ``List-Unsubscribe`` URL to the confirmation page."""
     return RedirectResponse(
         app_url(f"/unsubscribe/notifications?token={quote(token, safe='')}"),
         status_code=status.HTTP_303_SEE_OTHER,
@@ -111,16 +94,9 @@ def unsubscribe_email_page(
 @router.post("/unsubscribe", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
 def unsubscribe_email(
-    request: Request,
-    token: str = Query(min_length=1, max_length=200),
-    db: Session = Depends(get_db),
+    request: Request, db: DB, token: str = Query(min_length=1, max_length=200)
 ) -> Response:
-    """Turn off one kind of notification email, named by a signed token.
-
-    Needs no session: a mail client posts it one-click from the
-    ``List-Unsubscribe`` header. Idempotent; 400 on a token that does not
-    verify.
-    """
+    """Turn off one kind of notification email, named by a signed token."""
     preferences_service.unsubscribe_email(db, token)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

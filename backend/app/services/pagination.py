@@ -47,32 +47,40 @@ def _malformed_cursor() -> HTTPException:
     return HTTPException(status_code=422, detail="cursor is malformed")
 
 
-def _decode_parts(cursor: str, count: int) -> list[str]:
-    """Exactly ``count`` strings, or the 422: the shape is checked before a caller converts a
-    part, so ``["2026-01-01T00:00:00", 5]`` never raises out of ``uuid.UUID``."""
+def _decode_parts(cursor: str | None, parsers: tuple[Callable[[str], Any], ...]) -> Any:
+    """``None`` for no cursor, else one value per parser, or the 422. The shape is checked before
+    a parser runs, so ``["2026-01-01T00:00:00", 5]`` never raises out of ``uuid.UUID``."""
+    if cursor is None:
+        return None
     try:
         decoded = _decode(cursor)
     except (ValueError, TypeError, binascii.Error) as exc:
         raise _malformed_cursor() from exc
     if not (
         isinstance(decoded, list)
-        and len(decoded) == count
+        and len(decoded) == len(parsers)
         and all(isinstance(part, str) for part in decoded)
     ):
         raise _malformed_cursor()
-    return decoded
+    try:
+        return tuple(parse(part) for parse, part in zip(parsers, decoded, strict=True))
+    except ValueError as exc:
+        raise _malformed_cursor() from exc
+
+
+def _finite_float(raw: str) -> float:
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ValueError(raw)
+    return value
 
 
 def encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
     return _encode([created_at.isoformat(), str(row_id)])
 
 
-def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
-    created_raw, id_raw = _decode_parts(cursor, 2)
-    try:
-        return datetime.fromisoformat(created_raw), uuid.UUID(id_raw)
-    except ValueError as exc:
-        raise _malformed_cursor() from exc
+def decode_cursor(cursor: str | None) -> tuple[datetime, uuid.UUID] | None:
+    return _decode_parts(cursor, (datetime.fromisoformat, uuid.UUID))
 
 
 def encode_ordinal_cursor(value: int) -> str:
@@ -81,7 +89,9 @@ def encode_ordinal_cursor(value: int) -> str:
     return _encode(value)
 
 
-def decode_ordinal_cursor(cursor: str) -> int:
+def decode_ordinal_cursor(cursor: str | None) -> int | None:
+    if cursor is None:
+        return None
     try:
         decoded = _decode(cursor)
     except (ValueError, TypeError, binascii.Error) as exc:
@@ -103,17 +113,12 @@ def encode_chronological_cursor(
     )
 
 
-def decode_chronological_cursor(cursor: str) -> tuple[date, time, datetime, uuid.UUID]:
-    date_raw, time_raw, created_raw, id_raw = _decode_parts(cursor, 4)
-    try:
-        return (
-            date.fromisoformat(date_raw),
-            time.fromisoformat(time_raw),
-            datetime.fromisoformat(created_raw),
-            uuid.UUID(id_raw),
-        )
-    except ValueError as exc:
-        raise _malformed_cursor() from exc
+def decode_chronological_cursor(
+    cursor: str | None,
+) -> tuple[date, time, datetime, uuid.UUID] | None:
+    return _decode_parts(
+        cursor, (date.fromisoformat, time.fromisoformat, datetime.fromisoformat, uuid.UUID)
+    )
 
 
 def encode_ranked_cursor(rank: float, created_at: datetime, row_id: uuid.UUID) -> str:
@@ -122,15 +127,8 @@ def encode_ranked_cursor(rank: float, created_at: datetime, row_id: uuid.UUID) -
     return _encode([repr(rank), created_at.isoformat(), str(row_id)])
 
 
-def decode_ranked_cursor(cursor: str) -> tuple[float, datetime, uuid.UUID]:
-    rank_raw, created_raw, id_raw = _decode_parts(cursor, 3)
-    try:
-        rank = float(rank_raw)
-        if not math.isfinite(rank):
-            raise ValueError(rank_raw)
-        return rank, datetime.fromisoformat(created_raw), uuid.UUID(id_raw)
-    except ValueError as exc:
-        raise _malformed_cursor() from exc
+def decode_ranked_cursor(cursor: str | None) -> tuple[float, datetime, uuid.UUID] | None:
+    return _decode_parts(cursor, (_finite_float, datetime.fromisoformat, uuid.UUID))
 
 
 def keyset_after(

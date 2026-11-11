@@ -14,13 +14,11 @@ from fastapi import (
     Response,
     status,
 )
-from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_current_user, get_current_user_optional, get_db
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.content_report import ContentReport
-from app.models.event import TITLE_MAX_LENGTH, Event
-from app.models.user import User
+from app.models.event import TITLE_MAX_LENGTH, Event, EventVersion
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import (
     DETAIL_LOADS,
@@ -57,16 +55,10 @@ from app.services.pagination import (
 router = APIRouter()
 
 
-def _detail_read(db: Session, geo: Event, lat: float | None, lng: float | None) -> EventRead:
-    read = build_event_read(geo, lat=lat, lng=lng)
+def _serialize_event(db: Session, geo: Event) -> EventRead:
+    read = build_event_read(geo)
     read.version_zero = versions_service.version_zero(db, geo)
     return read
-
-
-def _serialize_event(db: Session, geo: Event) -> EventRead:
-    """The read of a just-written row, its point re-projected as ``GET /{id}`` does."""
-    lat, lng = db.query(ST_Y(Event.coords), ST_X(Event.coords)).filter(Event.id == geo.id).one()
-    return _detail_read(db, geo, lat, lng)
 
 
 # Ahead of the ``/{geolocation_id}`` reads: the extra path segment means the
@@ -82,17 +74,16 @@ def report_event(
     geolocation_id: uuid.UUID,
     body: ContentReportCreate,
     background_tasks: BackgroundTasks,
-    current_user: User | None = Depends(get_current_user_optional),
-    db: Session = Depends(get_db),
+    current_user: OptionalUser,
+    db: DB,
 ) -> ContentReport:
     """Report an event for moderation."""
-    return reports_service.create_event_report(
+    return reports_service.create_report(
         db,
-        event_id=geolocation_id,
-        reason=body.reason,
-        details=body.details,
-        reporter_id=current_user.id if current_user is not None else None,
-        reporter_username=current_user.username if current_user is not None else None,
+        kind="event",
+        target_id=geolocation_id,
+        body=body,
+        reporter=current_user,
         background_tasks=background_tasks,
     )
 
@@ -100,27 +91,21 @@ def report_event(
 @router.get("/{geolocation_id}", response_model=EventRead)
 @authenticated_read_quota
 @limiter.limit("120/minute")
-def get_event(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
-):
+def get_event(request: Request, geolocation_id: uuid.UUID, db: DB, current_user: OptionalUser):
     """The detail read.
 
     A withheld event (``hidden_at``) answers 404 for everyone but an admin,
     who must read what was taken down to judge the report.
     """
-    row = (
-        db.query(Event, ST_Y(Event.coords), ST_X(Event.coords))
+    geo = (
+        db.query(Event)
         .options(*DETAIL_LOADS)
         .filter(Event.id == geolocation_id, *readable_events(current_user))
         .first()
     )
-    if row is None:
+    if geo is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    geo, lat, lng = row
-    read = _detail_read(db, geo, lat, lng)
+    read = _serialize_event(db, geo)
     if current_user is not None:
         read.viewer_invite_pending = has_pending_invite(
             db, event_id=geo.id, user_id=current_user.id
@@ -138,12 +123,12 @@ def get_event(
 def update_event_request(
     request: Request,
     geolocation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     # The approximate guess a request may carry: both halves or neither.
     lat: float | None = Form(None),
     lng: float | None = Form(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
     fields: EventFormFields = Depends(),
 ):
     """Correct an open request, overwriting it in place (owner-only)."""
@@ -163,6 +148,8 @@ def update_event_request(
 def save_event_version(
     request: Request,
     geolocation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
@@ -174,8 +161,6 @@ def save_event_version(
         description="The version the form was loaded at; a row that moved past it answers 409.",
     ),
     geolocator_invites: str | None = Form(None, description=GEOLOCATOR_INVITES_FIELD_DESCRIPTION),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
     fields: EventFormFields = Depends(),
 ):
     """Publish a request or a detection, or correct a published event, filing a version."""
@@ -206,10 +191,10 @@ def list_event_versions(
     request: Request,
     response: Response,
     geolocation_id: uuid.UUID,
+    db: DB,
+    current_user: OptionalUser,
     limit: int = Query(versions_service.HISTORY_PAGE_SIZE, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    cursor: Cursor = None,
 ):
     """The event's superseded versions, newest first."""
     geo = resolve_readable_event(db, geolocation_id, current_user)
@@ -217,14 +202,15 @@ def list_event_versions(
     size = page_size(limit)
     window = versions_service.list_versions(
         db,
+        EventVersion,
         geo.id,
         limit=size,
-        cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
+        cursor=decode_ordinal_cursor(cursor),
     )
     rows = paged(request, response, window, size, lambda r: encode_ordinal_cursor(r.version_no))
     return EventVersionList(
         items=[build_version_read(row) for row in rows],
-        total=versions_service.count_versions(db, geo.id),
+        total=versions_service.count_versions(db, EventVersion, geo.id),
     )
 
 
@@ -232,15 +218,11 @@ def list_event_versions(
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def get_event_version(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    version_no: int,
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    request: Request, geolocation_id: uuid.UUID, version_no: int, db: DB, current_user: OptionalUser
 ):
     """One superseded version of an event, by its number."""
     geo = resolve_readable_event(db, geolocation_id, current_user)
-    row = versions_service.get_version(db, event_id=geo.id, version_no=version_no)
+    row = versions_service.get_version(db, EventVersion, geo.id, version_no)
     if row is None:
         raise HTTPException(status_code=404, detail="Version not found")
     return build_version_read(row)
@@ -249,10 +231,7 @@ def get_event_version(
 @router.get("/{geolocation_id}/collections", response_model=CollectionMembershipList)
 @limiter.limit("120/minute")
 def list_event_collections(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    request: Request, geolocation_id: uuid.UUID, current_user: CurrentUser, db: DB
 ):
     """Your collections, each saying whether this event is already on it."""
     geo = resolve_live_event(db, geolocation_id)
@@ -268,8 +247,8 @@ def close_event(
     request: Request,
     geolocation_id: uuid.UUID,
     body: EventCloseRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user: CurrentUser,
+    db: DB,
 ):
     """Close an event: withdraw, reject or retract it (owner-only)."""
     geo = resolve_live_event(db, geolocation_id)

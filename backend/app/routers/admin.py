@@ -1,10 +1,10 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.cache import points_cache
-from app.dependencies import get_current_user, get_db, require_admin
+from app.dependencies import DB, AdminUser, CurrentUser, Cursor
 from app.models.collection import Collection
 from app.models.site import Site
 from app.models.user import User
@@ -57,7 +57,7 @@ router = APIRouter()
 
 
 @router.get("/me", response_model=AdminMeResponse)
-def admin_me(current_user: User = Depends(get_current_user)) -> AdminMeResponse:
+def admin_me(current_user: CurrentUser) -> AdminMeResponse:
     """Whether the signed-in analyst is a site admin."""
     # The one route here open to every analyst: the frontend probes it on each signed-in page,
     # so a 403 would log a console error for every analyst who is not an admin.
@@ -65,10 +65,7 @@ def admin_me(current_user: User = Depends(get_current_user)) -> AdminMeResponse:
 
 
 @router.get("/detection-stats", response_model=AdminDetectionStatsRead)
-def detection_stats(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> AdminDetectionStatsRead:
+def detection_stats(db: DB, current_user: AdminUser) -> AdminDetectionStatsRead:
     """Machine-extraction quality: reject-rate and missing-piece counts on the pending queue."""
     return admin_service.detection_quality_stats(db)
 
@@ -80,10 +77,7 @@ def detection_stats(
 )
 @limiter.limit("30/hour")
 def create_invite_code(
-    request: Request,
-    body: AdminInviteCodeCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, body: AdminInviteCodeCreate, db: DB, current_user: AdminUser
 ) -> AdminInviteCodeRead:
     invite = admin_service.create_invite_code(
         db,
@@ -98,17 +92,17 @@ def create_invite_code(
 def list_invite_codes(
     request: Request,
     response: Response,
+    db: DB,
+    current_user: AdminUser,
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    cursor: Cursor = None,
 ) -> list[AdminInviteCodeRead]:
     """Invite codes, newest first, capped at 100 per page (``Link: rel="next"`` cursor)."""
     size = page_size(limit)
     window = admin_service.list_invite_codes(
         db,
         limit=size,
-        cursor=decode_cursor(cursor) if cursor is not None else None,
+        cursor=decode_cursor(cursor),
     )
     rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     return admin_service.serialize_invite_codes(db, rows)
@@ -120,10 +114,7 @@ def list_invite_codes(
 )
 @limiter.limit("60/hour")
 def revoke_invite_code(
-    request: Request,
-    invite_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, invite_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> AdminInviteCodeRead:
     """Retire a code while keeping its row. The list still shows it."""
     invite = admin_service.revoke_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
@@ -138,10 +129,7 @@ def revoke_invite_code(
 )
 @limiter.limit("60/hour")
 def delete_invite_code(
-    request: Request,
-    invite_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, invite_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> Response:
     """Drop the row of a code no account was created from. 409 once it was."""
     deleted = admin_service.delete_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
@@ -157,10 +145,7 @@ def delete_invite_code(
 )
 @limiter.limit("30/hour")
 def create_organization(
-    request: Request,
-    body: OrganizationCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, body: OrganizationCreate, db: DB, current_user: AdminUser
 ) -> OrganizationRead:
     """Create an organization and name its first org manager, who joins without an invite."""
     org = organizations_service.create_organization(db, actor=current_user, body=body)
@@ -174,11 +159,7 @@ def create_organization(
 )
 @limiter.limit("30/hour")
 def appoint_organization_manager(
-    request: Request,
-    slug: str,
-    body: OrganizationManagerAppoint,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, slug: str, body: OrganizationManagerAppoint, db: DB, current_user: AdminUser
 ) -> OrganizationMemberRead:
     """Make a live analyst an org manager of the organization, joining it if needed, with audit."""
     org = organizations_service.get_by_slug(db, slug, lock=True)
@@ -189,12 +170,7 @@ def appoint_organization_manager(
 
 @router.delete("/organizations/{slug}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/hour")
-def delete_organization(
-    request: Request,
-    slug: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> Response:
+def delete_organization(request: Request, slug: str, db: DB, current_user: AdminUser) -> Response:
     """Delete an organization with its memberships, invites, approval requests and approvals."""
     organizations_service.delete_organization(db, actor=current_user, slug=slug)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -203,10 +179,7 @@ def delete_organization(
 @router.delete("/approvals/{approval_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/hour")
 def delete_approval(
-    request: Request,
-    approval_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, approval_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> Response:
     """Delete one approval, as themselves or for an organization, and write it to the admin log."""
     approvals_service.delete_as_admin(db, approval_id=approval_id, actor=current_user)
@@ -214,20 +187,13 @@ def delete_approval(
 
 
 @router.get("/organizations", response_model=list[AdminOrganizationRead])
-def list_organizations(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> list[AdminOrganizationRead]:
+def list_organizations(db: DB, current_user: AdminUser) -> list[AdminOrganizationRead]:
     """Every organization with its live member and org manager counts, those without an org manager first."""
     return organizations_service.list_for_admin(db)
 
 
 @router.get("/users", response_model=list[AdminUserRead])
-def search_users(
-    q: str = "",
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-) -> list[User]:
+def search_users(db: DB, current_user: AdminUser, q: str = "") -> list[User]:
     """Case-insensitive substring match on username or email."""
     return admin_service.search_users(db, query=q)
 
@@ -235,11 +201,7 @@ def search_users(
 @router.patch("/users/{user_id}/x-handle", response_model=AdminUserRead)
 @limiter.limit("60/hour")
 def set_user_x_handle(
-    request: Request,
-    user_id: uuid.UUID,
-    body: UserXHandleUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, user_id: uuid.UUID, body: UserXHandleUpdate, db: DB, current_user: AdminUser
 ) -> User:
     """Link or clear the X handle the bot attributes mentions to."""
     return admin_service.set_user_x_handle(
@@ -256,8 +218,8 @@ def set_user_invite_minting(
     request: Request,
     user_id: uuid.UUID,
     body: UserInviteMintingUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    db: DB,
+    current_user: AdminUser,
 ) -> User:
     """Turn minting invite codes from Settings on or off for one analyst."""
     return admin_service.set_invite_minting(
@@ -268,10 +230,7 @@ def set_user_invite_minting(
 @router.post("/users/{user_id}/restore", response_model=AdminUserRestoreResponse)
 @limiter.limit("30/hour")
 def restore_user_admin(
-    request: Request,
-    user_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, user_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> AdminUserRestoreResponse:
     """Undo a soft delete: the account and the events its soft delete hid come back."""
     result = admin_service.restore_user(db, actor_id=current_user.id, user_id=user_id)
@@ -285,10 +244,7 @@ def restore_user_admin(
 )
 @limiter.limit("30/hour")
 def purge_detected_events_admin(
-    request: Request,
-    user_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, user_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> AdminPurgeDetectedResponse:
     """Hard-delete every detection the user owns, keeping the account and everything else."""
     result = admin_service.purge_detected_events(db, actor_id=current_user.id, user_id=user_id)
@@ -302,11 +258,7 @@ def purge_detected_events_admin(
 )
 @limiter.limit("30/hour")
 def delete_user_admin(
-    request: Request,
-    user_id: uuid.UUID,
-    hard: bool = False,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, user_id: uuid.UUID, db: DB, current_user: AdminUser, hard: bool = False
 ) -> AdminUserDeleteResponse:
     """Remove a user account: soft by default, `?hard=true` for GDPR erasure."""
     delete_user = admin_service.hard_delete_user if hard else admin_service.soft_delete_user
@@ -321,11 +273,7 @@ def delete_user_admin(
 )
 @limiter.limit("60/hour")
 def delete_geolocation_admin(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    hard: bool = False,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, geolocation_id: uuid.UUID, db: DB, current_user: AdminUser, hard: bool = False
 ) -> AdminEventDeleteResponse:
     """Remove a geolocation: soft by default, `?hard=true` for GDPR erasure."""
     delete_event = (
@@ -353,10 +301,7 @@ def _collection_takedown(
 )
 @limiter.limit("60/hour")
 def hide_collection_admin(
-    request: Request,
-    collection_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, collection_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> AdminCollectionHideResponse:
     """Withhold a collection from every read but an admin's."""
     return _collection_takedown(db, collection_id, hidden=True, actor=current_user)
@@ -371,8 +316,8 @@ def set_collection_moderation(
     request: Request,
     collection_id: uuid.UUID,
     body: AdminCollectionModerationUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    db: DB,
+    current_user: AdminUser,
 ) -> AdminCollectionHideResponse:
     """Set a collection's moderation state: withhold it, or restore it."""
     return _collection_takedown(db, collection_id, hidden=body.hidden, actor=current_user)
@@ -384,8 +329,8 @@ def set_site_moderation(
     request: Request,
     site_id: uuid.UUID,
     body: AdminSiteModerationUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    db: DB,
+    current_user: AdminUser,
 ) -> AdminSiteModerationRead:
     """Withhold a site from every read but an admin's, or restore it."""
     site = admin_service.set_takedown(
@@ -396,10 +341,7 @@ def set_site_moderation(
 
 @router.get("/reports", response_model=ContentReportList)
 def list_reports(
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    db: DB, current_user: AdminUser, page: int = Query(1, ge=1), per_page: int = Query(20, ge=1)
 ) -> ContentReportList:
     """The moderation queue: open reports first, newest first within each group."""
     per_page = page_size(per_page)
@@ -418,8 +360,8 @@ def resolve_report(
     request: Request,
     report_id: uuid.UUID,
     body: ContentReportUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    db: DB,
+    current_user: AdminUser,
 ) -> ContentReportRead:
     """Close one report with a verdict, applying it to what the report names."""
     report, hidden_changed = reports_service.resolve_report(
@@ -439,8 +381,8 @@ def set_event_moderation(
     request: Request,
     geolocation_id: uuid.UUID,
     body: AdminEventModerationUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    db: DB,
+    current_user: AdminUser,
 ) -> AdminEventModerationRead:
     """Set an event's moderation state directly, with no report behind it."""
     event, hidden_changed = reports_service.set_event_moderation(
@@ -461,11 +403,7 @@ def set_event_moderation(
 )
 @limiter.limit("60/hour")
 def redact_event_version(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    version_no: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, geolocation_id: uuid.UUID, version_no: int, db: DB, current_user: AdminUser
 ) -> EventVersionRead:
     """Blank one filed version of an event's history."""
     row = admin_service.redact_version(
@@ -483,9 +421,7 @@ def redact_event_version(
 @router.post("/maintenance/reap-password-reset-tokens", response_model=AdminMaintenanceResponse)
 @limiter.limit("30/hour")
 def maintenance_reap_password_reset_tokens(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, db: DB, current_user: AdminUser
 ) -> AdminMaintenanceResponse:
     """Drop expired and old-consumed password_reset_tokens rows."""
     result = maintenance_service.run_logged(
@@ -500,9 +436,7 @@ def maintenance_reap_password_reset_tokens(
 @router.post("/maintenance/reap-pending-registrations", response_model=AdminMaintenanceResponse)
 @limiter.limit("30/hour")
 def maintenance_reap_pending_registrations(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, db: DB, current_user: AdminUser
 ) -> AdminMaintenanceResponse:
     """Drop expired ``pending_registrations`` rows."""
     result = maintenance_service.run_logged(
@@ -517,9 +451,7 @@ def maintenance_reap_pending_registrations(
 @router.post("/maintenance/send-completion-digests", response_model=AdminMaintenanceResponse)
 @limiter.limit("30/hour")
 def maintenance_send_completion_digests(
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    request: Request, db: DB, current_user: AdminUser
 ) -> AdminMaintenanceResponse:
     """Email every analyst holding unpublished detections."""
     result = maintenance_service.run_logged(

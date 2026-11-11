@@ -75,11 +75,7 @@ class SourceMediaNotFoundError(EventError):
 
 
 class EventNotFoundError(EventError):
-    """The targeted row is gone (hard- or soft-deleted).
-
-    Only the batch completion raises it, as one row's per-row code. Its 404 is defensive, for a
-    future single-row caller.
-    """
+    """The targeted row is gone (hard- or soft-deleted)."""
 
     code = "event_not_found"
     status_code = 404

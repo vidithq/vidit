@@ -279,29 +279,12 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
     )
 
 
-def admin_reports_link() -> str:
-    return app_url("/admin")
-
-
-def event_link(event_id: str) -> str:
-    return app_url(f"/events/{event_id}")
-
-
-def collection_link(collection_id: str) -> str:
-    return app_url(f"/collections/{collection_id}")
-
-
-def site_link(site_id: str) -> str:
-    return app_url(f"/sites/{site_id}")
-
-
 def content_report_email(
     *,
     to: str,
     target: str,
     target_id: str,
     target_title: str,
-    target_link: str,
     reason: str,
     details: str | None,
     reporter: str,
@@ -328,8 +311,8 @@ def content_report_email(
         content=Content(
             heading="New content report",
             blocks=blocks,
-            action=Action("Resolve it in the admin console", admin_reports_link()),
-            note=f"The reported {target}: {target_link}",
+            action=Action("Resolve it in the admin console", app_url("/admin")),
+            note=f"The reported {target}: {app_url(f'/{target}s/{target_id}')}",
         ),
     )
 
