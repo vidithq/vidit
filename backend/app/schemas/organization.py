@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.organization import OrganizationRole
 from app.models.user_preferences import ApprovalRequestAudience
 from app.schemas import UsernameRef
-from app.schemas.admin import normalize_x_handle
+from app.schemas.admin import XHandle
 from app.schemas.user import AuthorRef, UserUpdate
 
 # Lowercase letters, digits and inner hyphens, 2 to 50 characters.
@@ -80,6 +80,8 @@ class OrganizationMembershipRead(BaseModel):
     role: OrganizationRole
     joined_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class OrganizationMemberRead(BaseModel):
     """One member on the organization page, org managers first."""
@@ -102,16 +104,12 @@ class OrganizationInviteRead(BaseModel):
 
 
 class OrganizationInviteCreate(BaseModel):
-    """Body for ``POST /organizations/{slug}/invites``."""
-
     model_config = ConfigDict(extra="forbid")
 
     username: UsernameRef
 
 
 class OrganizationMemberUpdate(BaseModel):
-    """Body for ``PATCH /organizations/{slug}/members/{username}``."""
-
     model_config = ConfigDict(extra="forbid")
 
     role: OrganizationRole
@@ -135,7 +133,7 @@ class OrganizationCreate(OrganizationUpdate):
 
     name: str = Field(min_length=1, max_length=ORGANIZATION_NAME_MAX_LEN)
     slug: str
-    x_handle: str | None = None
+    x_handle: XHandle | None = None
     manager_username: UsernameRef
 
     @field_validator("name")
@@ -153,8 +151,3 @@ class OrganizationCreate(OrganizationUpdate):
         if not ORGANIZATION_SLUG_PATTERN.fullmatch(cleaned):
             raise ValueError("2 to 50 lowercase letters, digits or inner hyphens")
         return cleaned
-
-    @field_validator("x_handle")
-    @classmethod
-    def _x_handle(cls, v: str | None) -> str | None:
-        return normalize_x_handle(v)

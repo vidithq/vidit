@@ -26,10 +26,18 @@ from app.services.storage import (
 
 
 class AvatarError(CodedError):
-    """The submitted file cannot become an avatar."""
-
     code: str = "invalid_avatar"
     status_code = 422
+
+
+class UserNotFoundError(CodedError):
+    code = "user_not_found"
+    status_code = 404
+
+
+class XHandleConflictError(CodedError):
+    code = "x_handle_conflict"
+    status_code = 409
 
 
 class ProfileOwner(Protocol):
@@ -42,7 +50,6 @@ class ProfileOwner(Protocol):
 
 
 def get_live_by_username(db: Session, username: str) -> User | None:
-    """The account named ``username``, unless it is soft-deleted."""
     return db.query(User).filter(User.username == username, User.deleted_at.is_(None)).first()
 
 
@@ -83,10 +90,6 @@ def _sweep_replaced_avatar(url: str | None) -> None:
 
 
 async def set_avatar[Owner: ProfileOwner](db: Session, *, owner: Owner, file: UploadFile) -> Owner:
-    """Store ``file`` as ``owner``'s profile picture and drop the previous one.
-
-    Raises :class:`AvatarError` on an unaccepted, oversized, or undecodable file.
-    """
     try:
         result = await upload_avatar_image(file, owner.id)
     except ValueError as exc:
@@ -109,7 +112,6 @@ async def set_avatar[Owner: ProfileOwner](db: Session, *, owner: Owner, file: Up
 
 
 def clear_avatar[Owner: ProfileOwner](db: Session, *, owner: Owner) -> Owner:
-    """Drop ``owner``'s profile picture, column and stored object both."""
     previous = owner.avatar_url
     owner.avatar_url = None
     db.commit()

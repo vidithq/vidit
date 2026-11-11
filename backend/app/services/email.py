@@ -41,11 +41,11 @@ logger = logging.getLogger(__name__)
 
 
 class EmailSendError(RuntimeError):
-    """Raised when the email provider rejected the message or was unreachable."""
+    pass
 
 
 class EmailRejectedError(EmailSendError):
-    """Raised when the provider answered and refused the message."""
+    pass
 
 
 @dataclass(frozen=True)
@@ -191,7 +191,6 @@ def password_changed_email(*, to: str) -> Email:
 
 
 def detections_link(username: str) -> str:
-    """The absolute URL of an analyst's own Detections queue."""
     return app_url(f"/profile/{username}/detections")
 
 
@@ -261,10 +260,7 @@ def archive_import_failed_email(*, to: str) -> Email:
 
 
 def completion_digest_email(*, to: str, count: int, link: str) -> Email:
-    """Count of detections to review plus the queue link.
-
-    Thin on purpose: no titles, since the queue is the source of truth.
-    """
+    """Thin on purpose: no titles, since the queue is the source of truth."""
     plural = "s" if count != 1 else ""
     return _compose(
         to=to,
@@ -284,22 +280,18 @@ def completion_digest_email(*, to: str, count: int, link: str) -> Email:
 
 
 def admin_reports_link() -> str:
-    """The absolute URL of the admin console report queue."""
     return app_url("/admin")
 
 
 def event_link(event_id: str) -> str:
-    """The absolute URL of one event's page (served for every status)."""
     return app_url(f"/events/{event_id}")
 
 
 def collection_link(collection_id: str) -> str:
-    """The absolute URL of one collection's page (404 for non-admins when withheld)."""
     return app_url(f"/collections/{collection_id}")
 
 
 def site_link(site_id: str) -> str:
-    """The absolute URL of one site's page (404 for non-admins when withheld)."""
     return app_url(f"/sites/{site_id}")
 
 
@@ -315,11 +307,8 @@ def content_report_email(
     reporter: str,
     created_at: datetime,
 ) -> Email:
-    """Tell the moderation address that a report landed, with the full report inline.
-
-    ``reporter`` is a username or ``anonymous``. ``target`` is ``event``,
-    ``collection`` or ``site`` and names every line that describes the thing.
-    """
+    """``target`` is ``event``, ``collection`` or ``site`` and names every line that describes
+    the thing."""
     label = target.capitalize()
     blocks: list[Block] = [
         f"A viewer reported {'an' if target[0] in 'aeiou' else 'a'} {target} on Vidit.",

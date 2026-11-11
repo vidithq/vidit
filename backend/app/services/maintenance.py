@@ -96,14 +96,7 @@ def detections_awaiting_completion(
 
 
 def send_completion_digests(db: Session) -> dict[str, int]:
-    """Email each analyst the count of detections still awaiting completion.
-
-    See :func:`detections_awaiting_completion` for who gets one and the
-    :data:`COMPLETION_DIGEST_LIMIT` ceiling.
-
-    A provider failure is logged and counted, never raised, so the rest still
-    send. Returns analysts notified, detections covered, and failed sends.
-    """
+    """A provider failure is logged and counted, never raised, so the rest still send."""
     notified = 0
     detections = 0
     failures = 0

@@ -3,34 +3,22 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.schemas.user import AuthorRef
 
-# X handle alphabet (letters, digits, underscore, 15 max), matched after
-# normalization.
-X_HANDLE_PATTERN = re.compile(r"^[a-z0-9_]{1,15}$")
+_X_HANDLE_PATTERN = re.compile(r"^[a-z0-9_]{1,15}$")
 
 
-def normalize_x_handle(v: str | None) -> str | None:
-    """Shared validator for every ``x_handle`` intake: strip one leading ``@``,
-    lowercase, enforce the alphabet. ``ValueError`` (a 422) on mismatch."""
-    if v is None:
-        return None
+def _normalize_x_handle(v: str) -> str:
     cleaned = v.strip().removeprefix("@").lower()
-    if not X_HANDLE_PATTERN.fullmatch(cleaned):
+    if not _X_HANDLE_PATTERN.fullmatch(cleaned):
         raise ValueError("15 characters at most: letters, digits and _")
     return cleaned
 
 
-def _normalize_required_x_handle(v: str) -> str:
-    normalized = normalize_x_handle(v)
-    assert normalized is not None
-    return normalized
-
-
-# A required ``x_handle`` field, normalized by :func:`normalize_x_handle`.
-XHandle = Annotated[str, AfterValidator(_normalize_required_x_handle)]
+# Every ``x_handle`` intake: one leading ``@`` stripped, lowercased, then the alphabet enforced.
+XHandle = Annotated[str, AfterValidator(_normalize_x_handle)]
 
 
 InviteCodeStatus = Literal["active", "exhausted", "revoked", "expired"]
@@ -46,12 +34,7 @@ class AdminInviteCodeCreate(BaseModel):
     """
 
     expires_in_days: int | None = Field(default=None, ge=1, le=365)
-    x_handle: str | None = None
-
-    @field_validator("x_handle")
-    @classmethod
-    def _normalize_handle(cls, v: str | None) -> str | None:
-        return normalize_x_handle(v)
+    x_handle: XHandle | None = None
 
 
 class AdminInviteRedeemerRead(BaseModel):
@@ -137,8 +120,6 @@ class AdminUserRead(BaseModel):
 
 
 class UserInviteMintingUpdate(BaseModel):
-    """Body for `PATCH /admin/users/{id}/invite-minting`."""
-
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
@@ -162,8 +143,6 @@ class AdminUserDeleteResponse(BaseModel):
 
 
 class AdminUserRestoreResponse(BaseModel):
-    """Response for `POST /admin/users/{id}/restore`."""
-
     user_id: uuid.UUID
     username: str
     # Events the soft delete hid, now live again.
@@ -171,9 +150,6 @@ class AdminUserRestoreResponse(BaseModel):
 
 
 class AdminEventDeleteResponse(BaseModel):
-    """Response for `DELETE /admin/events/{id}`: which row, soft vs hard, what
-    was swept."""
-
     geolocation_id: uuid.UUID
     title: str
     mode: Literal["soft", "hard"]
@@ -267,12 +243,7 @@ class UserXHandleUpdate(BaseModel):
     ``^[a-z0-9_]{1,15}$`` (else 422).
     """
 
-    x_handle: str | None
-
-    @field_validator("x_handle")
-    @classmethod
-    def _normalize_handle(cls, v: str | None) -> str | None:
-        return normalize_x_handle(v)
+    x_handle: XHandle | None
 
 
 class AdminMaintenanceResponse(BaseModel):

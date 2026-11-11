@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import ColumnExpressionArgument, Select, case, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Query, Session, joinedload
 
 from app.errors import CodedError
 from app.models.approval import EventApproval
@@ -32,18 +33,21 @@ from app.schemas.organization import (
     OrganizationMemberRead,
     OrganizationMembershipRead,
     OrganizationRead,
-    OrganizationRef,
     OrganizationUpdate,
 )
 from app.services import admin as admin_service
 from app.services import notifications, social
 from app.services.storage import avatar_key_of, sweep_keys
-from app.services.users import apply_profile_update, get_live_by_username, x_handle_holder
+from app.services.users import (
+    UserNotFoundError,
+    XHandleConflictError,
+    apply_profile_update,
+    get_live_by_username,
+    x_handle_holder,
+)
 
 
 class OrganizationError(CodedError):
-    """A refused organization action. Carries a stable ``code`` for the router."""
-
     code: str = "organization_error"
     status_code = 400
 
@@ -53,18 +57,8 @@ class OrganizationNotFoundError(OrganizationError):
     status_code = 404
 
 
-class UserNotFoundError(OrganizationError):
-    code = "user_not_found"
-    status_code = 404
-
-
 class SlugTakenError(OrganizationError):
     code = "slug_taken"
-    status_code = 409
-
-
-class XHandleConflictError(OrganizationError):
-    code = "x_handle_conflict"
     status_code = 409
 
 
@@ -128,7 +122,6 @@ def _live_user(db: Session, username: str) -> User:
 
 
 def _row(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> OrganizationMember | None:
-    """The analyst's row in the organization, an invitation or a membership."""
     return db.get(OrganizationMember, (org_id, user_id))
 
 
@@ -155,42 +148,37 @@ def is_organization_member(db: Session, *, org_id: uuid.UUID, user_id: uuid.UUID
     return _membership(db, org_id, user_id) is not None
 
 
+def _live[Q: (Select[Any], Query[Any])](query: Q) -> Q:
+    """``query`` narrowed to the memberships of live analysts."""
+    return query.join(User, User.id == OrganizationMember.user_id).filter(
+        OrganizationMember.state == "active", User.deleted_at.is_(None)
+    )
+
+
 def live_member_ids(
     org_id: uuid.UUID | ColumnExpressionArgument[uuid.UUID],
 ) -> Select[tuple[uuid.UUID]]:
     """The live members of ``org_id``, the analysts who act in its name. ``org_id`` may be a
     column, to correlate with an outer query."""
-    return (
-        select(OrganizationMember.user_id)
-        .join(User, User.id == OrganizationMember.user_id)
-        .where(
-            OrganizationMember.organization_id == org_id,
-            OrganizationMember.state == "active",
-            User.deleted_at.is_(None),
-        )
+    return _live(select(OrganizationMember.user_id)).where(
+        OrganizationMember.organization_id == org_id
     )
 
 
 def live_manager_ids(
     org_id: uuid.UUID | ColumnExpressionArgument[uuid.UUID],
 ) -> Select[tuple[uuid.UUID]]:
-    """The live org managers of ``org_id`` (:func:`live_member_ids` narrowed to the role)."""
     return live_member_ids(org_id).where(OrganizationMember.role == "manager")
 
 
-def _can_manage(db: Session, org: Organization, user: User) -> bool:
-    """Org managers manage their organization; a site admin manages any."""
-    return user.is_admin or is_organization_manager(db, org_id=org.id, user_id=user.id)
-
-
 def require_manager(db: Session, org: Organization, user: User) -> None:
-    if not _can_manage(db, org, user):
+    """Org managers manage their organization; a site admin manages any."""
+    if not (user.is_admin or is_organization_manager(db, org_id=org.id, user_id=user.id)):
         raise NotOrganizationManagerError("Only an org manager can do this")
 
 
 def get_managed(db: Session, slug: str, user: User, *, lock: bool = False) -> Organization:
-    """The organization ``slug`` names, for an org manager of it or a site admin
-    (:func:`require_manager`)."""
+    """The organization ``slug`` names, for an org manager of it or a site admin."""
     org = get_by_slug(db, slug, lock=lock)
     require_manager(db, org, user)
     return org
@@ -202,20 +190,8 @@ def require_member(db: Session, org: Organization, user: User) -> None:
         raise NotOrganizationMemberError("Only a member of the organization can do this")
 
 
-def _live_manager_count(db: Session, org_id: uuid.UUID) -> int:
-    return _live_members(db, org_id).filter(OrganizationMember.role == "manager").count()
-
-
-def _live_members(db: Session, org_id: uuid.UUID):
-    return (
-        db.query(OrganizationMember)
-        .join(User, User.id == OrganizationMember.user_id)
-        .filter(
-            OrganizationMember.organization_id == org_id,
-            OrganizationMember.state == "active",
-            User.deleted_at.is_(None),
-        )
-    )
+def _live_members(db: Session, org_id: uuid.UUID) -> Query[OrganizationMember]:
+    return _live(db.query(OrganizationMember)).filter(OrganizationMember.organization_id == org_id)
 
 
 def hand_over_manager_roles(db: Session, *, leaving_user_id: uuid.UUID) -> None:
@@ -243,8 +219,12 @@ def hand_over_manager_roles(db: Session, *, leaving_user_id: uuid.UUID) -> None:
         if heir is None:
             continue
         heir.role = "manager"
-        notifications.notify_organization_manager_inherited(
-            db, organization_id=org_id, heir_id=heir.user_id
+        # No actor: the notification never says whose account was erased.
+        notifications.emit(
+            db,
+            recipient_id=heir.user_id,
+            kind="organization_manager_inherited",
+            organization_id=org_id,
         )
 
 
@@ -252,22 +232,16 @@ def live_member_counts(db: Session):
     """Subquery of ``org_id``, ``members`` and ``managers``: each organization's
     live member and org manager counts. An organization without a live member
     has no row, so outer-join it and coalesce to 0."""
-    return (
-        db.query(
-            OrganizationMember.organization_id.label("org_id"),
-            func.count().label("members"),
-            func.count().filter(OrganizationMember.role == "manager").label("managers"),
-        )
-        .join(User, User.id == OrganizationMember.user_id)
-        .filter(OrganizationMember.state == "active", User.deleted_at.is_(None))
-        .group_by(OrganizationMember.organization_id)
-        .subquery()
+    counts = db.query(
+        OrganizationMember.organization_id.label("org_id"),
+        func.count().label("members"),
+        func.count().filter(OrganizationMember.role == "manager").label("managers"),
     )
+    return _live(counts).group_by(OrganizationMember.organization_id).subquery()
 
 
 def list_for_admin(db: Session) -> list[AdminOrganizationRead]:
-    """Every organization with its live member and org manager counts, those
-    without an org manager first."""
+    """Those without an org manager first."""
     live = live_member_counts(db)
     managers = func.coalesce(live.c.managers, 0)
     rows = (
@@ -289,7 +263,6 @@ def list_for_admin(db: Session) -> list[AdminOrganizationRead]:
 
 
 def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -> Organization:
-    """Create an organization with ``body.manager_username`` as its first org manager, with audit."""
     first_manager = _live_user(db, body.manager_username)
     if db.query(Organization.id).filter(Organization.slug == body.slug).first() is not None:
         raise SlugTakenError("An organization already uses this slug")
@@ -337,10 +310,8 @@ def create_organization(db: Session, *, actor: User, body: OrganizationCreate) -
 def appoint_manager(
     db: Session, *, actor: User, org: Organization, username: str
 ) -> OrganizationMemberRead:
-    """Make the live analyst ``username`` an org manager of ``org``, with audit: a site admin's
-    way back into an organization left without one. A member is promoted; anyone else joins as
-    an org manager without an invite, as the first org manager does at creation. ``org`` must be
-    locked by the caller. 404 ``user_not_found`` for an unknown or soft-deleted analyst."""
+    """A site admin's way back into an organization left without an org manager. ``org`` must be
+    locked by the caller."""
     user = _live_user(db, username)
     member = _row(db, org.id, user.id)
     if member is None:
@@ -362,16 +333,9 @@ def appoint_manager(
     return OrganizationMemberRead.model_validate(member)
 
 
-def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, object]:
-    """Delete the organization ``slug`` and everything in its name, with audit. Site admin only
-    (the router's guard).
-
-    In one transaction, after locking the organization row: the approvals given in its name,
-    the approval requests addressed to it, its pending invites, its memberships, then the row
-    itself (the notifications naming it cascade with it). The owner of each event that loses a
-    standing approval receives one ``organization_approval_removed`` notification per event.
-    After the commit, the picture is swept from storage. 404 ``organization_not_found``.
-    """
+def delete_organization(db: Session, *, actor: User, slug: str) -> None:
+    """Delete the organization ``slug`` and everything in its name in one transaction, under the
+    organization row lock, then sweep its picture."""
     org = get_by_slug(db, slug, lock=True)
     affected = list(
         db.execute(
@@ -417,11 +381,9 @@ def delete_organization(db: Session, *, actor: User, slug: str) -> dict[str, obj
     )
     db.commit()
     sweep_keys([avatar_key] if avatar_key else [], context=f"organization {slug} delete")
-    return target
 
 
 def apply_update(org: Organization, body: OrganizationUpdate) -> None:
-    """Apply the profile fields and the approval request audience ``body`` sets."""
     apply_profile_update(org, body)
     if body.approval_request_audience is not None:
         org.approval_request_audience = body.approval_request_audience
@@ -457,7 +419,6 @@ def build_read(db: Session, org: Organization, *, viewer: User | None) -> Organi
 
 
 def list_members(db: Session, org: Organization) -> list[OrganizationMemberRead]:
-    """Live members, org managers first, then by join date."""
     rows = (
         _live_members(db, org.id)
         .options(joinedload(OrganizationMember.user))
@@ -472,7 +433,6 @@ def list_members(db: Session, org: Organization) -> list[OrganizationMemberRead]
 
 
 def list_memberships(db: Session, user: User) -> list[OrganizationMembershipRead]:
-    """The organizations ``user`` belongs to, by name."""
     rows = (
         db.query(OrganizationMember)
         .join(Organization, Organization.id == OrganizationMember.organization_id)
@@ -481,17 +441,7 @@ def list_memberships(db: Session, user: User) -> list[OrganizationMembershipRead
         .order_by(Organization.name)
         .all()
     )
-    reads = []
-    for row in rows:
-        assert row.joined_at is not None  # ck_organization_members_state_stamp
-        reads.append(
-            OrganizationMembershipRead(
-                organization=OrganizationRef.model_validate(row.organization),
-                role=row.role,
-                joined_at=row.joined_at,
-            )
-        )
-    return reads
+    return [OrganizationMembershipRead.model_validate(row) for row in rows]
 
 
 def invite_candidates(db: Session, org: Organization, *, inviter: User) -> list[User]:
@@ -512,8 +462,7 @@ def invite_candidates(db: Session, org: Organization, *, inviter: User) -> list[
 
 
 def invite(db: Session, org: Organization, *, inviter: User, username: str) -> OrganizationMember:
-    """Invite ``username`` and notify them. Only an org manager invites, and only
-    an analyst in mutual follow with them."""
+    """Only an org manager invites, and only an analyst in mutual follow with them."""
     if not is_organization_manager(db, org_id=org.id, user_id=inviter.id):
         raise NotOrganizationManagerError("Only an org manager can invite")
     invitee = _live_user(db, username)
@@ -537,7 +486,13 @@ def invite(db: Session, org: Organization, *, inviter: User, username: str) -> O
             db.add(row)
     except IntegrityError as exc:
         raise AlreadyInvitedError("Already invited") from exc
-    notifications.notify_organization_invite(db, invite=row)
+    notifications.emit(
+        db,
+        recipient_id=row.user_id,
+        kind="organization_invite",
+        actor_id=inviter.id,
+        organization_id=org.id,
+    )
     return row
 
 
@@ -558,7 +513,6 @@ def list_invites(db: Session, org: Organization) -> list[OrganizationInviteRead]
 
 
 def cancel_invite(db: Session, org: Organization, *, username: str) -> None:
-    """Withdraw the pending invitation of ``username`` (404 ``invite_not_found``)."""
     invitee = get_live_by_username(db, username)
     row = _invitation(db, org.id, invitee.id) if invitee is not None else None
     if row is None:
@@ -583,7 +537,6 @@ def _locked_invitation(db: Session, org: Organization, user: User) -> Organizati
 
 
 def accept_invite(db: Session, org: Organization, *, user: User) -> None:
-    """Join as a member and tell the inviter. The row turns ``active``."""
     row = _locked_invitation(db, org, user)
     row.state = "active"
     row.role = "member"
@@ -592,7 +545,6 @@ def accept_invite(db: Session, org: Organization, *, user: User) -> None:
 
 
 def decline_invite(db: Session, org: Organization, *, user: User) -> None:
-    """Drop the invite. Nobody is notified."""
     db.delete(_locked_invitation(db, org, user))
 
 
@@ -606,7 +558,8 @@ def _member_or_404(db: Session, org: Organization, username: str) -> Organizatio
 
 # Mirrored by frontend OrganizationMembers.tsx lastManager; change both.
 def _guard_last_manager(db: Session, org: Organization, member: OrganizationMember) -> None:
-    if member.role == "manager" and _live_manager_count(db, org.id) <= 1:
+    managers = _live_members(db, org.id).filter(OrganizationMember.role == "manager")
+    if member.role == "manager" and managers.count() <= 1:
         raise LastManagerError("The last org manager cannot leave or be demoted")
 
 

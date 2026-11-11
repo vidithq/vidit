@@ -464,7 +464,7 @@ flowchart LR
 
   inline["`**auth, archive import, digest, content report**
   sent inline, never capped`"]:::spec
-  emit["`**notifications._emit**
+  emit["`**notifications.emit**
   writes the notification, and a delivery row when the email switch is on`"]:::spec
   queue[("`**notification_deliveries**
   queued, running, done, failed, skipped`")]:::store

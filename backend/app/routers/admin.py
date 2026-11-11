@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.cache import points_cache
 from app.dependencies import get_current_user, get_db, require_admin
+from app.models.collection import Collection
+from app.models.site import Site
 from app.models.user import User
 from app.ratelimit import limiter
 from app.routers.events._common import build_version_read
@@ -67,9 +69,7 @@ def detection_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminDetectionStatsRead:
-    """Machine-extraction quality signal: reject-rate over machine detections
-    plus missing-piece counts on the pending queue. Read-only, no audit row.
-    See ``AdminDetectionStatsRead``."""
+    """Machine-extraction quality: reject-rate and missing-piece counts on the pending queue."""
     return admin_service.detection_quality_stats(db)
 
 
@@ -228,8 +228,7 @@ def search_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> list[User]:
-    """Case-insensitive substring match on username or email. Empty query
-    returns [] so the search box doesn't preload the user table."""
+    """Case-insensitive substring match on username or email."""
     return admin_service.search_users(db, query=q)
 
 
@@ -242,8 +241,7 @@ def set_user_x_handle(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> User:
-    """Link or clear the X handle the bot attributes mentions to. The only
-    write path for ``users.x_handle``."""
+    """Link or clear the X handle the bot attributes mentions to."""
     return admin_service.set_user_x_handle(
         db,
         actor_id=current_user.id,
@@ -276,13 +274,9 @@ def restore_user_admin(
     current_user: User = Depends(require_admin),
 ) -> AdminUserRestoreResponse:
     """Undo a soft delete: the account and the events its soft delete hid come back."""
-    user, restored_events = admin_service.restore_user(
-        db, actor_id=current_user.id, user_id=user_id
-    )
+    result = admin_service.restore_user(db, actor_id=current_user.id, user_id=user_id)
     points_cache.invalidate()
-    return AdminUserRestoreResponse(
-        user_id=user.id, username=user.username, restored_events=restored_events
-    )
+    return result
 
 
 @router.delete(
@@ -296,16 +290,10 @@ def purge_detected_events_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminPurgeDetectedResponse:
-    """Hard-delete every detection the user owns (rows + S3 media), keeping
-    the account and everything else. The broken-archive repair."""
+    """Hard-delete every detection the user owns, keeping the account and everything else."""
     result = admin_service.purge_detected_events(db, actor_id=current_user.id, user_id=user_id)
     points_cache.invalidate()
-    return AdminPurgeDetectedResponse(
-        user_id=user_id,
-        username=result["username"],
-        deleted_events=result["deleted_events"],
-        media_count=result["media_count"],
-    )
+    return result
 
 
 @router.delete(
@@ -320,36 +308,11 @@ def delete_user_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminUserDeleteResponse:
-    """Remove a user account. Default soft (sets `users.deleted_at` and
-    cascade-soft-deletes their submissions); `?hard=true` is GDPR erasure
-    (drops the row, their geolocations and S3 objects, and hands a co-credited
-    event to its earliest live co-geolocator). Both paths invalidate the points
-    cache."""
-    if hard:
-        result = admin_service.hard_delete_user(db, actor_id=current_user.id, user_id=user_id)
-        points_cache.invalidate()
-        return AdminUserDeleteResponse(
-            user_id=user_id,
-            username=result["username"],
-            mode="hard",
-            deleted_at=None,
-            cascaded_geolocations=result["geolocation_count"],
-            transferred_events=result["transferred_count"],
-            media_count=result["media_count"],
-        )
-
-    user, cascaded_geolocations, transferred = admin_service.soft_delete_user(
-        db, actor_id=current_user.id, user_id=user_id
-    )
+    """Remove a user account: soft by default, `?hard=true` for GDPR erasure."""
+    delete_user = admin_service.hard_delete_user if hard else admin_service.soft_delete_user
+    result = delete_user(db, actor_id=current_user.id, user_id=user_id)
     points_cache.invalidate()
-    return AdminUserDeleteResponse(
-        user_id=user.id,
-        username=user.username,
-        mode="soft",
-        deleted_at=user.deleted_at,
-        cascaded_geolocations=cascaded_geolocations,
-        transferred_events=transferred,
-    )
+    return result
 
 
 @router.delete(
@@ -364,31 +327,23 @@ def delete_geolocation_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminEventDeleteResponse:
-    """Remove a geolocation. Default soft (sets `deleted_at`); `?hard=true` is
-    GDPR-grade erasure (row, media rows, S3 objects). Both paths invalidate
-    the points cache."""
-    if hard:
-        result = admin_service.hard_delete_geolocation(
-            db, actor_id=current_user.id, geolocation_id=geolocation_id
-        )
-        points_cache.invalidate()
-        return AdminEventDeleteResponse(
-            geolocation_id=geolocation_id,
-            title=result["title"],
-            mode="hard",
-            deleted_at=None,
-            media_count=result["media_count"],
-        )
-
-    geo = admin_service.soft_delete_geolocation(
-        db, actor_id=current_user.id, geolocation_id=geolocation_id
+    """Remove a geolocation: soft by default, `?hard=true` for GDPR erasure."""
+    delete_event = (
+        admin_service.hard_delete_geolocation if hard else admin_service.soft_delete_geolocation
     )
+    result = delete_event(db, actor_id=current_user.id, geolocation_id=geolocation_id)
     points_cache.invalidate()
-    return AdminEventDeleteResponse(
-        geolocation_id=geo.id,
-        title=geo.title,
-        mode="soft",
-        deleted_at=geo.deleted_at,
+    return result
+
+
+def _collection_takedown(
+    db: Session, collection_id: uuid.UUID, *, hidden: bool, actor: User
+) -> AdminCollectionHideResponse:
+    collection = admin_service.set_takedown(
+        db, Collection, collection_id, hidden=hidden, actor_id=actor.id
+    )
+    return AdminCollectionHideResponse(
+        collection_id=collection.id, title=collection.title, hidden_at=collection.hidden_at
     )
 
 
@@ -403,20 +358,8 @@ def hide_collection_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminCollectionHideResponse:
-    """Withhold a collection from every read but an admin's.
-
-    Alias of ``PATCH /admin/collections/{id}/moderation`` with
-    ``{"hidden": true}``: same stamp, audit row and response. Idempotent; 404
-    on an unknown collection.
-    """
-    collection = admin_service.hide_collection(
-        db, actor_id=current_user.id, collection_id=collection_id
-    )
-    return AdminCollectionHideResponse(
-        collection_id=collection.id,
-        title=collection.title,
-        hidden_at=collection.hidden_at,
-    )
+    """Withhold a collection from every read but an admin's."""
+    return _collection_takedown(db, collection_id, hidden=True, actor=current_user)
 
 
 @router.patch(
@@ -431,27 +374,8 @@ def set_collection_moderation(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminCollectionHideResponse:
-    """Set a collection's moderation state: withhold it, or restore it.
-
-    ``true`` stamps ``hidden_at`` and drops the shelf from every read but an
-    admin's; ``false`` clears it. The collection's events are untouched (each
-    is moderated on its own).
-
-    Counterpart of ``PATCH /admin/events/{id}/moderation`` and the undo of
-    ``DELETE /admin/collections/{id}``. Idempotent: an unchanged state writes
-    no audit row. 404 on an unknown collection.
-    """
-    collection = admin_service.set_collection_moderation(
-        db,
-        actor_id=current_user.id,
-        collection_id=collection_id,
-        hidden=body.hidden,
-    )
-    return AdminCollectionHideResponse(
-        collection_id=collection.id,
-        title=collection.title,
-        hidden_at=collection.hidden_at,
-    )
+    """Set a collection's moderation state: withhold it, or restore it."""
+    return _collection_takedown(db, collection_id, hidden=body.hidden, actor=current_user)
 
 
 @router.patch("/sites/{site_id}/moderation", response_model=AdminSiteModerationRead)
@@ -463,14 +387,9 @@ def set_site_moderation(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminSiteModerationRead:
-    """Withhold a site from every read but an admin's, or restore it.
-
-    ``true`` stamps ``hidden_at``: the site leaves the map, the event links and the
-    suggestions. ``false`` clears it. Idempotent: an unchanged state writes no audit row.
-    404 on an unknown site.
-    """
-    site = admin_service.set_site_moderation(
-        db, actor_id=current_user.id, site_id=site_id, hidden=body.hidden
+    """Withhold a site from every read but an admin's, or restore it."""
+    site = admin_service.set_takedown(
+        db, Site, site_id, hidden=body.hidden, actor_id=current_user.id
     )
     return AdminSiteModerationRead(site_id=site.id, name=site.name, hidden_at=site.hidden_at)
 
@@ -482,12 +401,7 @@ def list_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ContentReportList:
-    """The moderation queue: open reports first, newest first within each group.
-
-    Resolved rows stay (a report is never deleted), so the queue is also the
-    record of decisions. Offset-paged (``ContentReportList``), capped at 100
-    rows per page.
-    """
+    """The moderation queue: open reports first, newest first within each group."""
     per_page = page_size(per_page)
     rows, total = reports_service.list_reports(db, page=page, per_page=per_page)
     return ContentReportList(
@@ -507,14 +421,7 @@ def resolve_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ContentReportRead:
-    """Close one report with a verdict, applying it to what the report names.
-
-    One route for event and collection reports: the service applies the
-    verdicts the target kind takes. 404 on an unknown report, 409 on one that
-    already has a verdict (never reopened) or a verdict the target cannot
-    take. The service owns the mutation and audit trail; the points cache is
-    dropped here, only when an event actually left the map.
-    """
+    """Close one report with a verdict, applying it to what the report names."""
     report, hidden_changed = reports_service.resolve_report(
         db,
         report_id=report_id,
@@ -535,12 +442,7 @@ def set_event_moderation(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminEventModerationRead:
-    """Set an event's moderation state directly, with no report behind it.
-
-    Both fields are optional and independent; an omitted or unchanged field
-    writes no audit row. The one verb that also UNDOES a takedown. 404 for an
-    unknown or soft-deleted event.
-    """
+    """Set an event's moderation state directly, with no report behind it."""
     event, hidden_changed = reports_service.set_event_moderation(
         db,
         geolocation_id=geolocation_id,
@@ -565,17 +467,7 @@ def redact_event_version(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> EventVersionRead:
-    """Blank one filed version of an event's history.
-
-    ``event_versions`` is append-only and version numbers are public
-    addresses, so a version the record must stop serving is blanked, not
-    removed: the snapshot and note go, while the row, ``version_no`` and
-    ``created_at`` stay and the version is listed as ``redacted``. A proof
-    image only it pointed at is deleted with it.
-
-    Idempotent: an already-redacted version writes no audit row. 404 for an
-    unknown or soft-deleted event, or a version the event does not carry.
-    """
+    """Blank one filed version of an event's history."""
     row = admin_service.redact_version(
         db,
         actor_id=current_user.id,
@@ -612,8 +504,7 @@ def maintenance_reap_pending_registrations(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Drop expired ``pending_registrations`` rows. The create path sweeps
-    inline, so this mostly clears abandoned signups."""
+    """Drop expired ``pending_registrations`` rows."""
     result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
@@ -630,12 +521,7 @@ def maintenance_send_completion_digests(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Email every analyst holding unpublished detections.
-
-    One message per analyst: how many wait, and the link to their Detections
-    queue. One provider round-trip per analyst, capped at
-    ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a provider failure on
-    one is counted, not raised."""
+    """Email every analyst holding unpublished detections."""
     result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
