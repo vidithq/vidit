@@ -1,15 +1,7 @@
 """Content reports and the takedown they resolve into.
 
-A report names one target, an event, a collection or a site, and all walk one
-queue: a viewer files one (:func:`create_report`), an admin walks the queue (:func:`list_reports`) and closes a row with a verdict
-(:func:`resolve_report`), or acts on an event directly
-(:func:`set_event_moderation`). The two admin writes share a home because they
-perform the same mutations (graphic flag, ``events.hidden_at``) and must leave
-the same audit trail. The collection takedown is
-``services/admin.withhold_collection``, shared with
-``DELETE /admin/collections/{id}``, and the site takedown
-``services/admin.move_site_takedown``, shared with
-``PATCH /admin/sites/{id}/moderation``.
+The report verdicts and the direct event moderation share a home because they perform the same
+mutations and must leave the same audit trail.
 """
 
 from __future__ import annotations
@@ -49,8 +41,6 @@ from app.services.sites import SiteNotFoundError, visible_sites
 
 
 class ReportError(CodedError):
-    """Friendly error; ``code`` maps to HTTP status. Mirrors ``admin.AdminError``."""
-
     code: str = "report_error"
     status_code = 400
 
@@ -61,33 +51,16 @@ class ReportNotFoundError(ReportError):
 
 
 class ReportAlreadyResolvedError(ReportError):
-    """The report already carries a verdict.
-
-    Reports are resolved once, so a second resolve conflicts instead of
-    overwriting the first verdict and its audit row.
-    """
-
     code = "report_already_resolved"
     status_code = 409
 
 
 class ReportTargetGoneError(ReportError):
-    """The target was deleted (every target column is SET NULL).
-
-    Every verdict except ``dismissed`` mutates a row that no longer exists.
-    """
-
     code = "report_target_gone"
     status_code = 409
 
 
 class ReportVerdictNotApplicableError(ReportError):
-    """The verdict does not exist for this target kind.
-
-    ``marked_graphic`` is an event column; a collection or a site holds no
-    footage of its own. Refused so the admin learns the report is still open.
-    """
-
     code = "report_verdict_not_applicable"
     status_code = 409
 
@@ -218,15 +191,8 @@ def create_event_report(
 
 
 def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[ContentReport], int]:
-    """One page of the queue: open reports first, newest first within each group.
-
-    The ``created_at, id`` tie-break makes the order total so an offset walk
-    never serves a row twice. ``ix_content_reports_queue`` carries these three
-    expressions in this order; change both together.
-
-    The event, collection or site and its owner load eagerly to avoid two lazy
-    round trips per report.
-    """
+    """``ix_content_reports_queue`` carries the three order expressions in this order; change
+    both together."""
     total = db.query(func.count(ContentReport.id)).scalar() or 0
     rows = (
         db.query(ContentReport)
@@ -248,10 +214,8 @@ def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[Content
 
 
 def _mark_graphic(db: Session, *, event: Event, actor_id: uuid.UUID, graphic: bool) -> bool:
-    """Set or clear the graphic flag on every source of the event.
-
-    Returns whether a source changed (a no-op writes no audit row).
-    """
+    """Set or clear the graphic flag on every source of the event, and return whether a source
+    changed: a no-op writes no audit row."""
     moved = [source for source in event.sources if source.is_graphic != graphic]
     if not moved:
         return False
@@ -267,11 +231,7 @@ def _mark_graphic(db: Session, *, event: Event, actor_id: uuid.UUID, graphic: bo
 
 
 def _set_hidden(db: Session, *, event: Event, actor_id: uuid.UUID, hidden: bool) -> bool:
-    """Withhold the event from public reads, or restore it.
-
-    Returns whether it changed, which tells the router whether to drop the
-    points cache.
-    """
+    """Withhold the event from public reads, or restore it, and return whether it changed."""
     if hidden == (event.hidden_at is not None):
         return False
     event.hidden_at = datetime.now(UTC) if hidden else None
@@ -293,32 +253,9 @@ def resolve_report(
 ) -> tuple[ContentReport, bool]:
     """Close one report with a verdict, applying it to what the report names.
 
-    ``dismissed`` leaves the target untouched. ``hidden`` withholds the target
-    from public reads (same stamp as ``DELETE /admin/collections/{id}``).
-    ``marked_graphic`` is event-only: a collection or site report raises
-    :class:`ReportVerdictNotApplicableError` (409).
-
-    Each verdict appends a ``report_resolved`` audit row, plus the matching
-    action (``event_marked_graphic``, ``event_hidden``, ``collection_hidden``,
-    ``site_hidden``) when the target changed, so the trail is the same as via
-    the admin verbs.
-
-    A report whose target was deleted (every id column NULL) accepts
-    ``dismissed`` only (:class:`ReportTargetGoneError`, 409).
-
-    A collection its owner deleted while reported (``collections.deleted_at``)
-    takes every verdict a live one takes. Once no open report names it, the
-    verdict erases it (``services/collections.erase_if_released``) and appends
-    a ``collection_erased`` audit row.
-
-    The report is locked ``FOR UPDATE`` first and its verdict re-checked, so
-    concurrent resolves serialize and the loser gets
-    :class:`ReportAlreadyResolvedError` (409). Target-mutating verdicts lock
-    their target the same way.
-
-    Returns ``(report, hidden_changed)``; the flag tells the router to drop
-    the points cache and is only set by an event takedown. Raises
-    :class:`ReportNotFoundError` (404) on an unknown id.
+    The report is locked first and its verdict re-checked, so concurrent resolves serialize and
+    the loser gets :class:`ReportAlreadyResolvedError`. Target-mutating verdicts lock their
+    target the same way. ``hidden_changed`` tells the router to drop the points cache.
     """
     report = lock_row(db, ContentReport, ContentReport.id == report_id).first()
     if report is None:
@@ -395,15 +332,8 @@ def set_event_moderation(
 ) -> tuple[Event, bool]:
     """Apply an admin's moderation state to one event, with no report behind it.
 
-    ``None`` leaves that axis alone; a value equal to the current one writes
-    nothing. This verb can also undo a takedown, so it bypasses
-    ``_resolve_live_event`` (which hides withheld rows).
-
-    The event is locked ``FOR UPDATE`` so this door and a report verdict
-    serialize.
-
-    Returns ``(event, hidden_changed)``. Raises :class:`EventNotFoundError`
-    (404) for an unknown or soft-deleted event.
+    It reads a withheld event, since this verb can undo a takedown. The event lock serializes
+    this door and a report verdict.
     """
     event = lock_row(db, Event, Event.id == geolocation_id, Event.deleted_at.is_(None)).first()
     if event is None:

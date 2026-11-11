@@ -1,7 +1,7 @@
 """The ``/collections`` endpoints: one analyst's curated sets of their own events.
 
-Rules live in ``services/collections``; this module resolves the row, hands
-the verb its arguments and maps a typed service error to its status.
+Rules live in ``services/collections``; this module resolves the row and hands
+the verb its arguments.
 """
 
 import uuid
@@ -50,12 +50,7 @@ def create_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectionRead:
-    """Open a collection under a title and description, holding ``event_ids``.
-
-    Ids are optional. With them the create and the shelving are one act under
-    the refusals of ``PUT /collections/{id}/events/{event_id}``: a foreign or
-    ineligible id fails the whole create.
-    """
+    """Open a collection under a title and description, holding ``event_ids``."""
     collection = collections_service.create_collection(
         db,
         owner=current_user,
@@ -75,10 +70,7 @@ def count_collectable_matches(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectableCount:
-    """Count your events a search lists in its Geolocations group that a collection can hold.
-
-    The set ``POST /collections/{id}/events`` shelves for the same ``match``.
-    """
+    """Count your events a search lists in its Geolocations group that a collection can hold."""
     return CollectableCount(total=collections_bulk.count_matches(db, match=body, user=current_user))
 
 
@@ -94,11 +86,7 @@ def list_collectable_matches(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[EventList]:
-    """Page through the events ``POST /collections/collectable-count`` counts, newest first.
-
-    The set ``POST /collections/{id}/events`` shelves for the same ``match``. Capped at 100
-    rows; follow the ``Link: rel="next"`` cursor.
-    """
+    """Page through the events ``POST /collections/collectable-count`` counts, newest first."""
     size = page_size(limit)
     window = collections_bulk.list_matches(
         db,
@@ -125,12 +113,7 @@ def report_collection(
     current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> ContentReport:
-    """Report a collection for moderation.
-
-    Same gesture, body and per-IP limit as an event report: open to anonymous
-    viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
-    unknown, withheld, owner-deleted or orphaned collection answers 404.
-    """
+    """Report a collection for moderation."""
     return reports_service.create_report(
         db,
         kind="collection",
@@ -150,8 +133,7 @@ def get_collection(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ) -> CollectionRead:
-    """One collection's header: owner, title, item count and date range.
-    Public; a withheld or owner-deleted collection is a 404 for everyone but an admin."""
+    """One collection's header: owner, title, item count and date range."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -167,11 +149,7 @@ def update_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectionRead:
-    """Write your collection's title and description (owner only, else 403).
-
-    Both travel together. A refused description is a 400
-    (``invalid_description``), as on create.
-    """
+    """Write your collection's title and description (owner only, else 403)."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -193,11 +171,7 @@ def delete_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Drop your collection (owner only). Its events stay.
-
-    Under an open content report the collection is only withheld, from every
-    read but an admin's, until its last open report is resolved, which erases it.
-    """
+    """Drop your collection (owner only)."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -216,12 +190,7 @@ def list_collection_events(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user_optional),
 ):
-    """The collection's items in the order the events happened.
-
-    Ordered ascending by ``occurred_date``, ``occurred_time``, ``created_at``, ``id``;
-    a missing date or hour sorts last. Capped at 100 rows; follow the
-    ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
-    """
+    """The collection's items in the order the events happened."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -251,12 +220,7 @@ def add_events_to_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CollectionBulkAddResult:
-    """Put many of your events on one of your collections, by id or by search, in one write.
-
-    Idempotent: an event already on it is skipped and counted, as is one whose
-    state a collection does not show. 403 for someone else's collection or event,
-    422 ``too_many_events`` past 500 events.
-    """
+    """Put many of your events on one of your collections, by id or by search, in one write."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -286,12 +250,7 @@ def add_event_to_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Put one of your events on one of your collections.
-
-    Idempotent (204, no second row). 403 when the collection or the event
-    belongs to someone else, 409 when the event's state is not one a collection
-    shows.
-    """
+    """Put one of your events on one of your collections."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -307,8 +266,7 @@ def remove_event_from_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    """Take one event off your collection (owner only). Idempotent (204); the
-    event is untouched."""
+    """Take one event off your collection (owner only)."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )

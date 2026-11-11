@@ -37,15 +37,12 @@ from app.services.thumbnails import thumbnail_loads
 
 
 class BulkAddOutcome(NamedTuple):
-    """What one bulk add wrote and what it skipped."""
-
     added: int
     already_in_collection: int
     not_collectable: int
 
 
 def count_matches(db: Session, *, match: SearchMatch, user: User) -> int:
-    """How many of ``user``'s collectable events ``match`` lists (:func:`services.search.collectable_matches`)."""
     match.filters.validate()
     return collectable_matches(db, query=match.q, filters=match.filters, user=user).count()
 
@@ -58,12 +55,8 @@ def list_matches(
     limit: int,
     after: tuple[datetime, uuid.UUID] | None = None,
 ) -> list[tuple[Event, float | None, float | None]]:
-    """One window of the events :func:`count_matches` counts, newest first (``created_at``,
-    ``id``, both descending), over-fetched by one row for ``pagination.paged``.
-
-    Returns ``(event, lat, lng)`` rows with the card loads of a collection's item page. ``after``
-    is the decoded cursor of the previous page's last row.
-    """
+    """One window of ``(event, lat, lng)`` rows :func:`count_matches` counts, newest first,
+    over-fetched by one row for ``pagination.paged``."""
     match.filters.validate()
     query = collectable_matches(
         db,
@@ -103,13 +96,9 @@ def add_events(
 ) -> BulkAddOutcome:
     """Put ``event_ids``, or the events ``match`` names, on ``collection``. One transaction.
 
-    The collection must be the caller's (403). Ids run
-    :func:`services.collections.split_collectable`: an unknown id is a 404 and an
-    uncredited one a 403 for the whole call, a non-collectable one is skipped. A
-    match resolves server-side to the caller's collectable events only, so it
-    skips nothing on that ground. ``exclude_event_ids`` (match only, the schema
-    refuses it beside ids) leaves those events out of the match before the cap
-    counts it, and is itself capped like ``event_ids``.
+    A match resolves server-side to the caller's collectable events only, so it skips nothing
+    on that ground. ``exclude_event_ids`` leaves events out of the match before the cap counts
+    it, and is itself capped like ``event_ids``.
 
     A row already present, or one a concurrent add writes first, counts as
     ``already_in_collection`` (:func:`services.collections.insert_memberships`).
