@@ -73,7 +73,7 @@ def _actor_email_capped(db: Session, actor_id: uuid.UUID) -> bool:
     return (queued or 0) >= settings.notification_email_daily_cap_per_actor
 
 
-def _emit(
+def emit(
     db: Session,
     *,
     recipient_id: uuid.UUID,
@@ -112,7 +112,7 @@ def notify_request_fulfilled(db: Session, *, event: Event, fulfiller: User) -> N
     """
     if event.requested_by_id is None:
         return
-    _emit(
+    emit(
         db,
         recipient_id=event.requested_by_id,
         kind="request_fulfilled",
@@ -136,7 +136,7 @@ def notify_new_follower(db: Session, *, follower_id: uuid.UUID, followed_id: uui
         .first()
     )
     if seen is None:
-        _emit(db, recipient_id=followed_id, kind="new_follower", actor_id=follower_id)
+        emit(db, recipient_id=followed_id, kind="new_follower", actor_id=follower_id)
 
 
 def notify_co_geolocator_invite(db: Session, *, event: Event, invitee_id: uuid.UUID) -> None:
@@ -157,7 +157,7 @@ def notify_co_geolocator_invite(db: Session, *, event: Event, invitee_id: uuid.U
     )
     if recent is not None:
         return
-    _emit(
+    emit(
         db,
         recipient_id=invitee_id,
         kind="co_geolocator_invite",
@@ -168,7 +168,7 @@ def notify_co_geolocator_invite(db: Session, *, event: Event, invitee_id: uuid.U
 
 def notify_co_geolocator_removed(db: Session, *, event: Event, removed_id: uuid.UUID) -> None:
     """Tell ``removed_id`` that the owner of ``event`` took their credit off it."""
-    _emit(
+    emit(
         db,
         recipient_id=removed_id,
         kind="co_geolocator_removed",
@@ -182,18 +182,7 @@ def notify_ownership_transferred(db: Session, *, event: Event, heir_id: uuid.UUI
 
     No actor: the row must not name the erased analyst.
     """
-    _emit(db, recipient_id=heir_id, kind="ownership_transferred", event_id=event.id)
-
-
-def notify_organization_invite(db: Session, *, invite: OrganizationMember) -> None:
-    """Tell the invitee that an org manager invited them to join."""
-    _emit(
-        db,
-        recipient_id=invite.user_id,
-        kind="organization_invite",
-        actor_id=invite.invited_by_id,
-        organization_id=invite.organization_id,
-    )
+    emit(db, recipient_id=heir_id, kind="ownership_transferred", event_id=event.id)
 
 
 def notify_organization_invite_accepted(
@@ -205,27 +194,12 @@ def notify_organization_invite_accepted(
     """
     if invite.invited_by_id is None:
         return
-    _emit(
+    emit(
         db,
         recipient_id=invite.invited_by_id,
         kind="organization_invite_accepted",
         actor_id=member_id,
         organization_id=invite.organization_id,
-    )
-
-
-def notify_organization_manager_inherited(
-    db: Session, *, organization_id: uuid.UUID, heir_id: uuid.UUID
-) -> None:
-    """Tell ``heir_id`` they became an org manager because the last one left Vidit.
-
-    Names no actor: the notification never says whose account was erased.
-    """
-    _emit(
-        db,
-        recipient_id=heir_id,
-        kind="organization_manager_inherited",
-        organization_id=organization_id,
     )
 
 
@@ -239,7 +213,7 @@ def notify_organization_approval_removed(
     the organization row is gone.
     """
     for event_id, owner_id in events:
-        _emit(
+        emit(
             db,
             recipient_id=owner_id,
             kind="organization_approval_removed",
@@ -259,7 +233,7 @@ def notify_approval_received(
     resolved (``requester_ids``), that ``approval``'s reviewer approved its live version, for its
     organization when set. Each row points at ``approval`` and goes when it is deleted."""
     for recipient_id in {event.owner_id, *requester_ids}:
-        _emit(
+        emit(
             db,
             recipient_id=recipient_id,
             kind="approval_received",
@@ -284,7 +258,7 @@ def notify_approval_request_received(
         set(db.scalars(ever_credited_ids(event.id))) if organization_id is not None else set()
     )
     for recipient_id in set(recipient_ids) - credited:
-        _emit(
+        emit(
             db,
             recipient_id=recipient_id,
             kind="approval_request_received",
@@ -304,7 +278,7 @@ def notify_approval_request_declined(
 ) -> None:
     """Tell ``requester_id`` that ``target_id`` declined to approve ``event``, for
     ``organization_id`` when set."""
-    _emit(
+    emit(
         db,
         recipient_id=requester_id,
         kind="approval_request_declined",
@@ -342,7 +316,7 @@ def notify_re_approve_requested(
     credited = set(db.scalars(ever_credited_ids(event.id)))
     recipients = [(r, org) for r, org in recipients if org is None or r not in credited]
     for recipient_id, organization_id in recipients:
-        _emit(
+        emit(
             db,
             recipient_id=recipient_id,
             kind="re_approve_requested",

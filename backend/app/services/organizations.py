@@ -224,8 +224,12 @@ def hand_over_manager_roles(db: Session, *, leaving_user_id: uuid.UUID) -> None:
         if heir is None:
             continue
         heir.role = "manager"
-        notifications.notify_organization_manager_inherited(
-            db, organization_id=org_id, heir_id=heir.user_id
+        # No actor: the notification never says whose account was erased.
+        notifications.emit(
+            db,
+            recipient_id=heir.user_id,
+            kind="organization_manager_inherited",
+            organization_id=org_id,
         )
 
 
@@ -503,7 +507,13 @@ def invite(db: Session, org: Organization, *, inviter: User, username: str) -> O
             db.add(row)
     except IntegrityError as exc:
         raise AlreadyInvitedError("Already invited") from exc
-    notifications.notify_organization_invite(db, invite=row)
+    notifications.emit(
+        db,
+        recipient_id=row.user_id,
+        kind="organization_invite",
+        actor_id=inviter.id,
+        organization_id=org.id,
+    )
     return row
 
 
