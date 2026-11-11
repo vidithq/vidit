@@ -152,7 +152,7 @@ class Source(Base):
             SourceLink.id,
         ),
     )
-    tags = relationship("Tag", secondary=source_tags, back_populates="sources")
+    tags = relationship("Tag", secondary=source_tags, back_populates="sources", order_by="Tag.name")
     # One file per source (``uq_media_source_id``); None for a URL-only source.
     media = relationship(
         "Media", uselist=False, back_populates="source", cascade="all, delete-orphan"

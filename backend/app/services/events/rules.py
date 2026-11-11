@@ -43,7 +43,7 @@ def _require_proof_image(proof: str | None) -> None:
 
 
 def _resolve_tags(db: Session, tag_ids: list) -> list[Tag]:
-    return db.query(Tag).filter(Tag.id.in_(tag_ids)).all() if tag_ids else []
+    return db.query(Tag).filter(Tag.id.in_(tag_ids)).order_by(Tag.name).all() if tag_ids else []
 
 
 def _resolve_conflicts(db: Session, conflict_ids: list) -> list[Conflict]:

@@ -301,6 +301,26 @@ def test_detail_returns_full_shape(db, author, free_tag):
     assert any(tag["name"] == free_tag.name for tag in body["tags"])
 
 
+def test_detail_orders_tags_by_name(db, author):
+    suffix = uuid.uuid4().hex[:8]
+    late = Tag(name=f"zulu-{suffix}")
+    early = Tag(name=f"alpha-{suffix}")
+    db.add_all([late, early])
+    db.commit()
+    geo = make_event(db, author=author, tags=[late, early])
+    geo.sources[0].tags = [late, early]
+    db.commit()
+
+    try:
+        body = client.get(f"/api/v1/events/{geo.id}").json()
+        expected = [early.name, late.name]
+        assert [tag["name"] for tag in body["tags"]] == expected
+        assert [tag["name"] for tag in body["sources"][0]["tags"]] == expected
+    finally:
+        db.execute(Tag.__table__.delete().where(Tag.id.in_([late.id, early.id])))
+        db.commit()
+
+
 def test_detail_404_for_unknown_id():
     response = client.get(f"/api/v1/events/{uuid.uuid4()}")
     assert response.status_code == 404

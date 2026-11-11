@@ -351,7 +351,7 @@ class Event(Base):
         cascade="all, delete-orphan",
         order_by=lambda: source_order(),
     )
-    tags = relationship("Tag", secondary="event_tags", back_populates="events")
+    tags = relationship("Tag", secondary="event_tags", back_populates="events", order_by="Tag.name")
     conflicts = relationship("Conflict", secondary="event_conflicts", back_populates="events")
     # The credit: ``active`` rows only, earliest first.
     geolocators = relationship(

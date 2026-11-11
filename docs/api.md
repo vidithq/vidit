@@ -1184,6 +1184,7 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | `coords` | The subject point. `null` on a coordinate-less `requested` event; every `geolocated` row carries it |
 | `sources` | Every source, as `SourceRead`, in the order the last write posted. Empty on a detection that declared none. A published row always carries a `direct` or `indirect` source with a file |
 | `sources[].links` | The source's URLs, ordered by `posted_at` with unknown last. `archived` is the link's archived copy: `url` is the snapshot, `provider` is `wayback`, `archive_today` or `ghostarchive`, read off the snapshot's host, and `archived_at` is when it was recorded. `null` until an analyst records one (see [`archival.md`](archival.md)) |
+| `tags`, `sources[].tags` | The event's tags and each source's, ordered by `name`, on every read that carries them |
 | `sources[].media` | The source's file, `null` for a source that is only URLs. A proof image lives inline in the `proof` HTML as an `img` src |
 | `sources[].media.role` | `source` for a source's file, `proof` for a proof image, derived from the row's parent. Every `MediaRead` carries it, `thumbnail` and snapshot `proof_media` included. Only a `source` image has `_hero` / `_thumb` derivatives, so read a `proof` `storage_url` as is |
 | `sources[].kind` | `unknown` on a machine source until review |
