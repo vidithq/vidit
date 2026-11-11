@@ -11,10 +11,10 @@ class TTLCache:
     """TTL cache with LRU eviction and a hard size cap, a defence against
     cache-key flooding (many distinct values of a free-form filter like `author`)."""
 
-    def __init__(self, default_ttl: int = 60, max_size: int = 512):
+    def __init__(self, ttl: int, max_size: int):
         self._store: OrderedDict[str, tuple[float, Any]] = OrderedDict()
         self._lock = threading.Lock()
-        self._default_ttl = default_ttl
+        self._ttl = ttl
         self._max_size = max_size
 
     def get(self, key: str) -> Any | None:
@@ -29,24 +29,17 @@ class TTLCache:
             self._store.move_to_end(key)
             return value
 
-    def set(self, key: str, value: Any, ttl: int | None = None) -> None:
+    def set(self, key: str, value: Any) -> None:
         with self._lock:
-            expires_at = time.monotonic() + (ttl or self._default_ttl)
             if key in self._store:
                 self._store.move_to_end(key)
-            self._store[key] = (expires_at, value)
+            self._store[key] = (time.monotonic() + self._ttl, value)
             while len(self._store) > self._max_size:
                 self._store.popitem(last=False)
 
-    def invalidate(self, prefix: str = "") -> None:
-        """Remove all entries, or those whose key starts with prefix."""
+    def invalidate(self) -> None:
         with self._lock:
-            if not prefix:
-                self._store.clear()
-            else:
-                keys = [k for k in self._store if k.startswith(prefix)]
-                for k in keys:
-                    del self._store[k]
+            self._store.clear()
 
 
-points_cache = TTLCache(default_ttl=60, max_size=512)
+points_cache = TTLCache(ttl=60, max_size=512)
