@@ -56,6 +56,7 @@ import asyncio
 import dataclasses
 import logging
 import uuid
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
@@ -217,17 +218,8 @@ class BotRunOutcome:
     # Mentions the drain ran through the pipeline.
     mentions_processed: int = 0
     created_event_count: int = 0
-    # Mentions that opened a ``requested`` row (not counted in ``created_event_count``).
-    requests_opened: int = 0
-    # Mentions that only overwrote an open detection (none created, one or more updated).
-    events_updated: int = 0
     replies_posted: int = 0
-    # Mentions whose tag came from X's reply prefix; nothing acquired or answered.
-    inherited: int = 0
-    no_detection: int = 0
-    no_account: int = 0
-    skipped: int = 0
-    failed: int = 0
+    outcomes: Counter[BotMentionOutcome] = dataclasses.field(default_factory=Counter)
 
 
 def acquire_tagged_thread(
@@ -615,20 +607,7 @@ async def _process_claimed(
     if reply_id is not None:
         budget.note_reply(mention.author_handle)
         outcome.replies_posted += 1
-    if verdict == "updated":
-        outcome.events_updated += 1
-    elif verdict == "requested":
-        outcome.requests_opened += 1
-    elif verdict == "inherited":
-        outcome.inherited += 1
-    elif verdict == "no_detection":
-        outcome.no_detection += 1
-    elif verdict == "no_account":
-        outcome.no_account += 1
-    elif verdict == "skipped":
-        outcome.skipped += 1
-    elif verdict == "failed":
-        outcome.failed += 1
+    outcome.outcomes[verdict] += 1
     return verdict
 
 

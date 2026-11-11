@@ -53,19 +53,11 @@ async def _drain_both(db) -> int:
     mentions = await bot.drain_mentions(db)
     if mentions.mentions_processed:
         logger.info(
-            "Bot drain: %d mentions, %d events created, %d detections updated, "
-            "%d requests opened, %d replies posted, %d without detection, %d inheriting the "
-            "tag, %d without a linked account, %d deduped, %d failed",
+            "Bot drain: %d mentions, %d events created, %d replies posted, outcomes %s",
             mentions.mentions_processed,
             mentions.created_event_count,
-            mentions.events_updated,
-            mentions.requests_opened,
             mentions.replies_posted,
-            mentions.no_detection,
-            mentions.inherited,
-            mentions.no_account,
-            mentions.skipped,
-            mentions.failed,
+            dict(mentions.outcomes),
         )
     return handled + mentions.mentions_processed
 
