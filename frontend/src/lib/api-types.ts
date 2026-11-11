@@ -873,19 +873,9 @@ export interface paths {
          * List Conflicts
          * @description Return the conflicts referential, ongoing first then by name.
          *
-         *     The default returns every row: the submit picker needs the whole
-         *     referential (ended conflicts behind its toggle) so analysts can tag
-         *     archival footage. It is server-managed (Wikipedia sync, Wikidata seed,
-         *     operator rows); there is no create endpoint.
-         *
-         *     ``used=true`` is the map-filter view: only conflicts on at least one live
-         *     event. Mirrors the orphan filter on ``GET /tags``.
-         *
-         *     Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: the picker
-         *     filters the whole referential client-side. The daily sync's sanity band
-         *     bounds one parse pass, not the table (rows accumulate across passes), so
-         *     the ceiling bounds the response. A response landing on it is logged because
-         *     the payload can't say it was cut.
+         *     The daily sync's sanity band bounds one parse pass, not the table (rows accumulate across
+         *     passes), so ``REFERENTIAL_MAX_ROWS`` bounds the response. A response landing on it is logged
+         *     because the payload can't say it was cut.
          */
         get: operations["list_conflicts_api_v1_conflicts_get"];
         put?: never;
@@ -1576,10 +1566,6 @@ export interface paths {
         /**
          * Get Feed Dates
          * @description The rows ``GET /feed`` walks for the request, counted per day on each date axis.
-         *
-         *     Takes the ``scope``, ``status`` and filters of ``GET /feed``. ``occurred_date`` ignores the
-         *     request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
-         *     ``submitted_from`` / ``submitted_to``. ``total`` counts the rows under every filter.
          */
         get: operations["get_feed_dates_api_v1_feed_dates_get"];
         put?: never;
@@ -1600,8 +1586,6 @@ export interface paths {
         /**
          * List Notifications
          * @description Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
-         *
-         *     Listing marks nothing read; ``POST /notifications/read`` does.
          */
         get: operations["list_notifications_api_v1_notifications_get"];
         put?: never;
@@ -1662,19 +1646,12 @@ export interface paths {
         /**
          * Unsubscribe Email Page
          * @description Send a mail client that opens the ``List-Unsubscribe`` URL to the confirmation page.
-         *
-         *     Changes nothing: a mail scanner opens links too. The page posts the token back here once
-         *     the reader confirms.
          */
         get: operations["unsubscribe_email_page_api_v1_notifications_unsubscribe_get"];
         put?: never;
         /**
          * Unsubscribe Email
          * @description Turn off one kind of notification email, named by a signed token.
-         *
-         *     Needs no session: a mail client posts it one-click from the
-         *     ``List-Unsubscribe`` header. Idempotent; 400 on a token that does not
-         *     verify.
          */
         post: operations["unsubscribe_email_api_v1_notifications_unsubscribe_post"];
         delete?: never;
@@ -2223,9 +2200,6 @@ export interface paths {
         /**
          * Check Source
          * @description The imagery provider each link opens, and the warnings the source would carry.
-         *
-         *     Writes nothing. The warnings are the ones ``SourceRead.warnings`` serves once the source is
-         *     saved, so the form shows them while the analyst types.
          */
         post: operations["check_source_api_v1_sources_check_post"];
         delete?: never;
@@ -2245,11 +2219,6 @@ export interface paths {
          * List Tags
          * @description Return tags referenced by at least one *live* event or one of its sources, so the map
          *     filter shows no chips that match nothing.
-         *
-         *     Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: pickers and
-         *     the filter panel hydrate the vocabulary whole and filter client-side. A
-         *     response landing on the ceiling is logged because the payload can't say it
-         *     was cut.
          */
         get: operations["list_tags_api_v1_tags_get"];
         put?: never;
@@ -2277,9 +2246,6 @@ export interface paths {
         /**
          * List Suggested Tags
          * @description Return the tags a form offers in one click: your most used tags, then the platform's.
-         *
-         *     Ranked by uses on live events you own and their sources, then filled with the most used
-         *     live tags. The list never holds an orphan tag.
          */
         get: operations["list_suggested_tags_api_v1_tags_suggested_get"];
         put?: never;
@@ -2302,10 +2268,6 @@ export interface paths {
         /**
          * Create Upload
          * @description Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``.
-         *
-         *     The file is validated (type, size) and stored now, and each row expires
-         *     after 24 hours unless a write takes it. 400 on an invalid file, 429 past
-         *     the per-account ceiling of staged files.
          */
         post: operations["create_upload_api_v1_uploads_post"];
         delete?: never;
