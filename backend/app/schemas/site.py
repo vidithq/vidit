@@ -44,6 +44,10 @@ SiteName = Annotated[
 ]
 
 
+def _blank_is_none(v: str | None) -> str | None:
+    return (v or "").strip() or None
+
+
 class ZonePolygon(BaseModel):
     """A GeoJSON Polygon in WGS84: ``[lng, lat]`` positions, exterior ring first, each ring closed.
 
@@ -85,10 +89,7 @@ class SiteSourceCreate(BaseModel):
     media_id: uuid.UUID | None = None
     note: str | None = Field(None, max_length=SITE_SOURCE_NOTE_MAX_LENGTH)
 
-    @field_validator("note")
-    @classmethod
-    def _blank_is_none(cls, v: str | None) -> str | None:
-        return (v or "").strip() or None
+    _blank_note_is_none = field_validator("note")(_blank_is_none)
 
     @model_validator(mode="after")
     def _one_file_and_a_past_capture(self) -> Self:
@@ -175,10 +176,7 @@ class SiteVersionCreate(BaseModel):
     event_links: SiteEventLinks | None = None
     note: str | None = Field(None, max_length=VERSION_NOTE_MAX_LENGTH)
 
-    @field_validator("note")
-    @classmethod
-    def _blank_note_is_none(cls, v: str | None) -> str | None:
-        return (v or "").strip() or None
+    _blank_note_is_none = field_validator("note")(_blank_is_none)
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:

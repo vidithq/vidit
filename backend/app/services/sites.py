@@ -81,10 +81,15 @@ from app.schemas.source import ImageryProviderRead, ImageryProviderRef
 from app.schemas.user import AuthorRef
 from app.services.event_filters import lock_event, site_linkable_events
 from app.services.events import InvalidCoordinatesError, validate_coordinates
-from app.services.events.errors import SourceMediaNotFoundError
+from app.services.events.errors import (
+    NothingChangedError,
+    SourceMediaNotFoundError,
+    VersionMismatchError,
+)
 from app.services.events.sources import build_source_read, file_source
 from app.services.evidence_intake import StoredObject, media_objects
 from app.services.imagery import LinkCheck, can_reopen, image_provider
+from app.services.row_locks import lock_row
 from app.services.thumbnails import thumbnail_loads, thumbnail_media
 from app.services.versions import MAX_VERSIONS_PER_EVENT, VersionLimitError
 
@@ -99,109 +104,69 @@ DEFAULT_MARGIN_M = 10_000
 MAX_MARGIN_M = 10_000
 
 
-class SiteError(CodedError):
-    """A site write or read the rules refuse. Stable ``code`` per subclass."""
-
-    code: str
-
-
-class SiteNotFoundError(SiteError):
+class SiteNotFoundError(CodedError):
     code = "site_not_found"
     status_code = 404
 
 
-class NotSiteOwnerError(SiteError):
-    """Only the site's owner saves a version of the site."""
-
+class NotSiteOwnerError(CodedError):
     code = "not_site_owner"
     status_code = 403
 
 
-class NotSourceAuthorError(SiteError):
-    """Only the analyst who filed a source removes it."""
-
+class NotSourceAuthorError(CodedError):
     code = "not_source_author"
     status_code = 403
 
 
-class SourceCarriesContourError(SiteError):
-    """A source is removed only once it carries no contour."""
-
+class SourceCarriesContourError(CodedError):
     code = "source_carries_contour"
     status_code = 409
 
 
-class SiteContourRequiredError(SiteError):
-    """A site keeps at least one source with a contour."""
-
+class SiteContourRequiredError(CodedError):
     code = "site_contour_required"
     status_code = 409
 
 
-class SiteVersionMismatchError(SiteError):
-    """The site moved past the version the write was prepared on."""
-
-    code = "version_mismatch"
-    status_code = 409
-
-
-class SiteNothingChangedError(SiteError):
-    """A version write that changes nothing."""
-
-    code = "nothing_changed"
-    status_code = 409
-
-
-class SiteVersionNotFoundError(SiteError):
+class SiteVersionNotFoundError(CodedError):
     code = "site_version_not_found"
     status_code = 404
 
 
-class NotEventOwnerError(SiteError):
-    """Only the event's owner links it to a site or unlinks it."""
-
+class NotEventOwnerError(CodedError):
     code = "not_event_owner"
     status_code = 403
 
 
-class InvalidZoneError(SiteError):
+class InvalidZoneError(CodedError):
     """A vertex is out of range, or the polygon is not valid (self-crossing, no area)."""
 
     code = "invalid_zone"
     status_code = 400
 
 
-class ZoneTooLargeError(SiteError):
-    """The zone covers more than ``MAX_ZONE_AREA_KM2``."""
-
+class ZoneTooLargeError(CodedError):
     code = "zone_too_large"
     status_code = 400
 
 
-class ZoneTooWideError(SiteError):
-    """The zone spans ``MAX_ZONE_LNG_SPAN_DEG`` degrees of longitude or more."""
-
+class ZoneTooWideError(CodedError):
     code = "zone_too_wide"
     status_code = 400
 
 
-class EventNotLinkableError(SiteError):
-    """The event is not one a site shows (:func:`site_linkable_events`)."""
-
+class EventNotLinkableError(CodedError):
     code = "event_not_linkable"
     status_code = 409
 
 
-class SiteSourceNotFoundError(SiteError):
-    """The source is not one of the site's live sources."""
-
+class SiteSourceNotFoundError(CodedError):
     code = "site_source_not_found"
     status_code = 404
 
 
-class ImageryNotReopenableError(SiteError):
-    """No link of a site source lets a reader reopen it (``services/imagery.can_reopen``)."""
-
+class ImageryNotReopenableError(CodedError):
     code = "imagery_not_reopenable"
     status_code = 400
 
@@ -212,22 +177,19 @@ def visible_sites() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
 
 
 def live_sources() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
-    """A site source in the live state: not removed."""
     return Source.site_id.is_not(None), Source.removed_at.is_(None)
 
 
 def live_contours() -> ColumnElement[bool]:
-    """A contour in the live state: not redrawn or dropped."""
     return SiteContour.superseded_at.is_(None)
 
 
 def _captured_date(column: Any = Source.captured_at) -> ColumnElement[date]:
-    """The UTC day of a capture time, whatever the session time zone."""
+    # The UTC day, whatever the session time zone.
     return cast(func.timezone("UTC", column), Date)
 
 
 def _actor(user: User | None) -> AuthorRef | None:
-    """The account to credit, or ``None`` once it is soft-deleted or erased."""
     return AuthorRef.model_validate(user) if user is not None and user.deleted_at is None else None
 
 
@@ -308,7 +270,6 @@ def _latest_link_at(as_of: date | None) -> Any:
 
 
 def _link_urls(db: Session, source_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
-    """Each source's link URLs, in the source's link order."""
     urls: dict[uuid.UUID, list[str]] = defaultdict(list)
     if not source_ids:
         return urls
@@ -448,7 +409,6 @@ def _site_states(
 def list_sites(
     db: Session, *, bounds: tuple[float, float, float, float], as_of: date
 ) -> list[SiteList]:
-    """The visible sites whose zone valid on ``as_of`` meets the ``south, west, north, east`` box."""
     states = _site_states(
         db, as_of=as_of, criteria=visible_sites(), limit=MAP_SITES_LIMIT, bounds=bounds
     )
@@ -456,7 +416,7 @@ def list_sites(
 
 
 def resolve_site(db: Session, *, site_id: uuid.UUID, viewer: User | None) -> Site:
-    """A readable site, or :class:`SiteNotFoundError`. An admin also reads a withheld one."""
+    """An admin also reads a withheld site."""
     query = db.query(Site).options(joinedload(Site.owner)).filter(Site.id == site_id)
     if viewer is None or not viewer.is_admin:
         query = query.filter(*visible_sites())
@@ -580,7 +540,6 @@ def _linked_events(db: Session, site_id: uuid.UUID) -> list[SiteLinkedEventRead]
 
 
 def build_site_read(db: Session, site: Site) -> SiteRead:
-    """The full read of one site: current state, live sources and contours, linked events."""
     ((_, state),) = _site_states(db, as_of=None, criteria=[Site.id == site.id], limit=1)
     return SiteRead(
         **state,
@@ -606,13 +565,18 @@ def find_overlaps(db: Session, zone: ZonePolygon) -> list[SiteOverlapRead]:
     overlap_area = func.ST_Area(intersection)
     new_area = func.ST_Area(cast(geometry, Geography))
     existing_area = func.ST_Area(cast(current.c.zone, Geography))
+    share_of_new_zone = overlap_area / new_area
     rows = (
-        db.query(Site, overlap_area / new_area, overlap_area / existing_area)
+        db.query(Site, share_of_new_zone, overlap_area / existing_area)
         .join(current, current.c.site_id == Site.id)
-        .filter(*visible_sites(), func.ST_Intersects(current.c.zone, geometry))
+        .filter(
+            *visible_sites(), func.ST_Intersects(current.c.zone, geometry), share_of_new_zone > 0
+        )
+        .order_by(func.least(share_of_new_zone, 1.0).desc())
+        .limit(OVERLAPS_LIMIT)
         .all()
     )
-    overlaps = [
+    return [
         SiteOverlapRead(
             id=site.id,
             name=site.name,
@@ -621,20 +585,12 @@ def find_overlaps(db: Session, zone: ZonePolygon) -> list[SiteOverlapRead]:
             share_of_existing_zone=min(float(of_existing), 1.0),
         )
         for site, of_new, of_existing in rows
-        if of_new > 0
     ]
-    overlaps.sort(key=lambda row: row.share_of_new_zone, reverse=True)
-    return overlaps[:OVERLAPS_LIMIT]
 
 
 def _require_site_owner(site: Site, user: User) -> None:
     if site.owner_id != user.id:
         raise NotSiteOwnerError("Only the site's owner can make this change")
-
-
-def _lock_site(db: Session, site: Site) -> Site:
-    """The site row under its lock, which serializes the writes that take a version number."""
-    return db.query(Site).filter(Site.id == site.id).populate_existing().with_for_update().one()
 
 
 def _snapshot(db: Session, site: Site) -> SiteSnapshot:
@@ -730,7 +686,6 @@ def _stage_site_source(
 
 
 def _duplicates(db: Session, source: Source) -> list[uuid.UUID]:
-    """The other live sources of the site with the same provider and the same capture day."""
     provider = image_provider([link.url for link in source.links])
     if provider is None or source.captured_at is None:
         return []
@@ -801,8 +756,8 @@ def _set_links(
     current: dict[uuid.UUID, EventSiteLink],
     links: Sequence[SiteEventLinkCreate],
 ) -> None:
-    """Make ``links`` the caller's links to the site: a new event links, a new effect rewrites
-    the link, and a link of ``current`` the list leaves out is deleted. Staged."""
+    """Make ``links`` the caller's links to the site, deleting a link of ``current`` the list
+    leaves out. Staged."""
     wanted = {link.event_id: link.effect for link in links}
     for event_id, row in current.items():
         if event_id not in wanted:
@@ -863,7 +818,7 @@ def file_site_source(
     ``duplicate_source_ids``, never refused.
     """
     try:
-        locked = _lock_site(db, site)
+        locked = lock_row(db, Site, Site.id == site.id).one()
         _file_version(db, site=locked, editor=author)
         source = _stage_site_source(db, site_id=site.id, author=author, body=body)
         duplicates = _duplicates(db, source)
@@ -873,6 +828,12 @@ def file_site_source(
         raise
     (read,) = _sources(db, Source.id == source.id)
     return SiteSourceFiledRead(**read.model_dump(), duplicate_source_ids=duplicates)
+
+
+def _live_sources_by_id(db: Session, site_id: uuid.UUID) -> dict[uuid.UUID, Source]:
+    return {
+        row.id: row for row in db.query(Source).filter(Source.site_id == site_id, *live_sources())
+    }
 
 
 def _live_source(sources: dict[uuid.UUID, Source], source_id: uuid.UUID) -> Source:
@@ -895,11 +856,8 @@ def remove_site_source(db: Session, *, site: Site, user: User, source_id: uuid.U
     contour (409), the version ceiling (409).
     """
     try:
-        locked = _lock_site(db, site)
-        sources = {
-            row.id: row
-            for row in db.query(Source).filter(Source.site_id == site.id, *live_sources())
-        }
+        locked = lock_row(db, Site, Site.id == site.id).one()
+        sources = _live_sources_by_id(db, site.id)
         source = _live_source(sources, source_id)
         _require_source_author(source, user)
         carries = db.query(SiteContour.id).filter(
@@ -929,15 +887,12 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
     """
     _require_site_owner(site, user)
     try:
-        locked = _lock_site(db, site)
+        locked = lock_row(db, Site, Site.id == site.id).one()
         if body.version_no != locked.version_no:
-            raise SiteVersionMismatchError(
+            raise VersionMismatchError(
                 f"This site is at version {locked.version_no}; reload it before saving"
             )
-        sources = {
-            row.id: row
-            for row in db.query(Source).filter(Source.site_id == site.id, *live_sources())
-        }
+        sources = _live_sources_by_id(db, site.id)
         contours = {
             row.source_id: row
             for row in db.query(SiteContour).filter(SiteContour.site_id == site.id, live_contours())
@@ -978,7 +933,7 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
         record_moves = (body.name, body.kind) != (locked.name, locked.kind)
         state_moves = record_moves or bool(removed or effective or body.added_sources)
         if not state_moves and not links_move:
-            raise SiteNothingChangedError(f"Nothing changed since version {locked.version_no}.")
+            raise NothingChangedError(f"Nothing changed since version {locked.version_no}.")
 
         if state_moves:
             _file_version(db, site=locked, editor=user, note=body.note)
@@ -1013,7 +968,6 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
 def suggest_sites(
     db: Session, *, event: Event, margin_m: float, q: str | None
 ) -> list[SiteSuggestionRead]:
-    """Sites an event may link to, measured from the event's point (:func:`_suggest`)."""
     point = (
         None
         if event.coords is None
@@ -1025,11 +979,7 @@ def suggest_sites(
 def suggest_sites_near(
     db: Session, *, lat: float | None, lng: float | None, margin_m: float, q: str | None
 ) -> list[SiteSuggestionRead]:
-    """Sites a point may link to, for an event form whose event is not written yet.
-
-    ``lat`` and ``lng`` come both or neither: :class:`InvalidCoordinatesError` otherwise, or
-    when they fall out of range.
-    """
+    """Sites a point may link to, for an event form whose event is not written yet."""
     if (lat is None) != (lng is None):
         raise InvalidCoordinatesError("Send both lat and lng, or neither")
     point: ColumnElement[Any] | None = None
@@ -1141,7 +1091,7 @@ def link_event(
 
 
 def unlink_event(db: Session, *, event: Event, user: User, site_id: uuid.UUID) -> None:
-    """Delete the link between the caller's event and a site. Idempotent; files no version."""
+    """Idempotent; files no version."""
     _require_event_owner(event, user)
     lock_event(db, event.id)
     db.query(EventSiteLink).filter(
@@ -1158,8 +1108,7 @@ def list_versions(
     db: Session, site_id: uuid.UUID, *, limit: int, cursor: int | None = None
 ) -> list[SiteVersion]:
     """One page of the site's superseded versions, newest first, over-fetched by one row
-    (``services/pagination.paged``), on the ``version_no`` cursor of
-    ``services/versions.list_versions``."""
+    (``services/pagination.paged``)."""
     query = (
         db.query(SiteVersion)
         .options(joinedload(SiteVersion.edited_by))
@@ -1171,8 +1120,7 @@ def list_versions(
 
 
 def get_version(db: Session, *, site_id: uuid.UUID, version_no: int) -> SiteVersion:
-    """One superseded version by its number (the ``/vN`` address), or
-    :class:`SiteVersionNotFoundError`; the live number is not one."""
+    """One superseded version by its number; the live number is not one."""
     row = (
         db.query(SiteVersion)
         .options(joinedload(SiteVersion.edited_by))

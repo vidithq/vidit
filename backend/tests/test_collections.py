@@ -470,7 +470,7 @@ def test_add_event_is_idempotent(db, owner):
 def test_add_event_surfaces_a_violation_that_is_not_the_duplicate(db, owner):
     """Only the duplicate answers idempotently; a vanished parent row raises.
 
-    The savepoint swallows SQLSTATE 23505 alone. With the collection deleted under the request the INSERT fails the FK (23503) and must surface."""
+    ``ON CONFLICT DO NOTHING`` skips the duplicate alone. With the collection deleted under the request the INSERT fails the FK (23503) and must surface."""
     collection = _make_collection(db, owner=owner)
     event = _make_event(db, author=owner, occurred_date=date(2026, 5, 1))
     # Load what the verb reads off the collection before the row goes, so the refusal comes from the INSERT.

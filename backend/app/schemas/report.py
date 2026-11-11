@@ -13,11 +13,7 @@ DETAILS_MAX_LENGTH = 2000
 
 class ContentReportCreate(BaseModel):
     """Body for ``POST /events/{id}/report``, ``POST /collections/{id}/report``
-    and ``POST /sites/{id}/report``.
-
-    ``reason`` is one of ``ContentReportReason``; ``details`` is optional. One
-    body for every target, the path names the thing.
-    """
+    and ``POST /sites/{id}/report``: the path names the target."""
 
     reason: ContentReportReason
     details: str | None = Field(default=None, max_length=DETAILS_MAX_LENGTH)
@@ -59,15 +55,8 @@ class ReportedSite(BaseModel):
 
 
 class ContentReportRead(BaseModel):
-    """One report as the admin queue reads it.
-
-    ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
-    and all set once resolved, so ``resolved_at is None`` is the open test.
-
-    A row names one target: ``event`` (with its ``event_id``), ``collection``
-    or ``site``. All are NULL once the target is destroyed (the orphan row,
-    closed only by ``dismissed``).
-    """
+    """One report as the admin queue reads it. A row names one target: ``event`` (with its
+    ``event_id``), ``collection`` or ``site``, all NULL once the target is destroyed."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -90,18 +79,14 @@ class ContentReportRead(BaseModel):
 
 
 class ContentReportUpdate(BaseModel):
-    """Body for ``POST /admin/reports/{id}/resolve``: one of
-    ``ContentReportResolution``. No re-resolve (409)."""
+    """Body for ``POST /admin/reports/{id}/resolve``."""
 
     resolution: ContentReportResolution
 
 
 class ContentReportList(BaseModel):
-    """One page of the admin report queue.
-
-    Offset-paged: the leading open/resolved group flag isn't a column a keyset
-    cursor can walk. ``total`` counts every report, resolved included.
-    """
+    """One page of the admin report queue. Offset-paged: the leading open or resolved group flag
+    is not a column a keyset cursor can walk."""
 
     items: list[ContentReportRead]
     total: int

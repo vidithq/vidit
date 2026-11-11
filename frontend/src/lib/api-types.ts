@@ -783,10 +783,6 @@ export interface paths {
         /**
          * Create Collection
          * @description Open a collection under a title and description, holding ``event_ids``.
-         *
-         *     Ids are optional. With them the create and the shelving are one act under
-         *     the refusals of ``PUT /collections/{id}/events/{event_id}``: a foreign or
-         *     ineligible id fails the whole create.
          */
         post: operations["create_collection_api_v1_collections_post"];
         delete?: never;
@@ -807,8 +803,6 @@ export interface paths {
         /**
          * Count Collectable Matches
          * @description Count your events a search lists in its Geolocations group that a collection can hold.
-         *
-         *     The set ``POST /collections/{id}/events`` shelves for the same ``match``.
          */
         post: operations["count_collectable_matches_api_v1_collections_collectable_count_post"];
         delete?: never;
@@ -829,9 +823,6 @@ export interface paths {
         /**
          * List Collectable Matches
          * @description Page through the events ``POST /collections/collectable-count`` counts, newest first.
-         *
-         *     The set ``POST /collections/{id}/events`` shelves for the same ``match``. Capped at 100
-         *     rows; follow the ``Link: rel="next"`` cursor.
          */
         post: operations["list_collectable_matches_api_v1_collections_collectable_events_post"];
         delete?: never;
@@ -850,17 +841,13 @@ export interface paths {
         /**
          * Get Collection
          * @description One collection's header: owner, title, item count and date range.
-         *     Public; a withheld or owner-deleted collection is a 404 for everyone but an admin.
          */
         get: operations["get_collection_api_v1_collections__collection_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Collection
-         * @description Drop your collection (owner only). Its events stay.
-         *
-         *     Under an open content report the collection is only withheld, from every
-         *     read but an admin's, until its last open report is resolved, which erases it.
+         * @description Drop your collection (owner only).
          */
         delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
         options?: never;
@@ -868,9 +855,6 @@ export interface paths {
         /**
          * Update Collection
          * @description Write your collection's title and description (owner only, else 403).
-         *
-         *     Both travel together. A refused description is a 400
-         *     (``invalid_description``), as on create.
          */
         patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;
@@ -885,20 +869,12 @@ export interface paths {
         /**
          * List Collection Events
          * @description The collection's items in the order the events happened.
-         *
-         *     Ordered ascending by ``occurred_date``, ``occurred_time``, ``created_at``, ``id``;
-         *     a missing date or hour sorts last. Capped at 100 rows; follow the
-         *     ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
          */
         get: operations["list_collection_events_api_v1_collections__collection_id__events_get"];
         put?: never;
         /**
          * Add Events To Collection
          * @description Put many of your events on one of your collections, by id or by search, in one write.
-         *
-         *     Idempotent: an event already on it is skipped and counted, as is one whose
-         *     state a collection does not show. 403 for someone else's collection or event,
-         *     422 ``too_many_events`` past 500 events.
          */
         post: operations["add_events_to_collection_api_v1_collections__collection_id__events_post"];
         delete?: never;
@@ -918,17 +894,12 @@ export interface paths {
         /**
          * Add Event To Collection
          * @description Put one of your events on one of your collections.
-         *
-         *     Idempotent (204, no second row). 403 when the collection or the event
-         *     belongs to someone else, 409 when the event's state is not one a collection
-         *     shows.
          */
         put: operations["add_event_to_collection_api_v1_collections__collection_id__events__event_id__put"];
         post?: never;
         /**
          * Remove Event From Collection
-         * @description Take one event off your collection (owner only). Idempotent (204); the
-         *     event is untouched.
+         * @description Take one event off your collection (owner only).
          */
         delete: operations["remove_event_from_collection_api_v1_collections__collection_id__events__event_id__delete"];
         options?: never;
@@ -948,10 +919,6 @@ export interface paths {
         /**
          * Report Collection
          * @description Report a collection for moderation.
-         *
-         *     Same gesture, body and per-IP limit as an event report: open to anonymous
-         *     viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
-         *     unknown, withheld, owner-deleted or orphaned collection answers 404.
          */
         post: operations["report_collection_api_v1_collections__collection_id__report_post"];
         delete?: never;
@@ -2171,15 +2138,6 @@ export interface paths {
         /**
          * Search
          * @description One ranked list of events, sites, collections, analysts and organizations.
-         *
-         *     An empty ``q`` with no active filter returns an empty list (keeps the still-typing hits
-         *     cheap); with an active filter it browses the filtered view, newest first.
-         *
-         *     ``type`` picks the hit types. ``status`` narrows the events. Every other filter narrows the
-         *     events, narrows the sites and collections it applies to, and leaves out the types it does
-         *     not apply to; see ``docs/api.md``.
-         *
-         *     When nothing matches, ``suggestion`` may hold a respelling of ``q`` that finds results.
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -2199,8 +2157,7 @@ export interface paths {
         };
         /**
          * Suggest Authors
-         * @description Usernames for the author-filter typeahead. The filter is an exact match;
-         *     this is how a partial name becomes a handle. Empty ``q`` returns [].
+         * @description Usernames for the author-filter typeahead.
          */
         get: operations["suggest_authors_api_v1_search_authors_get"];
         put?: never;
@@ -2221,11 +2178,6 @@ export interface paths {
         /**
          * Search Dates
          * @description The events ``GET /search`` lists for the request, counted per day on each date axis.
-         *
-         *     Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
-         *     own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
-         *     / ``submitted_to``. ``total`` counts the events under every filter. An empty ``q`` with no
-         *     active filter counts every searchable event; a ``type`` without ``event`` counts nothing.
          */
         get: operations["search_dates_api_v1_search_dates_get"];
         put?: never;
@@ -2246,9 +2198,6 @@ export interface paths {
         /**
          * Search Sections
          * @description The top hits of each type, one section per type with a hit.
-         *
-         *     Takes the query, types and filters of ``GET /search``; each section is the first page that
-         *     ``GET /search`` returns for its type alone, its ``cursor`` included.
          */
         get: operations["search_sections_api_v1_search_sections_get"];
         put?: never;
@@ -2269,17 +2218,12 @@ export interface paths {
         /**
          * List Sites
          * @description The visible sites whose zone valid on ``as_of`` meets the box, newest site first.
-         *
-         *     A site with no contour on or before ``as_of`` is absent. Capped at 1000 sites.
          */
         get: operations["list_sites_api_v1_sites_get"];
         put?: never;
         /**
          * Create Site
          * @description Create a site with its first source, the contour that source shows and your linked events.
-         *
-         *     ``overlapping_sites`` lists the visible sites whose current zone shares area with the new
-         *     one, as a duplicate warning; it never blocks the create.
          */
         post: operations["create_site_api_v1_sites_post"];
         delete?: never;
@@ -2318,7 +2262,7 @@ export interface paths {
         /**
          * List Site Suggestions
          * @description Sites a point may link to, nearest first: those within ``margin_m`` metres of ``lat``,
-         *     ``lng``, or with ``q``, those whose name contains it. Capped at 20.
+         *     ``lng``, or with ``q``, those whose name contains it.
          */
         get: operations["list_site_suggestions_api_v1_sites_suggestions_get"];
         put?: never;
@@ -2339,7 +2283,6 @@ export interface paths {
         /**
          * Get Site
          * @description One site: current zone and last source, sources, contours and visible linked events.
-         *     A withheld site is a 404 for everyone but an admin.
          */
         get: operations["get_site_api_v1_sites__site_id__get"];
         put?: never;
@@ -2362,9 +2305,6 @@ export interface paths {
         /**
          * Report Site
          * @description Report a site for moderation.
-         *
-         *     Same gesture, body and per-IP limit as an event report: open to anonymous viewers. An
-         *     unknown or withheld site answers 404 ``site_not_found``.
          */
         post: operations["report_site_api_v1_sites__site_id__report_post"];
         delete?: never;
@@ -2384,8 +2324,7 @@ export interface paths {
         put?: never;
         /**
          * File Site Source
-         * @description File a dated satellite source on a site, filing a version. Any signed-in analyst; a site
-         *     source is never edited.
+         * @description File a dated satellite source on a site, filing a version.
          */
         post: operations["file_site_source_api_v1_sites__site_id__sources_post"];
         delete?: never;
@@ -2406,8 +2345,7 @@ export interface paths {
         post?: never;
         /**
          * Remove Site Source
-         * @description Remove a source you filed from the site, filing a version. 409 ``source_carries_contour``
-         *     while the source carries a contour.
+         * @description Remove a source you filed from the site, filing a version.
          */
         delete: operations["remove_site_source_api_v1_sites__site_id__sources__source_id__delete"];
         options?: never;
@@ -2424,20 +2362,14 @@ export interface paths {
         };
         /**
          * List Site Versions
-         * @description The site's superseded versions, newest first. The live state is not listed.
-         *
-         *     Paged like ``GET /events/{id}/versions``; ``total`` is the whole history.
+         * @description The site's superseded versions, newest first.
          */
         get: operations["list_site_versions_api_v1_sites__site_id__versions_get"];
         put?: never;
         /**
          * Save Site Version
          * @description Edit your site in one transaction: name, kind, added and removed sources, contour changes
-         *     and your linked events. Owner only.
-         *
-         *     A change to the record, the sources or a contour files the superseded state as one version;
-         *     a change to your links alone files none. 409 ``version_mismatch`` when ``version_no`` names
-         *     a version the site has moved past, 409 ``nothing_changed`` when nothing changes.
+         *     and your linked events.
          */
         post: operations["save_site_version_api_v1_sites__site_id__versions_post"];
         delete?: never;
@@ -2455,7 +2387,7 @@ export interface paths {
         };
         /**
          * Get Site Version
-         * @description One superseded version of a site, by its number. The live number answers 404.
+         * @description One superseded version of a site, by its number.
          */
         get: operations["get_site_version_api_v1_sites__site_id__versions__version_no__get"];
         put?: never;
@@ -3788,11 +3720,8 @@ export interface components {
          * CollectionBulkAdd
          * @description Body of ``POST /collections/{id}/events``: exactly one of ``event_ids`` or ``match``.
          *
-         *     ``event_ids`` are de-duplicated in arrival order. ``match`` names the
-         *     caller's collectable events a search lists in its Geolocations group, less
-         *     ``exclude_event_ids`` (match only, de-duplicated). Past
-         *     :data:`MAX_CREATE_EVENTS` events, or exclusions, is a 422 ``too_many_events``,
-         *     raised by the service so every mode answers with the same code.
+         *     The service, not the schema, caps the events and the exclusions, so every mode answers
+         *     with the same ``too_many_events`` code.
          */
         CollectionBulkAdd: {
             /** Event Ids */
@@ -3822,15 +3751,8 @@ export interface components {
         };
         /**
          * CollectionCoverTile
-         * @description One tile of a collection's mosaic and what kind of file it is.
-         *
-         *     ``url`` is the media of one held item. ``kind``
-         *     (``models/media.MediaKind``) lets a client pick the element that renders
-         *     it (most source media are clips, and an ``<img>`` on one paints an empty
-         *     band). ``role`` (``models/media.MediaRole``) says whether the picture has
-         *     display derivatives: only a source's image does
-         *     (``services/storage.upload_source_file``); a ``proof`` image has no ``_hero`` /
-         *     ``_thumb`` sibling.
+         * @description One tile of a collection's mosaic. ``role`` says whether the picture has display
+         *     derivatives: a ``proof`` image has no ``_hero`` or ``_thumb`` sibling.
          */
         CollectionCoverTile: {
             /**
@@ -3849,12 +3771,6 @@ export interface components {
         /**
          * CollectionCreate
          * @description Body of ``POST /collections``: title, description and the opening events.
-         *
-         *     ``event_ids`` defaults empty. With ids, the create and shelving are one
-         *     transaction through the checks of ``PUT /collections/{id}/events/{event_id}``,
-         *     so an ineligible or foreign id fails the whole create. Ids are
-         *     de-duplicated in arrival order and capped at :data:`MAX_CREATE_EVENTS`;
-         *     items order by event date, so arrival order carries nothing else.
          */
         CollectionCreate: {
             /** Description */
@@ -3867,9 +3783,6 @@ export interface components {
         /**
          * CollectionList
          * @description One page of an analyst's collections, newest first.
-         *
-         *     Offset-paged like ``GET /users/{username}/events``; ``total`` counts the
-         *     collections the caller may see.
          */
         CollectionList: {
             /** Items */
@@ -3892,11 +3805,6 @@ export interface components {
         /**
          * CollectionMembershipRead
          * @description One of the caller's collections, and whether one event is already in it.
-         *
-         *     The add-to-collection popover's row, thinner than :class:`CollectionRead`
-         *     (no description or date range). ``event_count`` and ``cover`` use the same
-         *     predicate as the collection reads
-         *     (``services/event_filters.collectable_events``).
          */
         CollectionMembershipRead: {
             /** Cover */
@@ -3915,27 +3823,8 @@ export interface components {
         };
         /**
          * CollectionRead
-         * @description One collection as every read surface renders it.
-         *
-         *     ``title`` and ``description`` (sanitised HTML) are the owner's two
-         *     required fields. ``description_text`` is its plain-text projection
-         *     (``services/sanitize.html_text``) for surfaces without rich text
-         *     (card clamp, share card, snippet).
-         *
-         *     ``event_count``, ``first_date`` and ``last_date`` are computed at read time
-         *     over the events the collection may show
-         *     (``services/event_filters.collectable_events``), so a closed, taken-down or
-         *     soft-deleted row leaves them without a write. The dates are the min and max
-         *     ``occurred_date`` and are null for an empty or undated collection.
-         *
-         *     ``cover`` is the card's mosaic: zero to four tiles, computed at read time
-         *     (``services/collections.cover_tiles_for``), empty when no item has showable
-         *     media. Each tile carries url, kind and role together (see
-         *     :class:`CollectionCoverTile`).
-         *
-         *     ``tags`` is the union of the tags of the events the collection may show
-         *     and their sources, ordered by name (``services/collections.tags_for``), derived
-         *     and never stored; empty when nothing is tagged.
+         * @description One collection as every read surface renders it. The counts, dates, cover and tags are
+         *     computed at read time over the events the collection may show.
          */
         CollectionRead: {
             /** Cover */
@@ -4015,10 +3904,7 @@ export interface components {
         /**
          * ContentReportCreate
          * @description Body for ``POST /events/{id}/report``, ``POST /collections/{id}/report``
-         *     and ``POST /sites/{id}/report``.
-         *
-         *     ``reason`` is one of ``ContentReportReason``; ``details`` is optional. One
-         *     body for every target, the path names the thing.
+         *     and ``POST /sites/{id}/report``: the path names the target.
          */
         ContentReportCreate: {
             /** Details */
@@ -4031,10 +3917,8 @@ export interface components {
         };
         /**
          * ContentReportList
-         * @description One page of the admin report queue.
-         *
-         *     Offset-paged: the leading open/resolved group flag isn't a column a keyset
-         *     cursor can walk. ``total`` counts every report, resolved included.
+         * @description One page of the admin report queue. Offset-paged: the leading open or resolved group flag
+         *     is not a column a keyset cursor can walk.
          */
         ContentReportList: {
             /** Items */
@@ -4048,14 +3932,8 @@ export interface components {
         };
         /**
          * ContentReportRead
-         * @description One report as the admin queue reads it.
-         *
-         *     ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
-         *     and all set once resolved, so ``resolved_at is None`` is the open test.
-         *
-         *     A row names one target: ``event`` (with its ``event_id``), ``collection``
-         *     or ``site``. All are NULL once the target is destroyed (the orphan row,
-         *     closed only by ``dismissed``).
+         * @description One report as the admin queue reads it. A row names one target: ``event`` (with its
+         *     ``event_id``), ``collection`` or ``site``, all NULL once the target is destroyed.
          */
         ContentReportRead: {
             collection?: components["schemas"]["ReportedCollection"] | null;
@@ -4089,8 +3967,7 @@ export interface components {
         };
         /**
          * ContentReportUpdate
-         * @description Body for ``POST /admin/reports/{id}/resolve``: one of
-         *     ``ContentReportResolution``. No re-resolve (409).
+         * @description Body for ``POST /admin/reports/{id}/resolve``.
          */
         ContentReportUpdate: {
             /**
@@ -5141,12 +5018,8 @@ export interface components {
         };
         /**
          * SearchMatch
-         * @description What one search names: ``q`` and the event filters of ``GET /search``, as a JSON body.
-         *
-         *     ``filters`` takes the query parameters' names and values
-         *     (``services/event_filters.EventFilters``), checked by ``EventFilters.validate``.
-         *     The ``match`` of :class:`CollectionBulkAdd` and the body of
-         *     ``POST /collections/collectable-count``.
+         * @description What one search names: ``q`` and the event filters of ``GET /search``, as a JSON body,
+         *     under the query parameters' names.
          */
         SearchMatch: {
             filters?: components["schemas"]["EventFilters"];

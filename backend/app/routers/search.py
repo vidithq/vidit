@@ -8,7 +8,6 @@ abuse floor. FTS plumbing is in ``services/search.py``.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, replace
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -26,8 +25,6 @@ from app.services.event_filters import (
     validate_status_filter,
 )
 from app.services.pagination import decode_ranked_cursor
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -88,17 +85,7 @@ def search(
     ),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
-    """One ranked list of events, sites, collections, analysts and organizations.
-
-    An empty ``q`` with no active filter returns an empty list (keeps the still-typing hits
-    cheap); with an active filter it browses the filtered view, newest first.
-
-    ``type`` picks the hit types. ``status`` narrows the events. Every other filter narrows the
-    events, narrows the sites and collections it applies to, and leaves out the types it does
-    not apply to; see ``docs/api.md``.
-
-    When nothing matches, ``suggestion`` may hold a respelling of ``q`` that finds results.
-    """
+    """One ranked list of events, sites, collections, analysts and organizations."""
     after = decode_ranked_cursor(cursor) if cursor is not None else None
     page = search_service.search(
         db,
@@ -109,15 +96,7 @@ def search(
         after=after,
     )
     suggestion = _suggestion(db, params) if after is None and page.total == 0 else None
-    return SearchResponse.model_validate(
-        {
-            "hits": page.hits,
-            "total": page.total,
-            "cursor": page.cursor,
-            "suggestion": suggestion,
-            "query": params.q,
-        }
-    )
+    return page.model_copy(update={"suggestion": suggestion})
 
 
 @router.get("/sections", response_model=SearchSections)
@@ -129,25 +108,14 @@ def search_sections(
     limit: int = Query(5, ge=1, le=10, description="Hits per section"),
     db: Session = Depends(get_db),
 ) -> SearchSections:
-    """The top hits of each type, one section per type with a hit.
-
-    Takes the query, types and filters of ``GET /search``; each section is the first page that
-    ``GET /search`` returns for its type alone, its ``cursor`` included.
-    """
+    """The top hits of each type, one section per type with a hit."""
     sections = search_service.search_sections(
         db, query=params.q, types=params.types, limit=limit, filters=params.filters
     )
-    suggestion = None if sections else _suggestion(db, params)
-    return SearchSections.model_validate(
-        {
-            # Field by field: ``asdict`` would deep-copy the ORM rows the hits hold.
-            "sections": [
-                {"type": s.type, "hits": s.hits, "total": s.total, "cursor": s.cursor}
-                for s in sections
-            ],
-            "suggestion": suggestion,
-            "query": params.q,
-        }
+    return SearchSections(
+        sections=sections,
+        suggestion=None if sections else _suggestion(db, params),
+        query=params.q,
     )
 
 
@@ -159,13 +127,7 @@ def search_dates(
     params: _SearchRequest = Depends(_search_request),
     db: Session = Depends(get_db),
 ) -> DateHistogram:
-    """The events ``GET /search`` lists for the request, counted per day on each date axis.
-
-    Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
-    own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
-    / ``submitted_to``. ``total`` counts the events under every filter. An empty ``q`` with no
-    active filter counts every searchable event; a ``type`` without ``event`` counts nothing.
-    """
+    """The events ``GET /search`` lists for the request, counted per day on each date axis."""
     return DateHistogram.model_validate(
         search_service.search_dates(db, query=params.q, types=params.types, filters=params.filters)
     )
@@ -183,6 +145,5 @@ def suggest_authors(
     ),
     db: Session = Depends(get_db),
 ) -> AuthorSuggestions:
-    """Usernames for the author-filter typeahead. The filter is an exact match;
-    this is how a partial name becomes a handle. Empty ``q`` returns []."""
+    """Usernames for the author-filter typeahead."""
     return AuthorSuggestions(authors=search_service.suggest_authors(db, query=q))
