@@ -20,7 +20,6 @@ from app.errors import CodedError
 from app.models.collection import Collection
 from app.models.content_report import (
     ContentReport,
-    ContentReportReason,
     ContentReportResolution,
 )
 from app.models.event import Event
@@ -69,7 +68,6 @@ class _Target(NamedTuple):
     model: Any
     title: Any
     visible: Callable[[], tuple[ColumnElement[bool], ...]]
-    link: Callable[[str], str]
     not_found: type[CodedError]
     not_found_message: str
 
@@ -80,69 +78,16 @@ ReportKind = Literal["event", "collection", "site"]
 # visibility read is viewer-blind: an admin reads a withheld collection or site, but nobody files
 # a report against one.
 _TARGETS: dict[str, _Target] = {
-    "event": _Target(
-        Event, Event.title, visible_events, email.event_link, EventNotFoundError, "Event not found"
-    ),
+    "event": _Target(Event, Event.title, visible_events, EventNotFoundError, "Event not found"),
     "collection": _Target(
         Collection,
         Collection.title,
         visible_collections,
-        email.collection_link,
         CollectionNotFoundError,
         "Collection not found",
     ),
-    "site": _Target(
-        Site, Site.name, visible_sites, email.site_link, SiteNotFoundError, "Site not found"
-    ),
+    "site": _Target(Site, Site.name, visible_sites, SiteNotFoundError, "Site not found"),
 }
-
-
-def _file_report(
-    db: Session,
-    *,
-    kind: ReportKind,
-    target_id: uuid.UUID,
-    reason: ContentReportReason,
-    details: str | None,
-    reporter_id: uuid.UUID | None,
-    reporter_username: str | None,
-    background_tasks: BackgroundTasks,
-) -> ContentReport:
-    target = _TARGETS[kind]
-    visible = (
-        db.query(target.model.id, target.title.label("title"))
-        .filter(target.model.id == target_id, *target.visible())
-        .first()
-    )
-    if visible is None:
-        raise target.not_found(target.not_found_message)
-
-    report = ContentReport(
-        reason=reason, details=details, reporter_id=reporter_id, **{f"{kind}_id": target_id}
-    )
-    db.add(report)
-    db.commit()
-
-    address = settings.report_notify_email
-    if address:
-        # Built here, so no ORM row reaches the task, which runs after the session closes.
-        message = email.content_report_email(
-            to=address,
-            target=kind,
-            target_id=str(target_id),
-            target_title=visible.title,
-            target_link=target.link(str(target_id)),
-            reason=report.reason,
-            details=report.details,
-            reporter=reporter_username or "anonymous",
-            created_at=report.created_at,
-        )
-        background_tasks.add_task(
-            email.send_best_effort,
-            message,
-            what=f"content report notification for report {report.id}",
-        )
-    return report
 
 
 def create_report(
@@ -155,38 +100,43 @@ def create_report(
     background_tasks: BackgroundTasks,
 ) -> ContentReport:
     """File one report against a target a reader can see, or raise the target's not-found error."""
-    return _file_report(
-        db,
-        kind=kind,
-        target_id=target_id,
+    target = _TARGETS[kind]
+    visible = (
+        db.query(target.model.id, target.title.label("title"))
+        .filter(target.model.id == target_id, *target.visible())
+        .first()
+    )
+    if visible is None:
+        raise target.not_found(target.not_found_message)
+
+    report = ContentReport(
         reason=body.reason,
         details=body.details,
         reporter_id=reporter.id if reporter is not None else None,
-        reporter_username=reporter.username if reporter is not None else None,
-        background_tasks=background_tasks,
+        **{f"{kind}_id": target_id},
     )
+    db.add(report)
+    db.commit()
 
-
-def create_event_report(
-    db: Session,
-    *,
-    event_id: uuid.UUID,
-    reason: ContentReportReason,
-    details: str | None,
-    reporter_id: uuid.UUID | None,
-    reporter_username: str | None,
-    background_tasks: BackgroundTasks,
-) -> ContentReport:
-    return _file_report(
-        db,
-        kind="event",
-        target_id=event_id,
-        reason=reason,
-        details=details,
-        reporter_id=reporter_id,
-        reporter_username=reporter_username,
-        background_tasks=background_tasks,
-    )
+    address = settings.report_notify_email
+    if address:
+        # Built here, so no ORM row reaches the task, which runs after the session closes.
+        message = email.content_report_email(
+            to=address,
+            target=kind,
+            target_id=str(target_id),
+            target_title=visible.title,
+            reason=report.reason,
+            details=report.details,
+            reporter=(reporter and reporter.username) or "anonymous",
+            created_at=report.created_at,
+        )
+        background_tasks.add_task(
+            email.send_best_effort,
+            message,
+            what=f"content report notification for report {report.id}",
+        )
+    return report
 
 
 def list_reports(db: Session, *, page: int, per_page: int) -> tuple[list[ContentReport], int]:

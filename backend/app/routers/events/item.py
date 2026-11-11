@@ -83,13 +83,12 @@ def report_event(
     db: DB,
 ) -> ContentReport:
     """Report an event for moderation."""
-    return reports_service.create_event_report(
+    return reports_service.create_report(
         db,
-        event_id=geolocation_id,
-        reason=body.reason,
-        details=body.details,
-        reporter_id=current_user.id if current_user is not None else None,
-        reporter_username=current_user.username if current_user is not None else None,
+        kind="event",
+        target_id=geolocation_id,
+        body=body,
+        reporter=current_user,
         background_tasks=background_tasks,
     )
 
