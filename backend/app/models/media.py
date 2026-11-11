@@ -30,19 +30,19 @@ class Media(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # The source this file belongs to; one file per source.
     source_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("sources.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("sources.id", ondelete="CASCADE")
     )
     # The event whose proof body displays this image.
     event_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=True, index=True
+        ForeignKey("events.id", ondelete="CASCADE"), index=True
     )
-    storage_url: Mapped[str] = mapped_column(Text, nullable=False)
-    kind: Mapped[MediaKind] = mapped_column(String(10), nullable=False)
+    storage_url: Mapped[str] = mapped_column(Text)
+    kind: Mapped[MediaKind] = mapped_column(String(10))
     # Hex SHA-256 of the uploaded bytes: a content fingerprint stable across
     # copies, unlike the S3 ETag.
-    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64))
     # Sanitised client filename, public so investigators can trace evidence to a post.
-    original_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_filename: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[CreatedAt]
 
     event = relationship("Event", back_populates="media")

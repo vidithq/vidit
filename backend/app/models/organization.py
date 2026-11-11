@@ -32,28 +32,25 @@ class Organization(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # The URL key (``/organizations/<slug>``). Never changes once set, so a
     # pinned link keeps resolving.
-    slug: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    slug: Mapped[str] = mapped_column(String(50), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     # The identity anchor a site admin verified, lowercased without `@`, like
     # ``users.x_handle``.
-    x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
-    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    x_handle: Mapped[str | None] = mapped_column(String(50), unique=True)
+    bio: Mapped[str | None] = mapped_column(Text)
     # Server-minted under ``avatars/<organization id>/``, like ``users.avatar_url``.
-    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text)
     # Same keys and rules as ``users.external_links``.
-    external_links: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default=dict, nullable=False, server_default="{}"
-    )
+    external_links: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     # Who may send the organization an approval request, set by its org managers. ``following``
     # admits an analyst whom at least one live org manager follows.
     approval_request_audience: Mapped[ApprovalRequestAudience] = mapped_column(
         String(20),
         default=APPROVAL_REQUEST_AUDIENCE_DEFAULT,
         server_default=text(f"'{APPROVAL_REQUEST_AUDIENCE_DEFAULT}'"),
-        nullable=False,
     )
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[CreatedAt]
 
@@ -88,11 +85,11 @@ class OrganizationMember(Base):
     # The org manager who sent the invitation; NULL for an org manager a site
     # admin appointed, and once the inviter's account is erased.
     invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
-    state: Mapped[OrganizationMemberState] = mapped_column(String(20), nullable=False)
+    state: Mapped[OrganizationMemberState] = mapped_column(String(20))
     # The role the analyst holds once ``active``; an invitation joins as ``member``.
-    role: Mapped[OrganizationRole] = mapped_column(String(20), nullable=False)
+    role: Mapped[OrganizationRole] = mapped_column(String(20))
     invited_at: Mapped[datetime | None]
     joined_at: Mapped[datetime | None]
 

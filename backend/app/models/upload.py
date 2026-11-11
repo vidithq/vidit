@@ -26,13 +26,13 @@ class Upload(Base):
     # Only the uploader may reference it. CASCADE: an erasure drops the staged rows (the
     # erasure sweeps their objects first).
     uploader_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    storage_key: Mapped[str] = mapped_column(Text, nullable=False)
-    kind: Mapped[MediaKind] = mapped_column(String(10), nullable=False)
-    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_key: Mapped[str] = mapped_column(Text)
+    kind: Mapped[MediaKind] = mapped_column(String(10))
+    sha256: Mapped[str] = mapped_column(String(64))
     # Sanitised client filename, carried onto the media row.
-    original_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_filename: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[CreatedAt]
     expires_at: Mapped[datetime]
 

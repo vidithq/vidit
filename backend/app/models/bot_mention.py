@@ -61,21 +61,21 @@ class BotMention(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # The tagged post's id (X snowflake). UNIQUE is the idempotency guarantee.
-    mention_post_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    mention_post_id: Mapped[int] = mapped_column(BigInteger, unique=True)
     # Normalized handle (lowercase, no @), for forensics, not a FK: attribution
     # goes through ``users.x_handle``.
-    author_x_handle: Mapped[str] = mapped_column(String(50), nullable=False)
+    author_x_handle: Mapped[str] = mapped_column(String(50))
     # The ``x_api.Mention`` as a dict, so the drain never re-reads (re-bills) the
     # API. Cleared once the row is ``done``.
-    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    status: Mapped[BotMentionStatus] = mapped_column(String(10), nullable=False, default="queued")
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    payload: Mapped[dict | None] = mapped_column(JSONB)
+    status: Mapped[BotMentionStatus] = mapped_column(String(10), default="queued")
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     # Set exactly when ``done``.
-    outcome: Mapped[BotMentionOutcome | None] = mapped_column(String(20), nullable=True)
-    created_event_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    outcome: Mapped[BotMentionOutcome | None] = mapped_column(String(20))
+    created_event_count: Mapped[int] = mapped_column(Integer, default=0)
     # The bot's in-thread reply, if posted. NULL when none was owed, credentials
     # are absent, the budget was spent, or the post failed (fail-soft).
-    reply_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reply_post_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[CreatedAt]
     # When the worker last took the row: its claim while ``running``, its finish
     # once ``done`` or ``failed``.
@@ -107,7 +107,7 @@ class BotCatchUpCursor(Base):
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
     # The newest mention id a pull returned: the next pull's ``since_id``.
-    newest_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    newest_post_id: Mapped[int | None] = mapped_column(BigInteger)
     pulled_at: Mapped[datetime]
 
     __table_args__ = (CheckConstraint("id = 1", name="ck_bot_catch_up_cursor_single_row"),)

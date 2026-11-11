@@ -14,11 +14,11 @@ class InviteCode(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
     # The redeeming account. Audit-only, nulled on that account's erasure; the
     # redemption marker is ``used_at``, which outlives it.
     used_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
     # Stamped at redemption; non-NULL means spent (single-use).
     used_at: Mapped[datetime | None]
@@ -28,10 +28,10 @@ class InviteCode(Base):
     # copies it to `users.x_handle` so the bot can attribute its mentions.
     # Fail-soft: if the handle was taken meanwhile, the account is created
     # without the link.
-    x_handle: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    x_handle: Mapped[str | None] = mapped_column(String(50))
     # The analyst who minted the code from Settings; NULL for an admin-minted code.
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[CreatedAt]
 

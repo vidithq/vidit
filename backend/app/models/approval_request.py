@@ -28,21 +28,17 @@ class ApprovalRequest(Base):
     __tablename__ = "approval_requests"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=False
-    )
-    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    requester_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
+    version_no: Mapped[int] = mapped_column(Integer)
+    requester_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     target_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("users.id", ondelete="CASCADE")
     )
     target_organization_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("organizations.id", ondelete="CASCADE")
     )
     status: Mapped[ApprovalRequestStatus] = mapped_column(
-        String(20), nullable=False, default="open", server_default=text("'open'")
+        String(20), default="open", server_default=text("'open'")
     )
     created_at: Mapped[CreatedAt]
     resolved_at: Mapped[datetime | None]

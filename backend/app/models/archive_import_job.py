@@ -27,27 +27,25 @@ class ArchiveImportJob(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     # Staged upload key; removed on completion or failure, so a live key implies
     # a claimable row.
-    zip_key: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[ArchiveImportJobStatus] = mapped_column(
-        String(10), nullable=False, default="queued", index=True
-    )
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    zip_key: Mapped[str] = mapped_column(Text)
+    status: Mapped[ArchiveImportJobStatus] = mapped_column(String(10), default="queued", index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     # ``estimated_post_count`` is a display hint from the zip metadata at enqueue. The
     # worker stamps ``detection_count`` once the exact detection count is known
     # and batches ``processed_detection_count``.
-    estimated_post_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    processed_detection_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    detection_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_post_count: Mapped[int | None] = mapped_column(Integer)
+    processed_detection_count: Mapped[int] = mapped_column(Integer, default=0)
+    detection_count: Mapped[int | None] = mapped_column(Integer)
     # Import counts, final once ``done`` (see ``detection.Outcome``).
-    created_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    updated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[CreatedAt]
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]

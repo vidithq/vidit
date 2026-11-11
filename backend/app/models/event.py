@@ -103,7 +103,7 @@ class EventGeolocator(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    state: Mapped[GeolocatorState] = mapped_column(String(20), nullable=False)
+    state: Mapped[GeolocatorState] = mapped_column(String(20))
     invited_at: Mapped[datetime | None]
     joined_at: Mapped[datetime | None]
     # The first departure; a later one leaves it as it is.
@@ -155,17 +155,15 @@ class EventVersion(Base):
     __tablename__ = "event_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=False
-    )
-    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
+    version_no: Mapped[int] = mapped_column(Integer)
     # SET NULL: an event outlives a non-owner editor, and a GDPR erasure nulls
     # the attribution instead of failing on the FK.
     edited_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
     # Unbounded ``Text``; the API caps input at ``schemas/event.VERSION_NOTE_MAX_LENGTH``.
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text)
     snapshot: Mapped[Any] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[CreatedAt]
     # NULL on every ordinary row (moderation exit for a version the record must
@@ -173,7 +171,7 @@ class EventVersion(Base):
     redacted_at: Mapped[datetime | None]
     # SET NULL for the same reason as ``edited_by_id``.
     redacted_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
 
     event = relationship("Event", back_populates="versions")
@@ -200,18 +198,18 @@ class EventDetection(Base):
     event_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
     )
-    via: Mapped[DetectedVia | None] = mapped_column(String(20), nullable=True)
+    via: Mapped[DetectedVia | None] = mapped_column(String(20))
     # The post's URL, built from its id (``tweet_ingest.urls.canonical_tweet_url``). Not a
     # source: the event's sources are the footage it rests on.
-    from_url: Mapped[str] = mapped_column(Text, nullable=False)
+    from_url: Mapped[str] = mapped_column(Text)
     # The re-import match anchor.
-    from_post_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    from_post_id: Mapped[int | None] = mapped_column(BigInteger)
     # Every post id of the thread the detection was read from, anchor included.
     # The re-import match reads it so the three entries land on one row: an
     # archive anchors on the thread head, a bot tag or paste on a later post,
     # so matching the anchor alone would file one geolocation as two detections.
     # Older rows carry their anchor id alone.
-    thread_post_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger), nullable=True)
+    thread_post_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger))
     # When the analyst published this geolocation on X: the precedence signal for the
     # claim/dispute pipeline.
     post_at: Mapped[datetime | None]
@@ -249,23 +247,23 @@ class Event(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # Edit-rights owner. A ``requested`` event's poster, handed to the fulfiller
     # at the publish. Always among the geolocators once ``geolocated``.
-    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     # Who opened the request, kept across fulfilment. NULL for a direct
     # geolocation. SET NULL: the event outlives its requester and a GDPR erasure
     # nulls the attribution instead of failing on the FK.
     requested_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
-    title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
+    title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH))
     # What the footage shows. Required at ``geolocated`` (``ck_events_coords_status``).
     # One point per event.
     coords = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
     # Sanitised HTML (``services/sanitize.sanitize_html``); ``""`` is an empty body.
-    proof: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    proof: Mapped[str] = mapped_column(Text, default="")
     # Often unknown for a ``requested`` event; required at ``geolocated``.
-    occurred_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    occurred_date: Mapped[date | None] = mapped_column(Date)
     # UTC time of day. May stand alone: an hour can be known before the day.
-    occurred_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    occurred_time: Mapped[time | None] = mapped_column(Time)
     # Per-state entry stamps, set on entry and never cleared; the
     # ``geolocated`` / ``closed`` ones are tied to ``status`` by CHECKs.
     requested_at: Mapped[datetime | None]
@@ -274,7 +272,7 @@ class Event(Base):
     # See ``STATUS_*``. server_default keeps a human submit correct without
     # setting it; the requested / detected paths pass it explicitly.
     status: Mapped[EventStatus] = mapped_column(
-        String(20), nullable=False, default=STATUS_GEOLOCATED, server_default=text("'geolocated'")
+        String(20), default=STATUS_GEOLOCATED, server_default=text("'geolocated'")
     )
 
     @hybrid_property
@@ -298,11 +296,9 @@ class Event(Base):
     # Set when the event reaches ``closed``.
     closed_at: Mapped[datetime | None]
     # Free-text reason shown for transparency.
-    close_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    close_reason: Mapped[str | None] = mapped_column(Text)
     # See ``BeforeClosedStatus``; non-NULL exactly when ``status='closed'``.
-    before_closed_status: Mapped[BeforeClosedStatus | None] = mapped_column(
-        String(20), nullable=True
-    )
+    before_closed_status: Mapped[BeforeClosedStatus | None] = mapped_column(String(20))
     # Soft-delete: NULL = live. Filtered out by every public read.
     deleted_at: Mapped[datetime | None]
     # Takedown after a content report: withheld from public reads alongside
@@ -313,7 +309,7 @@ class Event(Base):
     # superseded state as an ``EventVersion``. A public address (``/events/{id}/v{n}``), so
     # it only moves forward. ``ck_events_version_published`` ties it to the status.
     version_no: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=_initial_version, server_default=text("1")
+        Integer, default=_initial_version, server_default=text("1")
     )
 
     @hybrid_property

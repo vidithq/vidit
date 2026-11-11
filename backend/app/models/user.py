@@ -13,16 +13,16 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    username: Mapped[str] = mapped_column(String(50), unique=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
     # The X handle the bot attributes mentions to, lowercased without `@`.
     # Written by registration (invite-bound handle) and
     # `PATCH /admin/users/{id}/x-handle`; not self-serve. UNIQUE: one account per
     # handle. Distinct from `external_links["x"]`, a free-text display link.
-    x_handle: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    x_handle: Mapped[str | None] = mapped_column(String(50), unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[CreatedAt]
     # Most recent authenticated request, throttled: ``dependencies.get_current_user``
     # refreshes it once per ``LAST_SEEN_THROTTLE`` window; login and
@@ -34,25 +34,21 @@ class User(Base):
     # Session-invalidation counter: the session JWT embeds it as `tv` and
     # `get_current_user` 401s on mismatch. Bumped on logout, password change,
     # password reset and soft-delete (clearing the cookie doesn't kill the token).
-    token_version: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Plain-text bio, opt-in via PATCH /users/me.
-    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bio: Mapped[str | None] = mapped_column(Text)
     # Server-minted, never typed by the owner: PUT /users/me/avatar stores one
     # stripped 400 px JPEG under `avatars/<user id>/`, DELETE clears both. Keeps
     # the picture on our own media host so a profile field can't be a beacon
     # collecting viewers' IPs.
-    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text)
     # Keyed by platform (x, discord, website, github); ``{}`` default; PATCH
     # replaces wholesale.
-    external_links: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default=dict, nullable=False, server_default="{}"
-    )
+    external_links: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
 
     # Admin switch over minting invite codes from Settings.
     is_invite_minting_enabled: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=text("true"), nullable=False
+        Boolean, default=True, server_default=text("true")
     )
 
     events = relationship("Event", back_populates="owner", foreign_keys="Event.owner_id")

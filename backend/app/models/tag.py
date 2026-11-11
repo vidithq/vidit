@@ -26,7 +26,7 @@ class Tag(Base):
     __tablename__ = "tags"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(NAME_MAX_LENGTH), unique=True)
     created_at: Mapped[CreatedAt]
 
     events = relationship("Event", secondary=event_tags, back_populates="tags")

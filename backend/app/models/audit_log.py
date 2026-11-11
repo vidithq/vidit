@@ -33,11 +33,9 @@ class AuditLog(Base):
     __tablename__ = "audit_log"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    action: Mapped[str] = mapped_column(Text, nullable=False)
-    target: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(Text)
+    target: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[CreatedAt]
 
     __table_args__ = (

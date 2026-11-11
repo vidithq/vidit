@@ -49,17 +49,17 @@ class Conflict(Base):
     __tablename__ = "conflicts"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(CONFLICT_NAME_MAX_LENGTH), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(CONFLICT_NAME_MAX_LENGTH), unique=True)
     # Wikidata item id ("Q131569"). NULL for manual rows; unique among the rest.
-    wikidata_id: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
-    start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    tier: Mapped[ConflictTier | None] = mapped_column(String(10), nullable=True)
-    end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    is_ongoing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    wikidata_id: Mapped[str | None] = mapped_column(String(20), unique=True)
+    start_year: Mapped[int | None] = mapped_column(Integer)
+    tier: Mapped[ConflictTier | None] = mapped_column(String(10))
+    end_year: Mapped[int | None] = mapped_column(Integer)
+    is_ongoing: Mapped[bool] = mapped_column(Boolean, default=False)
     # Last time the daily sync saw it on the ongoing page. NULL rows are never
     # touched by the grace-period deactivation.
     last_seen_at: Mapped[datetime | None]
-    origin: Mapped[ConflictOrigin] = mapped_column(String(20), nullable=False)
+    origin: Mapped[ConflictOrigin] = mapped_column(String(20))
     created_at: Mapped[CreatedAt]
 
     events = relationship("Event", secondary=event_conflicts, back_populates="conflicts")

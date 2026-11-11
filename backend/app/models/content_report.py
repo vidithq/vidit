@@ -57,31 +57,31 @@ class ContentReport(Base):
     # records that a complaint was filed and answered. An orphan can only be
     # resolved as ``dismissed``.
     event_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("events.id", ondelete="SET NULL"), index=True
     )
     # Same terms as ``event_id``; NULL for an event report. Empties only when the
     # owner's account is erased (``owner_id`` cascades).
     collection_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("collections.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("collections.id", ondelete="SET NULL"), index=True
     )
     # Same terms as ``event_id``; NULL for any other report.
     site_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("sites.id", ondelete="SET NULL"), index=True
     )
-    reason: Mapped[ContentReportReason] = mapped_column(String(30), nullable=False)
+    reason: Mapped[ContentReportReason] = mapped_column(String(30))
     # The reporter's own words; capped at 2000 characters in the schema, not the column.
-    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text)
     # NULL for an anonymous report. SET NULL: the report outlives the account (GDPR erasure).
     reporter_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[CreatedAt]
     resolved_at: Mapped[datetime | None]
     # See ``ContentReportResolution``; non-NULL exactly when ``resolved_at`` is.
-    resolution: Mapped[ContentReportResolution | None] = mapped_column(String(30), nullable=True)
+    resolution: Mapped[ContentReportResolution | None] = mapped_column(String(30))
     # NULL until resolved, and after a GDPR erasure of that admin.
     resolved_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
 
     # Read by the admin queue to name the reported item (title or name, and owner).

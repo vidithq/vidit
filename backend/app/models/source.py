@@ -93,30 +93,26 @@ class Source(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     event_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=True, index=True
+        ForeignKey("events.id", ondelete="CASCADE"), index=True
     )
     site_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("sites.id", ondelete="CASCADE"), nullable=True, index=True
+        ForeignKey("sites.id", ondelete="CASCADE"), index=True
     )
     # A site source's analyst; any signed-in analyst files one. NULL on an event's source.
-    author_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
+    author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     # A site source's plain-text note, capped at ``schemas/site.SITE_SOURCE_NOTE_MAX_LENGTH``.
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text)
     # A site source's removal from the live state; the row stays for the versions that name it.
     removed_at: Mapped[datetime | None]
     # ``""`` is no title.
     title: Mapped[str] = mapped_column(
-        String(SOURCE_TITLE_MAX_LENGTH), nullable=False, default="", server_default=text("''")
+        String(SOURCE_TITLE_MAX_LENGTH), default="", server_default=text("''")
     )
-    level: Mapped[SourceLevel] = mapped_column(String(10), nullable=False)
+    level: Mapped[SourceLevel] = mapped_column(String(10))
     # An event's source's place in its list, 0 first. 0 on a site source, read by capture time.
-    position: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, default=0, server_default=text("0")
-    )
+    position: Mapped[int] = mapped_column(SmallInteger, default=0, server_default=text("0"))
     # A machine source is ``unknown`` until a review names it.
-    kind: Mapped[SourceKind] = mapped_column(String(20), nullable=False)
+    kind: Mapped[SourceKind] = mapped_column(String(20))
     # When the media was captured (UTC). Distinct from the event's ``occurred_date`` and a
     # link's ``posted_at``.
     captured_at: Mapped[datetime | None]
@@ -126,9 +122,7 @@ class Source(Base):
     )
     # TRUE when the media shows death, injury or human remains. Read surfaces cover it until
     # the viewer opts in; an event is graphic when any of its sources is (``Event.is_graphic``).
-    is_graphic: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
-    )
+    is_graphic: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
 
@@ -175,14 +169,12 @@ class SourceLink(Base):
     __tablename__ = "source_links"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    source_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sources.id", ondelete="CASCADE"), nullable=False
-    )
-    url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(Text)
     # When the media was posted at this URL (UTC). NULL unless known.
     posted_at: Mapped[datetime | None]
     # The archived copy the analyst recorded (``services/source_archive.validate_snapshot``).
-    snapshot_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot_url: Mapped[str | None] = mapped_column(Text)
     # When that copy was recorded; set exactly with ``snapshot_url``.
     archived_at: Mapped[datetime | None]
     created_at: Mapped[CreatedAt]

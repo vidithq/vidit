@@ -26,18 +26,16 @@ class Collection(Base):
     __tablename__ = "collections"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    owner_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH))
     # Sanitised HTML, the shape ``Event.proof`` takes minus images (dropped by
     # the write service).
-    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
     # Plain-text projection of ``description``, written on every write from
     # ``services/sanitize.html_text``. Stored because the search GIN index
     # would otherwise index tags and entities. No column width: the
     # 500-character cap is the API's.
-    description_text: Mapped[str] = mapped_column(Text, nullable=False)
+    description_text: Mapped[str] = mapped_column(Text)
     # Takedown: NULL = visible; same axis and reversal as ``Event.hidden_at``.
     hidden_at: Mapped[datetime | None]
     # The owner deleted it while a content report on it was open: withheld from every read but an

@@ -51,14 +51,10 @@ class Site(Base):
     __tablename__ = "sites"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    owner_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
-    kind: Mapped[SiteKind] = mapped_column(String(30), nullable=False)
-    version_no: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default=text("1")
-    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH))
+    kind: Mapped[SiteKind] = mapped_column(String(30))
+    version_no: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
     # Takedown: NULL = visible; same axis and reversal as ``Collection.hidden_at``.
     hidden_at: Mapped[datetime | None]
     created_at: Mapped[CreatedAt]
@@ -84,16 +80,14 @@ class SiteVersion(Base):
     __tablename__ = "site_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    site_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
-    )
-    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    site_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    version_no: Mapped[int] = mapped_column(Integer)
     edited_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
     # The owner's note on the edit that superseded this version. Unbounded ``Text``; the API caps
     # input at ``schemas/event.VERSION_NOTE_MAX_LENGTH``.
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text)
     # ``schemas/site.SiteSnapshot``: the name, the kind, and each source with its contour.
     snapshot: Mapped[Any] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[CreatedAt]
@@ -115,16 +109,10 @@ class SiteContour(Base):
     __tablename__ = "site_contours"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    site_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
-    )
+    site_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
     # A ``sources`` row of the same site (checked in ``services/sites``).
-    source_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sources.id", ondelete="CASCADE"), nullable=False
-    )
-    author_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"))
+    author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     zone = mapped_column(Geometry("POLYGON", srid=4326, spatial_index=True), nullable=False)
     created_at: Mapped[CreatedAt]
     # NULL while the contour is in the live state; set by the write that redrew or dropped it.
@@ -154,13 +142,9 @@ class EventSiteLink(Base):
     __tablename__ = "event_site_links"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=False
-    )
-    site_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
-    )
-    effect: Mapped[LinkEffect] = mapped_column(String(20), nullable=False)
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
+    site_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    effect: Mapped[LinkEffect] = mapped_column(String(20))
     linked_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC), server_default=func.now()
     )

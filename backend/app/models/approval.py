@@ -30,18 +30,16 @@ class EventApproval(Base):
     __tablename__ = "event_approvals"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=False
-    )
-    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
+    version_no: Mapped[int] = mapped_column(Integer)
     # The analyst who placed it. An analyst's own approval goes with their erased account
     # (``admin.hard_delete_user`` deletes it first); an organization's stays the organization's,
     # so SET NULL, and ``ck_event_approvals_reviewer`` keeps it on organization rows only.
     reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("users.id", ondelete="SET NULL")
     )
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("organizations.id", ondelete="CASCADE")
     )
     created_at: Mapped[CreatedAt]
 

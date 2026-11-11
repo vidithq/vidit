@@ -68,26 +68,20 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    kind: Mapped[NotificationKind] = mapped_column(String(40), nullable=False)
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
-    )
-    event_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=True
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[NotificationKind] = mapped_column(String(40))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("organizations.id", ondelete="CASCADE")
     )
     # The name of an organization the row speaks of once it is gone: an
     # ``organization_approval_removed`` row outlives the organization it names.
-    organization_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    organization_name: Mapped[str | None] = mapped_column(String(100))
     # The approval an ``approval_received`` row reports: the row goes when the approval is
     # deleted.
     approval_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("event_approvals.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("event_approvals.id", ondelete="CASCADE")
     )
     created_at: Mapped[CreatedAt]
     # Set when the feed shows this row to its recipient; NULL is unread. Per
@@ -150,11 +144,9 @@ class NotificationDelivery(Base):
     __tablename__ = "notification_deliveries"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    status: Mapped[NotificationDeliveryStatus] = mapped_column(
-        String(10), nullable=False, default="queued"
-    )
+    status: Mapped[NotificationDeliveryStatus] = mapped_column(String(10), default="queued")
     # Provider refusals so far; the row fails at ``MAX_ATTEMPTS``.
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[CreatedAt]
     # The latest claim: the stale clock while ``running``, the retry clock once
     # a refusal puts the row back in ``queued``.
@@ -163,7 +155,7 @@ class NotificationDelivery(Base):
     # SET NULL: a deleted notification leaves its sent rows behind for the daily
     # email cap (``services/notifications.delete`` removes the unsent ones).
     notification_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("notifications.id", ondelete="SET NULL")
     )
 
     notification = relationship("Notification")

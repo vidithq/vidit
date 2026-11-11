@@ -26,17 +26,14 @@ class UserPreferences(Base):
     )
     # ``{kind: bool}``, email overrides of ``NOTIFICATION_KINDS`` only.
     notification_overrides: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default=dict, nullable=False, server_default="{}"
+        JSONB, default=dict, server_default="{}"
     )
     # ``{palette, theme, help_tooltips}``, each key present once written.
-    display: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, default=dict, nullable=False, server_default="{}"
-    )
+    display: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     approval_request_audience: Mapped[ApprovalRequestAudience] = mapped_column(
         String(20),
         default=APPROVAL_REQUEST_AUDIENCE_DEFAULT,
         server_default=text(f"'{APPROVAL_REQUEST_AUDIENCE_DEFAULT}'"),
-        nullable=False,
     )
     updated_at: Mapped[UpdatedAt]
 
