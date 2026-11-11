@@ -46,12 +46,12 @@ from .records import (
 from .urls import (
     NO_HANDLE,
     TWITTER_URL_HOST_RE,
-    X_STATUS_URL_RE,
     ContextKind,
     canonical_tweet_url,
     context_host,
     hostname,
     telegram_post_url,
+    x_status_handle,
     x_status_id,
     x_status_posted_at,
 )
@@ -112,32 +112,17 @@ REFUSAL_MESSAGES: dict[str, str] = {
 }
 
 
-def _status_link_handle(url: str) -> str | None:
-    """The handle of an X status link, ``None`` for a non-status or ``i/web/status`` URL."""
-    if x_status_id(url) is None:
-        return None
-    try:
-        parts = [p for p in urlparse(url).path.split("/") if p]
-    except ValueError:
-        return None
-    if len(parts) >= 3 and parts[1] == "status":
-        return parts[0]
-    return None
-
-
 def _is_own_status_link(url: str, owner_handle: str) -> bool:
     """Whether ``url`` is a status link to ``owner_handle``'s own post (a
     cross-reference, never a source)."""
-    handle = _status_link_handle(url)
+    handle = x_status_handle(url)
     return handle is not None and handle.lower() == owner_handle.lower()
 
 
 def _is_non_status_x_link(url: str) -> bool:
     """Whether ``url`` points at X without naming a status (profile, search,
     hashtag). X footage lives only at a status."""
-    return TWITTER_URL_HOST_RE.match(hostname(url)) is not None and (
-        X_STATUS_URL_RE.search(url) is None
-    )
+    return TWITTER_URL_HOST_RE.match(hostname(url)) is not None and x_status_id(url) is None
 
 
 _GOOGLE_HOST_RE = re.compile(r"^(?:www\.|maps\.)?google\.[a-z0-9.\-]+$", re.IGNORECASE)
@@ -450,7 +435,7 @@ def request_source_url(url: str) -> str:
     """
     status_id = x_status_id(url)
     if status_id is not None:
-        handle = _status_link_handle(url)
+        handle = x_status_handle(url)
         return canonical_tweet_url(status_id, handle if handle is not None else NO_HANDLE)
     return telegram_post_url(url) or url
 
