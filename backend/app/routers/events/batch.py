@@ -13,11 +13,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.schemas.event import (
-    BatchCompletionCreate,
-    BatchCompletionRead,
-    BatchCompletionRowRead,
-)
+from app.schemas.event import BatchCompletionCreate, BatchCompletionRead
 from app.services import events as events_service
 
 router = APIRouter()
@@ -47,21 +43,11 @@ def batch_complete_events(
     resolvable conflict (400) and a targeted detection owned by another
     analyst (403; rows are owner-only).
     """
-    outcomes = events_service.complete_detections(
+    rows = events_service.complete_detections(
         db,
         current_user=current_user,
         conflict_ids=body.conflict_ids,
         rows=[(row.event_id, row.kind) for row in body.rows],
     )
-
-    rows = [
-        BatchCompletionRowRead(
-            event_id=outcome.event_id,
-            published=outcome.code is None,
-            code=outcome.code,
-            message=outcome.message,
-        )
-        for outcome in outcomes
-    ]
     published = sum(1 for row in rows if row.published)
     return BatchCompletionRead(published=published, failed=len(rows) - published, rows=rows)
