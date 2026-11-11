@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import ColumnExpressionArgument, Select, case, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Query, Session, joinedload
 
 from app.errors import CodedError
 from app.models.approval import EventApproval
@@ -32,7 +33,6 @@ from app.schemas.organization import (
     OrganizationMemberRead,
     OrganizationMembershipRead,
     OrganizationRead,
-    OrganizationRef,
     OrganizationUpdate,
 )
 from app.services import admin as admin_service
@@ -151,19 +151,20 @@ def is_organization_member(db: Session, *, org_id: uuid.UUID, user_id: uuid.UUID
     return _membership(db, org_id, user_id) is not None
 
 
+def _live[Q: (Select[Any], Query[Any])](query: Q) -> Q:
+    """``query`` narrowed to the memberships of live analysts."""
+    return query.join(User, User.id == OrganizationMember.user_id).filter(
+        OrganizationMember.state == "active", User.deleted_at.is_(None)
+    )
+
+
 def live_member_ids(
     org_id: uuid.UUID | ColumnExpressionArgument[uuid.UUID],
 ) -> Select[tuple[uuid.UUID]]:
     """The live members of ``org_id``, the analysts who act in its name. ``org_id`` may be a
     column, to correlate with an outer query."""
-    return (
-        select(OrganizationMember.user_id)
-        .join(User, User.id == OrganizationMember.user_id)
-        .where(
-            OrganizationMember.organization_id == org_id,
-            OrganizationMember.state == "active",
-            User.deleted_at.is_(None),
-        )
+    return _live(select(OrganizationMember.user_id)).where(
+        OrganizationMember.organization_id == org_id
     )
 
 
@@ -174,13 +175,9 @@ def live_manager_ids(
     return live_member_ids(org_id).where(OrganizationMember.role == "manager")
 
 
-def _can_manage(db: Session, org: Organization, user: User) -> bool:
-    """Org managers manage their organization; a site admin manages any."""
-    return user.is_admin or is_organization_manager(db, org_id=org.id, user_id=user.id)
-
-
 def require_manager(db: Session, org: Organization, user: User) -> None:
-    if not _can_manage(db, org, user):
+    """Org managers manage their organization; a site admin manages any."""
+    if not (user.is_admin or is_organization_manager(db, org_id=org.id, user_id=user.id)):
         raise NotOrganizationManagerError("Only an org manager can do this")
 
 
@@ -198,20 +195,8 @@ def require_member(db: Session, org: Organization, user: User) -> None:
         raise NotOrganizationMemberError("Only a member of the organization can do this")
 
 
-def _live_manager_count(db: Session, org_id: uuid.UUID) -> int:
-    return _live_members(db, org_id).filter(OrganizationMember.role == "manager").count()
-
-
-def _live_members(db: Session, org_id: uuid.UUID):
-    return (
-        db.query(OrganizationMember)
-        .join(User, User.id == OrganizationMember.user_id)
-        .filter(
-            OrganizationMember.organization_id == org_id,
-            OrganizationMember.state == "active",
-            User.deleted_at.is_(None),
-        )
-    )
+def _live_members(db: Session, org_id: uuid.UUID) -> Query[OrganizationMember]:
+    return _live(db.query(OrganizationMember)).filter(OrganizationMember.organization_id == org_id)
 
 
 def hand_over_manager_roles(db: Session, *, leaving_user_id: uuid.UUID) -> None:
@@ -248,17 +233,12 @@ def live_member_counts(db: Session):
     """Subquery of ``org_id``, ``members`` and ``managers``: each organization's
     live member and org manager counts. An organization without a live member
     has no row, so outer-join it and coalesce to 0."""
-    return (
-        db.query(
-            OrganizationMember.organization_id.label("org_id"),
-            func.count().label("members"),
-            func.count().filter(OrganizationMember.role == "manager").label("managers"),
-        )
-        .join(User, User.id == OrganizationMember.user_id)
-        .filter(OrganizationMember.state == "active", User.deleted_at.is_(None))
-        .group_by(OrganizationMember.organization_id)
-        .subquery()
+    counts = db.query(
+        OrganizationMember.organization_id.label("org_id"),
+        func.count().label("members"),
+        func.count().filter(OrganizationMember.role == "manager").label("managers"),
     )
+    return _live(counts).group_by(OrganizationMember.organization_id).subquery()
 
 
 def list_for_admin(db: Session) -> list[AdminOrganizationRead]:
@@ -477,17 +457,7 @@ def list_memberships(db: Session, user: User) -> list[OrganizationMembershipRead
         .order_by(Organization.name)
         .all()
     )
-    reads = []
-    for row in rows:
-        assert row.joined_at is not None  # ck_organization_members_state_stamp
-        reads.append(
-            OrganizationMembershipRead(
-                organization=OrganizationRef.model_validate(row.organization),
-                role=row.role,
-                joined_at=row.joined_at,
-            )
-        )
-    return reads
+    return [OrganizationMembershipRead.model_validate(row) for row in rows]
 
 
 def invite_candidates(db: Session, org: Organization, *, inviter: User) -> list[User]:
@@ -602,7 +572,8 @@ def _member_or_404(db: Session, org: Organization, username: str) -> Organizatio
 
 # Mirrored by frontend OrganizationMembers.tsx lastManager; change both.
 def _guard_last_manager(db: Session, org: Organization, member: OrganizationMember) -> None:
-    if member.role == "manager" and _live_manager_count(db, org.id) <= 1:
+    managers = _live_members(db, org.id).filter(OrganizationMember.role == "manager")
+    if member.role == "manager" and managers.count() <= 1:
         raise LastManagerError("The last org manager cannot leave or be demoted")
 
 

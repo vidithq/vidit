@@ -80,6 +80,8 @@ class OrganizationMembershipRead(BaseModel):
     role: OrganizationRole
     joined_at: datetime
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class OrganizationMemberRead(BaseModel):
     """One member on the organization page, org managers first."""
