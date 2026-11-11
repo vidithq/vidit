@@ -43,6 +43,7 @@ from app.routers.events._common import (
     build_version_read,
     parse_geolocator_invites,
     parse_sources,
+    readable_events,
     resolve_live_event,
     resolve_readable_event,
 )
@@ -70,14 +71,16 @@ from app.services.pagination import (
 router = APIRouter()
 
 
-# Every relationship the detail serializer reads, eager-loaded to bound queries.
-def _serialize_event(db: Session, geo: Event) -> EventRead:
-    """Build the read model for a just-mutated row, re-projecting the point
-    the way ``GET /{id}`` does so the shapes match."""
-    lat, lng = db.query(ST_Y(Event.coords), ST_X(Event.coords)).filter(Event.id == geo.id).one()
+def _detail_read(db: Session, geo: Event, lat: float | None, lng: float | None) -> EventRead:
     read = build_event_read(geo, lat=lat, lng=lng)
     read.version_zero = versions_service.version_zero(db, geo)
     return read
+
+
+def _serialize_event(db: Session, geo: Event) -> EventRead:
+    """The read of a just-written row, its point re-projected as ``GET /{id}`` does."""
+    lat, lng = db.query(ST_Y(Event.coords), ST_X(Event.coords)).filter(Event.id == geo.id).one()
+    return _detail_read(db, geo, lat, lng)
 
 
 # Ahead of the ``/{geolocation_id}`` reads: the extra path segment means the
@@ -129,24 +132,16 @@ def get_event(
     A withheld event (``hidden_at``) answers 404 for everyone but an admin,
     who must read what was taken down to judge the report.
     """
-    query = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-        )
+    row = (
+        db.query(Event, ST_Y(Event.coords), ST_X(Event.coords))
         .options(*DETAIL_LOADS)
-        .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+        .filter(Event.id == geolocation_id, *readable_events(current_user))
+        .first()
     )
-    if current_user is None or not current_user.is_admin:
-        query = query.filter(Event.hidden_at.is_(None))
-    row = query.first()
     if row is None:
         raise HTTPException(status_code=404, detail="Event not found")
-
     geo, lat, lng = row
-    read = build_event_read(geo, lat=lat, lng=lng)
-    read.version_zero = versions_service.version_zero(db, geo)
+    read = _detail_read(db, geo, lat, lng)
     if current_user is not None:
         read.viewer_invite_pending = has_pending_invite(
             db, event_id=geo.id, user_id=current_user.id

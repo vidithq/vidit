@@ -6,10 +6,11 @@ routers), the projection helpers, :func:`resolve_live_event` and
 """
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import HTTPException
 from pydantic import Field, TypeAdapter, ValidationError
+from sqlalchemy import ColumnElement
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.event import Event, EventVersion
@@ -98,35 +99,37 @@ def parse_geolocator_invites(raw: str | None) -> list[str]:
     return [invite.username for invite in invites]
 
 
-def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
-    """Fetch a live event by id, or 404.
-
-    A soft-deleted or withheld (``hidden_at``) row reads as 404: a takedown
-    freezes the event for its owner too, until the admin moderation endpoint
-    lifts it. Permission is the caller's concern (``save_version`` owns per-status
-    ownership; owner-only verbs call ``permissions.ensure_owner``).
-    """
-    geo = db.query(Event).filter(Event.id == event_id, *visible_events()).first()
+def _or_404(geo: Event | None) -> Event:
     if geo is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return geo
+
+
+def readable_events(current_user: User | None) -> tuple[ColumnElement[bool], ...]:
+    """The rows ``GET /{id}`` serves: a withheld (``hidden_at``) row only to an admin, who must
+    read what was taken down to judge the report."""
+    if current_user is not None and current_user.is_admin:
+        return (Event.deleted_at.is_(None),)
+    return visible_events()
+
+
+def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
+    """Fetch a live event by id, or 404.
+
+    A withheld row reads as 404: a takedown freezes the event for its owner too, until the
+    admin moderation endpoint lifts it. Resolved in the handler, not as a dependency, so the
+    rate limit counts a request for an unknown id.
+    """
+    return _or_404(db.query(Event).filter(Event.id == event_id, *visible_events()).first())
 
 
 def resolve_readable_event(
     db: Session, geolocation_id: uuid.UUID, current_user: User | None
 ) -> Event:
-    """The event a history or approvals read may serve, or a 404.
-
-    Same visibility as ``GET /{id}`` (soft-deleted hidden from all, withheld
-    visible to admins), shared so those reads cannot diverge.
-    """
-    query = db.query(Event).filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
-    if current_user is None or not current_user.is_admin:
-        query = query.filter(Event.hidden_at.is_(None))
-    geo = query.first()
-    if geo is None:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return geo
+    """The event a history or approvals read may serve, with the visibility of ``GET /{id}``."""
+    return _or_404(
+        db.query(Event).filter(Event.id == geolocation_id, *readable_events(current_user)).first()
+    )
 
 
 def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
@@ -135,6 +138,23 @@ def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
     if lat is None or lng is None:
         return None
     return CoordsRead(lat=lat, lng=lng)
+
+
+def _card_fields(geo: Event, lat: float | None, lng: float | None) -> dict[str, Any]:
+    """The fields ``EventRead`` and ``EventList`` share."""
+    return {
+        "id": geo.id,
+        "title": geo.title,
+        "coords": coords_or_none(lat, lng),
+        "occurred_date": geo.occurred_date,
+        "is_graphic": geo.is_graphic,
+        "status": geo.status,
+        "before_closed_status": geo.before_closed_status,
+        "owner": geo.owner,
+        "geolocators": live_geolocators(geo),
+        "tags": geo.tags,
+        "conflicts": geo.conflicts,
+    }
 
 
 def build_event_list(
@@ -149,19 +169,7 @@ def build_event_list(
     re-projected by the caller, which eager-loads ``geolocator_credit.CREDIT_LOAD``.
     """
     return EventList(
-        id=geo.id,
-        title=geo.title,
-        coords=coords_or_none(lat, lng),
-        occurred_date=geo.occurred_date,
-        is_graphic=geo.is_graphic,
-        status=geo.status,
-        before_closed_status=geo.before_closed_status,
-        requested_at=geo.requested_at,
-        owner=geo.owner,
-        geolocators=live_geolocators(geo),
-        media=thumbnail_media(geo),
-        tags=geo.tags,
-        conflicts=geo.conflicts,
+        **_card_fields(geo, lat, lng), requested_at=geo.requested_at, media=thumbnail_media(geo)
     )
 
 
@@ -198,25 +206,18 @@ def build_event_read(
     callers wanting it there eager-load ``Event.media``.
     """
     return EventRead(
-        id=geo.id,
-        title=geo.title,
-        coords=coords_or_none(lat, lng),
+        **_card_fields(geo, lat, lng),
         sources=[build_source_read(source) for source in geo.sources],
         proof=geo.proof,
-        occurred_date=geo.occurred_date,
         occurred_time=geo.occurred_time,
         created_at=geo.created_at,
         geolocated_at=geo.geolocated_at,
         closed_at=geo.closed_at,
         hidden_at=geo.hidden_at,
-        is_graphic=geo.is_graphic,
-        status=geo.status,
         version_no=geo.version_no,
         close_reason=geo.close_reason,
-        before_closed_status=geo.before_closed_status,
         detected_from_url=geo.detection.from_url if geo.detection is not None else None,
         detected_via=geo.detection.via if geo.detection is not None else None,
-        owner=geo.owner,
         # Null a soft-deleted requester: a banned account must not surface on a
         # live event owned by someone else (the owner's soft-delete hides their
         # events; the requester's does not).
@@ -225,8 +226,5 @@ def build_event_read(
             if geo.requested_by is not None and geo.requested_by.deleted_at is None
             else None
         ),
-        geolocators=live_geolocators(geo),
         thumbnail=thumbnail_media(geo),
-        tags=geo.tags,
-        conflicts=geo.conflicts,
     )
