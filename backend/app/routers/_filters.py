@@ -47,7 +47,7 @@ def event_filters(
     has_coords: bool | None = Query(None, description="true: with a location; false: without"),
 ) -> EventFilters:
     """The filter set, ``status`` left unset; 422 on a value outside its domain. Dates are
-    parsed when the filters apply (``services/event_filters.apply_filters``)."""
+    parsed when the filters apply (``EventFilters.apply``)."""
     validate_media_types(media)
     validate_source_filters(source_kind, level)
     return EventFilters(
