@@ -71,6 +71,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "alembic/env.py" = ["E402"] # late imports after sys.path manipulation
+"app/models/__init__.py" = ["F401"] # the imports register every mapper
 "tests/*" = ["S101"]        # asserts are expected in tests
 
 [tool.pytest.ini_options]
