@@ -81,7 +81,11 @@ from app.schemas.source import ImageryProviderRead, ImageryProviderRef
 from app.schemas.user import AuthorRef
 from app.services.event_filters import lock_event, site_linkable_events
 from app.services.events import InvalidCoordinatesError, validate_coordinates
-from app.services.events.errors import SourceMediaNotFoundError
+from app.services.events.errors import (
+    NothingChangedError,
+    SourceMediaNotFoundError,
+    VersionMismatchError,
+)
 from app.services.events.sources import build_source_read, file_source
 from app.services.evidence_intake import StoredObject, media_objects
 from app.services.imagery import LinkCheck, can_reopen, image_provider
@@ -100,107 +104,87 @@ DEFAULT_MARGIN_M = 10_000
 MAX_MARGIN_M = 10_000
 
 
-class SiteError(CodedError):
-    """A site write or read the rules refuse. Stable ``code`` per subclass."""
-
-    code: str
-
-
-class SiteNotFoundError(SiteError):
+class SiteNotFoundError(CodedError):
     code = "site_not_found"
     status_code = 404
 
 
-class NotSiteOwnerError(SiteError):
+class NotSiteOwnerError(CodedError):
     """Only the site's owner saves a version of the site."""
 
     code = "not_site_owner"
     status_code = 403
 
 
-class NotSourceAuthorError(SiteError):
+class NotSourceAuthorError(CodedError):
     """Only the analyst who filed a source removes it."""
 
     code = "not_source_author"
     status_code = 403
 
 
-class SourceCarriesContourError(SiteError):
+class SourceCarriesContourError(CodedError):
     """A source is removed only once it carries no contour."""
 
     code = "source_carries_contour"
     status_code = 409
 
 
-class SiteContourRequiredError(SiteError):
+class SiteContourRequiredError(CodedError):
     """A site keeps at least one source with a contour."""
 
     code = "site_contour_required"
     status_code = 409
 
 
-class SiteVersionMismatchError(SiteError):
-    """The site moved past the version the write was prepared on."""
-
-    code = "version_mismatch"
-    status_code = 409
-
-
-class SiteNothingChangedError(SiteError):
-    """A version write that changes nothing."""
-
-    code = "nothing_changed"
-    status_code = 409
-
-
-class SiteVersionNotFoundError(SiteError):
+class SiteVersionNotFoundError(CodedError):
     code = "site_version_not_found"
     status_code = 404
 
 
-class NotEventOwnerError(SiteError):
+class NotEventOwnerError(CodedError):
     """Only the event's owner links it to a site or unlinks it."""
 
     code = "not_event_owner"
     status_code = 403
 
 
-class InvalidZoneError(SiteError):
+class InvalidZoneError(CodedError):
     """A vertex is out of range, or the polygon is not valid (self-crossing, no area)."""
 
     code = "invalid_zone"
     status_code = 400
 
 
-class ZoneTooLargeError(SiteError):
+class ZoneTooLargeError(CodedError):
     """The zone covers more than ``MAX_ZONE_AREA_KM2``."""
 
     code = "zone_too_large"
     status_code = 400
 
 
-class ZoneTooWideError(SiteError):
+class ZoneTooWideError(CodedError):
     """The zone spans ``MAX_ZONE_LNG_SPAN_DEG`` degrees of longitude or more."""
 
     code = "zone_too_wide"
     status_code = 400
 
 
-class EventNotLinkableError(SiteError):
+class EventNotLinkableError(CodedError):
     """The event is not one a site shows (:func:`site_linkable_events`)."""
 
     code = "event_not_linkable"
     status_code = 409
 
 
-class SiteSourceNotFoundError(SiteError):
+class SiteSourceNotFoundError(CodedError):
     """The source is not one of the site's live sources."""
 
     code = "site_source_not_found"
     status_code = 404
 
 
-class ImageryNotReopenableError(SiteError):
+class ImageryNotReopenableError(CodedError):
     """No link of a site source lets a reader reopen it (``services/imagery.can_reopen``)."""
 
     code = "imagery_not_reopenable"
@@ -927,7 +911,7 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
     try:
         locked = lock_row(db, Site, Site.id == site.id).one()
         if body.version_no != locked.version_no:
-            raise SiteVersionMismatchError(
+            raise VersionMismatchError(
                 f"This site is at version {locked.version_no}; reload it before saving"
             )
         sources = {
@@ -974,7 +958,7 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
         record_moves = (body.name, body.kind) != (locked.name, locked.kind)
         state_moves = record_moves or bool(removed or effective or body.added_sources)
         if not state_moves and not links_move:
-            raise SiteNothingChangedError(f"Nothing changed since version {locked.version_no}.")
+            raise NothingChangedError(f"Nothing changed since version {locked.version_no}.")
 
         if state_moves:
             _file_version(db, site=locked, editor=user, note=body.note)

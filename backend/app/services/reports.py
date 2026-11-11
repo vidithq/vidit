@@ -37,10 +37,15 @@ from app.models.event import Event
 from app.models.site import Site
 from app.services import email
 from app.services.admin import log_admin_event, move_site_takedown, withhold_collection
-from app.services.collections import erase_if_released, visible_collections
+from app.services.collections import (
+    CollectionNotFoundError,
+    erase_if_released,
+    visible_collections,
+)
 from app.services.event_filters import visible_events
+from app.services.events.errors import EventNotFoundError
 from app.services.row_locks import lock_row
-from app.services.sites import visible_sites
+from app.services.sites import SiteNotFoundError, visible_sites
 
 logger = logging.getLogger(__name__)
 
@@ -50,33 +55,6 @@ class ReportError(CodedError):
 
     code: str = "report_error"
     status_code = 400
-
-
-class EventNotFoundError(ReportError):
-    """The reported (or moderated) event does not exist, is soft-deleted, or is
-    already withheld from the public surface it was reached through."""
-
-    code = "event_not_found"
-    status_code = 404
-
-
-class CollectionNotFoundError(ReportError):
-    """The collection does not exist, is withheld, was deleted by its owner, or belongs to a
-    soft-deleted account.
-
-    All four read alike so the caller cannot tell which. The code is the one
-    every ``/collections`` path raises for an unreadable id.
-    """
-
-    code = "collection_not_found"
-    status_code = 404
-
-
-class SiteNotFoundError(ReportError):
-    """The site does not exist, is withheld, or belongs to a soft-deleted account."""
-
-    code = "site_not_found"
-    status_code = 404
 
 
 class ReportNotFoundError(ReportError):

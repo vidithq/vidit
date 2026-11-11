@@ -52,6 +52,7 @@ from app.schemas.collection import (
 )
 from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events, credited_to
+from app.services.events.errors import EventNotFoundError
 from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
@@ -60,52 +61,35 @@ from app.services.sanitize import html_text, sanitize_html
 from app.services.thumbnails import has_thumbnail, thumbnail_candidates, thumbnail_loads
 
 
-class CollectionError(CodedError):
-    """A collection write or read the rules refuse.
-
-    Stable ``code`` per subclass, the same contract as
-    :class:`app.services.evidence_intake.EvidenceIntakeError`.
-    """
-
-    code: str
-
-
-class CollectionNotFoundError(CollectionError):
+class CollectionNotFoundError(CodedError):
     """No collection with that id is readable by this caller."""
 
     code = "collection_not_found"
     status_code = 404
 
 
-class EventNotFoundError(CollectionError):
-    """No event with that id exists at all."""
-
-    code = "event_not_found"
-    status_code = 404
-
-
-class EventNotCollectableError(CollectionError):
+class EventNotCollectableError(CodedError):
     """The event exists but a collection may not hold it."""
 
     code = "event_not_collectable"
     status_code = 409
 
 
-class NotCreditedError(CollectionError):
+class NotCreditedError(CodedError):
     """The caller is not credited on the event (:func:`credited_to`)."""
 
     code = "not_credited"
     status_code = 403
 
 
-class InvalidDescriptionError(CollectionError):
+class InvalidDescriptionError(CodedError):
     """The description breaks one of the rules in :func:`_checked_description`."""
 
     code = "invalid_description"
     status_code = 400
 
 
-class TooManyEventsError(CollectionError):
+class TooManyEventsError(CodedError):
     """One write names more events than ``schemas/collection.MAX_CREATE_EVENTS``."""
 
     code = "too_many_events"
