@@ -8,13 +8,6 @@ from app.database import Base, CreatedAt
 
 
 class PasswordResetToken(Base):
-    """One row per outstanding password-reset token.
-
-    Only `sha256(secret)` is stored in `token_hash`, so a DB read reveals who
-    holds tokens but not live values. Single-use: `consume` flips
-    `consumed_at`, and the router refuses a non-null one.
-    """
-
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

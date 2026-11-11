@@ -19,8 +19,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base, CreatedAt, UpdatedAt, literal_check
 from app.models.event import TITLE_MAX_LENGTH
 
-# Value domains (source of truth: the ORM CHECKs, the schemas and the generated frontend types
-# derive from them). The migration that creates each CHECK changes by hand with its type.
 SiteKind = Literal[
     "airbase",
     "military_base",
@@ -33,21 +31,10 @@ SiteKind = Literal[
     "unknown",
     "other",
 ]
-# What a linked event shows at the site. ``activity`` is the neutral effect: activity observed,
-# such as a column leaving or a launch.
 LinkEffect = Literal["damage", "destruction", "activity", "other"]
 
 
 class Site(Base):
-    """A named area of interest that analysts monitor through its sources, dated satellite captures.
-
-    The zone is not a column: each contour is a ``site_contours`` row citing a site source (a
-    ``sources`` row with ``site_id`` set), and every read derives the zone and the last source
-    (``services/sites``). The live state is this row, the sources not removed and their live
-    contours; each write that changes it files the state it supersedes in ``site_versions``.
-    ``owner_id`` cascades like ``Collection.owner_id``.
-    """
-
     __tablename__ = "sites"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -55,7 +42,6 @@ class Site(Base):
     name: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH))
     kind: Mapped[SiteKind] = mapped_column(String(30))
     version_no: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
-    # Takedown: NULL = visible; same axis and reversal as ``Collection.hidden_at``.
     hidden_at: Mapped[datetime | None]
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
@@ -69,14 +55,6 @@ class Site(Base):
 
 
 class SiteVersion(Base):
-    """One superseded state of a site, filed by the write that replaced it.
-
-    Append-only, like ``EventVersion``: ``version_no`` is the version this row holds, and the
-    live state is ``sites.version_no``. The snapshot names its sources and contours by id, and
-    neither row is ever deleted while the site stands: a removed source keeps its row with
-    ``removed_at`` set, and a replaced contour keeps its row with ``superseded_at`` set.
-    """
-
     __tablename__ = "site_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -85,10 +63,7 @@ class SiteVersion(Base):
     edited_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
-    # The owner's note on the edit that superseded this version. Unbounded ``Text``; the API caps
-    # input at ``schemas/event.VERSION_NOTE_MAX_LENGTH``.
     note: Mapped[str | None] = mapped_column(Text)
-    # ``schemas/site.SiteSnapshot``: the name, the kind, and each source with its contour.
     snapshot: Mapped[Any] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[CreatedAt]
 
@@ -98,24 +73,14 @@ class SiteVersion(Base):
 
 
 class SiteContour(Base):
-    """One zone the site's owner drew, citing the site source that shows it.
-
-    Never edited: a redraw stamps ``superseded_at`` on the live row and inserts a new one. A live
-    source carries at most one live contour (``uq_site_contours_live_source``). The zone valid on
-    a date is the live contour whose source has the latest ``captured_at`` on or before it
-    (``services/sites.zones_at``).
-    """
-
     __tablename__ = "site_contours"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     site_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
-    # A ``sources`` row of the same site (checked in ``services/sites``).
     source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"))
     author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     zone = mapped_column(Geometry("POLYGON", srid=4326, spatial_index=True), nullable=False)
     created_at: Mapped[CreatedAt]
-    # NULL while the contour is in the live state; set by the write that redrew or dropped it.
     superseded_at: Mapped[datetime | None]
 
     author = relationship("User")
@@ -133,12 +98,6 @@ class SiteContour(Base):
 
 
 class EventSiteLink(Base):
-    """One event linked to a site, with what it shows there.
-
-    Live state only, with no history: an effect change rewrites ``effect`` and an unlink deletes
-    the row (``services/sites``). One row per event and site.
-    """
-
     __tablename__ = "event_site_links"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

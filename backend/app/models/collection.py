@@ -9,64 +9,29 @@ from app.models.event import TITLE_MAX_LENGTH
 
 
 class Collection(Base):
-    """A named, curated set of one analyst's own events.
-
-    One owner, and an event joins only when the same account owns both (checked
-    in ``services/collections.add_event``; it spans two tables). The title is
-    capped by the event's ``TITLE_MAX_LENGTH``. The required ``description`` is
-    sanitised HTML capped on its text by
-    ``schemas/collection.DESCRIPTION_MAX_LENGTH``. Items order by when the
-    events happened: no manual position, denormalized count or version history.
-
-    ``owner_id`` cascades, unlike ``Event.owner_id``: nothing outlives the
-    owner's account, and a collection stores no file. An owner's delete erases
-    the row at once unless a report on it is open (``deleted_at``).
-    """
-
     __tablename__ = "collections"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH))
-    # Sanitised HTML, the shape ``Event.proof`` takes minus images (dropped by
-    # the write service).
     description: Mapped[str] = mapped_column(Text, default="")
-    # Plain-text projection of ``description``, written on every write from
-    # ``services/sanitize.html_text``. Stored because the search GIN index
-    # would otherwise index tags and entities. No column width: the
-    # 500-character cap is the API's.
     description_text: Mapped[str] = mapped_column(Text)
-    # Takedown: NULL = visible; same axis and reversal as ``Event.hidden_at``.
     hidden_at: Mapped[datetime | None]
-    # The owner deleted it while a content report on it was open: withheld from every read but an
-    # admin's until the last open report is resolved, which erases the row
-    # (``services/collections.delete_collection``, ``erase_if_released``). Never cleared.
     deleted_at: Mapped[datetime | None]
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
 
     owner = relationship("User")
-    # Membership rows. Order is the events' chronology (``services/collections``).
     items = relationship(
         "CollectionEvent",
         back_populates="collection",
         cascade="all, delete-orphan",
     )
 
-    __table_args__ = (
-        # "This analyst's collections, newest first" (the profile's only read).
-        Index("ix_collections_owner_created_at", "owner_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_collections_owner_created_at", "owner_id", "created_at"),)
 
 
 class CollectionEvent(Base):
-    """One membership: this event is in this collection.
-
-    The pair PK makes the add verb idempotent without read-then-write. The
-    forward read rides the PK; the reverse (the add-to-collection popover) rides
-    the ``event_id`` index. Both FKs cascade.
-    """
-
     __tablename__ = "collection_events"
 
     collection_id: Mapped[uuid.UUID] = mapped_column(

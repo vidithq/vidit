@@ -7,15 +7,8 @@ from app.database import Base, CreatedAt
 
 
 class Follow(Base):
-    """One directed edge of the social graph: ``follower`` follows ``followed``.
-
-    The pair PK blocks duplicates and serves "who is X following?"; an index on
-    ``followed_id`` serves the reverse. The ``CHECK`` blocks self-follow (the
-    router 400s it too).
-
-    No ORM ``relationship``: queries hit the FK columns directly, and backrefs
-    would only bloat the ``User`` mapper.
-    """
+    # No ORM ``relationship``: queries hit the FK columns directly, and backrefs
+    # would only bloat the ``User`` mapper.
 
     __tablename__ = "follows"
 

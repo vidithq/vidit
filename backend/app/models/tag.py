@@ -8,8 +8,6 @@ from app.database import Base, CreatedAt
 # Mirrored by ``frontend/src/components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN``; change both.
 NAME_MAX_LENGTH = 100
 
-# One catalogue of free tags, shared by events and their sources (``models/source.source_tags``).
-# Conflicts are not tags (``models/conflict.py``); where a source comes from is its ``kind``.
 event_tags = Table(
     "event_tags",
     Base.metadata,

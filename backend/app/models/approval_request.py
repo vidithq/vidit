@@ -7,24 +7,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, CreatedAt, literal_check
 
-# Where a request stands. Value-domain source of truth for the column and the Read schema;
-# ``ck_approval_requests_status_valid`` pins it at the DB (keep the two in step).
 ApprovalRequestStatus = Literal["open", "approved", "declined", "withdrawn"]
 
 
 class ApprovalRequest(Base):
-    """A geolocator of an event asks an analyst or an organization to approve it.
-
-    Open until the target approves the event (any version) or declines, or until the requester
-    loses their credit on the event, which withdraws it. The row stays once resolved, so the
-    requester sees the outcome and it still counts toward the daily cap. ``version_no`` is the live version when the
-    request was sent.
-
-    The target is one analyst (``target_user_id``) or one organization
-    (``target_organization_id``), never both: ``ck_approval_requests_one_target``. Any org manager of
-    the organization answers for it.
-    """
-
     __tablename__ = "approval_requests"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -57,7 +43,6 @@ class ApprovalRequest(Base):
             "num_nonnulls(target_user_id, target_organization_id) = 1",
             name="ck_approval_requests_one_target",
         ),
-        # One open request per requester, target and event.
         Index(
             "uq_approval_requests_open",
             "event_id",
@@ -74,15 +59,12 @@ class ApprovalRequest(Base):
             unique=True,
             postgresql_where=text("status = 'open' AND target_organization_id IS NOT NULL"),
         ),
-        # The organization's open requests, and the cascade of a deleted organization.
         Index(
             "ix_approval_requests_target_organization_id",
             "target_organization_id",
             "status",
             postgresql_where=text("target_organization_id IS NOT NULL"),
         ),
-        # The target's open requests, and the cascade of an erased target.
         Index("ix_approval_requests_target_user_id", "target_user_id", "status"),
-        # The requester's daily cap, and the cascade of an erased requester.
         Index("ix_approval_requests_requester_created_at", "requester_id", "created_at"),
     )

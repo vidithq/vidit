@@ -20,21 +20,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, CreatedAt, UpdatedAt, literal_check
 
-# Evidence level of a source: how close it stands to the act (``docs/data-model.md``).
-# ``direct`` shows the act while it happens, ``indirect`` its direct consequences after the
-# fact, ``context`` anything else. Value-domain source of truth for the column, the schemas and
-# the generated frontend type.
 SourceLevel = Literal["direct", "indirect", "context"]
 # The levels that support a publication (``services/events/sources.check_publish_floor``).
 # Mirrored by ``frontend/src/lib/sources.ts::isEvidenceLevel``; change both.
 EVIDENCE_LEVELS: tuple[SourceLevel, ...] = ("direct", "indirect")
 
-# Where a source comes from: what captured it (``camera`` is a handheld or press camera,
-# ``static_camera`` a CCTV or webcam, ``aircraft`` a plane or helicopter, historical aerial
-# photos included) or the kind of document it is. Whether its file is a photo
-# or a video is the file's own ``media.kind``. Closed list; value-domain source of truth for the
-# column, the schemas, the ``source_kind`` filter and the generated frontend type. ``unknown``
-# keeps the choice satisfiable for a source of uncertain provenance.
 SourceKind = Literal[
     "smartphone",
     "camera",
@@ -55,8 +45,6 @@ SOURCE_KINDS: tuple[SourceKind, ...] = get_args(SourceKind)
 # ``frontend/src/lib/sources.ts::DOCUMENT_SOURCE_KINDS``; change both.
 DOCUMENT_SOURCE_KINDS: frozenset[SourceKind] = frozenset({"article", "official_statement", "other"})
 
-# Which service holds a link's archived copy, derived from the snapshot URL's host
-# (``services/source_archive.PROVIDER_HOSTS``); never stored.
 ArchiveProvider = Literal["wayback", "archive_today", "ghostarchive"]
 
 # Ceilings per event and per source. A write past either is rejected, not truncated; an
@@ -73,22 +61,11 @@ source_tags = Table(
     Base.metadata,
     Column("source_id", ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True),
     Column("tag_id", ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
-    # Backs the tag deletion cascade and the live-tags read.
     Index("ix_source_tags_tag_id", "tag_id"),
 )
 
 
 class Source(Base):
-    """One piece of evidence: a file and the URLs it was posted at.
-
-    Its owner is an event (the evidence the event rests on) or a site (a dated satellite
-    capture of the site), never both (``ck_sources_one_owner``). An event holds up to
-    :data:`MAX_SOURCES_PER_EVENT` sources and none is the main one. Their order is the one the
-    last write posted (:func:`source_order`). An event's source is versioned with its event
-    (``services/versions.build_snapshot``): an edit to it is an edit to the event. A site's
-    source is never edited, and its removal only stamps ``removed_at``.
-    """
-
     __tablename__ = "sources"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -98,30 +75,19 @@ class Source(Base):
     site_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("sites.id", ondelete="CASCADE"), index=True
     )
-    # A site source's analyst; any signed-in analyst files one. NULL on an event's source.
     author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    # A site source's plain-text note, capped at ``schemas/site.SITE_SOURCE_NOTE_MAX_LENGTH``.
     note: Mapped[str | None] = mapped_column(Text)
-    # A site source's removal from the live state; the row stays for the versions that name it.
     removed_at: Mapped[datetime | None]
-    # ``""`` is no title.
     title: Mapped[str] = mapped_column(
         String(SOURCE_TITLE_MAX_LENGTH), default="", server_default=text("''")
     )
     level: Mapped[SourceLevel] = mapped_column(String(10))
-    # An event's source's place in its list, 0 first. 0 on a site source, read by capture time.
     position: Mapped[int] = mapped_column(SmallInteger, default=0, server_default=text("0"))
-    # A machine source is ``unknown`` until a review names it.
     kind: Mapped[SourceKind] = mapped_column(String(20))
-    # When the media was captured (UTC). Distinct from the event's ``occurred_date`` and a
-    # link's ``posted_at``.
     captured_at: Mapped[datetime | None]
-    # Where a capture was shot from. Unindexed: no spatial read uses it.
     capture_position = mapped_column(
         Geometry("POINT", srid=4326, spatial_index=False), nullable=True
     )
-    # TRUE when the media shows death, injury or human remains. Read surfaces cover it until
-    # the viewer opts in; an event is graphic when any of its sources is (``Event.is_graphic``).
     is_graphic: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
@@ -139,7 +105,6 @@ class Source(Base):
         ),
     )
     tags = relationship("Tag", secondary=source_tags, back_populates="sources", order_by="Tag.name")
-    # One file per source (``uq_media_source_id``); None for a URL-only source.
     media = relationship(
         "Media", uselist=False, back_populates="source", cascade="all, delete-orphan"
     )
@@ -148,7 +113,6 @@ class Source(Base):
         literal_check("level", SourceLevel, "ck_sources_level_valid"),
         literal_check("kind", SourceKind, "ck_sources_kind_valid"),
         CheckConstraint("num_nonnulls(event_id, site_id) = 1", name="ck_sources_one_owner"),
-        # A site source is a dated satellite capture that supports no publication.
         CheckConstraint(
             "site_id IS NULL OR (kind = 'satellite' AND level = 'context' "
             "AND captured_at IS NOT NULL)",
@@ -158,31 +122,24 @@ class Source(Base):
             "site_id IS NOT NULL OR (author_id IS NULL AND note IS NULL AND removed_at IS NULL)",
             name="ck_sources_site_fields",
         ),
-        # Serves the ON DELETE SET NULL of an account erasure; only site sources set it.
         Index("ix_sources_author_id", "author_id", postgresql_where=text("author_id IS NOT NULL")),
     )
 
 
 class SourceLink(Base):
-    """One URL a source's media was posted at, with its archived copy."""
-
     __tablename__ = "source_links"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"))
     url: Mapped[str] = mapped_column(Text)
-    # When the media was posted at this URL (UTC). NULL unless known.
     posted_at: Mapped[datetime | None]
-    # The archived copy the analyst recorded (``services/source_archive.validate_snapshot``).
     snapshot_url: Mapped[str | None] = mapped_column(Text)
-    # When that copy was recorded; set exactly with ``snapshot_url``.
     archived_at: Mapped[datetime | None]
     created_at: Mapped[CreatedAt]
 
     source = relationship("Source", back_populates="links")
 
     __table_args__ = (
-        # The leading ``source_id`` also backs the per-source read.
         UniqueConstraint("source_id", "url", name="uq_source_links_source_url"),
         CheckConstraint(
             "(snapshot_url IS NULL) = (archived_at IS NULL)",
@@ -192,5 +149,4 @@ class SourceLink(Base):
 
 
 def source_order():
-    """The order of an event's sources: the posted one (``position``), then creation."""
     return (Source.position, Source.created_at, Source.id)
