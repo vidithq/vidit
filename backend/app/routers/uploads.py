@@ -1,5 +1,3 @@
-"""``POST /uploads``: stage one picked source file before the event write that names it."""
-
 import asyncio
 import logging
 
@@ -42,12 +40,7 @@ def create_upload(
     # One file per request: the request size limit admits one video.
     file: UploadFile = File(...),
 ) -> UploadList:
-    """Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``.
-
-    The file is validated (type, size) and stored now, and each row expires
-    after 24 hours unless a write takes it. 400 on an invalid file, 429 past
-    the per-account ceiling of staged files.
-    """
+    """Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``."""
     rows = asyncio.run(uploads_service.stage_upload(db, uploader=current_user, file=file))
     return UploadList(items=[_upload_read(row) for row in rows])
 

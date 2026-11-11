@@ -1,8 +1,4 @@
-"""Multipart form-field parsers shared by the geolocation + request create routers.
-
-The ``{status, message}`` contract for malformed id arrays and ISO dates /
-times lives here once instead of per form.
-"""
+"""Multipart form-field parsers shared by the event write routers."""
 
 import json
 import uuid
@@ -22,11 +18,8 @@ MAX_ID_LIST_LENGTH = 100
 
 
 def parse_json_id_list(raw: str | None, *, field: str) -> list[uuid.UUID]:
-    """Parse a JSON array of ids from a form field. ``None`` / empty → ``[]``; 400 on garbage.
-
-    Capped at :data:`MAX_ID_LIST_LENGTH` (422 over it) since the list feeds a
-    SQL ``IN``. Elements are coerced to :class:`uuid.UUID` (422 on a non-UUID).
-    """
+    """``None`` or empty is ``[]``; 400 on invalid JSON or a non-array, 422 past
+    :data:`MAX_ID_LIST_LENGTH` items or on a non-UUID."""
     if not raw:
         return []
     try:

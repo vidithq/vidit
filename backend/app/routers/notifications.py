@@ -35,10 +35,7 @@ def list_notifications(
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
     cursor: Cursor = None,
 ) -> list[NotificationRead]:
-    """Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
-
-    Listing marks nothing read; ``POST /notifications/read`` does.
-    """
+    """Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor)."""
     size = page_size(limit)
     window = notifications_service.list_feed(
         db,
@@ -87,11 +84,7 @@ def unsubscribe_email_page(
     request: Request,
     token: str = Query(min_length=1, max_length=200),
 ) -> RedirectResponse:
-    """Send a mail client that opens the ``List-Unsubscribe`` URL to the confirmation page.
-
-    Changes nothing: a mail scanner opens links too. The page posts the token back here once
-    the reader confirms.
-    """
+    """Send a mail client that opens the ``List-Unsubscribe`` URL to the confirmation page."""
     return RedirectResponse(
         app_url(f"/unsubscribe/notifications?token={quote(token, safe='')}"),
         status_code=status.HTTP_303_SEE_OTHER,
@@ -103,12 +96,7 @@ def unsubscribe_email_page(
 def unsubscribe_email(
     request: Request, db: DB, token: str = Query(min_length=1, max_length=200)
 ) -> Response:
-    """Turn off one kind of notification email, named by a signed token.
-
-    Needs no session: a mail client posts it one-click from the
-    ``List-Unsubscribe`` header. Idempotent; 400 on a token that does not
-    verify.
-    """
+    """Turn off one kind of notification email, named by a signed token."""
     preferences_service.unsubscribe_email(db, token)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

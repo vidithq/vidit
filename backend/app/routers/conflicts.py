@@ -21,19 +21,9 @@ router = APIRouter()
 def list_conflicts(request: Request, db: DB, used: bool = False):
     """Return the conflicts referential, ongoing first then by name.
 
-    The default returns every row: the submit picker needs the whole
-    referential (ended conflicts behind its toggle) so analysts can tag
-    archival footage. It is server-managed (Wikipedia sync, Wikidata seed,
-    operator rows); there is no create endpoint.
-
-    ``used=true`` is the map-filter view: only conflicts on at least one live
-    event. Mirrors the orphan filter on ``GET /tags``.
-
-    Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: the picker
-    filters the whole referential client-side. The daily sync's sanity band
-    bounds one parse pass, not the table (rows accumulate across passes), so
-    the ceiling bounds the response. A response landing on it is logged because
-    the payload can't say it was cut.
+    The daily sync's sanity band bounds one parse pass, not the table (rows accumulate across
+    passes), so ``REFERENTIAL_MAX_ROWS`` bounds the response. A response landing on it is logged
+    because the payload can't say it was cut.
     """
     query = db.query(Conflict)
     if used:

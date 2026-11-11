@@ -39,10 +39,9 @@ class SearchEventHit(BaseModel):
     # no located point.
     lat: float | None
     lng: float | None
-    # See ``EventRead.is_graphic``; travels with the hit to avoid a detail fetch.
+    # Travels with the hit to avoid a detail fetch.
     is_graphic: bool
     owner: AuthorRef
-    # See ``EventRead.geolocators``.
     geolocators: list[AuthorRef]
     # The card thumbnail (at most one row, ``services.thumbnails``).
     media: list[MediaRead]

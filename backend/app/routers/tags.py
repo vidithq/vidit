@@ -35,24 +35,14 @@ def _warn_if_truncated(rows: list[Tag]) -> list[Tag]:
 @limiter.limit("60/minute")
 def list_tags(request: Request, db: DB):
     """Return tags referenced by at least one *live* event or one of its sources, so the map
-    filter shows no chips that match nothing.
-
-    Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: pickers and
-    the filter panel hydrate the vocabulary whole and filter client-side. A
-    response landing on the ceiling is logged because the payload can't say it
-    was cut.
-    """
+    filter shows no chips that match nothing."""
     return _warn_if_truncated(live_tags(db))
 
 
 @router.get("/suggested", response_model=list[TagRead])
 @limiter.limit("60/minute")
 def list_suggested_tags(request: Request, current_user: CurrentUser, db: DB):
-    """Return the tags a form offers in one click: your most used tags, then the platform's.
-
-    Ranked by uses on live events you own and their sources, then filled with the most used
-    live tags. The list never holds an orphan tag.
-    """
+    """Return the tags a form offers in one click: your most used tags, then the platform's."""
     return suggested_tags(db, current_user.id)
 
 
