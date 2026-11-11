@@ -1,11 +1,7 @@
-"""The standard event filter set, shared by every surface that lists events, and
-:func:`lock_event`, the row lock every event write takes.
+"""The event filter set every listing surface shares, and the event predicates.
 
-`/events`, `/events/points`, `/search` and `/feed` accept the same filter vocabulary,
-single-sourced here so the surfaces cannot drift (``routers/_filters`` reads it from the query).
 The bbox, media and status validators raise ``HTTPException(422)`` directly: they are the input
-boundary for query parameters. Date parsing lives here too
-(:func:`parse_optional_iso_date`); ``routers._forms`` re-exports it for the multipart forms.
+boundary for query parameters.
 """
 
 import math
@@ -69,38 +65,15 @@ def lock_event(db: Session, event_id: uuid.UUID) -> Event:
 def visible_events() -> tuple[ColumnElement[bool], ColumnElement[bool]]:
     """The public-visibility predicate pair: not soft-deleted, not withheld.
 
-    Every surface that lists, counts or resolves an event for a public reader spreads this
-    (``*visible_events()``). Two deliberate non-callers: the event detail read, which hands a
-    withheld row to an admin (:func:`routers.events.item.get_event`), and
-    :func:`services.reports.set_event_moderation`, which must reach a withheld row to lift the
-    takedown.
+    :func:`services.reports.set_event_moderation` deliberately skips it: it must reach a
+    withheld row to lift the takedown.
     """
     return Event.deleted_at.is_(None), Event.hidden_at.is_(None)
 
 
 def published_events() -> ColumnElement[bool]:
-    """The predicate for work an analyst has published: ``geolocated`` alone.
-
-    ``visible_events`` answers "may a reader see this row"; this answers "did this analyst
-    stand behind it". The profile feed (:func:`routers.users.get_user_geolocations`), the
-    profile's ``geolocations_count`` and the feed (:func:`services.social.get_feed`)
-    all filter on it, so counts and rows agree.
-
-    The other states are out:
-
-    * ``detected`` is machine output the analyst has not vouched for.
-    * ``closed`` off ``detected`` is a detection the analyst threw out.
-    * ``closed`` off ``geolocated`` is published work the analyst retracted. It leaves every
-      count and feed at once; the page, its version history, credits and archives stay,
-      marked as withdrawn with the reason.
-    * ``requested`` is an open call for help with no vouched location, on its own read view
-      (see :data:`EventView`). ``closed`` off ``requested`` is a withdrawn ask.
-
-    Deliberate non-callers: the ``located`` catalog view, which shows detections beside vouched
-    rows (:func:`view_predicate`); the profile coverage map, which plots both and splits the
-    count; and :func:`services.user_stats.get_user_stats`, which reports ``geolocated`` and
-    ``detected`` as their own tallies and sums them into ``total_events``.
-    """
+    """Work an analyst stands behind: ``geolocated`` alone. A retraction leaves every count and
+    feed that filters on it at once."""
     return Event.status == STATUS_GEOLOCATED
 
 
@@ -152,22 +125,12 @@ def published_credited_to(user_ids: Iterable[Any] | Select[Any]) -> ColumnElemen
 
 
 def open_requests() -> ColumnElement[bool]:
-    """The predicate for a request an analyst has open: ``requested``.
-
-    The request twin of :func:`published_events`, read by the feed
-    (:func:`services.social.get_feed`). A fulfilled request moves to
-    :func:`published_events` and a withdrawn one (``closed`` off ``requested``) drops out.
-    """
+    """A request an analyst has open: ``requested``."""
     return Event.status == STATUS_REQUESTED
 
 
 def live_detections() -> ColumnElement[bool]:
-    """The predicate for a machine detection awaiting its owner: ``detected``.
-
-    The detection twin of :func:`open_requests`, read by the feed
-    (:func:`services.social.get_feed`). A submitted detection moves to :func:`published_events`
-    and a rejected one (``closed`` off ``detected``) drops out.
-    """
+    """A machine detection awaiting its owner: ``detected``."""
     return Event.status == STATUS_DETECTED
 
 
@@ -202,8 +165,7 @@ def site_linkable_events() -> ColumnElement[bool]:
 def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
     """Parse an optional ISO-8601 (YYYY-MM-DD) date. Empty → ``None``; 422 on garbage.
 
-    The one home for date parsing on the request boundary (list-filter params and multipart
-    forms). A raw string forwarded into a SQLAlchemy comparison would make Postgres raise
+    A raw string forwarded into a SQLAlchemy comparison would make Postgres raise
     ``InvalidDatetimeFormat`` as a 500, which an anonymous endpoint turns into scraper-driven
     Sentry noise.
 
@@ -310,9 +272,6 @@ def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
 
     Raises ``HTTPException(422)`` on malformed input instead of falling back to an unfiltered
     query: on a map endpoint a swallowed typo returns every point on Earth.
-
-    Lat in [-90, 90], lng in [-180, 180], south <= north, west <= east. Antimeridian-crossing
-    boxes (west > east) are rejected; a client straddling it widens to the full longitude range.
     Hand-kept FE mirror: ``frontend/src/lib/viewport.ts``.
     """
     try:
@@ -360,17 +319,15 @@ def snap_bbox(bounds: tuple[float, float, float, float]) -> tuple[float, float, 
 
 
 def _snap_down(value: float) -> float:
-    """Largest grid line at or below ``value`` (rounded off float dust)."""
+    # Rounded off float dust.
     return round(math.floor(value / POINTS_CACHE_GRID) * POINTS_CACHE_GRID, 6)
 
 
 def _snap_up(value: float) -> float:
-    """Smallest grid line at or above ``value``."""
     return round(math.ceil(value / POINTS_CACHE_GRID) * POINTS_CACHE_GRID, 6)
 
 
 def bbox_predicate(bounds: tuple[float, float, float, float]):
-    """PostGIS containment predicate for a bbox already through :func:`parse_bbox`."""
     south, west, north, east = bounds
     return ST_Within(
         Event.coords,

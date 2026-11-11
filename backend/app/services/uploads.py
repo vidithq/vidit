@@ -195,11 +195,7 @@ async def _stage_bytes(
 async def stage_upload(db: Session, *, uploader: User, file: UploadFile) -> list[Upload]:
     """Store one picked file and record it for a later event write; commits.
 
-    A GIF is stored and recorded as one PNG per frame, in frame order. Raises
-    :class:`TooManyUploadsError` when the files would pass
-    :data:`MAX_PENDING_UPLOADS_PER_USER` live rows, :class:`InvalidFileError` on a disallowed
-    type or size, and :class:`EvidenceProcessingFailedError` when the image cannot be re-encoded
-    or the GIF holds too many frames.
+    A GIF is stored and recorded as one PNG per frame, in frame order.
     """
     now = datetime.now(UTC)
     try:
@@ -220,7 +216,7 @@ async def stage_from_link(
     """Stage file ``index`` of the post ``url`` names, with the kind of every file it holds.
 
     Only a link a chaser reads is fetched (``tweet_ingest.chase_post``), and only a trusted CDN
-    serves the file. Raises :func:`stage_upload`'s errors and :class:`LinkImportError`.
+    serves the file.
     """
     if not is_importable_link(url):
         raise LinkImportError("unsupported_link")
@@ -262,7 +258,6 @@ async def stage_from_proof(db: Session, *, uploader: User, event_id: uuid.UUID, 
 
     The image must be a stored proof image of a live event ``uploader`` may edit, by the rule of
     ``events.revision.save_version``: their own, or an open request. The proof keeps its image.
-    Raises :class:`ProofImageNotFoundError` and :func:`stage_upload`'s errors.
     """
     now = datetime.now(UTC)
     _ensure_room(db, uploader, now)
@@ -306,8 +301,6 @@ def take_uploads(
     """Lock the staged rows a write references, by id.
 
     The row lock makes a second write naming the same upload wait, then find it gone.
-    Raises :class:`UploadNotFoundError` for an id that is unknown or another account's, and
-    :class:`UploadExpiredError` for one past ``expires_at``.
     """
     ids = set(upload_ids)
     if not ids:

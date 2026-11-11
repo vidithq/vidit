@@ -141,15 +141,8 @@ def list_invites(db: Session, *, geo: Event, viewer: User) -> list[EventGeolocat
 
 
 def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolocator:
-    """Invite ``username`` to share the credit of ``geo`` and notify them.
-
-    Owner-only (403) and ``geolocated`` only (409 ``invalid_state``). An unknown or
-    soft-deleted username is 404 ``user_not_found``; a current geolocator, the owner included,
-    409 ``already_geolocator``; a pending invitation 409 ``already_invited``; past
-    :data:`MAX_EVENT_GEOLOCATORS` (invited and active, live analysts only) 409
-    ``too_many_geolocators``. A former geolocator's row turns ``invited`` and keeps
-    ``departed_at``.
-    """
+    """Invite ``username`` to share the credit of ``geo`` and notify them. A former
+    geolocator's row turns ``invited`` and keeps ``departed_at``."""
     geo = lock_event(db, geo.id)
     ensure_owner(geo, owner)
     row = _stage_invite(db, geo=geo, username=username)
@@ -210,7 +203,7 @@ def _stage_invite(db: Session, *, geo: Event, username: str) -> EventGeolocator:
 
 
 def withdraw(db: Session, *, geo: Event, owner: User, username: str) -> None:
-    """Withdraw the owner's pending invitation of ``username`` (404 ``invite_not_found``)."""
+    """Withdraw the owner's pending invitation of ``username``."""
     geo = lock_event(db, geo.id)
     ensure_owner(geo, owner)
     invitee = get_live_by_username(db, username)
@@ -232,10 +225,7 @@ def _end_invitation(db: Session, row: EventGeolocator) -> None:
 def accept(db: Session, *, geo: Event, user: User) -> None:
     """Turn ``user``'s pending invitation into geolocator credit, in one transaction. The open
     approval requests asking ``user`` to approve the event go, since a geolocator cannot approve it.
-
-    404 ``invite_not_found`` without one; 409 ``invalid_state`` once the event left
-    ``geolocated`` (the invitation stays, and declining it still works).
-    """
+    Once the event left ``geolocated`` the invitation stays, and declining it still works."""
     geo = lock_event(db, geo.id)
     invitation = _invite_row(db, geo.id, user.id)
     _require_published(geo)
@@ -253,7 +243,7 @@ def accept(db: Session, *, geo: Event, user: User) -> None:
 
 
 def decline(db: Session, *, geo: Event, user: User) -> None:
-    """Drop ``user``'s pending invitation (404 ``invite_not_found``)."""
+    """Drop ``user``'s pending invitation."""
     geo = lock_event(db, geo.id)
     _end_invitation(db, _invite_row(db, geo.id, user.id))
     db.commit()

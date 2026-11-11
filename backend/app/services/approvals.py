@@ -202,14 +202,7 @@ def approve(
 ) -> EventApproval:
     """Approve the live version of ``geo`` as ``reviewer``, or for ``organization`` with
     ``reviewer`` as the acting member. Resolve the approval requests that target received for
-    the event, and notify the owner and those requesters.
-
-    409 ``invalid_state`` off ``geolocated`` (a closed event keeps its approvals readable but
-    takes no new one); 403 ``not_organization_member`` when ``reviewer`` is not a member of
-    ``organization``; 403 ``geolocator_cannot_approve`` for a current or former geolocator of the event; 409
-    ``version_mismatch`` when ``version_no`` is not the live version; 409 ``already_approved``
-    when ``reviewer``, or ``organization``, already approved that version.
-    """
+    the event, and notify the owner and those requesters."""
     geo = lock_event(db, geo.id)
     # Mirrored by the frontend's lib/approvals.canApprove; change both.
     if geo.status != STATUS_GEOLOCATED:

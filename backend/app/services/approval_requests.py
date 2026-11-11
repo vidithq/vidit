@@ -523,17 +523,7 @@ def request_approval(
     organization: str | None = None,
 ) -> ApprovalRequest:
     """Ask the analyst ``username``, or the organization with slug ``organization``, to approve
-    the live version of ``geo``, and notify the analyst or every live member.
-
-    409 ``invalid_state`` off ``geolocated``; 403 ``not_a_geolocator`` when ``requester`` is
-    not credited on the event; 404 ``user_not_found`` or ``organization_not_found``; 403
-    ``target_is_geolocator`` for a current or former geolocator target, or an organization whose
-    every live member is one; 403 ``requests_not_accepted`` when the target's audience refuses
-    ``requester``; 409 ``already_approved`` when the target approved the live version; 409
-    ``already_requested`` for a second open request; 409 ``recently_declined`` within
-    :data:`DECLINE_COOLDOWN` of the target declining the same request; 429 ``daily_cap_reached`` past the daily
-    cap.
-    """
+    the live version of ``geo``, and notify the analyst or every live member."""
     geo = lock_event(db, geo.id)
     _require_requester(db, geo=geo, requester=requester)
     target_user_id: uuid.UUID | None = None
@@ -575,11 +565,7 @@ def request_approval(
 
 def decline(db: Session, *, geo: Event, request_id: uuid.UUID, user: User) -> ApprovalRequest:
     """Decline a request addressed to ``user``, or to an organization ``user`` is a member of,
-    and tell the requester.
-
-    404 ``approval_request_not_found`` for an id that is not such a request on ``geo``; 409
-    ``already_resolved`` once it is approved, declined or withdrawn.
-    """
+    and tell the requester."""
     geo = lock_event(db, geo.id)
     row = (
         db.query(ApprovalRequest)
