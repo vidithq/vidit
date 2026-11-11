@@ -440,6 +440,16 @@ def _import_shape(sources: Sequence[Source]) -> list[_SourceShape]:
     ]
 
 
+def _provenance(work: Detection | RequestDraft, via: DetectedVia) -> ImportProvenance:
+    return ImportProvenance(
+        tweet_id=work.detected_from_post_id,
+        url=work.detected_from_url,
+        thread_tweet_ids=list(work.thread_tweet_ids),
+        via=via,
+        post_at=work.detected_post_at,
+    )
+
+
 async def _persist_one(
     db: Session,
     *,
@@ -461,18 +471,8 @@ async def _persist_one(
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
         )
-        # Provenance, written once through the home both write paths read (see
-        # :func:`_apply_import_fields`).
-        stamp_provenance(
-            geo,
-            ImportProvenance(
-                tweet_id=detection.detected_from_post_id,
-                url=detection.detected_from_url,
-                thread_tweet_ids=list(detection.thread_tweet_ids),
-                via=via,
-                post_at=detection.detected_post_at,
-            ),
-        )
+        # Written once (see :func:`_apply_import_fields`).
+        stamp_provenance(geo, _provenance(detection, via))
         db.add(geo)
         db.flush()  # populate geo.id for media keys + the Media FK
 
@@ -931,13 +931,7 @@ async def open_request(
                 )
             ],
             proof_files=[],
-            provenance=ImportProvenance(
-                tweet_id=draft.detected_from_post_id,
-                url=draft.detected_from_url,
-                thread_tweet_ids=list(draft.thread_tweet_ids),
-                via="bot",
-                post_at=draft.detected_post_at,
-            ),
+            provenance=_provenance(draft, "bot"),
         )
     except EvidenceIntakeError:
         # Roll back what ``create_request`` staged (event row, sources) so it does not ride

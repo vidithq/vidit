@@ -25,7 +25,7 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from typing import Final, Literal
+from typing import Final, Literal, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 from .extract import (
@@ -602,6 +602,18 @@ def _warnings_for(
     return warnings
 
 
+class _ThreadFields(TypedDict):
+    """What a thread's detections and its request draft read alike, derived once."""
+
+    title: str
+    proof_text: str
+    source_posted_at: datetime | None
+    occurred_date: date | None
+    detected_post_at: datetime | None
+    detected_from_url: str
+    thread_tweet_ids: tuple[int, ...]
+
+
 def resolve_threads(threads: list[list[TweetRecord]], *, with_requests: bool = False) -> Resolution:
     """The engine: every thread's detections, plus one count per refusal code.
 
@@ -664,48 +676,47 @@ def _thread_detections(
     own_text = strip_bot_tag(joined, settings.x_bot_handle)
     # A coordinate solely in a third party's quoted post is that party's geolocation.
     scan = scan_coords(own_text)
-    if not scan.coords:
-        if scan.out_of_bounds:
-            return [], COORDS_INVALID, None, None
-        if not with_requests:
-            return [], COORDS_MISSING, None, None
-        draft, request_refusal = _request_draft(posts, own_text)
-        return [], COORDS_MISSING, draft, request_refusal
+    if not scan.coords and scan.out_of_bounds:
+        return [], COORDS_INVALID, None, None
+    if not scan.coords and not with_requests:
+        return [], COORDS_MISSING, None, None
     source_url, source_posted_at = resolve_source(posts)
     source_media, proof_media = split_media(posts)
     detected_post_at = _posted_at(head.created_at)
-    secondary_sources = resolve_secondary_sources(posts, source_url)
-    # Derived once: the thread's detections differ only on the coordinate.
-    title = derive_title(own_text)
-    proof_text = clean_proof_text(own_text)
-    warnings = _warnings_for(scan.coords, source_url, secondary_sources)
-    # Every post of the thread (retweets already dropped): what the write path
-    # recognises a re-import by.
-    thread_tweet_ids = tuple(
-        tweet_id
-        for tweet_id in (_tweet_id(post.tweet_id) for post in posts)
-        if tweet_id is not None
+    shared = _ThreadFields(
+        title=derive_title(own_text),
+        proof_text=clean_proof_text(own_text),
+        source_posted_at=source_posted_at,
+        occurred_date=_event_date(head.created_at, detected_post_at),
+        detected_post_at=detected_post_at,
+        detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
+        # Retweets already dropped: what the write path recognises a re-import by.
+        thread_tweet_ids=tuple(
+            tweet_id
+            for tweet_id in (_tweet_id(post.tweet_id) for post in posts)
+            if tweet_id is not None
+        ),
     )
+    if not scan.coords:
+        draft, request_refusal = _request_draft(
+            posts, source_url, source_media, proof_media, shared
+        )
+        return [], COORDS_MISSING, draft, request_refusal
+    secondary_sources = resolve_secondary_sources(posts, source_url)
+    warnings = _warnings_for(scan.coords, source_url, secondary_sources)
+    source_fetch_failed = any(post.chase_outcome == "transient_failure" for post in posts)
     return (
         [
             Detection(
                 coordinate=coord,
-                title=title,
-                proof_text=proof_text,
                 source_url=source_url,
                 detected_from_post_id=_tweet_id(head.tweet_id),
-                detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
-                thread_tweet_ids=thread_tweet_ids,
-                occurred_date=_event_date(head.created_at, detected_post_at),
-                source_posted_at=source_posted_at,
-                detected_post_at=detected_post_at,
                 secondary_sources=secondary_sources,
                 source_media=source_media,
                 proof_media=proof_media,
-                source_fetch_failed=any(
-                    post.chase_outcome == "transient_failure" for post in posts
-                ),
+                source_fetch_failed=source_fetch_failed,
                 warnings=warnings,
+                **shared,
             )
             for coord in scan.coords
         ],
@@ -716,12 +727,15 @@ def _thread_detections(
 
 
 def _request_draft(
-    posts: list[TweetRecord], own_text: str
+    posts: list[TweetRecord],
+    resolved: str | None,
+    source_media: list[ParsedMedia],
+    proof_media: list[ParsedMedia],
+    shared: _ThreadFields,
 ) -> tuple[RequestDraft | None, str | None]:
     """The request a coordinate-less thread yields, or the code naming why not.
 
-    Uses the same derivations as :func:`_thread_detections`. Six conditions must
-    hold, else the thread keeps its plain refusal:
+    Six conditions must hold, else the thread keeps its plain refusal:
 
     * the head has a usable post id (the re-import match key);
     * no chase failed transiently (a re-tag can still read that source, and a
@@ -740,23 +754,19 @@ def _request_draft(
     keeping the plain ``COORDS_MISSING``, since naming them would mislead (a
     retry, a quoted coordinate, a blank title, or no declared source).
     """
-    head = posts[0]
-    tweet_id = _tweet_id(head.tweet_id)
+    tweet_id = _tweet_id(posts[0].tweet_id)
     if tweet_id is None:
         return None, None
     if any(post.chase_outcome == "transient_failure" for post in posts):
         return None, None
-    resolved, source_posted_at = resolve_source(posts)
     if resolved is None:
         # Nothing pointed at (no link or quote, or several candidates): keep the flat refusal.
         return None, None
-    source_url = request_source_url(resolved)
     if any(
         scan_coords(expand_shortlinks(quoted.text, quoted.external_sources)).coords
         for quoted in quoted_posts(posts)
     ):
         return None, None
-    source_media, proof_media = split_media(posts)
     candidates = list(source_media)
     fallback = first_own_video_index(proof_media)
     if fallback is not None:
@@ -765,26 +775,15 @@ def _request_draft(
         candidates.append(proof_media[fallback])
     if not candidates:
         return None, REQUEST_NOT_POSSIBLE
-    title = derive_title(own_text)
-    if not title:
+    if not shared["title"]:
         return None, None
-    detected_post_at = _posted_at(head.created_at)
+    source_url = request_source_url(resolved)
     draft = RequestDraft(
-        title=title,
-        proof_text=clean_proof_text(own_text),
         source_url=source_url,
-        source_posted_at=source_posted_at,
-        occurred_date=_event_date(head.created_at, detected_post_at),
-        detected_post_at=detected_post_at,
         detected_from_post_id=tweet_id,
-        detected_from_url=canonical_tweet_url(head.tweet_id, head.handle),
-        thread_tweet_ids=tuple(
-            post_id
-            for post_id in (_tweet_id(post.tweet_id) for post in posts)
-            if post_id is not None
-        ),
         secondary_sources=resolve_secondary_sources(posts, source_url),
         footage_candidates=candidates,
+        **shared,
     )
     return draft, None
 
