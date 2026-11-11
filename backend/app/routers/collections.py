@@ -92,8 +92,8 @@ def list_collectable_matches(
         limit=size,
         after=decode_cursor(cursor) if cursor is not None else None,
     )
-    rows = paged(request, response, window, size, lambda r: encode_cursor(r[0].created_at, r[0].id))
-    return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
+    return [build_event_list(event) for event in rows]
 
 
 @router.post(
@@ -197,9 +197,9 @@ def list_collection_events(
         response,
         window,
         size,
-        lambda r: encode_chronological_cursor(*collections_service.cursor_values(r[0])),
+        lambda r: encode_chronological_cursor(*collections_service.cursor_values(r)),
     )
-    return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
+    return [build_event_list(event) for event in rows]
 
 
 @router.post("/{collection_id}/events", response_model=CollectionBulkAddResult)

@@ -193,11 +193,7 @@ def list_events(
     ids = [key.id for key in keys]
 
     rows = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-        )
+        db.query(Event)
         .options(
             # ``selectinload``, never ``subqueryload``: with ``.and_()`` criteria
             # subqueryload loses the outer correlation on a compiled-cache hit
@@ -214,7 +210,7 @@ def list_events(
         .all()
     )
 
-    return [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
+    return [build_event_list(geo) for geo in rows]
 
 
 @router.get("/detections", response_model=PaginatedEventDetails)
@@ -257,11 +253,7 @@ def list_detections(
     }[readiness]
 
     window = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-        )
+        db.query(Event)
         .options(*DETAIL_LOADS)
         .filter(*page_filters)
         .order_by(Event.created_at.desc(), Event.id.desc())
@@ -269,7 +261,7 @@ def list_detections(
         .limit(per_page)
     )
 
-    items = [build_event_read(geo, lat=lat, lng=lng) for geo, lat, lng in window.all()]
+    items = [build_event_read(geo) for geo in window.all()]
 
     return PaginatedEventDetails(
         items=items,

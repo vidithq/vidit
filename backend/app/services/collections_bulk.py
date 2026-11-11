@@ -17,7 +17,6 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import NamedTuple
 
-from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.collection import Collection
@@ -54,15 +53,13 @@ def list_matches(
     user: User,
     limit: int,
     after: tuple[datetime, uuid.UUID] | None = None,
-) -> list[tuple[Event, float | None, float | None]]:
-    """One window of ``(event, lat, lng)`` rows :func:`count_matches` counts, newest first,
-    over-fetched by one row for ``pagination.paged``."""
+) -> list[Event]:
+    """One window of the events :func:`count_matches` counts, newest first, over-fetched by one
+    row for ``pagination.paged``."""
     match.filters.validate()
     query = collectable_matches(
         db,
         Event,
-        ST_Y(Event.coords).label("lat"),
-        ST_X(Event.coords).label("lng"),
         query=match.q,
         filters=match.filters,
         user=user,
@@ -75,8 +72,7 @@ def list_matches(
     )
     if after is not None:
         query = query.filter(keyset_before(Event.created_at, Event.id, after))
-    rows = query.order_by(Event.created_at.desc(), Event.id.desc()).limit(limit + 1).all()
-    return [(event, lat, lng) for event, lat, lng in rows]
+    return query.order_by(Event.created_at.desc(), Event.id.desc()).limit(limit + 1).all()
 
 
 def _too_many() -> TooManyEventsError:

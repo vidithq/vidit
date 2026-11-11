@@ -12,7 +12,6 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, time
 from typing import Any, NamedTuple
 
-from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import ColumnElement, func, select, union
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -528,16 +527,12 @@ def list_items(
     collection_id: uuid.UUID,
     limit: int,
     cursor: tuple[date, time, datetime, uuid.UUID] | None = None,
-) -> list[tuple[Event, float | None, float | None]]:
-    """One window of ``(event, lat, lng)`` items in :func:`chronological_key` order,
-    over-fetched by one row for ``pagination.paged``."""
+) -> list[Event]:
+    """One window of the collection's events in :func:`chronological_key` order, over-fetched
+    by one row for ``pagination.paged``."""
     key = chronological_key()
     query = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-        )
+        db.query(Event)
         .select_from(CollectionEvent)
         .join(Event, Event.id == CollectionEvent.event_id)
         .options(
@@ -551,7 +546,7 @@ def list_items(
     )
     if cursor is not None:
         query = query.filter(keyset_after(key, cursor))
-    return [(event, lat, lng) for event, lat, lng in query.order_by(*key).limit(limit + 1).all()]
+    return query.order_by(*key).limit(limit + 1).all()
 
 
 def list_owned_collections(

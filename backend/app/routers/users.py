@@ -227,5 +227,5 @@ def get_user_geolocations(
     rows, total = social.list_published_geolocations(
         db, user_id=user.id, page=page, per_page=per_page
     )
-    items = [build_event_list(geo, lat=lat, lng=lng) for geo, lat, lng in rows]
+    items = [build_event_list(geo) for geo in rows]
     return PaginatedEvents(items=items, total=total, page=page, per_page=per_page)

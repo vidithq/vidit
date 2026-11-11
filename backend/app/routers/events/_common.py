@@ -23,7 +23,7 @@ from app.schemas.event import (
     EventVersionRead,
     GeolocatorInviteCreate,
 )
-from app.schemas.source import CoordsRead, SourceCreate
+from app.schemas.source import SourceCreate
 from app.services.event_filters import visible_events
 from app.services.events.form import EventForm
 from app.services.events.sources import build_source_read
@@ -33,6 +33,7 @@ from app.services.geolocator_credit import (
     live_geolocators,
 )
 from app.services.thumbnails import thumbnail_loads, thumbnail_media
+from app.services.versions import point_shape
 
 # Every relationship ``build_source_read`` reads, for a query that serves sources.
 SOURCE_LOAD = selectinload(Event.sources).options(
@@ -168,18 +169,12 @@ def resolve_readable_event(
     )
 
 
-def coords_or_none(lat: float | None, lng: float | None) -> CoordsRead | None:
-    if lat is None or lng is None:
-        return None
-    return CoordsRead(lat=lat, lng=lng)
-
-
-def _card_fields(geo: Event, lat: float | None, lng: float | None) -> dict[str, Any]:
+def _card_fields(geo: Event) -> dict[str, Any]:
     """The fields ``EventRead`` and ``EventList`` share."""
     return {
         "id": geo.id,
         "title": geo.title,
-        "coords": coords_or_none(lat, lng),
+        "coords": point_shape(geo.coords),
         "occurred_date": geo.occurred_date,
         "is_graphic": geo.is_graphic,
         "status": geo.status,
@@ -191,16 +186,9 @@ def _card_fields(geo: Event, lat: float | None, lng: float | None) -> dict[str, 
     }
 
 
-def build_event_list(
-    geo: Event,
-    *,
-    lat: float | None,
-    lng: float | None,
-) -> EventList:
-    """The caller re-projects the coordinates and eager-loads ``CREDIT_LOAD``."""
-    return EventList(
-        **_card_fields(geo, lat, lng), requested_at=geo.requested_at, media=thumbnail_media(geo)
-    )
+def build_event_list(geo: Event) -> EventList:
+    """The caller eager-loads ``CREDIT_LOAD``."""
+    return EventList(**_card_fields(geo), requested_at=geo.requested_at, media=thumbnail_media(geo))
 
 
 def build_version_read(row: EventVersion) -> EventVersionRead:
@@ -218,19 +206,14 @@ def build_version_read(row: EventVersion) -> EventVersionRead:
     )
 
 
-def build_event_read(
-    geo: Event,
-    *,
-    lat: float | None,
-    lng: float | None,
-) -> EventRead:
-    """Callers re-project the coordinates and eager-load ``requested_by``,
+def build_event_read(geo: Event) -> EventRead:
+    """Callers eager-load ``requested_by``,
     ``geolocators`` and their users, and the sources (``SOURCE_LOAD``).
     ``thumbnail`` may be a proof image on an event without a source file;
     callers wanting it there eager-load ``Event.media``.
     """
     return EventRead(
-        **_card_fields(geo, lat, lng),
+        **_card_fields(geo),
         sources=[build_source_read(source) for source in geo.sources],
         proof=geo.proof,
         occurred_time=geo.occurred_time,

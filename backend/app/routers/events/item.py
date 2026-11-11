@@ -14,7 +14,6 @@ from fastapi import (
     Response,
     status,
 )
-from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy.orm import Session
 
 from app.dependencies import (
@@ -61,16 +60,10 @@ from app.services.pagination import (
 router = APIRouter()
 
 
-def _detail_read(db: Session, geo: Event, lat: float | None, lng: float | None) -> EventRead:
-    read = build_event_read(geo, lat=lat, lng=lng)
+def _serialize_event(db: Session, geo: Event) -> EventRead:
+    read = build_event_read(geo)
     read.version_zero = versions_service.version_zero(db, geo)
     return read
-
-
-def _serialize_event(db: Session, geo: Event) -> EventRead:
-    """The read of a just-written row, its point re-projected as ``GET /{id}`` does."""
-    lat, lng = db.query(ST_Y(Event.coords), ST_X(Event.coords)).filter(Event.id == geo.id).one()
-    return _detail_read(db, geo, lat, lng)
 
 
 # Ahead of the ``/{geolocation_id}`` reads: the extra path segment means the
@@ -110,16 +103,15 @@ def get_event(request: Request, geolocation_id: uuid.UUID, db: DB, current_user:
     A withheld event (``hidden_at``) answers 404 for everyone but an admin,
     who must read what was taken down to judge the report.
     """
-    row = (
-        db.query(Event, ST_Y(Event.coords), ST_X(Event.coords))
+    geo = (
+        db.query(Event)
         .options(*DETAIL_LOADS)
         .filter(Event.id == geolocation_id, *readable_events(current_user))
         .first()
     )
-    if row is None:
+    if geo is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    geo, lat, lng = row
-    read = _detail_read(db, geo, lat, lng)
+    read = _serialize_event(db, geo)
     if current_user is not None:
         read.viewer_invite_pending = has_pending_invite(
             db, event_id=geo.id, user_id=current_user.id

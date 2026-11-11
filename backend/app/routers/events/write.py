@@ -4,11 +4,8 @@ files are staged first (``POST /uploads``) and named in ``sources``.
 """
 
 import asyncio
-from typing import cast
 
 from fastapi import APIRouter, Depends, Form, Request, status
-from geoalchemy2.shape import to_shape
-from shapely.geometry import Point
 
 from app.dependencies import DB, CurrentUser
 from app.models.event import TITLE_MAX_LENGTH
@@ -20,6 +17,7 @@ from app.routers.events._common import (
     parse_geolocator_invites,
 )
 from app.schemas.event import EventRead
+from app.schemas.source import CoordsRead
 from app.services import events as events_service
 
 router = APIRouter()
@@ -52,7 +50,10 @@ def create_event(
             geolocator_invites=parse_geolocator_invites(geolocator_invites),
         )
     )
-    return build_event_read(geo, lat=lat, lng=lng)
+    read = build_event_read(geo)
+    # The submitted floats, which the stored point can differ from in the last bit.
+    read.coords = CoordsRead(lat=lat, lng=lng)
+    return read
 
 
 @router.post("/requests", response_model=EventRead, status_code=status.HTTP_201_CREATED)
@@ -72,10 +73,4 @@ def create_event_request(
     geo = asyncio.run(
         events_service.submit_request(db, current_user=current_user, form=form, lat=lat, lng=lng)
     )
-    # Project the optional guess in Python rather than a second ST_X/ST_Y query.
-    guess_lat: float | None = None
-    guess_lng: float | None = None
-    if geo.coords is not None:
-        point = cast(Point, to_shape(geo.coords))
-        guess_lat, guess_lng = point.y, point.x
-    return build_event_read(geo, lat=guess_lat, lng=guess_lng)
+    return build_event_read(geo)

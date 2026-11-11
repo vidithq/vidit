@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import Row, Select, and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query as SAQuery
@@ -103,7 +102,7 @@ def get_feed(
     size: int,
     filters: EventFilters,
     cursor: tuple[datetime, uuid.UUID] | None = None,
-) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
+) -> list[Row[tuple[Event, datetime]]]:
     """One window of the feed, over-fetched by one row for ``pagination.paged``.
 
     An open request's owner is its requester: ownership moves only when a request is
@@ -115,8 +114,6 @@ def get_feed(
     query = _feed_rows(
         db,
         Event,
-        ST_Y(Event.coords).label("lat"),
-        ST_X(Event.coords).label("lng"),
         key.label("feed_at"),
         user_id=user_id,
         scope=scope,
@@ -183,17 +180,13 @@ def build_profile(db: Session, user: User, *, viewer: User | None) -> UserProfil
 
 def list_published_geolocations(
     db: Session, *, user_id: uuid.UUID, page: int, per_page: int
-) -> tuple[list[Row[tuple[Event, float | None, float | None]]], int]:
+) -> tuple[list[Event], int]:
     """One offset page of the published geolocations credited to ``user_id``, newest event date
     first, and their total."""
     credited_and_published = (published_credited_to([user_id]), *visible_events())
     total = db.query(Event).filter(*credited_and_published).count()
     rows = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-        )
+        db.query(Event)
         # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
         .options(
             joinedload(Event.owner),
