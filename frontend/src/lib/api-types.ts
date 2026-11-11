@@ -37,10 +37,6 @@ export interface paths {
         /**
          * Hide Collection Admin
          * @description Withhold a collection from every read but an admin's.
-         *
-         *     Alias of ``PATCH /admin/collections/{id}/moderation`` with
-         *     ``{"hidden": true}``: same stamp, audit row and response. Idempotent; 404
-         *     on an unknown collection.
          */
         delete: operations["hide_collection_admin_api_v1_admin_collections__collection_id__delete"];
         options?: never;
@@ -64,14 +60,6 @@ export interface paths {
         /**
          * Set Collection Moderation
          * @description Set a collection's moderation state: withhold it, or restore it.
-         *
-         *     ``true`` stamps ``hidden_at`` and drops the shelf from every read but an
-         *     admin's; ``false`` clears it. The collection's events are untouched (each
-         *     is moderated on its own).
-         *
-         *     Counterpart of ``PATCH /admin/events/{id}/moderation`` and the undo of
-         *     ``DELETE /admin/collections/{id}``. Idempotent: an unchanged state writes
-         *     no audit row. 404 on an unknown collection.
          */
         patch: operations["set_collection_moderation_api_v1_admin_collections__collection_id__moderation_patch"];
         trace?: never;
@@ -85,9 +73,7 @@ export interface paths {
         };
         /**
          * Detection Stats
-         * @description Machine-extraction quality signal: reject-rate over machine detections
-         *     plus missing-piece counts on the pending queue. Read-only, no audit row.
-         *     See ``AdminDetectionStatsRead``.
+         * @description Machine-extraction quality: reject-rate and missing-piece counts on the pending queue.
          */
         get: operations["detection_stats_api_v1_admin_detection_stats_get"];
         put?: never;
@@ -110,9 +96,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Geolocation Admin
-         * @description Remove a geolocation. Default soft (sets `deleted_at`); `?hard=true` is
-         *     GDPR-grade erasure (row, media rows, S3 objects). Both paths invalidate
-         *     the points cache.
+         * @description Remove a geolocation: soft by default, `?hard=true` for GDPR erasure.
          */
         delete: operations["delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete"];
         options?: never;
@@ -136,10 +120,6 @@ export interface paths {
         /**
          * Set Event Moderation
          * @description Set an event's moderation state directly, with no report behind it.
-         *
-         *     Both fields are optional and independent; an omitted or unchanged field
-         *     writes no audit row. The one verb that also UNDOES a takedown. 404 for an
-         *     unknown or soft-deleted event.
          */
         patch: operations["set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch"];
         trace?: never;
@@ -156,15 +136,6 @@ export interface paths {
         /**
          * Redact Event Version
          * @description Blank one filed version of an event's history.
-         *
-         *     ``event_versions`` is append-only and version numbers are public
-         *     addresses, so a version the record must stop serving is blanked, not
-         *     removed: the snapshot and note go, while the row, ``version_no`` and
-         *     ``created_at`` stay and the version is listed as ``redacted``. A proof
-         *     image only it pointed at is deleted with it.
-         *
-         *     Idempotent: an already-redacted version writes no audit row. 404 for an
-         *     unknown or soft-deleted event, or a version the event does not carry.
          */
         post: operations["redact_event_version_api_v1_admin_events__geolocation_id__versions__version_no__redact_post"];
         delete?: never;
@@ -265,8 +236,7 @@ export interface paths {
         put?: never;
         /**
          * Maintenance Reap Pending Registrations
-         * @description Drop expired ``pending_registrations`` rows. The create path sweeps
-         *     inline, so this mostly clears abandoned signups.
+         * @description Drop expired ``pending_registrations`` rows.
          */
         post: operations["maintenance_reap_pending_registrations_api_v1_admin_maintenance_reap_pending_registrations_post"];
         delete?: never;
@@ -287,11 +257,6 @@ export interface paths {
         /**
          * Maintenance Send Completion Digests
          * @description Email every analyst holding unpublished detections.
-         *
-         *     One message per analyst: how many wait, and the link to their Detections
-         *     queue. One provider round-trip per analyst, capped at
-         *     ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a provider failure on
-         *     one is counted, not raised.
          */
         post: operations["maintenance_send_completion_digests_api_v1_admin_maintenance_send_completion_digests_post"];
         delete?: never;
@@ -394,10 +359,6 @@ export interface paths {
         /**
          * List Reports
          * @description The moderation queue: open reports first, newest first within each group.
-         *
-         *     Resolved rows stay (a report is never deleted), so the queue is also the
-         *     record of decisions. Offset-paged (``ContentReportList``), capped at 100
-         *     rows per page.
          */
         get: operations["list_reports_api_v1_admin_reports_get"];
         put?: never;
@@ -420,12 +381,6 @@ export interface paths {
         /**
          * Resolve Report
          * @description Close one report with a verdict, applying it to what the report names.
-         *
-         *     One route for event and collection reports: the service applies the
-         *     verdicts the target kind takes. 404 on an unknown report, 409 on one that
-         *     already has a verdict (never reopened) or a verdict the target cannot
-         *     take. The service owns the mutation and audit trail; the points cache is
-         *     dropped here, only when an event actually left the map.
          */
         post: operations["resolve_report_api_v1_admin_reports__report_id__resolve_post"];
         delete?: never;
@@ -450,10 +405,6 @@ export interface paths {
         /**
          * Set Site Moderation
          * @description Withhold a site from every read but an admin's, or restore it.
-         *
-         *     ``true`` stamps ``hidden_at``: the site leaves the map, the event links and the
-         *     suggestions. ``false`` clears it. Idempotent: an unchanged state writes no audit row.
-         *     404 on an unknown site.
          */
         patch: operations["set_site_moderation_api_v1_admin_sites__site_id__moderation_patch"];
         trace?: never;
@@ -467,8 +418,7 @@ export interface paths {
         };
         /**
          * Search Users
-         * @description Case-insensitive substring match on username or email. Empty query
-         *     returns [] so the search box doesn't preload the user table.
+         * @description Case-insensitive substring match on username or email.
          */
         get: operations["search_users_api_v1_admin_users_get"];
         put?: never;
@@ -491,11 +441,7 @@ export interface paths {
         post?: never;
         /**
          * Delete User Admin
-         * @description Remove a user account. Default soft (sets `users.deleted_at` and
-         *     cascade-soft-deletes their submissions); `?hard=true` is GDPR erasure
-         *     (drops the row, their geolocations and S3 objects, and hands a co-credited
-         *     event to its earliest live co-geolocator). Both paths invalidate the points
-         *     cache.
+         * @description Remove a user account: soft by default, `?hard=true` for GDPR erasure.
          */
         delete: operations["delete_user_admin_api_v1_admin_users__user_id__delete"];
         options?: never;
@@ -515,8 +461,7 @@ export interface paths {
         post?: never;
         /**
          * Purge Detected Events Admin
-         * @description Hard-delete every detection the user owns (rows + S3 media), keeping
-         *     the account and everything else. The broken-archive repair.
+         * @description Hard-delete every detection the user owns, keeping the account and everything else.
          */
         delete: operations["purge_detected_events_admin_api_v1_admin_users__user_id__detected_events_delete"];
         options?: never;
@@ -579,8 +524,7 @@ export interface paths {
         head?: never;
         /**
          * Set User X Handle
-         * @description Link or clear the X handle the bot attributes mentions to. The only
-         *     write path for ``users.x_handle``.
+         * @description Link or clear the X handle the bot attributes mentions to.
          */
         patch: operations["set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch"];
         trace?: never;
@@ -600,10 +544,6 @@ export interface paths {
          *
          *     Cookie-only auth means a stolen session can act as the user, so
          *     re-asserting the current password keeps a thief from locking the owner out.
-         *     Same hash + audit shape as ``/auth/reset-password`` so the flows are
-         *     indistinguishable.
-         *
-         *     The heads-up email is a best-effort background task after the commit.
          */
         post: operations["change_password_api_v1_auth_change_password_post"];
         delete?: never;
@@ -624,9 +564,6 @@ export interface paths {
         /**
          * Confirm Registration
          * @description Consume the confirmation token, create the user, sign them in.
-         *
-         *     Re-validates the invite and uniqueness in the same transaction as the user
-         *     insert (the pending row held the address until now).
          */
         post: operations["confirm_registration_api_v1_auth_confirm_registration_post"];
         delete?: never;
@@ -722,8 +659,6 @@ export interface paths {
         /**
          * Register
          * @description Stage a registration. No ``users`` row is created and no cookie is set.
-         *
-         *     The account is created at ``POST /auth/confirm-registration``.
          */
         post: operations["register_api_v1_auth_register_post"];
         delete?: never;
@@ -2625,10 +2560,6 @@ export interface paths {
         /**
          * Update My Profile
          * @description Edit your own profile.
-         *
-         *     ``exclude_unset`` separates omitted (column untouched) from null (clears
-         *     it; empty string normalises to ``None``). ``external_links`` replaces the
-         *     whole JSONB blob, since the form submits the entire panel.
          */
         patch: operations["update_my_profile_api_v1_users_me_patch"];
         trace?: never;
@@ -2644,10 +2575,6 @@ export interface paths {
         /**
          * Set My Avatar
          * @description Replace your profile picture with an uploaded image.
-         *
-         *     Accepts one JPEG / PNG / WebP, stores a stripped and resized JPEG on our
-         *     own media host (the only thing ``avatar_url`` points at), and deletes the
-         *     picture it replaced.
          */
         put: operations["set_my_avatar_api_v1_users_me_avatar_put"];
         post?: never;
@@ -2776,10 +2703,6 @@ export interface paths {
         /**
          * Get User Collections
          * @description One analyst's collections, newest first.
-         *
-         *     A collection with nothing showable is scaffolding, so readers get the
-         *     non-empty ones and the owner gets all. ``total`` is narrowed too; withheld
-         *     collections are in neither view. Offset-paged, capped at 100 per page.
          */
         get: operations["get_user_collections_api_v1_users__username__collections_get"];
         put?: never;
@@ -2799,14 +2722,7 @@ export interface paths {
         };
         /**
          * Get User Geolocations
-         * @description One analyst's published geolocations, newest event date first, capped
-         *     at 100 per page.
-         *
-         *     Published, not merely visible: :func:`published_events` narrows to
-         *     ``geolocated``, so detections and rejected rows are never credited. The
-         *     filter applies to the count and the rows, and ``geolocations_count`` on the
-         *     profile counts the same set. The wider live total is ``total_events`` on
-         *     :func:`get_user_stats`.
+         * @description One analyst's published geolocations, newest event date first.
          *
          *     Offset-paged: the profile orders by ``occurred_date``, which is nullable and
          *     editable, so it cannot key a cursor.
@@ -2831,14 +2747,12 @@ export interface paths {
         put?: never;
         /**
          * Follow User
-         * @description Follow another analyst. Idempotent (204, no extra row). Self-follow is
-         *     a 400 (``ck_follows_no_self_follow``).
+         * @description Follow another analyst.
          */
         post: operations["follow_user_api_v1_users__username__follow_post"];
         /**
          * Unfollow User
-         * @description Unfollow an analyst. Idempotent (204). A typo username is still a 404
-         *     so the UI can surface it.
+         * @description Unfollow an analyst.
          */
         delete: operations["unfollow_user_api_v1_users__username__follow_delete"];
         options?: never;
@@ -2875,8 +2789,7 @@ export interface paths {
         };
         /**
          * Get User Stats
-         * @description Aggregated shape-of-work stats for a public profile (anonymous, live
-         *     rows only; aggregation lives in ``services/user_stats``).
+         * @description Aggregated shape-of-work stats for a public profile.
          */
         get: operations["get_user_stats_api_v1_users__username__stats_get"];
         put?: never;
@@ -3017,11 +2930,7 @@ export interface components {
             /** Reject Rate */
             reject_rate: number;
         };
-        /**
-         * AdminEventDeleteResponse
-         * @description Response for `DELETE /admin/events/{id}`: which row, soft vs hard, what
-         *     was swept.
-         */
+        /** AdminEventDeleteResponse */
         AdminEventDeleteResponse: {
             /** Deleted At */
             deleted_at?: string | null;
@@ -3323,10 +3232,7 @@ export interface components {
             /** X Handle */
             x_handle: string | null;
         };
-        /**
-         * AdminUserRestoreResponse
-         * @description Response for `POST /admin/users/{id}/restore`.
-         */
+        /** AdminUserRestoreResponse */
         AdminUserRestoreResponse: {
             /** Restored Events */
             restored_events: number;
@@ -4736,10 +4642,7 @@ export interface components {
             /** X Handle */
             x_handle?: string | null;
         };
-        /**
-         * OrganizationInviteCreate
-         * @description Body for ``POST /organizations/{slug}/invites``.
-         */
+        /** OrganizationInviteCreate */
         OrganizationInviteCreate: {
             /** Username */
             username: string;
@@ -4782,10 +4685,7 @@ export interface components {
             role: "manager" | "member";
             user: components["schemas"]["AuthorRef"];
         };
-        /**
-         * OrganizationMemberUpdate
-         * @description Body for ``PATCH /organizations/{slug}/members/{username}``.
-         */
+        /** OrganizationMemberUpdate */
         OrganizationMemberUpdate: {
             /**
              * Role
@@ -6184,10 +6084,7 @@ export interface components {
             /** Storage Url */
             storage_url: string;
         };
-        /**
-         * UserInviteMintingUpdate
-         * @description Body for `PATCH /admin/users/{id}/invite-minting`.
-         */
+        /** UserInviteMintingUpdate */
         UserInviteMintingUpdate: {
             /** Enabled */
             enabled: boolean;
@@ -6381,10 +6278,7 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /**
-         * XHandleRead
-         * @description Body of ``GET /users/me/x-handle``.
-         */
+        /** XHandleRead */
         XHandleRead: {
             /** X Handle */
             x_handle: string | null;
