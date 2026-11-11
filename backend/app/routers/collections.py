@@ -131,13 +131,12 @@ def report_collection(
     viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
     unknown, withheld, owner-deleted or orphaned collection answers 404.
     """
-    return reports_service.create_collection_report(
+    return reports_service.create_report(
         db,
-        collection_id=collection_id,
-        reason=body.reason,
-        details=body.details,
-        reporter_id=current_user.id if current_user is not None else None,
-        reporter_username=current_user.username if current_user is not None else None,
+        kind="collection",
+        target_id=collection_id,
+        body=body,
+        reporter=current_user,
         background_tasks=background_tasks,
     )
 

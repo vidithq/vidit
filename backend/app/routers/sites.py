@@ -127,13 +127,12 @@ def report_site(
     Same gesture, body and per-IP limit as an event report: open to anonymous viewers. An
     unknown or withheld site answers 404 ``site_not_found``.
     """
-    return reports_service.create_site_report(
+    return reports_service.create_report(
         db,
-        site_id=site_id,
-        reason=body.reason,
-        details=body.details,
-        reporter_id=current_user.id if current_user is not None else None,
-        reporter_username=current_user.username if current_user is not None else None,
+        kind="site",
+        target_id=site_id,
+        body=body,
+        reporter=current_user,
         background_tasks=background_tasks,
     )
 
