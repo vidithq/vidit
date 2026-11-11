@@ -93,22 +93,12 @@ def _coord_in_bounds(lat: float, lng: float) -> bool:
     return LAT_MIN <= lat <= LAT_MAX and LNG_MIN <= lng <= LNG_MAX
 
 
-def _dms_to_decimal(deg: str, mnt: str, sec: str | None, hemi: str) -> float:
-    d = int(deg)
-    m = int(mnt)
-    s = float(sec) if sec else 0.0
-    decimal = d + m / 60.0 + s / 3600.0
-    if hemi.upper() in ("S", "W"):
-        decimal = -decimal
-    return decimal
+def _signed(degrees: float, hemi: str) -> float:
+    return -degrees if hemi.upper() in ("S", "W") else degrees
 
 
-def _hemi_decimal(value: str, hemi: str) -> float:
-    """Signed decimal degree from a bare number plus hemisphere letter."""
-    decimal = float(value)
-    if hemi.upper() in ("S", "W"):
-        decimal = -decimal
-    return decimal
+def _dms(deg: str, mnt: str, sec: str | None) -> float:
+    return int(deg) + int(mnt) / 60.0 + (float(sec) if sec else 0.0) / 3600.0
 
 
 @dataclass(frozen=True)
@@ -144,31 +134,21 @@ def scan_coords(text: str) -> CoordScan:
         seen.add(key)
         coords.append(ParsedCoord(lat=lat, lng=lng))
 
+    # Every group is ``\d``-only, and ``int``/``float`` read every Unicode digit ``\d``
+    # matches (``test_every_regex_digit_parses``), so no conversion below raises.
     for m in _DECIMAL_PAIR_RE.finditer(text):
-        try:
-            _push(float(m.group(1)), float(m.group(2)))
-        except ValueError:
-            continue
-
+        _push(float(m.group(1)), float(m.group(2)))
     for m in _DECIMAL_HEMI_SUFFIX_RE.finditer(text):
-        _push(_hemi_decimal(m.group(1), m.group(2)), _hemi_decimal(m.group(3), m.group(4)))
-
+        _push(_signed(float(m.group(1)), m.group(2)), _signed(float(m.group(3)), m.group(4)))
     for m in _DECIMAL_HEMI_PREFIX_RE.finditer(text):
-        _push(_hemi_decimal(m.group(2), m.group(1)), _hemi_decimal(m.group(4), m.group(3)))
-
+        _push(_signed(float(m.group(2)), m.group(1)), _signed(float(m.group(4)), m.group(3)))
     for m in _DMS_RE.finditer(text):
-        try:
-            lat = _dms_to_decimal(m.group(1), m.group(2), m.group(3), m.group(4))
-            lng = _dms_to_decimal(m.group(5), m.group(6), m.group(7), m.group(8))
-        except ValueError:
-            continue
-        _push(lat, lng)
-
+        _push(
+            _signed(_dms(m.group(1), m.group(2), m.group(3)), m.group(4)),
+            _signed(_dms(m.group(5), m.group(6), m.group(7)), m.group(8)),
+        )
     for m in _GMAPS_RE.finditer(text):
-        try:
-            _push(float(m.group(1)), float(m.group(2)))
-        except ValueError:
-            continue
+        _push(float(m.group(1)), float(m.group(2)))
 
     return CoordScan(coords=coords, out_of_bounds=out_of_bounds)
 
