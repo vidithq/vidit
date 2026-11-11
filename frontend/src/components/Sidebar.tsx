@@ -39,7 +39,7 @@ import { countLabel, pluralNoun } from "@/lib/format";
 import { detectionsQueueHref, profileHref } from "@/lib/routes";
 
 const X_URL = "https://x.com/vidithq";
-const DISCORD_URL = "https://discord.gg/9wPtsrrKyJ";
+const DISCORD_URL = "https://discord.gg/T5syUscsqr";
 const GITHUB_URL = "https://github.com/vidithq/vidit";
 
 // Fixed-height row for every nav item and the toggle, so icons keep their y whether collapsed or
