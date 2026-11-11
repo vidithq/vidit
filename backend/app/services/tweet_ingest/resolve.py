@@ -1,22 +1,4 @@
-"""The engine: threads of ``TweetRecord`` resolve to a ``Resolution``.
-
-A thread is a list of ``TweetRecord`` (``stitch``'s output, or what
-``acquire.acquire_thread`` reads). :func:`resolve_threads` is the one core every
-entry runs, so the bot, the paste and the archive cannot drift. It is pure (no
-network, no database). Each thread yields one :class:`Detection` per coordinate,
-or one refusal code; ``services/detection.persist_detections`` writes rows.
-A coordinate-less thread with footage and a source also yields a
-:class:`RequestDraft` beside the refusal, which ``services/detection.open_request``
-turns into a ``requested`` row. Only the bot opens that exit
-(``resolve_threads(..., with_requests=True)``), and only it gets
-``request_not_possible`` for a thread it cannot serve.
-
-Every derived field is filled only on an explicit signal in the analyst's text
-(a quote, a link, a coordinate), otherwise empty: no self-source fallback, no
-fabricated dates. The one exception is the media split, which moves only a
-video, only into the source media slot, leaving ``source_url`` untouched
-(:func:`split_media`).
-"""
+"""The engine: threads of ``TweetRecord`` resolve to a ``Resolution``. Pure: no network, no database."""
 
 from __future__ import annotations
 
@@ -55,41 +37,26 @@ from .urls import (
     x_status_posted_at,
 )
 
-# Why a thread produced nothing; the bot names it back to the analyst.
-# ``POST_UNREADABLE`` is raised by the acquisition (X served no body), so no
-# thread reaches the engine.
 COORDS_MISSING = "coords_missing"
 COORDS_INVALID = "coords_invalid"
 POST_UNREADABLE: Final = "post_unreadable"
-# Raised by the write path: a request draft's footage was all refused by the
-# evidence intake (over the size cap, or unreadable). Worded here because the
-# reply reads one table.
+# Raised by the write path, worded here because the reply reads one table.
 FOOTAGE_UNUSABLE = "footage_unusable"
-# ``COORDS_MISSING`` sharpened for a caller that asked for a request: the thread
-# names a source but has no footage. Only on :attr:`Resolution.request_refusals`.
 REQUEST_NOT_POSSIBLE = "request_not_possible"
-# ``COORDS_MISSING`` on a thread the acquisition read only in part
-# (``acquire.AcquiredThread.truncated``): the coordinate may sit in a post it
-# never read. Raised by ``AcquiredThread.resolve``, never by the scan.
 THREAD_TRUNCATED = "thread_truncated"
 
-# What a created detection still needs from its owner: warnings, not refusals.
-# The first three are what the engine could not settle; the last four are what
-# the row ended up with, raised by ``detection.persist_detections``.
-SOURCE_AMBIGUOUS = "source_ambiguous"  # several footage candidates, each a source of its own
-SOURCE_MISSING = "source_missing"  # no footage candidate: no quote, no link off the context hosts
-SEVERAL_COORDINATES = "several_coordinates"  # one thread, several detections
-SOURCE_FOOTAGE_MISSING = "source_footage_missing"  # a declared source, no footage stored
-SOURCE_FETCH_FAILED = "source_fetch_failed"  # the source could not be read, retries spent
-SOURCE_DATE_UNKNOWN = "source_date_unknown"  # the source's post date came back unknown
-DUPLICATE_MEDIA = "duplicate_media"  # the row's media is already on another event
+# The first three are raised by the engine, the last four by ``detection.persist_detections``.
+SOURCE_AMBIGUOUS = "source_ambiguous"
+SOURCE_MISSING = "source_missing"
+SEVERAL_COORDINATES = "several_coordinates"
+SOURCE_FOOTAGE_MISSING = "source_footage_missing"
+SOURCE_FETCH_FAILED = "source_fetch_failed"
+SOURCE_DATE_UNKNOWN = "source_date_unknown"
+DUPLICATE_MEDIA = "duplicate_media"
 
-# The one sentence every surface shows per code (bot reply, archive email, paste
-# response). An unworded code fails ``test_engine_copy``.
-#
-# Constraints from the bot reply: each sentence is short (under
-# ``bot.REPLY_MAX_WEIGHTED_LEN``) and linkless (X bills a link-carrying post
-# about 13 times a plain one).
+# The one sentence every surface shows per code; an unworded code fails ``test_engine_copy``.
+# Each sentence stays under ``bot.REPLY_MAX_WEIGHTED_LEN`` and linkless (X bills a
+# link-carrying post about 13 times a plain one).
 WARNING_MESSAGES: dict[str, str] = {
     SEVERAL_COORDINATES: "Several coordinates, one detection each",
     SOURCE_AMBIGUOUS: "Several source links. Move or drop them at review",
@@ -100,7 +67,6 @@ WARNING_MESSAGES: dict[str, str] = {
     DUPLICATE_MEDIA: "This footage is already on Vidit. Possible duplicate",
 }
 
-# The same, for refusals.
 REFUSAL_MESSAGES: dict[str, str] = {
     COORDS_MISSING: "No coordinate in the post",
     COORDS_INVALID: "The coordinate is out of range (latitude ±90, longitude ±180)",
@@ -180,18 +146,9 @@ def link_identity(url: str) -> str:
 
 
 def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[str]:
-    """The deduplicated footage candidate URLs among ``urls``, in order.
+    """The footage candidate URLs among ``urls``, in order, deduplicated on :func:`link_identity`.
 
-    Host-blind but for a closed list: every link is a candidate except those that point at no
-    footage:
-
-    * a status link to ``owner_handle``'s own post;
-    * an X link naming no status;
-    * a Google Maps link;
-    * a link on a context host (:data:`urls.CONTEXT_HOSTS`), which :func:`context_links` keeps.
-
-    Duplicates collapse on :func:`link_identity`. A candidate is the link as
-    written; what may be fetched is the chase's business (``chase.chase_post``).
+    A candidate is the link as written; what may be fetched is the chase's business.
     """
     candidates: list[str] = []
     seen: set[str] = set()
@@ -209,11 +166,7 @@ def source_candidates(urls: Iterable[str], *, owner_handle: str) -> list[str]:
 
 
 def context_links(urls: Iterable[str]) -> list[str]:
-    """The deduplicated links on a context host among ``urls``, in order.
-
-    Never footage, so never a candidate; each becomes a ``context`` source
-    (:func:`resolve_secondary_sources`). A Google Maps link stays out: it is the coordinate.
-    """
+    """The links on a context host among ``urls``, in order, a Google Maps link aside."""
     links: list[str] = []
     seen: set[str] = set()
     for url in urls:
@@ -257,11 +210,9 @@ def _thread_links(thread: list[TweetRecord]) -> list[str]:
 
 
 def thread_candidates(thread: list[TweetRecord]) -> list[str]:
-    """The thread's footage candidates: quoted posts, then links, through
-    :func:`source_candidates` under the head's handle.
+    """The thread's footage candidates: quoted posts, then links, under the head's handle.
 
-    X also writes the quoted permalink into the links; both collapse on
-    :func:`link_identity`.
+    X also writes the quoted permalink into the links; both collapse on :func:`link_identity`.
     """
     return source_candidates(_thread_links(thread), owner_handle=thread[0].handle if thread else "")
 
@@ -269,9 +220,7 @@ def thread_candidates(thread: list[TweetRecord]) -> list[str]:
 def sole_candidate(thread: list[TweetRecord]) -> str | None:
     """The thread's one source candidate, ``None`` for none or several.
 
-    Several are ambiguous: the slot stays empty and all land in the secondary
-    links. The chase reads the same answer, so it never fetches a link the
-    resolution will not store.
+    The chase reads the same answer, so it never fetches a link the resolution will not store.
     """
     candidates = thread_candidates(thread)
     return candidates[0] if len(candidates) == 1 else None
@@ -279,12 +228,7 @@ def sole_candidate(thread: list[TweetRecord]) -> str | None:
 
 @dataclass(frozen=True)
 class LinkSource:
-    """One file-less source an import writes from one link: a footage mirror or a context link.
-
-    A mirror is ``direct`` and of kind ``unknown`` (the review names it), dated when it is an
-    X status (:func:`urls.x_status_posted_at`). A link on a context host is ``context``, of the
-    host's kind, and titled with the provider's name for an imagery tool.
-    """
+    """One file-less source an import writes from one link: a footage mirror or a context link."""
 
     url: str
     posted_at: datetime | None = None
@@ -304,12 +248,7 @@ def resolve_secondary_sources(
     thread: list[TweetRecord], source_url: str | None
 ) -> list[LinkSource]:
     """The sources beside the declared one: the footage candidates the slot did not take, then
-    the context links, each a source of its own.
-
-    The candidate matching ``source_url`` by identity is excluded; when the source was
-    ambiguous every candidate lands here. Blanks and repeats are dropped, and the list is cut
-    so the declared source and these fit ``models/source.MAX_SOURCES_PER_EVENT``, the footage
-    candidates first.
+    the context links, cut so the declared source and these fit ``MAX_SOURCES_PER_EVENT``.
     """
     primary = link_identity(source_url) if source_url else None
     links = _thread_links(thread)
@@ -329,16 +268,12 @@ def resolve_secondary_sources(
 
 
 def footage_candidates(sources: list[LinkSource]) -> list[LinkSource]:
-    """The footage mirrors among ``sources``, context links set aside."""
     return [source for source in sources if source.level == "direct"]
 
 
 def _chased_footage(thread: list[TweetRecord], link: str) -> SourcePost | None:
-    """The off-platform footage chased for the resolved source ``link``.
-
-    Only when a record carries a chase filed under that exact URL (hence a
-    chaser returns the target as written). ``None`` degrades the source to
-    link-only. Callers reach this after ruling out a quote.
+    """The post chased for the resolved source ``link``, filed under that exact URL (a chaser
+    returns the target as written). Callers reach this after ruling out a quote.
     """
     return next(
         (
@@ -353,17 +288,8 @@ def _chased_footage(thread: list[TweetRecord], link: str) -> SourcePost | None:
 def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, datetime | None]:
     """The source URL and its post date (UTC), either may be ``None``.
 
-    A quote outranks links (including a status the acquisition chased into the
-    quote slot): the quoted tweet is the source and supplies the date. One quoted
-    post takes the slot (:func:`sole_quote`); two different quoted posts are
-    ambiguous like two links, so the slot stays empty and both land in the
-    mirrors. Failing a quote, the one candidate is the source
-    (:func:`sole_candidate`).
-
-    An X status is dated off its id (:func:`urls.x_status_posted_at`), with no fetch; any
-    other source only when its post was chased.
-
-    No other signal counts. The head's own post is provenance, never the source.
+    A sole quote outranks links (a chased status sits in the quote slot too); two quoted posts
+    are ambiguous. Failing a quote, the sole candidate is the source.
     """
     quote = sole_quote(thread)
     if quote is not None:
@@ -383,16 +309,8 @@ def _source_posted_at(url: str, served: str | None) -> datetime | None:
 
 
 def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[ParsedMedia]]:
-    """``(source_media, proof_media)``: footage vs the analyst's annotation.
-
-    The source media is that of the post :func:`resolve_source` named: the quoted
-    tweet's, else the chased link's footage (a chase that served none leaves the
-    slot empty).
-
-    With the slot still empty, the thread's first own video fills it and leaves
-    the proof (the proof body embeds images only, so a video left there
-    would be lost). Photos are never promoted (map crops, annotated frames), and
-    a quote keeps precedence even with no media.
+    """``(source_media, proof_media)``: the media of the post :func:`resolve_source` named, else
+    the thread's first own video, which the proof body (images only) would lose.
     """
     own_media = [media for record in thread for media in record.media]
     if quoted_posts(thread):
@@ -414,11 +332,7 @@ def split_media(thread: list[TweetRecord]) -> tuple[list[ParsedMedia], list[Pars
 
 
 def first_own_video_index(media: list[ParsedMedia]) -> int | None:
-    """Where the first video sits in ``media``, or ``None``.
-
-    The :func:`split_media` promotion rule, exposed so the request branch can
-    ask it too. Returns the position so a caller that removes it walks once.
-    """
+    """Where the first video sits in ``media``, or ``None``."""
     return next((index for index, item in enumerate(media) if item.kind == "video"), None)
 
 
@@ -467,31 +381,20 @@ class Detection:
     # UTC, only when known (an X status's id, a dated quote or chased post); never the geoloc
     # tweet's date.
     source_posted_at: datetime | None
-    # When the analyst posted this geolocation (``detected_post_at``).
     detected_post_at: datetime | None
-    # The mirrors and context links (:func:`resolve_secondary_sources`), each written as a
-    # source of its own.
     secondary_sources: list[LinkSource] = field(default_factory=list)
-    # role=source (at most one) vs role=proof.
     source_media: list[ParsedMedia] = field(default_factory=list)
     proof_media: list[ParsedMedia] = field(default_factory=list)
-    # The chase failed because the upstream would not answer (a chaser's
-    # ``transient_failure``). Lets the write path raise ``SOURCE_FETCH_FAILED``
-    # (worth importing again) instead of ``SOURCE_FOOTAGE_MISSING``.
+    # A chase came back ``transient_failure``: ``SOURCE_FETCH_FAILED``, not ``SOURCE_FOOTAGE_MISSING``.
     source_fetch_failed: bool = False
-    # What the owner still has to settle (the warning constants above); shared by
-    # every detection of one thread.
     warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class RequestDraft:
-    """A coordinate-less mirror post's worth of a thread: the fields a
-    ``requested`` row needs.
+    """A coordinate-less mirror post's worth of a thread: the fields a ``requested`` row needs.
 
-    The engine's second exit beside :class:`Detection`, emitted beside the
-    ``coords_missing`` refusal, not instead of it. Plain data:
-    ``services/detection.open_request`` writes it via ``services/events.create_request``.
+    Emitted beside the ``coords_missing`` refusal, not instead of it.
     """
 
     title: str
@@ -530,15 +433,8 @@ class Resolution:
     """
 
     detections: list[Detection] = field(default_factory=list)
-    # One draft per coordinate-less thread with footage and a source, emitted
-    # beside its ``coords_missing`` refusal (:attr:`reason` and :attr:`refusals`
-    # are unchanged).
     requests: list[RequestDraft] = field(default_factory=list)
-    # Threads refused, keyed by the refusal constants. One-thread entries read
-    # :attr:`reason`; an export reads the counts.
     refusals: dict[str, int] = field(default_factory=dict)
-    # Why a coordinate-less thread yielded no draft (``REQUEST_NOT_POSSIBLE``),
-    # only for a caller that asked for requests and a thread that can never yield one.
     request_refusals: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -563,20 +459,14 @@ class Resolution:
 
 
 def own_posts(thread: list[TweetRecord]) -> list[TweetRecord]:
-    """``thread`` without retweets (:func:`extract.is_retweet`), which would file
-    a stranger's geolocation under the analyst. The archive reader also drops
-    them earlier."""
+    """``thread`` without retweets, which would file a stranger's geolocation under the analyst."""
     return [record for record in thread if not is_retweet(record.text)]
 
 
 def _warnings_for(
     coords: list[ParsedCoord], source_url: str | None, secondary: list[LinkSource]
 ) -> list[str]:
-    """What the resolution could not settle, in reply order.
-
-    An empty source is ambiguous if footage candidates remain beside it, else missing: a
-    context link is never footage, so it settles neither.
-    """
+    """What the resolution could not settle; a context link is never footage."""
     warnings: list[str] = []
     if len(coords) > 1:
         warnings.append(SEVERAL_COORDINATES)
@@ -634,16 +524,7 @@ def _thread_detections(
     thread: list[TweetRecord], *, with_requests: bool
 ) -> tuple[list[Detection], str | None, RequestDraft | None, str | None]:
     """One ``Detection`` per coordinate, or the refusal reason, plus the request
-    draft a coordinate-less thread may yield (or the code naming why not).
-
-    Two reasons: a coordinate-shaped string outside the world
-    (``COORDS_INVALID``), or none in the analyst's own text (``COORDS_MISSING``,
-    including an empty or retweet-only thread). Detections carry their needs on
-    ``warnings``.
-
-    The draft rides only on the ``COORDS_MISSING`` leg (:func:`_request_draft`),
-    with the refusal; ``REQUEST_NOT_POSSIBLE`` rides there in the fourth slot.
-    """
+    draft a coordinate-less thread may yield (or the code naming why not)."""
     posts = own_posts(thread)
     if not posts:
         return [], COORDS_MISSING, None, None
@@ -718,24 +599,10 @@ def _request_draft(
 ) -> tuple[RequestDraft | None, str | None]:
     """The request a coordinate-less thread yields, or the code naming why not.
 
-    Six conditions must hold, else the thread keeps its plain refusal:
-
-    * the head has a usable post id (the re-import match key);
-    * no chase failed transiently (a re-tag can still read that source, and a
-      request opened over the analyst's copy would keep the re-tag off via dedup);
-    * the thread resolved a source, in :func:`request_source_url`'s spelling
-      (the column refuses a row without one);
-    * no quoted post carries a coordinate (that is a geolocation, not a request;
-      shortlinks are expanded so a maps link behind ``t.co`` is read);
-    * the thread carries footage: the source's media, else the first own video
-      left in the annotation slot (``create_request`` requires a file; on hosts
-      the chase does not read, that is the analyst's own video);
-    * the title is not empty (``create_request`` requires one).
-
-    Only a thread pointing at footage with none to store is actionable, so it
-    returns ``REQUEST_NOT_POSSIBLE``. The other failures return ``None``,
-    keeping the plain ``COORDS_MISSING``, since naming them would mislead (a
-    retry, a quoted coordinate, a blank title, or no declared source).
+    ``docs/ingestion.md`` lists the six conditions. A transient chase failure drafts nothing:
+    a request opened over the analyst's copy would dedup away the later re-tag that reads the
+    source. Only a thread pointing at footage with none to store is actionable, so only it
+    returns ``REQUEST_NOT_POSSIBLE``.
     """
     tweet_id = _tweet_id(posts[0].tweet_id)
     if tweet_id is None:

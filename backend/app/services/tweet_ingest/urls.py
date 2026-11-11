@@ -1,14 +1,4 @@
-"""The URL vocabulary of ingestion: what a link names, which hosts are trusted.
-
-Pure string work, no I/O:
-
-* :func:`normalise_tweet_url` (the one parse, at the router) and
-  :func:`canonical_tweet_url` (the one build, at the engine's exit);
-* the host predicates the source rule and the chase ask;
-* :func:`x_status_posted_at`, an X post's time read off its status id;
-* :data:`CONTEXT_HOSTS`, the closed list of hosts that never carry the filmed act;
-* the media-host allowlist every remote fetch checks (:func:`is_trusted_media_url`).
-"""
+"""The URL vocabulary of ingestion: what a link names, which hosts are trusted. No I/O."""
 
 from __future__ import annotations
 

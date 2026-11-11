@@ -1,16 +1,7 @@
 """Chase the footage a post points at: one module per technology, one dispatcher.
 
-A chase is the single fetch spent on a post's declared source, turning a link
-into its date, media and (for X) author and text. Each technology module
-exposes ``chase(target, *, client) -> ChaseResult`` and answers ``no_target``
-for hosts it does not serve.
-
-:func:`chase_thread` is the one chase step every entry runs once its records
-are built.
-
-Every chase is fail-soft: a failure reads as "no footage", never fails the
-import. The failure class still travels (``records.ChaseOutcome``) on the
-declaring record, since "could not read it now" differs from "no footage".
+Each technology module exposes ``chase(target, *, client) -> ChaseResult`` and answers
+``no_target`` for hosts it does not serve.
 """
 
 from __future__ import annotations
@@ -67,16 +58,9 @@ def chase_thread(
 ) -> list[TweetRecord]:
     """``records`` with the thread's one chase target resolved onto it.
 
-    At most one fetch per thread. The target is a quoted post id the records do
-    not already carry (an export holds only the id for a post outside it), else
-    the thread's sole source candidate URL (``resolve.sole_candidate``, so the
-    chase never fetches a link the resolution will not store). A chase authored
-    by the thread's own author is a self-reference, not footage.
-
-    A thread that already carries a quote chases nothing (a quote outranks every
-    link), nor does an ambiguous thread. Fail-soft: a failed chase leaves the
-    records as they were, bar ``TweetRecord.chase_outcome`` on the declaring
-    record.
+    The target is a quoted post id the records do not already carry (an export holds only
+    the id for a post outside it), else the thread's sole source candidate. A failed chase
+    leaves the records as they were, bar ``TweetRecord.chase_outcome`` on the declaring one.
     """
     if any(record.quoted is not None for record in records):
         return records

@@ -1,17 +1,7 @@
 """Pure text core: coordinates, retweet rule, title, proof body. No I/O.
 
-One vocabulary for every entry (bot, paste, archive backfill).
-
-Four extractors run over the full text, de-duped:
-
-1. Decimal pairs (``48.012345, 37.802411``; degree-marked too)
-2. Decimal degrees plus hemisphere (``33.1°N 35.5°E``, ``N48.0123 E37.8024``)
-3. DMS (``48°00'45"N 37°48'08"E``)
-4. Google Maps ``@lat,lng,zoom`` links
-
-Every coordinate found makes a detection; the 6-decimal dedup is the only guard.
-Decimal pairs need 3+ decimals to skip dates and versions (`1.2.3`,
-`2025-11-12`); the hemisphere and DMS forms use the letters as discriminator.
+Decimal pairs need 3+ decimals to skip dates and versions (``1.2.3``, ``2025-11-12``); the
+hemisphere and DMS forms use the letters as discriminator.
 """
 
 from __future__ import annotations

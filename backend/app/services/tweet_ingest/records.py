@@ -1,9 +1,4 @@
-"""Normalized acquire units: one tweet and one chased footage post.
-
-``TweetRecord`` is what every acquire adapter produces and ``stitch`` consumes.
-``SourcePost`` is a post a thread names as its source, and ``ChaseResult`` is a
-chaser's answer, which says why when nothing resolved.
-"""
+"""Normalized acquire units: the tweet, the post it names as its source, a chase's answer."""
 
 from __future__ import annotations
 
@@ -117,25 +112,12 @@ class TweetRecord:
     quoted_status_id: str | None = None
     # Filled by ``chase.chase_thread`` when the sole footage link is off X.
     linked: SourcePost | None = None
-    # The URLs the post links in its text (``entities.urls``).
     external_sources: list[SourceLink] = field(default_factory=list)
-    # Why the chase found no footage, stamped by ``chase.chase_thread``; ``None``
-    # when no target was declared or the chase succeeded. This carries a swallowed
-    # failure to the pure resolution: ``transient_failure`` means "could not read
-    # it right now", not "no footage" (``resolve.SOURCE_FETCH_FAILED``).
+    # Why the chase found no footage, stamped by ``chase.chase_thread``: carries a swallowed
+    # failure to the pure resolution, which tells "not readable now" from "no footage".
     chase_outcome: ChaseOutcome | None = None
 
 
-# What one chase came back with:
-#
-# * ``chased``: the footage post, on the result's ``post``;
-# * ``not_accessible``: answered, nothing to take (gone, restricted, unreadable);
-# * ``transient_failure``: throttled or unanswered after the retry schedule
-#   (``tweet_ingest.retry``);
-# * ``no_target``: this chaser does not serve the host, so nothing was fetched.
-#
-# Only ``transient_failure`` changes what the analyst is told (import again
-# later, not "no footage").
 ChaseOutcome = Literal["chased", "not_accessible", "transient_failure", "no_target"]
 
 

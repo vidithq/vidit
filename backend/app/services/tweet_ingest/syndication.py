@@ -2,11 +2,9 @@
 
 Endpoint: ``https://cdn.syndication.twimg.com/tweet-result?id=<id>&token=<token>&lang=en``,
 the backend of the embeddable tweet widget. It is unauthenticated and
-unofficial, and X can change the schema anytime. The paste route surfaces
-failures as a `502`. The ``token`` algorithm is copied from Vercel's
-`react-tweet` (MIT), a deterministic hash X requires on every request.
-
-Fetch and payload reading only; URL meaning is :mod:`tweet_ingest.urls`.
+unofficial, and X can change the schema anytime. The ``token`` algorithm is
+copied from Vercel's `react-tweet` (MIT), a deterministic hash X requires on
+every request.
 
 Cache: in-memory TTL (1h) keyed by tweet ID, so a repeated "Import" click skips
 the round trip. Process-local; restarts wipe it.
@@ -167,7 +165,6 @@ def _cache_put(tweet_id: str, value: dict[str, Any]) -> None:
 
 
 def _cache_clear() -> None:
-    """Wipe the in-memory cache (tests)."""
     with _cache_lock:
         _cache.clear()
 
