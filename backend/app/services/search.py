@@ -62,7 +62,7 @@ from app.models.organization import Organization
 from app.models.site import Site
 from app.models.source import Source, SourceLink
 from app.models.user import User
-from app.schemas.search import SearchType
+from app.schemas.search import SearchResponse, SearchSection, SearchType
 from app.services import organizations
 from app.services.collections import (
     build_collection_reads,
@@ -516,16 +516,6 @@ def _next_cursor(rows: Sequence[Row[Any]], limit: int) -> str | None:
     return encode_ranked_cursor(last.rank, last.created_at, last.id)
 
 
-@dataclass(frozen=True)
-class SearchPage:
-    """One page of hits in rank order, the whole match count, and the next page's cursor
-    (``None`` on the last page)."""
-
-    hits: list[dict]
-    total: int
-    cursor: str | None
-
-
 def search(
     db: Session,
     *,
@@ -534,7 +524,7 @@ def search(
     limit: int,
     filters: EventFilters | None = None,
     after: tuple[float, datetime, uuid.UUID] | None = None,
-) -> SearchPage:
+) -> SearchResponse:
     """One ranked list across ``types`` (a subset of :data:`SEARCH_TYPES`).
 
     Each type ranks on its own text with the same ``ts_rank``: an event on its title, a site on
@@ -547,28 +537,25 @@ def search(
     """
     filters = filters or EventFilters()
     q = query.strip()
+    empty = SearchResponse(hits=[], total=0, cursor=None, query=query)
     union = _union(db, query=q, types=types, filters=filters)
     if union is None:
-        return SearchPage([], 0, None)
+        return empty
     counted = select(union, func.count().over().label("total_count")).subquery("counted")
     page = select(counted)
     if after is not None:
         page = page.where(tuple_(counted.c.rank, counted.c.created_at, counted.c.id) < after)
     rows = db.execute(page.order_by(*_ranking(counted.c)).limit(limit + 1)).all()
     if not rows:
-        return SearchPage([], 0, None)
-    hits = _hydrate(db, [(row.type, row.id) for row in rows[:limit]], query=q)
-    return SearchPage(hits, int(rows[0].total_count), _next_cursor(rows, limit))
-
-
-@dataclass(frozen=True)
-class SearchSection:
-    """The first page of one type's list: what :func:`search` returns for that type alone."""
-
-    type: str
-    hits: list[dict]
-    total: int
-    cursor: str | None
+        return empty
+    return SearchResponse.model_validate(
+        {
+            "hits": _hydrate(db, [(row.type, row.id) for row in rows[:limit]], query=q),
+            "total": int(rows[0].total_count),
+            "cursor": _next_cursor(rows, limit),
+            "query": query,
+        }
+    )
 
 
 def search_sections(
@@ -606,11 +593,13 @@ def search_sections(
     served = [(row.type, row.id) for type_ in present for row in by_type[type_][:limit]]
     hits = _hydrate(db, served, query=q)
     sections = [
-        SearchSection(
-            type=type_,
-            hits=[hit for hit in hits if hit["type"] == type_],
-            total=int(by_type[type_][0].total_count),
-            cursor=_next_cursor(by_type[type_], limit),
+        SearchSection.model_validate(
+            {
+                "type": type_,
+                "hits": [hit for hit in hits if hit["type"] == type_],
+                "total": int(by_type[type_][0].total_count),
+                "cursor": _next_cursor(by_type[type_], limit),
+            }
         )
         for type_ in present
     ]

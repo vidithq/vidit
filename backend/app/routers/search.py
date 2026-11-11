@@ -8,7 +8,6 @@ abuse floor. FTS plumbing is in ``services/search.py``.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, replace
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -26,8 +25,6 @@ from app.services.event_filters import (
     validate_status_filter,
 )
 from app.services.pagination import decode_ranked_cursor
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -108,16 +105,9 @@ def search(
         filters=params.filters,
         after=after,
     )
-    suggestion = _suggestion(db, params) if after is None and page.total == 0 else None
-    return SearchResponse.model_validate(
-        {
-            "hits": page.hits,
-            "total": page.total,
-            "cursor": page.cursor,
-            "suggestion": suggestion,
-            "query": params.q,
-        }
-    )
+    if after is None and page.total == 0:
+        page.suggestion = _suggestion(db, params)
+    return page
 
 
 @router.get("/sections", response_model=SearchSections)
@@ -137,17 +127,10 @@ def search_sections(
     sections = search_service.search_sections(
         db, query=params.q, types=params.types, limit=limit, filters=params.filters
     )
-    suggestion = None if sections else _suggestion(db, params)
-    return SearchSections.model_validate(
-        {
-            # Field by field: ``asdict`` would deep-copy the ORM rows the hits hold.
-            "sections": [
-                {"type": s.type, "hits": s.hits, "total": s.total, "cursor": s.cursor}
-                for s in sections
-            ],
-            "suggestion": suggestion,
-            "query": params.q,
-        }
+    return SearchSections(
+        sections=sections,
+        suggestion=None if sections else _suggestion(db, params),
+        query=params.q,
     )
 
 
