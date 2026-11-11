@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from html.parser import HTMLParser
 from types import SimpleNamespace
 
@@ -14,6 +15,7 @@ import httpx
 import pytest
 
 from app.config import settings
+from app.models.notification import NOTIFICATION_KINDS
 from app.services import email, notification_delivery
 
 BASE = "https://vidit.example"
@@ -29,8 +31,8 @@ def _notification_email(kind: str, event_title: str = "Strike & smoke") -> email
         kind=kind,
         actor=SimpleNamespace(username="bo"),
         event=SimpleNamespace(id="e1", title=event_title),
-        organization=None,
-        organization_name=None,
+        organization=SimpleNamespace(name="Open Source Watch", slug="osw"),
+        organization_name="Open Source Watch",
     )
     return notification_delivery._email_for(n, "a@example.com")
 
@@ -67,9 +69,7 @@ BUILDERS: dict[str, Callable[[], email.Email]] = {
         reporter="anonymous",
         created_at=datetime(2026, 10, 1, tzinfo=UTC),
     ),
-    "request_fulfilled": lambda: _notification_email("request_fulfilled"),
-    "new_follower": lambda: _notification_email("new_follower"),
-    "co_geolocator_invite": lambda: _notification_email("co_geolocator_invite"),
+    **{kind: partial(_notification_email, kind) for kind in NOTIFICATION_KINDS},
 }
 
 
