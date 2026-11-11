@@ -15,9 +15,8 @@ Several ``media`` rows may name one stored object (a source added to another eve
 by row, not by object), so a write never deletes an object outright: :func:`sweep_unreferenced`
 deletes the ones no ``media`` row and no readable version still names, after the commit.
 
-Errors are :class:`EvidenceIntakeError` subclasses with stable ``.code`` strings, mapped to
-HTTP status by each router (seed map: :data:`EVIDENCE_INTAKE_ERROR_STATUS`). A service's own
-domain errors subclass it, so a router catches one base.
+Errors are :class:`EvidenceIntakeError` subclasses, each with a stable ``.code`` and its HTTP
+``status_code``. A service's own domain errors subclass it, so a caller catches one base.
 """
 
 from __future__ import annotations
@@ -32,6 +31,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.errors import CodedError
 from app.models.event import Event
 from app.models.media import Media
 from app.services import versions
@@ -54,7 +54,7 @@ from app.services.storage import (
 logger = logging.getLogger(__name__)
 
 
-class EvidenceIntakeError(Exception):
+class EvidenceIntakeError(CodedError):
     """Base for evidence-intake errors; ``code`` maps to an HTTP status.
 
     Mirrors :class:`app.services.admin.AdminError` and
@@ -62,33 +62,29 @@ class EvidenceIntakeError(Exception):
     """
 
     code: str = "evidence_intake_error"
+    status_code = 400
 
 
 class TooManyFilesError(EvidenceIntakeError):
     code = "too_many_files"
+    status_code = 422
 
 
 class InvalidFileError(EvidenceIntakeError):
     code = "invalid_file"
+    status_code = 400
 
 
 class EvidenceProcessingFailedError(EvidenceIntakeError):
     code = "evidence_processing_failed"
+    status_code = 400
 
 
 class ProofFilesMismatchError(EvidenceIntakeError):
     """A ``placeholder://`` src with no matching upload, or vice versa."""
 
     code = "proof_files_mismatch"
-
-
-# Each router spreads this, then adds its own domain codes.
-EVIDENCE_INTAKE_ERROR_STATUS: dict[str, int] = {
-    "too_many_files": 422,
-    "invalid_file": 400,
-    "evidence_processing_failed": 400,
-    "proof_files_mismatch": 400,
-}
+    status_code = 400
 
 
 class StoredObject(NamedTuple):

@@ -31,7 +31,6 @@ async function pickKind(page: Page, source: Locator, label: string) {
  *
  * `/submit` sits behind the auth wall, so the context carries the session
  * cookie `proxy.ts` checks and `/auth/me` answers with the fixture user.
- * `/geolocations/new` redirects here, preserving its query.
  */
 test.describe("submit", () => {
   test.beforeEach(async ({ context, page }) => {
@@ -86,7 +85,7 @@ test.describe("submit", () => {
 
     // A publish while short flags the gaps: the fields turn red.
     await publish.click();
-    await expect(page.getByLabel("Title", { exact: true })).toHaveClass(/border-red-500/);
+    await expect(page.getByLabel("Title", { exact: true })).toHaveAttribute("aria-invalid", "true");
   });
 
   test("stacks the form on a phone as actions, sources, proof, location, details", async ({ page }) => {
@@ -131,9 +130,8 @@ test.describe("submit", () => {
 
     // One Details card: the date, the time, the conflict and the tags.
     const card = page.getByRole("heading", { name: /^Details/ }).locator("xpath=ancestor::section[1]");
-    await expect(card.locator("#occurred_date")).toBeVisible();
+    await expect(card.getByLabel("Event date", { exact: true })).toBeVisible();
     await expect(card.getByText("Tags", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /^Classification/ })).toHaveCount(0);
 
     // Scrolled down, the actions stay top right while the title goes. The source's extra fields
     // make the form taller than the screen.
@@ -542,9 +540,7 @@ test.describe("submit", () => {
     });
   }
 
-  test("the legacy routes redirect here", async ({ page }) => {
-    await page.goto("/geolocations/new");
-    await expect(page).toHaveURL(/\/submit$/);
+  test("the legacy route redirects here", async ({ page }) => {
     await page.goto("/requests/new");
     await expect(page).toHaveURL(/\/submit\?mode=single$/);
   });
@@ -576,7 +572,7 @@ test.describe("publish counts on a touch screen", () => {
     // A tap on the button itself closes the list and flags the gaps red.
     await request.tap();
     await expect(list).toBeHidden();
-    await expect(page.getByLabel("Title", { exact: true })).toHaveClass(/border-red-500/);
+    await expect(page.getByLabel("Title", { exact: true })).toHaveAttribute("aria-invalid", "true");
   });
 });
 

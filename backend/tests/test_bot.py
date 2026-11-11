@@ -410,28 +410,16 @@ def _bot_settings(monkeypatch):
     monkeypatch.setattr(settings, "x_bot_access_token_secret", "ats")
 
 
-def _linked_account(db, handle: str) -> User:
-    """A live account whose ``x_handle`` is linked to ``handle`` (the bot never mints users)."""
-    user = User(
-        username=f"analyst{uuid.uuid4().hex[:8]}",
-        email=f"analyst-{uuid.uuid4().hex}@example.com",
-        password_hash="x",
-        x_handle=handle,
-    )
-    db.add(user)
-    db.commit()
-    return user
+@pytest.fixture
+def linked_owner(make_user):
+    """A live account linked to ``HANDLE`` (the bot never mints users)."""
+    return make_user("analyst", x_handle=HANDLE)
 
 
 @pytest.fixture
-def linked_owner(db):
-    return _linked_account(db, HANDLE)
-
-
-@pytest.fixture
-def other_linked_owner(db):
+def other_linked_owner(make_user):
     """A second linked analyst: request dedup is owner-scoped."""
-    return _linked_account(db, OTHER_HANDLE)
+    return make_user("analyst", x_handle=OTHER_HANDLE)
 
 
 @pytest.fixture(autouse=True)
@@ -443,14 +431,6 @@ def _cleanup():
         session.query(BotMention).filter(BotMention.mention_post_id.in_(list(BODIES))).delete(
             synchronize_session=False
         )
-        for handle in (HANDLE, OTHER_HANDLE):
-            owner = session.query(User).filter(User.x_handle == handle).first()
-            if owner is None:
-                continue
-            session.query(Event).filter(Event.owner_id == owner.id).delete(
-                synchronize_session=False
-            )
-            session.query(User).filter(User.id == owner.id).delete(synchronize_session=False)
         session.commit()
     finally:
         session.close()

@@ -28,7 +28,9 @@ def test_oversized_content_length_returns_413():
         headers={"Content-Length": str(1024 * 1024 * 1024)},
     )
     assert response.status_code == 413
-    assert "too large" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert detail["code"] == "upload_too_large"
+    assert detail["message"].startswith("Request body too large (max ")
 
 
 def test_dev_staging_upload_admits_archive_sized_bodies():
@@ -64,7 +66,9 @@ def test_negative_content_length_returns_413():
         headers={"Content-Length": "-1"},
     )
     assert response.status_code == 413
-    assert "too large" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert detail["code"] == "upload_too_large"
+    assert detail["message"].startswith("Request body too large (max ")
 
 
 def test_body_size_cap_admits_full_geolocation_batch():
@@ -112,7 +116,9 @@ def test_chunked_oversized_body_returns_413():
 
     response = client.post("/api/v1/auth/login", content=_chunks())
     assert response.status_code == 413
-    assert "too large" in response.json()["detail"].lower()
+    detail = response.json()["detail"]
+    assert detail["code"] == "upload_too_large"
+    assert detail["message"].startswith("Request body too large (max ")
 
 
 def test_chunked_small_body_is_not_rejected():

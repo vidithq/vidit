@@ -4,9 +4,27 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ## Unreleased
 
+### Added
+
+- The OpenAPI spec lists every error code in the `ErrorCode` schema and the typed error body as `CodedErrorResponse` ([#835](https://github.com/vidithq/vidit/pull/835)).
+
 ### Changed
 
+- The admin event routes answer an unknown event with the error code `event_not_found`, the code every other route uses, instead of `geolocation_not_found` ([#835](https://github.com/vidithq/vidit/pull/835)).
+- A request body over the size cap answers 413 with the typed body, code `upload_too_large` and the same message, instead of a plain string `detail` ([#835](https://github.com/vidithq/vidit/pull/835)).
+- The OpenAPI spec lists the values of `view` on `GET /events` and `readiness` on `GET /events/detections`; an unknown value still answers 422, now with the standard validation body that names the parameter ([#835](https://github.com/vidithq/vidit/pull/835)).
 - The bot reads its mentions once a day at 12:00 UTC from where its last read stopped, so each mention is read once and a worker restart reads none; the bot's own posts, and replies under them that only inherit the tag, no longer enter the queue ([#830](https://github.com/vidithq/vidit/pull/830)).
+
+### Removed
+
+- `/profile` and `/geolocations/new` no longer resolve: open your profile from the sidebar, and submit from `/submit` ([#835](https://github.com/vidithq/vidit/pull/835)).
+
+### Fixed
+
+- A reader west of UTC sees an event's date on its own day, not the day before, and every date on the site reads the same for every reader ([#835](https://github.com/vidithq/vidit/pull/835)).
+- The **New collection** button in the **Add to collection** popovers shows one icon instead of two ([#835](https://github.com/vidithq/vidit/pull/835)).
+- The API reference lists the 30/hour limit on `POST /admin/users/{id}/restore` and counts `POST /collections/collectable-events` in the per-user read quota, and CI fails when the rate-limit tables and the code disagree ([#835](https://github.com/vidithq/vidit/pull/835)).
+- When the browser blocks site data, reading or changing the help tooltip, theme or accent choice no longer throws an error; the choice lasts for the visit ([#835](https://github.com/vidithq/vidit/pull/835)).
 
 ## v0.8.2, 2026-10-30
 

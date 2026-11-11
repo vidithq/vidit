@@ -38,6 +38,7 @@ import { InviteStatusPill } from "@/components/invites/InviteStatusPill";
 import { UserOutcomeReceipt, type UserOutcome } from "@/components/admin/ActionReceipt";
 import { UserActionsCard } from "@/components/admin/UserActionsCard";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { PageLoading } from "@/components/ui/PageShell";
 
 const COLUMN_COUNT = 11;
 
@@ -400,11 +401,8 @@ export function OnboardingPanel() {
           <tbody>
             {loading ? (
               <tr>
-                <td
-                  colSpan={COLUMN_COUNT}
-                  className="py-4 text-center text-xs text-neutral-500"
-                >
-                  Loading…
+                <td colSpan={COLUMN_COUNT} className="py-4 text-center">
+                  <PageLoading variant="compact" />
                 </td>
               </tr>
             ) : codes.length === 0 ? (

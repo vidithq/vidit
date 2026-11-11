@@ -20,11 +20,11 @@ import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Card } from "@/components/ui/Card";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input } from "@/components/ui/Input";
 import { Pill } from "@/components/ui/Pill";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { FORM_INVALID_LABEL, FORM_LABEL, LIST_TILE } from "@/components/ui/form-styles";
-import { cn } from "@/lib/cn";
+import { LIST_TILE } from "@/components/ui/form-styles";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { ErrorNotice, FieldError } from "@/components/ui/ErrorNotice";
 
@@ -125,15 +125,11 @@ export function InviteAnalystsCard() {
             missing={incomplete.missingFields.map((m) => m.label)}
           />
           <div>
-            <label
+            <FieldLabel
               htmlFor="invite-x-handle"
-              className={cn(
-                incomplete.labelClass("handle", FORM_LABEL),
-                handleRefused && FORM_INVALID_LABEL,
-              )}
-            >
-              Invitee&apos;s X handle
-            </label>
+              label="Invitee's X handle"
+              invalid={incomplete.invalidKeys.has("handle") || handleRefused}
+            />
             <Input
               id="invite-x-handle"
               invalid={incomplete.invalidKeys.has("handle") || handleRefused}

@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { eventListPath } from "@/lib/events";
 import { userOrganizationsPath, type OrganizationMembership } from "@/lib/organizations";
-import type { PublicProfile } from "@/lib/users";
+import { userPath, type PublicProfile } from "@/lib/users";
 import type { EventListItem } from "@/types";
 import { CollectionsSection } from "@/components/collections/CollectionsSection";
 import { BioField } from "@/components/profile/BioField";
@@ -42,10 +42,10 @@ export default function ProfilePage() {
     data: profile,
     error,
     refetch: refetchProfile,
-  } = useApiResource<PublicProfile>(username ? `/users/${username}` : null);
+  } = useApiResource<PublicProfile>(username ? userPath(username) : null);
   // Error deliberately unread: a failed list renders empty rather than blocking the profile card.
   const { data: submissionsData } = useApiResource<PaginatedSubmissions>(
-    username ? `/users/${username}/events?per_page=5` : null
+    username ? `${userPath(username)}/events?per_page=5` : null
   );
   const submissions = submissionsData?.items ?? [];
   // A failed read renders no logos, like the other optional blocks.

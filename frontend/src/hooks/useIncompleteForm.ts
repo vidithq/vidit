@@ -1,7 +1,5 @@
 import { useState } from "react";
 
-import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
-import { cn } from "@/lib/cn";
 import type { MissingFieldKey } from "@/lib/events";
 
 /** A required field a form is still missing (`MissingField` for the event forms); `key` drives
@@ -37,16 +35,11 @@ export function useIncompleteForm<K extends string = MissingFieldKey>() {
 
   const clearIncomplete = () => setMissingFields([]);
 
-  /** `base` plus the red label state while `key` is flagged, so a label turns red with its field. */
-  const labelClass = (key: K, base: string) =>
-    cn(base, invalidKeys.has(key) && FORM_INVALID_LABEL);
-
   return {
     missingFields,
     invalidKeys,
     validationAttempt,
     flagIncomplete,
     clearIncomplete,
-    labelClass,
   };
 }

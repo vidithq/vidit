@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Download } from "lucide-react";
 
 import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
@@ -95,7 +95,7 @@ export function SourceEditor({
   onPickFile,
   onImportLink,
   proofImages = [],
-  onCopyProofImage = () => {},
+  onCopyProofImage,
   tags,
   setTags,
   suggestedTags,
@@ -140,7 +140,6 @@ export function SourceEditor({
 
   // A picked file previews from its object URL until the staged copy answers.
   const pending = file?.state === "uploading" ? file.file : null;
-  const pendingFiles = useMemo(() => (pending ? [pending] : []), [pending]);
   // A staged upload is a source file, so it has derivatives like a stored one.
   const shown: Media | null =
     file?.state === "stored"
@@ -164,11 +163,9 @@ export function SourceEditor({
         <GifSplit name={file.file.name} frames={file.frames} />
       ) : (
         <MediaManager
-          existing={shown ? [shown] : []}
-          onRemoveExisting={() => update({ file: null })}
-          staged={pendingFiles}
-          onRemoveStaged={() => update({ file: null })}
-          onAddFiles={hasFile ? undefined : (files) => files[0] && onPickFile(files[0])}
+          file={shown ?? pending}
+          onRemove={() => update({ file: null })}
+          onAdd={hasFile ? undefined : onPickFile}
           isGraphic={draft.graphicLocked}
         />
       )}
@@ -184,7 +181,7 @@ export function SourceEditor({
         <Button
           action="useProof"
           variant="ghost"
-          onClick={() => onCopyProofImage(proofImages[0])}
+          onClick={() => onCopyProofImage?.(proofImages[0])}
           aria-label={`Use a proof image as the file of ${name.toLowerCase()}`}
         >
           Use a proof image
@@ -200,7 +197,7 @@ export function SourceEditor({
           aria-label={`${name} proof image`}
           value={copiedIndex}
           disabled={file?.state === "copying"}
-          onChange={(e) => onCopyProofImage(proofImages[Number(e.target.value)])}
+          onChange={(e) => onCopyProofImage?.(proofImages[Number(e.target.value)])}
         >
           {proofImages.map((url, i) => (
             <option key={url} value={i}>
@@ -262,7 +259,6 @@ export function SourceEditor({
         <FieldLabel {...SOURCE_FIELDS.level} />
         <OptionSearch
           single
-          required
           aria-label={`${name} level`}
           placeholder="Search levels"
           options={LEVEL_OPTIONS}
@@ -277,7 +273,6 @@ export function SourceEditor({
         <FieldLabel {...SOURCE_FIELDS.kind} htmlFor={id("kind")} invalid={invalid.kind} />
         <OptionSearch
           single
-          required
           id={id("kind")}
           aria-label={`${name} kind`}
           placeholder="Search source kinds"

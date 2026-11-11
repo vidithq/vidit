@@ -26,6 +26,7 @@ from sqlalchemy import ColumnElement, and_, exists, func, or_, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from app.config import settings
+from app.errors import CodedError
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.event import STATUS_GEOLOCATED, Event
@@ -61,7 +62,7 @@ MAX_TARGET_SUGGESTIONS = 20
 DECLINE_COOLDOWN = timedelta(days=7)
 
 
-class ApprovalRequestError(Exception):
+class ApprovalRequestError(CodedError):
     """An approval request write the rules refuse, with a stable ``code``."""
 
     code: str
@@ -69,66 +70,63 @@ class ApprovalRequestError(Exception):
 
 class EventNotReviewableError(ApprovalRequestError):
     code = "invalid_state"
+    status_code = 409
 
 
 class NotAGeolocatorError(ApprovalRequestError):
     code = "not_a_geolocator"
+    status_code = 403
 
 
 class TargetNotFoundError(ApprovalRequestError):
     code = "user_not_found"
+    status_code = 404
 
 
 class OrganizationNotFoundError(ApprovalRequestError):
     code = "organization_not_found"
+    status_code = 404
 
 
 class TargetIsGeolocatorError(ApprovalRequestError):
     code = "target_is_geolocator"
+    status_code = 403
 
 
 class RequestsNotAcceptedError(ApprovalRequestError):
     code = "requests_not_accepted"
+    status_code = 403
 
 
 class TargetAlreadyReviewedError(ApprovalRequestError):
     code = "already_approved"
+    status_code = 409
 
 
 class AlreadyRequestedError(ApprovalRequestError):
     code = "already_requested"
+    status_code = 409
 
 
 class RecentlyDeclinedError(ApprovalRequestError):
     code = "recently_declined"
+    status_code = 409
 
 
 class DailyCapReachedError(ApprovalRequestError):
     code = "daily_cap_reached"
+    status_code = 429
 
 
 class ApprovalRequestNotFoundError(ApprovalRequestError):
     code = "approval_request_not_found"
+    status_code = 404
 
 
 class AlreadyResolvedError(ApprovalRequestError):
     code = "already_resolved"
+    status_code = 409
 
-
-APPROVAL_REQUEST_ERROR_STATUS: dict[str, int] = {
-    "invalid_state": 409,
-    "not_a_geolocator": 403,
-    "user_not_found": 404,
-    "organization_not_found": 404,
-    "target_is_geolocator": 403,
-    "requests_not_accepted": 403,
-    "already_approved": 409,
-    "already_requested": 409,
-    "recently_declined": 409,
-    "daily_cap_reached": 429,
-    "approval_request_not_found": 404,
-    "already_resolved": 409,
-}
 
 # One answer for every audience that refuses, so a refusal never tells the requester which rule
 # the target chose.

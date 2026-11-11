@@ -11,23 +11,23 @@ import { allApprovalsPath, type ApprovalList } from "@/lib/approvals";
 import { COLLECTABLE_STATUSES, CollectionIcon } from "@/lib/collections";
 import { eventVersioned, hasPublishedRecord } from "@/lib/events";
 import { answerGeolocatorInvite, creditedAuthors, removeGeolocator } from "@/lib/geolocatorCredit";
-import { eventEditHref } from "@/lib/routes";
+import { eventEditHref, eventHref } from "@/lib/routes";
 import { AddToCollectionPanel } from "@/components/collections/AddToCollectionPanel";
 import { AuthorByline } from "@/components/ui/AuthorByline";
 import { ActionIcon, Button, buttonClasses } from "@/components/ui/Button";
+import { IconLink } from "@/components/ui/IconLink";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { FieldHelp } from "@/components/ui/FieldHelp";
 import { Popover } from "@/components/ui/Popover";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
-import { EventShare } from "@/components/event/EventShare";
 import { GeolocatorInviteCard, InviteAnswerButtons } from "@/components/event/GeolocatorCredit";
 import type { EventShellActions } from "@/components/event/EventShell";
 import { useEventApprovals } from "@/components/event/EventApprovals";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { useReportContent } from "@/components/report/useReportContent";
 import { useEventSites } from "@/components/sites/useEventSites";
+import { ShareControl } from "@/components/share/ShareControl";
 import type { EventDetail } from "@/types";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
@@ -43,28 +43,6 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /** Which detail page is asking, which is what selects the controls. */
 export type ActionSurface = "event" | "request";
-
-// One flag per control family per surface. `utilities` is Share and Report, which any reader of
-// the record may use. `flow` is geolocating an open request. `edit` is the owner's way to the edit
-// page. `collect` shelves the row on one of the reader's collections. `history` (the version
-// selector), `credit`, `approvals` (the approvals under the row) and `sites` (the Sites block and
-// Link to a site) belong to the event page, the one surface serving the published record.
-const TIERS: Record<
-  ActionSurface,
-  {
-    flow: boolean;
-    edit: boolean;
-    collect: boolean;
-    history: boolean;
-    utilities: boolean;
-    credit: boolean;
-    approvals: boolean;
-    sites: boolean;
-  }
-> = {
-  event:   { flow: false, edit: true,  collect: true,  history: true,  utilities: true,  credit: true,  approvals: true,  sites: true },
-  request: { flow: true,  edit: true,  collect: false, history: false, utilities: true,  credit: false, approvals: false, sites: false },
-};
 
 interface EventActionsOptions {
   /** The row to act on. Null while it loads: every node comes back null. */
@@ -89,64 +67,67 @@ export function useEventActions({ event, surface, onChanged }: EventActionsOptio
   // The report control is its own state machine (works signed out, outlives other actions).
   const report = useReportContent("event", event?.id ?? "");
 
-  const tiers = event ? TIERS[surface] : null;
+  // The event page serves the published record: the version selector, credit, approvals, sites
+  // and Add to collection belong to it. The request page carries Geolocate instead.
+  const onEventPage = surface === "event";
   const isAuthor = !!event && user?.id === event.owner.id;
   const isGeolocator = !!event && event.geolocators.some((g) => g.id === user?.id);
   // Mirrors backend geolocator_credit._require_published; change both.
-  const sharesCredit = !!tiers?.credit && event?.status === "geolocated";
+  const sharesCredit = onEventPage && event?.status === "geolocated";
   // The event read says whether the reader holds an invitation; an answer hides the card at
   // once, before the caller's refetch lands.
   const [answeredFor, setAnsweredFor] = useState<string | null>(null);
-  const showsApprovals = !!event && !!tiers?.approvals && hasPublishedRecord(event);
+  const showsApprovals = !!event && onEventPage && hasPublishedRecord(event);
   const approvals = useApiResource<ApprovalList>(
     showsApprovals ? allApprovalsPath(event.id) : null,
   );
   const eventApprovals = useEventApprovals(showsApprovals ? event : null, approvals);
-  const sites = useEventSites(tiers?.sites ? event : null);
+  const sites = useEventSites(onEventPage ? event : null);
 
-  if (!event || !tiers) {
+  if (!event) {
     return { panels: null, actions: undefined, sites: null };
   }
 
   const isOpenRequest = event.status === "requested";
   // The owner edits an open request (overwriting it), a detection, or a published geolocation
   // (adding a version). A closed row has no owner edit.
-  const canEdit = isAuthor && tiers.edit && event.status !== "closed";
+  const canEdit = isAuthor && event.status !== "closed";
   // The two worked statuses only, the set a collection may hold
   // (`services/event_filters.collectable_events`).
   const canCollect =
-    (isAuthor || isGeolocator) && tiers.collect && COLLECTABLE_STATUSES.includes(event.status);
+    (isAuthor || isGeolocator) && onEventPage && COLLECTABLE_STATUSES.includes(event.status);
   // The owner manages credit on the edit page; a co-geolocator reads it and leaves here.
   const canSeeCredit = !isAuthor && isGeolocator && sharesCredit;
   const invited =
     sharesCredit && !isAuthor && !isGeolocator && event.viewer_invite_pending === true &&
     answeredFor !== event.id;
   // Reporting your own event says nothing an edit or a close could not.
-  const canReport = tiers.utilities && !isAuthor;
+  const canReport = !isAuthor;
   // The asker's Edit opens the same form, so the asker gets Edit alone.
-  const canGeolocate = tiers.flow && isOpenRequest && !canEdit;
+  const canGeolocate = !onEventPage && isOpenRequest && !canEdit;
 
   const controls = [
-    tiers.history && hasPublishedRecord(event) && (
+    onEventPage && hasPublishedRecord(event) && (
       <VersionSelector key="versions" record={eventVersioned(event)} selected={event.version_no} />
     ),
     canEdit && (
       // A published record is corrected by adding a version, a request is overwritten: the
       // tooltip says which, so "Edit" never reads as an in-place rewrite of a published record.
-      <Tooltip
+      <IconLink
         key="edit"
-        label={event.status === "geolocated" ? "Edit (saves a new version)" : "Edit"}
-      >
-        <Link
-          href={eventEditHref(event.id)}
-          className={buttonClasses("ghost", { icon: true })}
-          aria-label="Edit"
-        >
-          <SquarePen size={14} />
-        </Link>
-      </Tooltip>
+        href={eventEditHref(event.id)}
+        label="Edit"
+        title={event.status === "geolocated" ? "Edit (saves a new version)" : undefined}
+        icon={<SquarePen size={14} />}
+      />
     ),
-    tiers.utilities && <EventShare key="share" event={event} />,
+    // A `detected` row is still editable by its owner, so a shared link's content may change.
+    <ShareControl
+      key="share"
+      path={eventHref(event.id)}
+      title={event.title}
+      caveat={event.status === "detected" ? "Detected and may still change." : undefined}
+    />,
     // Keyed by the row: this hook survives a client navigation between rows, and the next row
     // must not open with the previous one's popover open.
     canCollect && (

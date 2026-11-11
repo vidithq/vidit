@@ -21,9 +21,9 @@ const GROW_MIN_WIDTH = 20;
 /**
  * A source's file on a reading surface (`SourceBlock`): one tile.
  *
- * - `page`: `hero` resolution.
- * - `panel`: `thumbnail` resolution (max-dim 400). The panel (~380 CSS px) is the most-fetched
- *   surface (every map popup).
+ * - On a page: `hero` resolution.
+ * - `compact`, in the panel: `thumbnail` resolution (max-dim 400). The panel (~380 CSS px) is the
+ *   most-fetched surface (every map popup).
  *
  * **A video tile** is `VideoPlayer`, whose bar carries one expand control
  * (`onExpand`) opening the same lightbox as an image tile. Full screen lives on
@@ -33,13 +33,13 @@ const GROW_MIN_WIDTH = 20;
  * `MediaLightbox` at `hero` uncropped. Their download floats in the corner,
  * revealed on hover (`HOVER_REVEAL` keeps it visible on touch).
  *
- * `grow` gives a `page` tile a 16:9 box at the full width instead of the
+ * `grow` gives a page tile a 16:9 box at the full width instead of the
  * fixed height, for a gallery that owns a wide slot. A video tile then takes the
  * clip's own shape once its metadata loads, centered, at most `GROW_MAX_HEIGHT`
  * tall and at least `GROW_MIN_WIDTH` wide, so a portrait clip plays in a portrait
  * frame.
  *
- * No media renders one marked empty box, saying `empty`.
+ * No media renders one marked empty box, saying *No file*.
  *
  * `isGraphic` wraps the tile in `GraphicContentGate`. The lightbox stays outside it: a gated
  * tile takes no clicks.
@@ -47,21 +47,17 @@ const GROW_MIN_WIDTH = 20;
 export function MediaGallery({
   media,
   alt,
-  variant = "page",
+  compact = false,
   isGraphic = false,
   grow = false,
-  empty = "No media available",
 }: {
   media: Media | null;
   /** Alt text for image media (the entity title). */
   alt: string;
-  variant?: "page" | "panel";
+  compact?: boolean;
   isGraphic?: boolean;
   grow?: boolean;
-  /** What the empty box says, such as *No file* on a source block. */
-  empty?: string;
 }) {
-  const compact = variant === "panel";
   const itemHeight = compact ? "h-40" : grow ? "aspect-video" : "h-48";
   const [viewing, setViewing] = useState(false);
   const [clip, setClip] = useState<number | undefined>(undefined);
@@ -71,7 +67,7 @@ export function MediaGallery({
       <div
         className={`rounded-lg border border-neutral-700 bg-neutral-800 ${itemHeight}`}
       >
-        <TileNotice compact={compact}>{empty}</TileNotice>
+        <TileNotice compact={compact}>No file</TileNotice>
       </div>
     );
   }

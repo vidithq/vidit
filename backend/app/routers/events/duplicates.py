@@ -16,7 +16,15 @@ from sqlalchemy import ColumnElement, cast, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.dependencies import get_current_user, get_db
-from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
+from app.models.event import (
+    LAT_MAX,
+    LAT_MIN,
+    LNG_MAX,
+    LNG_MIN,
+    STATUS_DETECTED,
+    STATUS_GEOLOCATED,
+    Event,
+)
 from app.models.source import Source, SourceLink
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
@@ -74,8 +82,8 @@ def _extract_host(source_url: str) -> str | None:
 @limiter.limit("60/minute")
 def list_possible_duplicates(
     request: Request,
-    lat: float = Query(..., ge=-90, le=90),
-    lng: float = Query(..., ge=-180, le=180),
+    lat: float = Query(..., ge=LAT_MIN, le=LAT_MAX),
+    lng: float = Query(..., ge=LNG_MIN, le=LNG_MAX),
     source_url: str | None = Query(None, max_length=2048),
     occurred_date: str | None = Query(None, max_length=32),
     current_user: User = Depends(get_current_user),

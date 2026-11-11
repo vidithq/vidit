@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Button } from "@/components/ui/Button";
 import { TEXT_LINK } from "@/components/ui/styles";
+import { PageLoading } from "@/components/ui/PageShell";
 
 type ResendState = "idle" | "sending" | "sent" | "failed";
 
@@ -88,7 +89,7 @@ function PendingInner() {
 export default function RegistrationPendingPage() {
   return (
     <Suspense
-      fallback={<span className="text-neutral-500 text-sm">Loading…</span>}
+      fallback={<PageLoading variant="line" />}
     >
       <PendingInner />
     </Suspense>

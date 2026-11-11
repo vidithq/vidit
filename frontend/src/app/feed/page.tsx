@@ -23,7 +23,7 @@ import { useTimelines } from "@/components/filters/useTimelines";
 import { FEED_PAGE, feedDatesPath, feedPath } from "@/lib/feed";
 import { formatDate } from "@/lib/format";
 import { eventItem } from "@/lib/items";
-import type { PublicProfile } from "@/lib/users";
+import { userPath, type PublicProfile } from "@/lib/users";
 import type { components } from "@/lib/api-types";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
@@ -42,7 +42,7 @@ function enteredLabel(item: FeedItem): string {
 export default function FeedPage() {
   // `useSearchParams` opts out of static prerender, so the body sits under Suspense.
   return (
-    <Suspense fallback={<PageLoading label="Loading feed…" />}>
+    <Suspense fallback={<PageLoading />}>
       <FeedPageBody />
     </Suspense>
   );
@@ -74,11 +74,11 @@ function FeedPageBody() {
     !error &&
     items.length === 0;
   const { data: profile, error: profileError } = useApiResource<PublicProfile>(
-    emptyFollowing && user ? `/users/${user.username}` : null
+    emptyFollowing && user ? userPath(user.username) : null
   );
 
   if (authLoading || !user) {
-    return <PageLoading label="Loading feed…" />;
+    return <PageLoading />;
   }
 
   const showAll = (
@@ -91,7 +91,7 @@ function FeedPageBody() {
   if (error && items.length === 0) {
     body = <ErrorNotice error={error} />;
   } else if (loading || (emptyFollowing && !profile && !profileError)) {
-    body = <p className="text-sm text-neutral-500">Loading feed…</p>;
+    body = <PageLoading variant="line" />;
   } else if (items.length > 0) {
     body = (
       <>

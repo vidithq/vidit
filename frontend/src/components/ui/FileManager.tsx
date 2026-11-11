@@ -33,8 +33,6 @@ interface FileManagerProps {
   /** Omit for read-only (no drop zone, no remove). */
   onAddFiles?: (files: File[]) => void;
   accept: string;
-  /** Also keeps the drop zone shown once staged. */
-  multiple?: boolean;
   addLabel: string;
   addHint?: string;
   /** `grid`: thumbnail tiles (media), one full-width tile for a single-file picker. `stack`:
@@ -53,7 +51,6 @@ export function FileManager({
   items,
   onAddFiles,
   accept,
-  multiple = false,
   addLabel,
   addHint,
   layout = "grid",
@@ -70,7 +67,7 @@ export function FileManager({
     const files = Array.from(e.target.files ?? []);
     // Reset so re-picking the same file still fires onChange.
     e.target.value = "";
-    if (files.length > 0) onAddFiles?.(multiple ? files : files.slice(0, 1));
+    if (files.length > 0) onAddFiles?.(files.slice(0, 1));
   };
 
   // Instant, so a cross. The 24px circle sits in a tile corner, where a near miss opens the
@@ -122,7 +119,7 @@ export function FileManager({
       onDrop={(e) => {
         e.preventDefault();
         const dropped = Array.from(e.dataTransfer.files ?? []);
-        if (dropped.length > 0) onAddFiles(multiple ? dropped : dropped.slice(0, 1));
+        if (dropped.length > 0) onAddFiles(dropped.slice(0, 1));
       }}
       className={
         // Clickable is orange; the neutral background reads as a drop zone.
@@ -137,19 +134,18 @@ export function FileManager({
       <input
         type="file"
         accept={accept}
-        multiple={multiple}
         className="hidden"
         onChange={onInput}
       />
     </label>
   ) : null;
 
-  // A single-file picker gives way to the staged item.
-  const showDropzone = !!onAddFiles && (multiple || items.length === 0);
+  // The picker takes one file and gives way to the staged item.
+  const showDropzone = !!onAddFiles && items.length === 0;
 
   if (grid) {
     return (
-      <div className={multiple ? "grid grid-cols-2 gap-3 sm:grid-cols-3" : "grid grid-cols-1"}>
+      <div className="grid grid-cols-1">
         {items.map((it) => (
           <div
             key={it.key}

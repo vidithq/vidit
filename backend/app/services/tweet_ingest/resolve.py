@@ -21,10 +21,11 @@ video, only into the source media slot, leaving ``source_url`` untouched
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from typing import Literal
+from typing import Final, Literal
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 from .extract import (
@@ -60,7 +61,7 @@ from .urls import (
 # thread reaches the engine.
 COORDS_MISSING = "coords_missing"
 COORDS_INVALID = "coords_invalid"
-POST_UNREADABLE = "post_unreadable"
+POST_UNREADABLE: Final = "post_unreadable"
 # Raised by the write path: a request draft's footage was all refused by the
 # evidence intake (over the size cap, or unreadable). Worded here because the
 # reply reads one table.
@@ -568,11 +569,7 @@ class Resolution:
     @property
     def warnings(self) -> dict[str, int]:
         """Detections per warning, counted as read, not as persisted."""
-        counts: dict[str, int] = {}
-        for detection in self.detections:
-            for warning in detection.warnings:
-                counts[warning] = counts.get(warning, 0) + 1
-        return counts
+        return Counter(warning for detection in self.detections for warning in detection.warnings)
 
     @property
     def reason(self) -> str | None:
@@ -625,8 +622,8 @@ def resolve_threads(threads: list[list[TweetRecord]], *, with_requests: bool = F
     """
     detections: list[Detection] = []
     requests: list[RequestDraft] = []
-    refusals: dict[str, int] = {}
-    request_refusals: dict[str, int] = {}
+    refusals: Counter[str] = Counter()
+    request_refusals: Counter[str] = Counter()
     for thread in threads:
         found, refusal, draft, request_refusal = _thread_detections(
             thread, with_requests=with_requests
@@ -635,9 +632,9 @@ def resolve_threads(threads: list[list[TweetRecord]], *, with_requests: bool = F
         if draft is not None:
             requests.append(draft)
         if refusal is not None:
-            refusals[refusal] = refusals.get(refusal, 0) + 1
+            refusals[refusal] += 1
         if request_refusal is not None:
-            request_refusals[request_refusal] = request_refusals.get(request_refusal, 0) + 1
+            request_refusals[request_refusal] += 1
     return Resolution(
         detections=detections,
         requests=requests,

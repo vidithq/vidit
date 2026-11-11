@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import {
   BIO_MAX_LEN,
@@ -57,12 +57,6 @@ function setup(profile: PublicProfile | null = profileFixture()) {
   );
   return { ...harness, refreshAuth, refetchProfile };
 }
-
-beforeEach(() => {
-  (updateMyProfile as Mock).mockReset();
-  (uploadMyAvatar as Mock).mockReset();
-  (deleteMyAvatar as Mock).mockReset();
-});
 
 describe("useProfileEdit", () => {
   it("seeds drafts from the profile on startEditing", () => {

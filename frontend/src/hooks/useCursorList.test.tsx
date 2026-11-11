@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { apiFetchPage } from "@/test/apiStub";
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
@@ -7,10 +7,6 @@ vi.mock("@/lib/api", () => import("@/test/apiStub"));
 import { useCursorList } from "./useCursorList";
 
 const buildPath = (cursor: string | null) => (cursor ? `/rows?cursor=${cursor}` : "/rows");
-
-beforeEach(() => {
-  apiFetchPage.mockReset();
-});
 
 /** A page whose answer the test releases, to hold a request in flight. */
 function deferred() {

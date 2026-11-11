@@ -1,18 +1,11 @@
 "use client";
 
-import { useCallback } from "react";
-import { useParams } from "next/navigation";
-
-import type { EventDetail, EventVersion, EventVersionList } from "@/types";
-import { useApiResource } from "@/hooks/useApiResource";
-import { useCursorList } from "@/hooks/useCursorList";
+import type { EventDetail, EventVersion } from "@/types";
+import { useVersionHistory } from "@/hooks/useVersionPage";
 import { eventVersionsPath, eventVersions } from "@/lib/events";
 import { EventVersionRow } from "@/components/event/EventVersionRow";
 import { VersionHistory } from "@/components/event/VersionHistory";
-import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
-
-/** The history read answers an envelope; module-level because `useCursorList` keys fetches on this function's identity. */
-const versionRows = (page: EventVersionList): EventVersion[] => page.items;
+import { PageShell } from "@/components/ui/PageShell";
 
 /**
  * Every version of one event, newest first. Public so any reader can audit
@@ -21,20 +14,11 @@ const versionRows = (page: EventVersionList): EventVersion[] => page.items;
  * more* brings the page that completes it.
  */
 export default function EventHistoryPage() {
-  const params = useParams();
-  const eventId = typeof params.id === "string" ? params.id : "";
-  const { data: geo, error, refetch } = useApiResource<EventDetail>(
-    eventId ? `/events/${eventId}` : null
-  );
-
-  const buildPath = useCallback(
-    (cursor: string | null) => eventVersionsPath(eventId, cursor),
-    [eventId]
-  );
-  const walk = useCursorList<EventVersion, EventVersionList>(buildPath, versionRows);
-
-  if (error) return <PageError error={error} onRetry={refetch} />;
-  if (!geo) return <PageLoading />;
+  const { gate, record: geo, walk } = useVersionHistory<EventDetail, EventVersion>({
+    recordPath: (id) => `/events/${id}`,
+    versionsPath: eventVersionsPath,
+  });
+  if (gate) return gate;
 
   return (
     // Plain-text title: the *Current* row already links to the event.

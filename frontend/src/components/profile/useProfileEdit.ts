@@ -15,7 +15,11 @@ import type { ExternalLinks } from "@/types";
 // Bio ceiling, mirrors the backend BIO_MAX_LEN in schemas/user.py; change both.
 export const BIO_MAX_LEN = 500;
 
-const LINK_KEYS = ["x", "discord", "website", "github"] as const;
+const LINK_ORDER = { x: null, discord: null, website: null, github: null } satisfies Record<
+  keyof ExternalLinks,
+  null
+>;
+const LINK_KEYS = Object.keys(LINK_ORDER) as (keyof ExternalLinks)[];
 
 /** The fields the edit mode reads: an analyst's profile or an organization's. */
 interface EditableProfile {

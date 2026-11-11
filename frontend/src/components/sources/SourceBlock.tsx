@@ -64,10 +64,9 @@ export function SourceBlock({
     <MediaGallery
       media={source.media}
       alt={alt}
-      variant={compact ? "panel" : "page"}
+      compact={compact}
       isGraphic={source.is_graphic}
       grow={wide}
-      empty="No file"
     />
   );
   const rows = (

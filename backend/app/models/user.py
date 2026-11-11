@@ -70,3 +70,8 @@ class User(Base):
         viewonly=True,
         uselist=False,
     )
+
+    @property
+    def is_live(self) -> bool:
+        """Neither soft-deleted nor deactivated."""
+        return self.is_active and self.deleted_at is None

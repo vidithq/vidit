@@ -22,8 +22,10 @@ replays another link.
 from __future__ import annotations
 
 import re
+from typing import Literal, get_args
 from urllib.parse import urlparse
 
+from app.errors import CodedError
 from app.models.source import SOURCE_URL_MAX_LENGTH, ArchiveProvider
 from app.services.sanitize import normalised_host
 
@@ -64,16 +66,24 @@ _GHOSTARCHIVE_PATH_RE = re.compile(r"^/v?archive/[A-Za-z0-9_-]{4,20}/?$")
 SNAPSHOT_URL_MAX_LENGTH = SOURCE_URL_MAX_LENGTH
 
 
-class SnapshotRejected(Exception):
-    """The pasted URL is not a snapshot address.
+SnapshotRejectionCode = Literal[
+    "snapshot_url_too_long",
+    "snapshot_url_invalid",
+    "snapshot_url_not_https",
+    "snapshot_provider_not_allowed",
+    "snapshot_not_a_replay_url",
+    "snapshot_not_a_snapshot_code",
+]
 
-    The per-instance ``code`` is translated by
-    :func:`app.routers._errors.raise_typed_error` and says which check failed.
-    """
 
-    code: str = "snapshot_url_invalid"
+class SnapshotRejected(CodedError):
+    """The pasted URL is not a snapshot address; the per-instance ``code`` says which check
+    failed."""
 
-    def __init__(self, code: str, message: str) -> None:
+    status_code = 400
+    instance_codes = get_args(SnapshotRejectionCode)
+
+    def __init__(self, code: SnapshotRejectionCode, message: str) -> None:
         super().__init__(message)
         self.code = code
 

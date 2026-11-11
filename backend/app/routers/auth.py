@@ -2,7 +2,6 @@ import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import NoReturn
 from urllib.parse import urlencode
 
 from fastapi import (
@@ -31,7 +30,6 @@ from app.models.audit_log import (
 )
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers._errors import raise_typed_error
 from app.schemas.auth import LoginRequest, RegisterRequest, RegisterResponse
 from app.schemas.recovery import (
     ChangePasswordRequest,
@@ -106,19 +104,6 @@ def _send_registration_confirmation_best_effort(*, to: str, raw_token: str) -> N
 
 # ── Registration: pre-creation flow ──────────────────────────────────────
 
-_REGISTRATION_ERROR_STATUS: dict[str, int] = {
-    "invalid_invite": 400,
-    "email_already_registered": 409,
-    "username_already_taken": 409,
-    "email_pending_confirmation": 409,
-    "username_pending_confirmation": 409,
-    "invalid_or_expired_token": 400,
-}
-
-
-def _raise_registration_error(exc: registration.RegistrationError) -> NoReturn:
-    raise_typed_error(exc, _REGISTRATION_ERROR_STATUS)
-
 
 @router.post(
     "/register",
@@ -136,16 +121,13 @@ def register(
 
     The account is created at ``POST /auth/confirm-registration``.
     """
-    try:
-        mint = registration.create_pending_registration(
-            db,
-            email=body.email,
-            username=body.username,
-            password=body.password,
-            invite_code=body.invite_code,
-        )
-    except registration.RegistrationError as exc:
-        _raise_registration_error(exc)
+    mint = registration.create_pending_registration(
+        db,
+        email=body.email,
+        username=body.username,
+        password=body.password,
+        invite_code=body.invite_code,
+    )
 
     audit.log_auth_event(
         db,
@@ -176,10 +158,7 @@ def confirm_registration(
     Re-validates the invite and uniqueness in the same transaction as the user
     insert (the pending row held the address until now).
     """
-    try:
-        user = registration.confirm_pending_registration(db, body.token)
-    except registration.RegistrationError as exc:
-        _raise_registration_error(exc)
+    user = registration.confirm_pending_registration(db, body.token)
 
     # Same stamp as login: this call signs the analyst in without a ``login`` event.
     user.last_seen_at = datetime.now(UTC)
@@ -208,11 +187,7 @@ def resend_confirmation(
 
     Always 204, like ``/forgot-password``, so it cannot enumerate pending addresses.
     """
-    try:
-        mint = registration.resend_pending_registration(db, email=body.email)
-    except registration.RegistrationError as exc:
-        # No expected path; kept in case the service ever raises.
-        _raise_registration_error(exc)
+    mint = registration.resend_pending_registration(db, email=body.email)
 
     # Audit on both branches like ``/forgot-password``. ``user_id`` stays NULL
     # so the row leaks nothing about which addresses have a pending row.
@@ -252,16 +227,14 @@ def login(
     )
     password_ok = verify_password(body.password, password_hash)
     # The dummy hash's plaintext is public, so a match there must not sign in.
-    if user is None or user.deleted_at is not None or not user.is_active or not password_ok:
+    if user is None or not user.is_live or not password_ok:
         # Log the matched user_id when there is one, NULL otherwise, so
         # existence is not leaked. A deactivated account is treated like a
         # soft-deleted one.
         audit.log_auth_event(
             db,
             action=ACTION_FAILED_LOGIN,
-            user_id=user.id
-            if (user is not None and user.deleted_at is None and user.is_active)
-            else None,
+            user_id=user.id if user is not None and user.is_live else None,
         )
         db.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -414,7 +387,7 @@ def reset_password(
     # Mirror the mint-side guards (live + active): deactivation has no FK
     # cascade, so a token captured before it would otherwise still rotate the
     # password.
-    if user is None or user.deleted_at is not None or not user.is_active:
+    if user is None or not user.is_live:
         # ``consume`` already burned the token; roll back so it isn't persisted
         # without a password change.
         db.rollback()

@@ -8,8 +8,7 @@ sweep on rollback. Verbs: :func:`create_with_evidence` (``geolocated``),
 the superseded state), :func:`complete_detections` (publish detections in a batch),
 :func:`close` (withdraw / reject / retract, any live state).
 
-Errors are `EventError` subclasses with stable `.code` strings. Add each new
-code to `_EVENT_ERROR_STATUS` in `routers/events/_common.py`.
+Errors are `EventError` subclasses, each with a stable `.code` and its HTTP `status_code`.
 
 One module per verb over shared modules. A verb module imports shared modules,
 a shared module imports only other shared modules, ``errors`` imports no sibling, and
@@ -45,12 +44,12 @@ from .errors import (
     TooManySourcesError,
     VersionMismatchError,
 )
-from .readiness import DETECTION_READINESS, detection_ready_predicate
+from .readiness import DetectionReadiness, detection_ready_predicate
 from .request import ImportProvenance, create_request, stamp_provenance, update_request
 from .revision import save_version
 
 __all__ = [
-    "DETECTION_READINESS",
+    "DetectionReadiness",
     "ROW_INTERNAL_ERROR_CODE",
     "ConflictRequiredError",
     "CoordinatesRequiredError",

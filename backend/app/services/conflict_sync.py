@@ -25,7 +25,7 @@ import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from app.models.conflict import Conflict, ConflictTier
+from app.models.conflict import CONFLICT_NAME_MAX_LENGTH, Conflict, ConflictTier
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +53,6 @@ _MAX_EXPECTED = 80
 
 # MediaWiki caps ``titles`` batches at 50 for anonymous clients.
 _QID_BATCH_SIZE = 50
-
-# ``conflicts.name`` is VARCHAR(200); truncate before writing to avoid a DataError.
-_NAME_MAX_LENGTH = 200
 
 
 class ConflictSyncError(Exception):
@@ -275,7 +272,7 @@ def sync_conflicts(
             deduped.append(entry)
 
         for entry in deduped:
-            title = entry.title[:_NAME_MAX_LENGTH]
+            title = entry.title[:CONFLICT_NAME_MAX_LENGTH]
             qid = qid_by_title.get(entry.title)
             if qid is None:
                 result.skipped.append(f"{title}: no Wikidata item")

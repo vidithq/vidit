@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Copy, ExternalLink, History, UserPlus } from "lucide-react";
+import {
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  FolderPlus,
+  History,
+  SquarePen,
+  UserPlus,
+} from "lucide-react";
 
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import {
@@ -13,6 +21,7 @@ import {
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { IconLink } from "@/components/ui/IconLink";
 import { ItemSearch } from "@/components/ui/ItemSearch";
 import { Popover } from "@/components/ui/Popover";
 import { RemoveButton } from "@/components/ui/RemoveButton";
@@ -175,6 +184,31 @@ export const ACTIONS: PaletteCategory = {
             >
               <ExternalLink size={14} />
             </Button>
+          </Variant>
+        </>
+      ),
+    },
+    {
+      entry: "IconLink", tier: "high",
+      demo: (
+        <>
+          <IconLink href="/palette" label="New collection" icon={<FolderPlus size={14} />} />
+          <Variant label="title">
+            <IconLink
+              href="/palette"
+              label="Edit"
+              title="Edit (saves a new version)"
+              icon={<SquarePen size={14} />}
+            />
+          </Variant>
+          <Variant label="external secondary">
+            <IconLink
+              external
+              variant="secondary"
+              href="https://www.google.com/maps?q=48.5,37.8"
+              label="View on Maps"
+              icon={<ExternalLink size={14} />}
+            />
           </Variant>
         </>
       ),

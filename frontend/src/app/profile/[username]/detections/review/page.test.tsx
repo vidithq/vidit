@@ -29,8 +29,6 @@ function queue(items: EventDetail[]) {
 }
 
 beforeEach(() => {
-  replace.mockReset();
-  useApiResource.mockReset();
   window.sessionStorage.clear();
 });
 

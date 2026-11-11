@@ -10,14 +10,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.models.audit_log import AuditLog
 from app.models.event import STATUS_GEOLOCATED
 from app.models.password_reset_token import (
     PasswordResetToken,
 )
 from app.services import maintenance as maintenance_service
 from app.services.email import EmailSendError
-from tests._fixtures import client, make_detection
+from tests._fixtures import audit_row, client, make_detection
 from tests.conftest import login_as
 
 
@@ -79,16 +78,7 @@ def test_reap_password_reset_tokens_endpoint_for_admin(admin_user, db):
     assert "expired" in body
     assert "old_consumed" in body
 
-    event = (
-        db.query(AuditLog)
-        .filter(
-            AuditLog.actor_id == admin_user.id,
-            AuditLog.action == "maintenance_reap_password_reset_tokens",
-        )
-        .order_by(AuditLog.created_at.desc())
-        .first()
-    )
-    assert event is not None
+    assert audit_row(db, admin_user, "maintenance_reap_password_reset_tokens") is not None
 
 
 def test_reap_password_reset_tokens_endpoint_403_for_regular_user(regular_user):
@@ -207,16 +197,7 @@ def test_send_completion_digests_endpoint_for_admin(admin_user, db, monkeypatch)
     assert "analysts_notified" in body
     assert "detections_pending" in body
 
-    event = (
-        db.query(AuditLog)
-        .filter(
-            AuditLog.actor_id == admin_user.id,
-            AuditLog.action == "maintenance_send_completion_digests",
-        )
-        .order_by(AuditLog.created_at.desc())
-        .first()
-    )
-    assert event is not None
+    assert audit_row(db, admin_user, "maintenance_send_completion_digests") is not None
 
 
 def test_send_completion_digests_endpoint_403_for_regular_user(regular_user):

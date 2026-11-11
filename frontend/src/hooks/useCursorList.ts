@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetchPage } from "@/lib/api";
 import { readError, type ReadableError } from "@/lib/errors";
 
-interface PagedResult<T> {
+interface PagedResult<T, P> {
   items: T[];
+  /** The payload of the last page that landed, whichever walk it answered. */
+  last: P | null;
   /** Cursor of the next page, `null` once the walk is exhausted. */
   cursor: string | null;
   error: ReadableError | null;
@@ -47,6 +49,9 @@ const pageRequest = (body: string | undefined): RequestInit =>
  * A failed `loadMore` keeps the rows and the cursor and sets `error`, so callers render the
  * rows beside the message. Calling `loadMore` again retries the same page and clears `error`
  * once it lands.
+ *
+ * `lastPage` is the payload of the last page that landed, for a caller that reads more than the
+ * rows off it (an offset page's totals). It stays while a new walk loads and when a page fails.
  */
 export function useCursorList<T, P = T[]>(
   buildPath: (cursor: string | null) => string | null,
@@ -61,9 +66,11 @@ export function useCursorList<T, P = T[]>(
   hasMore: boolean;
   loadMore: () => void;
   reload: () => void;
+  lastPage: P | null;
 } {
-  const [result, setResult] = useState<PagedResult<T>>({
+  const [result, setResult] = useState<PagedResult<T, P>>({
     items: [],
+    last: null,
     cursor: null,
     error: null,
     generation: -1,
@@ -93,6 +100,7 @@ export function useCursorList<T, P = T[]>(
         if (controller.signal.aborted) return;
         setResult({
           items: rows(page.items),
+          last: page.items,
           cursor: next(page),
           error: null,
           generation,
@@ -100,12 +108,13 @@ export function useCursorList<T, P = T[]>(
       })
       .catch((e: unknown) => {
         if (controller.signal.aborted) return;
-        setResult({
+        setResult((prev) => ({
           items: [],
+          last: prev.last,
           cursor: null,
           error: readError(e),
           generation,
-        });
+        }));
       });
     return () => {
       controller.abort();
@@ -135,6 +144,7 @@ export function useCursorList<T, P = T[]>(
             : {
                 ...prev,
                 items: [...prev.items, ...rows(page.items)],
+                last: page.items,
                 cursor: next(page),
                 // A retry that lands clears the failed page's message.
                 error: null,
@@ -170,5 +180,6 @@ export function useCursorList<T, P = T[]>(
     hasMore: cursor !== null,
     loadMore,
     reload,
+    lastPage: result.last,
   };
 }

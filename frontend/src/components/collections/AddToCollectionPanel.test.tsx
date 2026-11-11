@@ -42,9 +42,6 @@ function row(title: string): HTMLElement {
 }
 
 beforeEach(() => {
-  useApiResource.mockReset();
-  addEventToCollection.mockReset();
-  removeEventFromCollection.mockReset();
   useApiResource.mockReturnValue({ data: MEMBERSHIPS, error: null });
 });
 
@@ -182,9 +179,9 @@ describe("AddToCollectionPanel", () => {
 
     // The create page carries this event and comes back, so the panel writes no
     // form of its own.
-    expect(
-      screen.getByRole("link", { name: "New collection" }),
-    ).toHaveAttribute("href", "/collections/new?event=e1");
+    const link = screen.getByRole("link", { name: "New collection" });
+    expect(link).toHaveAttribute("href", "/collections/new?event=e1");
+    expect(link.querySelectorAll("svg")).toHaveLength(1);
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
   });
 

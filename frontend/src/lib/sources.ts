@@ -2,6 +2,7 @@ import { ApiError, apiFetch, errorMessage } from "./api";
 import type { components } from "./api-types";
 import { coordinatePair, LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./coordinates";
 import type { SourceFloorState } from "./events";
+import type { ErrorCode } from "./errors";
 import { safeHostname, toDatetimeLocalUTC } from "./format";
 import type { FieldName } from "./fieldHelp";
 import type { ArchivedLink, Media } from "@/types";
@@ -147,7 +148,7 @@ export type SourceFile =
   | { state: "failed"; name: string; error: string };
 
 /** The GIF a staged file is the first frame of, and how many frames it split into. */
-export type GifSplitOf = { name: string; frames: number };
+type GifSplitOf = { name: string; frames: number };
 
 /** Whether a source file is still on its way to the server: the write waits for it. */
 export const fileRunning = (
@@ -486,9 +487,8 @@ export function checkSource(draft: SourceDraft & { kind: ImageryKind }): Promise
   });
 }
 
-/** The form sentence for each source error code an event write can answer. Mirrors the codes of
- *  backend `services/events/errors` and `services/uploads`; change both. */
-const SOURCE_ERROR_MESSAGES: Record<string, string> = {
+/** The form sentence for each source error code an event write can answer. */
+const SOURCE_ERROR_MESSAGES = {
   source_required: "Add a direct or indirect source.",
   source_file_required: "Add a file to a direct or indirect source.",
   source_link_required: "Every source needs at least one URL.",
@@ -504,15 +504,13 @@ const SOURCE_ERROR_MESSAGES: Record<string, string> = {
   too_many_uploads:
     "You have too many source files waiting to be used. Submit the forms that use them, or wait a day for them to expire.",
   conflict_required: "Pick at least one conflict.",
-};
+} satisfies Partial<Record<ErrorCode, string>>;
 
 /** A `useMutation` `onError` for every event write: a source error code reads as its form
  *  sentence; anything else keeps the server's message. */
 export function sourceWriteError(err: unknown): string | undefined {
-  if (err instanceof ApiError && err.code && err.code in SOURCE_ERROR_MESSAGES) {
-    return SOURCE_ERROR_MESSAGES[err.code];
-  }
-  return undefined;
+  const messages: Partial<Record<ErrorCode, string>> = SOURCE_ERROR_MESSAGES;
+  return err instanceof ApiError && err.code ? messages[err.code] : undefined;
 }
 
 /** A source upload's refusal as the file slot prints it. */

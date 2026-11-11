@@ -161,7 +161,7 @@ export function ImportArchivePanel({ username, shell }: { username: string; shel
       };
       let job: ArchiveImportJob;
       try {
-        job = await awaitImportJob(queued.id, { onUpdate });
+        job = await awaitImportJob(queued.id, onUpdate);
       } catch (err) {
         if (err instanceof ImportPollLost) return null; // still running
         throw err;

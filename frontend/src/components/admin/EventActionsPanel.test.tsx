@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "@/test/apiStub";
 vi.mock("@/lib/api", () => import("@/test/apiStub"));
@@ -10,10 +10,6 @@ const ID = "11111111-1111-1111-1111-111111111111";
 const OTHER = "22222222-2222-2222-2222-222222222222";
 const REQUEST = "33333333-3333-3333-3333-333333333333";
 const FIELD = "Event (title, ID or link)";
-
-beforeEach(() => {
-  apiFetch.mockReset();
-});
 
 describe("<EventActionsPanel>", () => {
   it("enables the actions once an event ID or link is pasted", () => {

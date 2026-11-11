@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { LoadMoreRow } from "@/components/ui/LoadMoreRow";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { PageLoading } from "@/components/ui/PageShell";
 
 type Walk = Parameters<typeof LoadMoreRow>[0]["walk"] & {
   items: readonly unknown[];
@@ -17,7 +18,7 @@ export function VersionHistory({ walk, children }: { walk: Walk; children: React
     <>
       {historyError && <ErrorNotice error={historyError} />}
       {walk.loading ? (
-        <p className="text-sm text-neutral-500">Loading versions…</p>
+        <PageLoading variant="line" />
       ) : (
         <>
           {/* One name column for every row, as wide as the widest name: each row is a subgrid of it. */}

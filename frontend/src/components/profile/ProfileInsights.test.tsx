@@ -1,11 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ProfileInsights } from "./ProfileInsights";
 import type { UserStats } from "@/lib/users";
 
-const getUserStats = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/users", () => ({ getUserStats }));
+import { apiFetch } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 function statsFixture(overrides: Partial<UserStats> = {}): UserStats {
   return {
@@ -25,14 +25,10 @@ function statsFixture(overrides: Partial<UserStats> = {}): UserStats {
 
 /** Render the card and wait for the stats fetch to settle. */
 async function renderCard(stats: UserStats) {
-  getUserStats.mockResolvedValue(stats);
+  apiFetch.mockResolvedValue(stats);
   render(<ProfileInsights username="ana" />);
   return screen.findByText("Insights");
 }
-
-afterEach(() => {
-  getUserStats.mockReset();
-});
 
 describe("ProfileInsights", () => {
   it("opens the rows behind every tile, scoped to the analyst", async () => {
@@ -81,7 +77,7 @@ describe("ProfileInsights", () => {
   });
 
   it("renders nothing for a profile with no events", async () => {
-    getUserStats.mockResolvedValue(
+    apiFetch.mockResolvedValue(
       statsFixture({
         total_events: 0,
         geolocated_count: 0,
@@ -92,7 +88,9 @@ describe("ProfileInsights", () => {
     );
     const { container } = render(<ProfileInsights username="ana" />);
 
-    await vi.waitFor(() => expect(getUserStats).toHaveBeenCalledWith("ana"));
+    await vi.waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/users/ana/stats", expect.anything()),
+    );
     expect(container).toBeEmptyDOMElement();
   });
 });

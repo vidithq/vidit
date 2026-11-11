@@ -115,7 +115,7 @@ Every image is decoded and re-encoded before it is stored: [`evidence_processing
 | Styles | **Tailwind CSS 4** (CSS-first config: `@theme` block in [`frontend/src/app/globals.css`](../frontend/src/app/globals.css), no `tailwind.config.ts`) |
 | Icons | **lucide-react** |
 | Linting | **ESLint 9** (flat config in [`frontend/eslint.config.mjs`](../frontend/eslint.config.mjs), importing `eslint-config-next/core-web-vitals`). `npm run lint` invokes `eslint` directly. |
-| Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. Layout is not testable there (jsdom has no layout engine): `npm run test:e2e` runs the Playwright suite that measures it, after `npx playwright install chromium` once. See [Narrow-viewport smoke tests](#narrow-viewport-smoke-tests). |
+| Tests | **Vitest + Testing Library** (jsdom, config in [`frontend/vitest.config.mts`](../frontend/vitest.config.mts)). Colocated `*.test.ts(x)` under `src/`; `npm test` runs once, `npm run test:watch` watches. `NEXT_PUBLIC_API_URL` is stubbed in the config so importing `lib/api.ts` doesn't trip its boot guard. The config resets every mock before each test, so set a mock's answer in `beforeEach` or in the test, never at module level. Shared stubs and fixture builders live in [`frontend/src/test/`](../frontend/src/test): `apiStub` (its `apiFetch` leaves an unanswered request in flight), `eventDetail` and `collection` among them. Layout is not testable there (jsdom has no layout engine): `npm run test:e2e` runs the Playwright suite that measures it, after `npx playwright install chromium` once. See [Narrow-viewport smoke tests](#narrow-viewport-smoke-tests). |
 | API types | **`openapi-typescript`**: [`frontend/src/lib/api-types.ts`](../frontend/src/lib/api-types.ts) is **generated** from the backend OpenAPI spec (`make gen-api-types` dumps `app.openapi()` → `openapi-typescript`). [`types/index.ts`](../frontend/src/types/index.ts) derives its enums (`EventStatus`, `MediaType`, the source kind and level) from it, so a backend schema change that isn't regenerated is a `tsc` failure, not a runtime surprise. The `api-types` CI job regenerates + `git diff --exit-code`, failing on drift. Don't hand-edit `api-types.ts`. |
 
 MapLibre GL JS is open source (BSD-3-Clause). It uses vector tiles and supports client-side clustering. The tiles come from OpenFreeMap, which needs no API key and sets no request cap, or from the instance's own copy of them ([Self-hosted map files](#self-hosted-map-files)). The attribution control credits OpenMapTiles and OpenStreetMap contributors.
@@ -354,10 +354,11 @@ The root [`conftest.py`](../backend/tests/conftest.py) defines the fixtures that
 |---|---|
 | `db` | A database session, closed after the test. |
 | `client` | The one `TestClient`; its cookie jar is cleared before and after every test. |
-| `make_user` | A factory for users. Each user it makes is deleted after the test, with the rows that reference it. `admin_user`, `regular_user`, `author` and `second_user` call it. |
+| `make_user` | A factory for users. Each user it makes is deleted after the test, with the rows that reference it. `admin_user`, `regular_user`, `author`, `second_user`, `live_user` and `soft_deleted_user` call it. Pass `username` to set the exact name a search test matches. |
 | `sent_emails` | The list of emails `email.send` received, in order, in place of a delivery. |
+| `free_tag`, `conflict` | A tag and a conflict, deleted after the test. |
 
-Build event rows with `make_event` and `make_detection` from [`tests/_fixtures.py`](../backend/tests/_fixtures.py). The coordinate parser runs on every test run against the sanitized posts in [`tests/typology/fixtures.json`](../backend/tests/typology/fixtures.json). A migration gets a test only while it is the head revision; validate the whole chain as [Migration house style](#migration-house-style) describes.
+Build event rows with `make_event` and `make_detection`, and their sources with `source`, from [`tests/_fixtures.py`](../backend/tests/_fixtures.py). Read the audit row a call wrote with `audit_row`. An event, collection or site owned by a `make_user` user goes with that user, so the test needs no teardown of its own. The coordinate parser runs on every test run against the sanitized posts in [`tests/typology/fixtures.json`](../backend/tests/typology/fixtures.json). A migration gets a test only while it is the head revision; validate the whole chain as [Migration house style](#migration-house-style) describes.
 
 ---
 
@@ -385,10 +386,10 @@ flowchart LR
   req["`**HTTP request**`"]:::spec
   router["`**routers/**
   endpoints only; calls a service and returns a schema`"]:::shared
-  errors["`**routers/_errors.raise_typed_error**
-  maps a service error's code to a status plus a code and message body`"]:::spec
+  errors["`**main.coded_error_handler**
+  answers a CodedError with its status_code and a code and message body`"]:::spec
   service["`**services/**
-  the decisions; raises a typed error with a stable code, never HTTPException`"]:::core
+  the decisions; raises a CodedError with its code and status, never HTTPException`"]:::core
   model["`**models/**
   SQLAlchemy tables, structure only`"]:::shared
   schema["`**schemas/**
@@ -400,13 +401,13 @@ flowchart LR
   req --> router --> service --> model --> db
   schema --> router
   dep --> router
-  service -- "typed error" --> errors --> router
+  service -- "CodedError" --> errors
 ```
 
 | Layer | Role | Rule |
 |-------|------|------|
-| **routers/** | HTTP endpoints, no business logic | Calls a service, returns a schema. Maps service-raised typed errors to HTTP status + `{code, message}` detail via the shared [`routers/_errors.py`](../backend/app/routers/_errors.py) `raise_typed_error(exc, status_map)`, each router supplying its own `code → status` map ([`routers/auth.py`](../backend/app/routers/auth.py) `_REGISTRATION_ERROR_STATUS`, [`routers/admin.py`](../backend/app/routers/admin.py) `_ADMIN_ERROR_STATUS`). |
-| **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response`, never raises `HTTPException`; raise a typed error subclass with a stable `code` and let the router translate. |
+| **routers/** | HTTP endpoints, no business logic | Calls a service, returns a schema. Lets a service's `CodedError` propagate: the `coded_error_handler` in [`main.py`](../backend/app/main.py) answers it with the error's `status_code` and a `{code, message}` detail. Catch a `CodedError` only to act before it propagates, for example to log it, then re-raise it. |
+| **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response`, never raises `HTTPException`. Raises a subclass of [`errors.CodedError`](../backend/app/errors.py) that declares its stable `code` and its HTTP `status_code` next to each other. |
 | **models/** | SQLAlchemy tables | Structure only, no logic |
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
 | **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |
@@ -495,9 +496,9 @@ The caps keep notification email inside the provider's daily quota. The boot che
 
 ### Hand-kept mirrors
 
-Each validation rule has one backend home: the upload MIME allowlist in `services/storage.py` (the EXIF-strip set derives from the image allowlist), coordinate bounds in `services/events.validate_coordinates`, and password length in `schemas/auth.NewPassword` (`PASSWORD_MIN_LENGTH` characters, `PASSWORD_MAX_BYTES` UTF-8 bytes, the bcrypt input limit). Frontend enum types are generated from the OpenAPI spec into `lib/api-types.ts`. So is `SourceCreate`, the entry of the event writes' `sources` JSON form field: no route names it, so `main._FORM_FIELD_MODELS` adds it to the spec's components.
+Each validation rule has one backend home: the upload MIME allowlist in `services/storage.py` (the EXIF-strip set derives from the image allowlist), coordinate bounds in `services/events.validate_coordinates`, and password length in `schemas/auth.NewPassword` (`PASSWORD_MIN_LENGTH` characters, `PASSWORD_MAX_BYTES` UTF-8 bytes, the bcrypt input limit). Frontend enum types are generated from the OpenAPI spec into `lib/api-types.ts`. So is `SourceCreate`, the entry of the event writes' `sources` JSON form field: no route names it, so `main._FORM_FIELD_MODELS` adds it to the spec's components. So is `ErrorCode`, every `code` a typed `{code, message}` body carries: `main.error_codes` collects the `code` and `instance_codes` of every `CodedError` subclass, the archive intake codes and the rate-limit codes, and the spec lists it with the `CodedErrorResponse` envelope. `ApiError.code` is an `ErrorCode`, so `tsc` refuses a branch on a code the API does not answer.
 
-Every other frontend copy of a backend rule is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`. [`backend/tests/test_frontend_mirrors.py`](../backend/tests/test_frontend_mirrors.py) reads the value mirrors (the caps, the evidence levels, the document kinds, the snapshot hosts, the coordinate bounds and the status filter list) out of the frontend files and fails when one differs from its backend value.
+Every other frontend copy of a backend rule is hand-kept and listed below. Change both sides in the same PR. Frontend paths are under `frontend/src/`; backend modules are under `backend/app/`. [`backend/tests/test_frontend_mirrors.py`](../backend/tests/test_frontend_mirrors.py) reads the value mirrors (the caps and lengths, the site margin, the CSRF cookie and header names, the local storage URL prefix, the author filter pattern, the proof read view's tag list, the evidence levels, the document kinds, the snapshot hosts, the coordinate bounds and the status filter list) out of the frontend files and fails when one differs from its backend value.
 
 | Frontend | Backend source | Drift breaks |
 |---|---|---|
@@ -511,7 +512,7 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `components/profile/RecentSubmissions.tsx` link `status=geolocated` | `event_filters.published_events()` | *See all* expands a different set than the preview |
 | `components/collections/CollectionsSection.tsx` link `type=collection` | `search._TYPE_FILTERS`, where `author` narrows collections | *See all* lands on an empty list |
 | `components/filters/model.ts::KIND_DIMENSIONS` | `search._TYPE_FILTERS` | the search panel offers a filter that leaves the picked kind out, or hides one that narrows it |
-| `components/filters/model.ts::DIMENSIONS` surfaces (`media`, `has_coords` and the date windows on the feed; `media` on the Requests board) | the filter set `routers/_filters.event_filters` reads on `GET /feed`, `GET /events` and `GET /search` | the panel offers a line whose value the API ignores |
+| `components/filters/model.ts::DIMENSIONS` surfaces (`media`, `has_coords` and the date windows on the feed; `media` on the Requests board) | the filter set `routers/_filters.event_filters` reads on `GET /feed`, `GET /events`, `GET /events/points` and `GET /search` | the panel offers a line whose value the API ignores |
 | `lib/archive.ts` keep-allowlist, root discovery, `MAX_UPLOAD_BYTES` | `tweet_ingest/archive_zip.py` | client trims files the server needs, or uploads an export it refuses |
 | `lib/mediaUrls.ts::displayUrlsFor` | `storage.derivative_key` (`_hero`, `_thumb`) | a source image requests a derivative that does not exist (403) |
 | `lib/viewport.ts` | `event_filters.parse_bbox` field order and bounds | map bbox is refused or filters the wrong area |
@@ -522,16 +523,14 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/sources.ts::isEvidenceLevel` | `models/source.EVIDENCE_LEVELS` | the form, the queue and the source block count a source toward the evidence floor that the server does not, or the reverse |
 | `lib/sources.ts::DOCUMENT_SOURCE_KINDS` | `models/source.DOCUMENT_SOURCE_KINDS` (`schemas/source.SourceCreate` drops a document's capture position) | the editor offers a capture position the server drops, or hides one it keeps |
 | `lib/sources.ts::isImportableLink` (the source editor's import button) | `tweet_ingest/urls.is_importable_link` (`x_status_id`, `telegram_post_url`, `tiktok_post_id`, `tiktok_short_url`) | the form offers an import the server refuses (`unsupported_link`), or hides one it reads |
-| `lib/sources.ts::SOURCE_ERROR_MESSAGES` (each sentence, and the caps it names) | the source codes of `events/errors`, the upload codes of `uploads`, `conflict_required`, `invalid_coordinates` | a refused write prints the server's message, or names the wrong cap |
+| `lib/sources.ts::SOURCE_ERROR_MESSAGES` sentences (the keys are `ErrorCode` members) | the source refusals of `events/errors`, the upload refusals of `uploads`, `conflict_required`, `invalid_coordinates` | a refused write states another cause or cap than the server's |
 | `lib/events.ts::batchCompletionBlockers` | `events/batch._publish_detection`, `events.detection_ready_predicate` (coordinates, a `direct` or `indirect` source with a file, no source without a URL, a proof image) | queue labels a row ready that the server refuses |
 | `lib/events.ts::missingEventFields`, `missingEventRequestFields` | `events/sources.check_publish_floor`, the required `kind` of `schemas/source.SourceCreate`, `sources._clean_links` (a URL on every source), `events/rules._require_conflict`, `_require_proof_image` | the form calls a submission ready that the server refuses, or blocks one it accepts |
-| `lib/events.ts::EventView` | `event_filters.VIEWS` (the router takes `str`, so codegen cannot carry it) | `view` parameter refused |
-| `lib/events.ts::DetectionReadiness` | `events/readiness.DETECTION_READINESS` (the router takes `str`, so codegen cannot carry it) | `readiness` parameter refused (422) |
 | `lib/events.ts::snapshotToEventView`, `changedFields`, `hasVersionChanges` | `versions.build_snapshot` fields, the source entry of `versions.source_entry`, `versions.COMPARED_FIELDS` (the snapshot is untyped JSON, so neither codegen nor `tsc` catches a renamed key) | version pages silently blank a field or a source |
-| `lib/events.ts::EVENT_TITLE_MAX_LEN` (the event title, and `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`), `REPORT_DETAILS_MAX_LEN`, `VERSION_NOTE_MAX_LEN`, `CLOSE_REASON_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/report.DETAILS_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH`, `CLOSE_REASON_MAX_LENGTH` | server refuses typed text |
+| `lib/events.ts::EVENT_TITLE_MAX_LEN` (the event title, and `lib/collections.ts::COLLECTION_TITLE_MAX_LEN`), `VERSION_NOTE_MAX_LEN`, `CLOSE_REASON_MAX_LEN`; `lib/reports.ts::REPORT_DETAILS_MAX_LEN` | `models/event.TITLE_MAX_LENGTH`, `schemas/event.VERSION_NOTE_MAX_LENGTH`, `CLOSE_REASON_MAX_LENGTH`; `schemas/report.DETAILS_MAX_LENGTH` | server refuses typed text |
 | none: the proof editor shows no counter | `sanitize._MAX_LENGTH` (200,000 characters of HTML), `_MAX_TAGS` | nothing drifts: the caps count markup the editor does not show, so the server's `invalid_proof` answer stands |
 | `components/profile/useProfileEdit.ts::BIO_MAX_LEN` | `schemas/user.BIO_MAX_LEN` | server refuses typed text |
-| `components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN` | `schemas/tag.py` name `max_length` | server refuses typed text |
+| `components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN` | `models/tag.NAME_MAX_LENGTH` | server refuses typed text |
 | `lib/collections.ts::COLLECTION_DESCRIPTION_MAX_LEN` | `schemas/collection.DESCRIPTION_MAX_LENGTH` | server refuses typed text |
 | `lib/proof.tsx::htmlText` | `sanitize.html_text` | description counter disagrees with the server cap |
 | `components/map/mapAssets.ts::FIELDS` | `map_files.LATEST_FIELDS`, the keys of `latest.json` | the map falls back to the public hosts, or reads a file the bucket does not hold |
@@ -568,7 +567,6 @@ Every other frontend copy of a backend rule is hand-kept and listed below. Chang
 | `lib/notifications.ts::NOTIFICATION_KIND_COPY` labels | the `setting` each notification builder passes in `services/email.py` | an email names a switch Settings does not show |
 | `lib/notifications.ts::MAX_READ_IDS` | `schemas/notification.NotificationReadUpdate.ids` (`MAX_PAGE_SIZE`) | marking a long list read is refused with 422 and its rows stay unread |
 | `lib/notifications.ts::unsubscribeTokenKind` (the `<user>.<kind>.<signature>` token shape) | `unsubscribe_tokens.sign`, `verify` | the unsubscribe page reads the wrong kind from a valid link, or rejects one the server signed |
-| the `code` each page branches on: `archive_*` in `components/geolocations/ImportArchivePanel.tsx`, `nothing_changed` in `components/geolocations/edit/EventEditForm.tsx`, `email_pending_confirmation` in `components/auth/RegisterForm.tsx`, `version_mismatch` and `approval_not_found` in `components/event/Approvals.tsx`, `too_many_uploads` in `lib/sources.ts::uploadError`, `read_quota_exceeded` in `lib/errors.ts::rateLimited` | the `code` of the matching error classes in `archive_jobs`, `tweet_ingest/archive_zip`, `events/errors`, `uploads`, `registration` and `approvals`, and `main.READ_QUOTA_EXCEEDED_CODE` | the page prints a generic error, or skips its recovery step, for a refusal it handles |
 | the last org manager rule in `components/organizations/OrganizationMembers.tsx` | `organizations._guard_last_manager` | the members list offers Leave or Make member that the server refuses, or hides one it accepts |
 
 ### Schema naming convention
@@ -617,7 +615,7 @@ The pytest template database keys its reuse on the alembic head id, which a squa
 
 Client pages load read-only API data through `useApiResource<T>(path)` ([`frontend/src/hooks/useApiResource.ts`](../frontend/src/hooks/useApiResource.ts)). It issues a GET on mount and on every `path` change, aborts the in-flight request on unmount or path change, and skips the request while `path` is `null` (auth unresolved, route params not ready). Call `refetch()` for retry buttons and post-mutation refreshes. Errors surface as a `ReadableError` for the page to render in an `<ErrorNotice>` (see [design.md, Errors](design.md#errors)). Lists the page mutates after seeding (for example, `TagPicker` appending a newly created tag) stay on `useState` plus `apiFetch`. Writes (create, update, delete) run through `useMutation(fn, { onSuccess, onError, fallback })` ([`frontend/src/hooks/useMutation.ts`](../frontend/src/hooks/useMutation.ts)), the shared `loading` / `error` / try-catch wrapper. `errorMessage(err, fallback)` ([`api.ts`](../frontend/src/lib/api.ts)) pulls the message as one sentence, and the `fields` option puts a refused field's message in `fieldErrors`. The anonymous-to-`/login` bounce on a protected page is `useRequireAuth()`, the mirror of `useRedirectIfAuthenticated`. It carries the page as `?next=`, and the login page honours `next` after `safeNext` in [`lib/navigation.ts`](../frontend/src/lib/navigation.ts) accepts it as a same-origin path.
 
-The auth wall in [`proxy.ts`](../frontend/src/proxy.ts) is default-deny over an explicit public set (`PUBLIC_PREFIXES`). Anonymous read is open on the content routes (map, events, requests, collections, profiles, organizations, search), the guide and legal pages (`/about`, `/guide`, `/import`, `/methodology`, `/legal`, `/privacy`, and the `/archive` and `/bot` redirects), and the auth pages. Write and account surfaces (`/submit`, `/settings`, `/admin`, `/feed`, `/notifications`) require a session, and the proxy sends a signed-out request for one to `/login?next=` with its path. Write sub-routes nested under a public prefix (`/profile`, `/events/[id]/edit`, `/profile/[username]/detections`, `/collections/new`, `/collections/[id]/edit`, `/sites/new`, `/sites/[id]/edit`, `/sites/[id]/sources/new`) are bounced client-side by `useRequireAuth`, with the same `next`.
+The auth wall in [`proxy.ts`](../frontend/src/proxy.ts) is default-deny over an explicit public set (`PUBLIC_PREFIXES`). Anonymous read is open on the content routes (map, events, requests, collections, profiles, organizations, search), the guide and legal pages (`/about`, `/guide`, `/import`, `/methodology`, `/legal`, `/privacy`, and the `/archive` and `/bot` redirects), and the auth pages. Write and account surfaces (`/submit`, `/settings`, `/admin`, `/feed`, `/notifications`) require a session, and the proxy sends a signed-out request for one to `/login?next=` with its path. Write sub-routes nested under a public prefix (`/events/[id]/edit`, `/profile/[username]/detections`, `/collections/new`, `/collections/[id]/edit`, `/sites/new`, `/sites/[id]/edit`, `/sites/[id]/sources/new`) are bounced client-side by `useRequireAuth`, with the same `next`.
 
 A session the server stops accepting moves the browser to signed out in one place. `apiFetch` reports a 401 from any path but `/auth/login` and `/auth/me` through [`lib/session.ts`](../frontend/src/lib/session.ts). `AuthProvider` then reads `/auth/me` once, however many calls failed together. A 401 there clears the user, and [`SessionEndedNotice`](../frontend/src/components/SessionEndedNotice.tsx) says *Your session ended. Sign in again.* with a sign-in link back to the current page. Any other answer leaves the user in place. A 403 is a refusal to a live session and never signs anyone out.
 

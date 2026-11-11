@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, fields, replace
 from datetime import date, timedelta
-from typing import Any, get_args
+from typing import Any, Literal, get_args
 
 from fastapi import HTTPException
 from geoalchemy2.functions import ST_MakeEnvelope, ST_Within
@@ -38,6 +38,10 @@ from sqlalchemy.orm import Session, aliased
 from app.models.approval import EventApproval
 from app.models.conflict import Conflict
 from app.models.event import (
+    LAT_MAX,
+    LAT_MIN,
+    LNG_MAX,
+    LNG_MIN,
     STATUS_CLOSED,
     STATUS_DETECTED,
     STATUS_GEOLOCATED,
@@ -90,7 +94,7 @@ def published_events() -> ColumnElement[bool]:
       count and feed at once; the page, its version history, credits and archives stay,
       marked as withdrawn with the reason.
     * ``requested`` is an open call for help with no vouched location, on its own read view
-      (see :data:`VIEWS`). ``closed`` off ``requested`` is a withdrawn ask.
+      (see :data:`EventView`). ``closed`` off ``requested`` is a withdrawn ask.
 
     Deliberate non-callers: the ``located`` catalog view, which shows detections beside vouched
     rows (:func:`view_predicate`); the profile coverage map, which plots both and splits the
@@ -240,7 +244,7 @@ STATUSES = frozenset({STATUS_REQUESTED, STATUS_DETECTED, STATUS_GEOLOCATED, STAT
 # The two read views over the one table. ``located`` is the catalog (vouched and machine rows,
 # plus a rejected detection). ``requested`` is the open-call queue (plus a withdrawn request).
 # Neither serves a retraction, which is reachable by its URL alone: see :func:`view_predicate`.
-VIEWS = frozenset({"located", "requested"})
+EventView = Literal["located", "requested"]
 
 
 def owner_username_matches(author: str) -> ColumnElement[bool]:
@@ -262,7 +266,7 @@ def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
 
 
 def view_predicate(view: str):
-    """The status predicate for a read view (see ``VIEWS``).
+    """The status predicate for a read view (see ``EventView``).
 
     Each view keeps the closed rows that left its own cohort, so a decision stays legible where
     it was taken. A retraction (``closed`` off ``geolocated``) is in neither: the catalog would
@@ -340,10 +344,14 @@ def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
             status_code=422,
             detail="bbox must be four comma-separated numbers: south,west,north,east",
         ) from exc
-    if not (-90.0 <= south <= 90.0 and -90.0 <= north <= 90.0):
-        raise HTTPException(status_code=422, detail="bbox latitudes must be in [-90, 90]")
-    if not (-180.0 <= west <= 180.0 and -180.0 <= east <= 180.0):
-        raise HTTPException(status_code=422, detail="bbox longitudes must be in [-180, 180]")
+    if not (LAT_MIN <= south <= LAT_MAX and LAT_MIN <= north <= LAT_MAX):
+        raise HTTPException(
+            status_code=422, detail=f"bbox latitudes must be in [{LAT_MIN:g}, {LAT_MAX:g}]"
+        )
+    if not (LNG_MIN <= west <= LNG_MAX and LNG_MIN <= east <= LNG_MAX):
+        raise HTTPException(
+            status_code=422, detail=f"bbox longitudes must be in [{LNG_MIN:g}, {LNG_MAX:g}]"
+        )
     if south > north:
         raise HTTPException(status_code=422, detail="bbox south must be <= north")
     if west > east:
@@ -365,10 +373,10 @@ def snap_bbox(bounds: tuple[float, float, float, float]) -> tuple[float, float, 
     """
     south, west, north, east = bounds
     return (
-        max(-90.0, _snap_down(south)),
-        max(-180.0, _snap_down(west)),
-        min(90.0, _snap_up(north)),
-        min(180.0, _snap_up(east)),
+        max(LAT_MIN, _snap_down(south)),
+        max(LNG_MIN, _snap_down(west)),
+        min(LAT_MAX, _snap_up(north)),
+        min(LNG_MAX, _snap_up(east)),
     )
 
 
@@ -383,11 +391,7 @@ def _snap_up(value: float) -> float:
 
 
 def bbox_predicate(bounds: tuple[float, float, float, float]):
-    """PostGIS containment predicate for a bbox already through :func:`parse_bbox`.
-
-    Split from :func:`apply_filters` for callers that parse the bbox themselves (``/events/points``
-    parses once, for its cache key).
-    """
+    """PostGIS containment predicate for a bbox already through :func:`parse_bbox`."""
     south, west, north, east = bounds
     return ST_Within(
         Event.coords,
@@ -502,7 +506,6 @@ def apply_filters(
     approved: bool = False,
     approved_by: str | None = None,
     approved_by_org: str | None = None,
-    bbox: str | None = None,
     has_coords: bool | None = None,
 ) -> SAQuery:
     """Apply the standard event filter set to a query.
@@ -510,7 +513,7 @@ def apply_filters(
     The visibility filters live here, so every public read excludes soft-deleted and withheld
     rows; the admin path bypasses this helper.
 
-    ``view`` scopes to one of the two views (see ``VIEWS``), or to none when the caller scopes
+    ``view`` scopes to one of the two views (see ``EventView``), or to none when the caller scopes
     the statuses itself (``services/search``); ``status`` narrows within it (any-match). Status-scoping rather than a coordinate predicate, since a ``requested`` event
     may carry an approximate guess and must not leak into the located catalog. Callers gate
     values through :func:`validate_status_filter`.
@@ -570,9 +573,6 @@ def apply_filters(
             approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
         )
     )
-
-    if bbox:
-        query = query.filter(bbox_predicate(parse_bbox(bbox)))
 
     if has_coords is not None:
         query = query.filter(Event.coords.isnot(None) if has_coords else Event.coords.is_(None))

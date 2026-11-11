@@ -24,15 +24,20 @@ export function inBounds(lat: number, lng: number): boolean {
   return lat >= LAT_MIN && lat <= LAT_MAX && lng >= LNG_MIN && lng <= LNG_MAX;
 }
 
+/** The pair two inputs hold, or `null` while empty, half-typed or malformed. Not bounds-checked. */
+export function parsePair(latValue: string, lngValue: string): CoordinatePair | null {
+  const lat = cleanNumber(latValue);
+  const lng = cleanNumber(lngValue);
+  return lat === null || lng === null ? null : { lat, lng };
+}
+
 /** The pair two inputs hold, or `null` while empty, half-typed, malformed or out of bounds. */
 export function coordinatePair(
   latValue: string,
   lngValue: string
 ): CoordinatePair | null {
-  const lat = cleanNumber(latValue);
-  const lng = cleanNumber(lngValue);
-  if (lat === null || lng === null || !inBounds(lat, lng)) return null;
-  return { lat, lng };
+  const pair = parsePair(latValue, lngValue);
+  return pair && inBounds(pair.lat, pair.lng) ? pair : null;
 }
 
 // Signed decimal degree, at most 3 integer digits so a pasted timestamp or id can't read as one.
@@ -94,7 +99,7 @@ const HALVES = [
 
 /** What keeps two inputs from holding a usable pair. `half` names the input at fault, null when
  *  both are blank. A blank half is `missing`: nothing typed is wrong yet. */
-export interface PairProblem {
+interface PairProblem {
   message: string;
   half: "lat" | "lng" | null;
   missing: boolean;

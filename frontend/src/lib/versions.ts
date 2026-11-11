@@ -34,7 +34,7 @@ export interface VersionEntry<View> {
 /** The rows of one version in a history walk: `own` holds its content (absent for the live
  *  version) and `below`, the row one lower, holds the byline of the write that produced it,
  *  since the API files a write's byline on the version it superseded, and the diff base. */
-export interface VersionStep<Row> {
+interface VersionStep<Row> {
   number: number;
   own: Row | undefined;
   below: Row | undefined;
@@ -43,7 +43,7 @@ export interface VersionStep<Row> {
 /** The versions of a history walk newest first. While `hasMore`, the oldest loaded row is only
  *  the byline of the version above it, so the walk stops one above it until the page that
  *  completes it arrives: no version number appears without an editor. */
-export function versionSteps<Row extends { version_no: number }>(
+function versionSteps<Row extends { version_no: number }>(
   latest: number,
   first: number,
   rows: Row[],
@@ -58,6 +58,80 @@ export function versionSteps<Row extends { version_no: number }>(
     steps.push({ number, own, below: byNumber.get(number - 1) });
   }
   return steps;
+}
+
+/** A filed version row, as both version reads answer it. */
+interface FiledRow {
+  version_no: number;
+  edited_by: Author | null;
+  created_at: string;
+  note: string | null;
+  redacted?: boolean;
+}
+
+/** How one kind of record reads its version rows. */
+export interface VersionReader<View, Row> {
+  first: number;
+  /** The record at a filed row, or `null` when redacted. */
+  viewOf: (row: Row) => View | null;
+  /** Byline of a version no row produced: the record's opening or first publication. */
+  origin: (number: number) => Pick<VersionEntry<View>, "editor" | "createdAt">;
+  changedFields: (view: View, previous: View) => string[];
+}
+
+/** Rows one version is assembled from. `own` is its content (absent for the live row);
+ *  `producedBy` is the row numbered one lower, since the API files a write's byline on the
+ *  version it superseded; `previous` is that lower version's view, the diff base. */
+export interface VersionEntryRows<View, Row> {
+  own?: Row | null;
+  producedBy?: Row | null;
+  previous?: View | null;
+}
+
+/** One version, described by the write that produced it: content from row `n`, authorship
+ *  from row `n - 1`, or from `reader.origin` when no row produced it. */
+export function versionEntry<View extends { version_no: number }, Row extends FiledRow>(
+  current: View,
+  number: number,
+  { own = null, producedBy = null, previous = null }: VersionEntryRows<View, Row>,
+  reader: VersionReader<View, Row>,
+): VersionEntry<View> {
+  const isCurrent = number === current.version_no;
+  const view = isCurrent ? current : own ? reader.viewOf(own) : null;
+  const byline = producedBy
+    ? { editor: producedBy.edited_by, createdAt: producedBy.created_at }
+    : reader.origin(number);
+  return {
+    number,
+    current: isCurrent,
+    view,
+    ...byline,
+    note: producedBy?.note ?? null,
+    redacted: own?.redacted ?? false,
+    changed: view && previous ? reader.changedFields(view, previous) : null,
+  };
+}
+
+/** Versions newest first, on the walk of `versionSteps`. */
+export function versionEntries<View extends { version_no: number }, Row extends FiledRow>(
+  current: View,
+  rows: Row[],
+  hasMore: boolean,
+  reader: VersionReader<View, Row>,
+): VersionEntry<View>[] {
+  return versionSteps(current.version_no, reader.first, rows, hasMore).map(
+    ({ number, own, below }) =>
+      versionEntry(
+        current,
+        number,
+        {
+          own,
+          producedBy: below,
+          previous: number > reader.first && below ? reader.viewOf(below) : null,
+        },
+        reader,
+      ),
+  );
 }
 
 /** Version number of a `vN` segment, or `null` (other shapes, so the route 404s). */

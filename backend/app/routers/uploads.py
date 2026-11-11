@@ -10,7 +10,6 @@ from app.dependencies import get_current_user, get_db
 from app.models.upload import Upload
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers._errors import raise_typed_error
 from app.schemas.source import (
     LinkUploadRead,
     UploadFromLink,
@@ -19,13 +18,10 @@ from app.schemas.source import (
     UploadRead,
 )
 from app.services import uploads as uploads_service
-from app.services.evidence_intake import EVIDENCE_INTAKE_ERROR_STATUS, EvidenceIntakeError
 from app.services.storage import scrub_log
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-_ERROR_STATUS = {**EVIDENCE_INTAKE_ERROR_STATUS, **uploads_service.UPLOAD_ERROR_STATUS}
 
 
 def _upload_read(row: Upload) -> UploadRead:
@@ -54,10 +50,7 @@ def create_upload(
     after 24 hours unless a write takes it. 400 on an invalid file, 429 past
     the per-account ceiling of staged files.
     """
-    try:
-        rows = asyncio.run(uploads_service.stage_upload(db, uploader=current_user, file=file))
-    except EvidenceIntakeError as exc:
-        raise_typed_error(exc, _ERROR_STATUS)
+    rows = asyncio.run(uploads_service.stage_upload(db, uploader=current_user, file=file))
     return UploadList(items=[_upload_read(row) for row in rows])
 
 
@@ -77,10 +70,10 @@ def create_upload_from_link(
                 db, uploader=current_user, url=body.url, index=body.index
             )
         )
-    except EvidenceIntakeError as exc:
+    except uploads_service.LinkImportError as exc:
         if exc.code == "upstream_busy":
             logger.warning("Link import busy for %s: %s", scrub_log(body.url), exc)
-        raise_typed_error(exc, _ERROR_STATUS)
+        raise
     return LinkUploadRead(**_upload_read(row).model_dump(), post_media=post_media)
 
 
@@ -93,12 +86,9 @@ def create_upload_from_proof(
     db: Session = Depends(get_db),
 ) -> UploadRead:
     """Stage a copy of a proof image of an event you edit, as ``POST /uploads`` stages a file."""
-    try:
-        row = asyncio.run(
-            uploads_service.stage_from_proof(
-                db, uploader=current_user, event_id=body.event_id, url=body.url
-            )
+    row = asyncio.run(
+        uploads_service.stage_from_proof(
+            db, uploader=current_user, event_id=body.event_id, url=body.url
         )
-    except EvidenceIntakeError as exc:
-        raise_typed_error(exc, _ERROR_STATUS)
+    )
     return _upload_read(row)

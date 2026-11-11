@@ -29,12 +29,6 @@ export type Conflict = components["schemas"]["ConflictRead"];
  *  versions) → `closed` (taken back by its owner from any of the three). */
 export type EventStatus = components["schemas"]["EventRead"]["status"];
 
-/** The state a `closed` row left: `requested` a withdrawn ask, `detected` a rejected reading,
- *  `geolocated` a retracted claim. Null on live rows. */
-export type BeforeClosedStatus = NonNullable<
-  components["schemas"]["EventRead"]["before_closed_status"]
->;
-
 /** Which entry produced a detection: the bot, a pasted URL, or an archive backfill. Null on
  *  rows imported before the column existed. */
 export type DetectedVia = NonNullable<components["schemas"]["EventRead"]["detected_via"]>;
@@ -73,9 +67,6 @@ export type EventDetail = Omit<components["schemas"]["EventRead"], "viewer_invit
  *  holds; `edited_by` / `created_at` / `note` belong to the edit that superseded it (see
  *  `lib/events.ts::eventVersions`). `snapshot` is the editable state then, `{}` when `redacted`. */
 export type EventVersion = components["schemas"]["EventVersionRead"];
-
-/** One page of history plus the whole history's size (`total` is not `items.length`). */
-export type EventVersionList = components["schemas"]["EventVersionList"];
 
 /** One source link's archived copy (snapshot URL, provider, when it was recorded). Null means
  *  no copy recorded. */

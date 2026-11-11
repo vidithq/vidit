@@ -1,6 +1,7 @@
 import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { withCursor } from "./pagination";
+import type { ContentReport } from "./reports";
 
 /** One onboarding invite row. ``x_handle`` is the handle the code binds;
  *  redemption copies it onto the new account as its bot-attribution link.
@@ -135,8 +136,8 @@ export function reportsPath(page: number, perPage: number): string {
 export function resolveReport(
   reportId: string,
   resolution: ContentReportResolution
-): Promise<components["schemas"]["ContentReportRead"]> {
-  return apiFetch<components["schemas"]["ContentReportRead"]>(
+): Promise<ContentReport> {
+  return apiFetch<ContentReport>(
     `/admin/reports/${reportId}/resolve`,
     { method: "POST", body: JSON.stringify({ resolution }) }
   );
@@ -162,12 +163,8 @@ export function setEventModeration(
  *  backend `AdminDetectionStatsRead` schema. */
 export type DetectionStats = components["schemas"]["AdminDetectionStatsRead"];
 
-export function getDetectionStats(): Promise<DetectionStats> {
-  return apiFetch<DetectionStats>("/admin/detection-stats");
-}
-
 /** A site's takedown state after the PATCH: `hidden_at` is null once restored. */
-export type AdminSiteModeration = components["schemas"]["AdminSiteModerationRead"];
+type AdminSiteModeration = components["schemas"]["AdminSiteModerationRead"];
 
 /** Withhold a site from every public read, or restore it. */
 export function setSiteModeration(id: string, hidden: boolean): Promise<AdminSiteModeration> {

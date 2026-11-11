@@ -6,6 +6,7 @@ it mirrors, so a change on one side fails here until the other side follows.
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 from typing import get_args
@@ -21,15 +22,28 @@ from app.models.source import (
     SOURCE_TITLE_MAX_LENGTH,
     SOURCE_URL_MAX_LENGTH,
 )
-from app.schemas.collection import MAX_CREATE_EVENTS
+from app.models.tag import NAME_MAX_LENGTH as TAG_NAME_MAX_LENGTH
+from app.schemas.auth import PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH
+from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.schemas.event import CLOSE_REASON_MAX_LENGTH, VERSION_NOTE_MAX_LENGTH
 from app.schemas.report import DETAILS_MAX_LENGTH
-from app.schemas.site import MAX_ZONE_AREA_KM2
-from app.services.event_filters import STATUSES
+from app.schemas.site import MAX_ZONE_AREA_KM2, SITE_SOURCE_NOTE_MAX_LENGTH
+from app.schemas.user import BIO_MAX_LEN
+from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER
+from app.services.collections import COVER_TILES
+from app.services.event_filters import AUTHOR_FILTER_PATTERN, STATUSES
 from app.services.events import InvalidCoordinatesError, validate_coordinates
 from app.services.geolocator_credit import MAX_EVENT_GEOLOCATORS
+from app.services.pagination import MAX_PAGE_SIZE
+from app.services.sanitize import _TEXT_TAGS
+from app.services.sites import DEFAULT_MARGIN_M
 from app.services.source_archive import PROVIDER_HOSTS, SNAPSHOT_URL_MAX_LENGTH
-from app.services.storage import MAX_GIF_FRAMES
+from app.services.storage import (
+    LOCAL_STORAGE_URL_PREFIX,
+    MAX_GIF_FRAMES,
+    ORIGINAL_FILENAME_MAX_LEN,
+)
+from app.services.tweet_ingest.archive_zip import MAX_UPLOAD_BYTES
 
 FRONTEND_SRC = Path(__file__).resolve().parents[2] / "frontend" / "src"
 
@@ -43,9 +57,10 @@ def _source(path: str) -> str:
 
 
 def _int(path: str, name: str) -> int:
-    match = re.search(rf"\bconst {name} = (-?\d+);", _source(path))
+    """A literal integer, or a product of literals such as ``4 * 1024 * 1024``."""
+    match = re.search(rf"\bconst {name} = (-?\d+(?: \* \d+)*);", _source(path))
     assert match, f"{name} not found in {path}"
-    return int(match.group(1))
+    return math.prod(int(factor) for factor in match.group(1).split(" * "))
 
 
 def _string(path: str, name: str) -> str:
@@ -76,16 +91,54 @@ def _strings(path: str, name: str) -> list[str]:
         ("lib/sources.ts", "SOURCE_URL_MAX_LEN", SNAPSHOT_URL_MAX_LENGTH),
         ("lib/events.ts", "EVENT_TITLE_MAX_LEN", TITLE_MAX_LENGTH),
         ("lib/events.ts", "VERSION_NOTE_MAX_LEN", VERSION_NOTE_MAX_LENGTH),
-        ("lib/events.ts", "REPORT_DETAILS_MAX_LEN", DETAILS_MAX_LENGTH),
+        ("lib/reports.ts", "REPORT_DETAILS_MAX_LEN", DETAILS_MAX_LENGTH),
         ("lib/events.ts", "CLOSE_REASON_MAX_LEN", CLOSE_REASON_MAX_LENGTH),
         ("lib/geolocatorCredit.ts", "MAX_EVENT_GEOLOCATORS", MAX_EVENT_GEOLOCATORS),
         ("lib/collections.ts", "BULK_ADD_MAX_EVENTS", MAX_CREATE_EVENTS),
         ("lib/mediaTypes.ts", "MAX_GIF_FRAMES", MAX_GIF_FRAMES),
         ("lib/siteZone.ts", "MAX_ZONE_AREA_KM2", MAX_ZONE_AREA_KM2),
+        ("components/profile/useProfileEdit.ts", "BIO_MAX_LEN", BIO_MAX_LEN),
+        ("components/ui/TagPicker.tsx", "TAG_NAME_MAX_LEN", TAG_NAME_MAX_LENGTH),
+        ("lib/collections.ts", "COLLECTION_DESCRIPTION_MAX_LEN", DESCRIPTION_MAX_LENGTH),
+        ("lib/sites.ts", "SITE_NAME_MAX_LEN", TITLE_MAX_LENGTH),
+        ("lib/sites.ts", "SITE_SOURCE_NOTE_MAX_LEN", SITE_SOURCE_NOTE_MAX_LENGTH),
+        ("lib/sites.ts", "SITE_MARGIN_KM", DEFAULT_MARGIN_M // 1000),
+        ("lib/auth.ts", "PASSWORD_MIN_LENGTH", PASSWORD_MIN_LENGTH),
+        ("lib/auth.ts", "PASSWORD_MAX_BYTES", PASSWORD_MAX_BYTES),
+        ("lib/notifications.ts", "MAX_READ_IDS", MAX_PAGE_SIZE),
+        ("lib/og.ts", "MOSAIC_MAX_TILES", COVER_TILES),
+        ("lib/archive.ts", "MAX_UPLOAD_BYTES", MAX_UPLOAD_BYTES),
+        ("lib/proofImages.ts", "ORIGINAL_FILENAME_MAX_LEN", ORIGINAL_FILENAME_MAX_LEN),
     ],
 )
 def test_numeric_caps_match(path: str, name: str, backend: int) -> None:
     assert _int(path, name) == backend
+
+
+@pytest.mark.parametrize(
+    ("path", "name", "backend"),
+    [
+        ("lib/auth.ts", "CSRF_COOKIE", CSRF_COOKIE),
+        ("lib/auth.ts", "CSRF_HEADER", CSRF_HEADER),
+        ("proxy.ts", "CSRF_COOKIE", CSRF_COOKIE),
+        ("lib/proof.tsx", "LOCAL_STORAGE_URL_PREFIX", f"{LOCAL_STORAGE_URL_PREFIX}/"),
+    ],
+)
+def test_strings_match(path: str, name: str, backend: str) -> None:
+    assert _string(path, name) == backend
+
+
+def test_author_filter_pattern_matches() -> None:
+    match = re.search(r"\bconst AUTHOR_FILTER_RE = /(.+)/;", _source("lib/search.ts"))
+    assert match
+    assert match.group(1) == AUTHOR_FILTER_PATTERN
+
+
+def test_proof_text_tags_match() -> None:
+    """The read view styles every text tag the sanitizer keeps; ``a`` renders as a link
+    component, outside the class table."""
+    tags = re.findall(r"^  (\w+):", _block("lib/proof.tsx", "TAG_CLASSES"), re.M)
+    assert set(tags) | {"a"} == _TEXT_TAGS
 
 
 def test_evidence_levels_match() -> None:

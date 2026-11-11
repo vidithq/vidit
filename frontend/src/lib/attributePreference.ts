@@ -20,18 +20,26 @@ interface AttributePreference<T extends string> {
 export function createAttributePreference<T extends string>(config: {
   key: string;
   /** camelCase `dataset` key, not the attribute name (`colorScheme` for `data-color-scheme`);
-   *  a literal `data-*` string writes the wrong attribute. */
-  attribute: string;
+   *  a literal `data-*` string writes the wrong attribute. Omit it for a preference no CSS
+   *  reads. */
+  attribute?: string;
   event: string;
   fallback: T;
   isValid: (value: string | null) => value is T;
 }): AttributePreference<T> {
   const { key, attribute, event, fallback, isValid } = config;
+  // Storage can be absent or throw (a private window, blocked site data): the value then lives
+  // in memory for the session.
+  let memory: T | null = null;
 
   function saved(): T | null {
     if (typeof window === "undefined") return null;
-    const stored = window.localStorage.getItem(key);
-    return isValid(stored) ? stored : null;
+    try {
+      const stored = window.localStorage.getItem(key);
+      return isValid(stored) ? stored : null;
+    } catch {
+      return memory;
+    }
   }
 
   function get(): T {
@@ -40,21 +48,31 @@ export function createAttributePreference<T extends string>(config: {
 
   // Reflect without persisting. The pre-paint reflection is the inline script in the root layout.
   function apply(value: T): void {
-    if (typeof document === "undefined") return;
+    if (typeof document === "undefined" || attribute === undefined) return;
     document.documentElement.dataset[attribute] = value;
   }
 
   function set(value: T): void {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(key, value);
+    memory = value;
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      // `memory` holds the value.
+    }
     apply(value);
     window.dispatchEvent(new Event(event));
   }
 
   function clear(): void {
     if (typeof window === "undefined") return;
-    window.localStorage.removeItem(key);
-    delete document.documentElement.dataset[attribute];
+    memory = null;
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // `memory` holds the value.
+    }
+    if (attribute !== undefined) delete document.documentElement.dataset[attribute];
     window.dispatchEvent(new Event(event));
   }
 

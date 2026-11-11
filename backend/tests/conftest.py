@@ -270,15 +270,26 @@ def user_ids(db):
 
 @pytest.fixture
 def make_user(db, user_ids):
-    """``make_user(prefix, password=..., **columns)``: a committed user, reaped at teardown."""
+    """``make_user(prefix, password=..., username=..., **columns)``: a committed user, reaped at
+    teardown. ``username`` replaces the one built from ``prefix``."""
 
-    def make(prefix: str = "u", *, password: str = DEFAULT_PASSWORD, **columns) -> User:
+    def make(
+        prefix: str = "u",
+        *,
+        password: str = DEFAULT_PASSWORD,
+        username: str | None = None,
+        **columns,
+    ) -> User:
         tag = uuid.uuid4().hex
         columns.setdefault(
             "password_hash",
             _default_password_hash() if password == DEFAULT_PASSWORD else hash_password(password),
         )
-        user = User(username=f"{prefix}{tag[:8]}", email=f"{prefix}-{tag}@example.com", **columns)
+        user = User(
+            username=username or f"{prefix}{tag[:8]}",
+            email=f"{prefix}-{tag}@example.com",
+            **columns,
+        )
         db.add(user)
         db.commit()
         user_ids.append(user.id)

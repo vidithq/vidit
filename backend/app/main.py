@@ -17,6 +17,7 @@ from starlette.types import ASGIApp
 
 from app.config import settings
 from app.database import bound_lock_waits
+from app.errors import CodedError, declared_codes
 from app.middleware.csrf import CSRFMiddleware
 from app.middleware.request_id import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.observability import configure_logging, init_sentry
@@ -73,7 +74,45 @@ class _ViditAPI(FastAPI):
         components = schema.setdefault("components", {}).setdefault("schemas", {})
         for name, definition in defs.get("$defs", {}).items():
             components.setdefault(name, definition)
+        components.update(_error_envelope_schemas())
         return schema
+
+
+def error_codes() -> list[str]:
+    """Every ``code`` a typed ``{code, message}`` body can carry.
+
+    The ``CodedError`` classes, the two rate-limit codes, and the archive codes the frontend's
+    archive trim raises before an upload (``archive_zip.ArchiveIntakeError``).
+    """
+    return sorted(
+        declared_codes(CodedError)
+        | declared_codes(archive_zip.ArchiveIntakeError)
+        | {RATE_LIMITED_CODE, READ_QUOTA_EXCEEDED_CODE}
+    )
+
+
+def _error_envelope_schemas() -> dict[str, Any]:
+    """``ErrorCode`` and the typed error body, for the frontend codegen. No route lists them
+    as a response, so existing operation schemas stay as they are."""
+    ref = "#/components/schemas/{}".format
+    return {
+        "ErrorCode": {"title": "ErrorCode", "type": "string", "enum": error_codes()},
+        "CodedErrorDetail": {
+            "title": "CodedErrorDetail",
+            "type": "object",
+            "properties": {
+                "code": {"$ref": ref("ErrorCode")},
+                "message": {"title": "Message", "type": "string"},
+            },
+            "required": ["code", "message"],
+        },
+        "CodedErrorResponse": {
+            "title": "CodedErrorResponse",
+            "type": "object",
+            "properties": {"detail": {"$ref": ref("CodedErrorDetail")}},
+            "required": ["detail"],
+        },
+    }
 
 
 app = _ViditAPI(
@@ -88,7 +127,6 @@ app.state.limiter = limiter
 # fixed hour-long window. Each gets a distinct typed code so a caller can tell
 # them apart, and every 429 carries `Retry-After` in seconds.
 RATE_LIMITED_CODE = "rate_limited"
-# Mirrored by the frontend's lib/errors.rateLimited; change both.
 READ_QUOTA_EXCEEDED_CODE = "read_quota_exceeded"
 
 
@@ -124,6 +162,19 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     )
 
 
+def _coded_response(exc: CodedError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": {"code": exc.code, "message": str(exc)}},
+    )
+
+
+@app.exception_handler(CodedError)
+async def coded_error_handler(_request: Request, exc: CodedError):
+    """A business error a route lets escape, as the typed ``{code, message}`` body."""
+    return _coded_response(exc)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(_request: Request, exc: RequestValidationError):
     """FastAPI's 422 body without each error's ``input``, which would echo a
@@ -151,6 +202,12 @@ _MAX_REQUEST_BODY_BYTES = (
     + settings.max_proof_images_per_event * settings.max_image_size
     + (10 * 1024 * 1024)
 )
+
+
+class UploadTooLargeError(CodedError):
+    code = "upload_too_large"
+    status_code = 413
+
 
 # The X webhook path. Keep in sync with the ``include_router`` prefix below.
 _WEBHOOK_ACTIVITY_PATH = "/api/v1/webhooks/x"
@@ -180,10 +237,7 @@ async def enforce_request_body_size(request: Request, call_next):
         # A well-formed Content-Length frames the body exactly, so one check
         # settles it. Reject negatives too: ``-1 > cap`` is False.
         if announced < 0 or announced > cap:
-            return JSONResponse(
-                status_code=413,
-                content={"detail": (f"Request body too large (max {cap} bytes)")},
-            )
+            return _coded_response(UploadTooLargeError(f"Request body too large (max {cap} bytes)"))
         return await call_next(request)
     # No usable Content-Length: read the stream with a running cap and abort
     # when it crosses. Caching onto ``request._body`` replays the bytes to the
@@ -193,10 +247,7 @@ async def enforce_request_body_size(request: Request, call_next):
     async for chunk in request.stream():
         total += len(chunk)
         if total > cap:
-            return JSONResponse(
-                status_code=413,
-                content={"detail": (f"Request body too large (max {cap} bytes)")},
-            )
+            return _coded_response(UploadTooLargeError(f"Request body too large (max {cap} bytes)"))
         chunks.append(chunk)
     request._body = b"".join(chunks)
     return await call_next(request)
@@ -293,7 +344,7 @@ if settings.storage_backend == "local":
                 if size > archive_zip.MAX_UPLOAD_BYTES:
                     out.close()
                     dest.unlink(missing_ok=True)
-                    raise HTTPException(status_code=413, detail="Upload exceeds the size guard")
+                    raise UploadTooLargeError("Upload exceeds the size guard")
                 out.write(chunk)
         return Response(status_code=204)
 

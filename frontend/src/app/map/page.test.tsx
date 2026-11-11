@@ -149,7 +149,7 @@ describe("map detail panel", () => {
 
     // The next pin opens on its own loading state, not on the closed event.
     fireEvent.click(pin("b"));
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(heading(TITLE_A)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close detail panel" }));
@@ -166,7 +166,7 @@ describe("map detail panel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
 
     await act(async () => readOf("a").resolve(eventDetail("a", TITLE_A)));
     expect(heading(TITLE_A)).toBeInTheDocument();
@@ -180,7 +180,7 @@ describe("map detail panel", () => {
 
     fireEvent.click(pin("a"));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(reads.filter((r) => r.path === "/events/a")).toHaveLength(2);
   });
 
@@ -196,7 +196,7 @@ describe("map detail panel", () => {
         <HomePage />
       </MapStateProvider>,
     );
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
 
     await act(async () => readOf("a").resolve(eventDetail("a", TITLE_A)));
     expect(heading(TITLE_A)).toBeInTheDocument();

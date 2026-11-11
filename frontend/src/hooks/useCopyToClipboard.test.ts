@@ -8,7 +8,6 @@ const writeText = vi.fn<(text: string) => Promise<void>>();
 
 beforeEach(() => {
   vi.useFakeTimers();
-  writeText.mockReset();
   writeText.mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });
 });

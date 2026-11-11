@@ -34,20 +34,14 @@ from app.routers._forms import (
 from app.routers.events._common import (
     GEOLOCATOR_INVITES_FIELD_DESCRIPTION,
     SOURCES_FIELD_DESCRIPTION,
-    _raise_event_error,
     build_event_read,
     parse_geolocator_invites,
     parse_sources,
-    raise_archive_error,
-    raise_credit_error,
 )
 from app.schemas.event import (
     EventRead,
 )
 from app.services import events as events_service
-from app.services.evidence_intake import EvidenceIntakeError
-from app.services.geolocator_credit import GeolocatorCreditError
-from app.services.source_archive import SnapshotRejected
 
 router = APIRouter()
 
@@ -101,30 +95,23 @@ def create_event(
     parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
     parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
 
-    try:
-        geo = asyncio.run(
-            events_service.create_with_evidence(
-                db,
-                current_user=current_user,
-                title=title,
-                lat=lat,
-                lng=lng,
-                occurred_date=parsed_occurred_date,
-                occurred_time=parsed_occurred_time,
-                proof_data=proof_data,
-                tag_ids=parsed_tag_ids,
-                conflict_ids=parsed_conflict_ids,
-                sources=parsed_sources,
-                proof_files=proof_files,
-                geolocator_invites=parsed_invites,
-            )
+    geo = asyncio.run(
+        events_service.create_with_evidence(
+            db,
+            current_user=current_user,
+            title=title,
+            lat=lat,
+            lng=lng,
+            occurred_date=parsed_occurred_date,
+            occurred_time=parsed_occurred_time,
+            proof_data=proof_data,
+            tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
+            sources=parsed_sources,
+            proof_files=proof_files,
+            geolocator_invites=parsed_invites,
         )
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)
-    except SnapshotRejected as exc:
-        raise_archive_error(exc)
-    except GeolocatorCreditError as exc:
-        raise_credit_error(exc)
+    )
 
     # Born ``geolocated`` with no request, so ``requested_by`` is null.
     return build_event_read(geo, lat=lat, lng=lng)
@@ -170,27 +157,22 @@ def create_event_request(
     parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
     parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
 
-    try:
-        geo = asyncio.run(
-            events_service.create_request(
-                db,
-                current_user=current_user,
-                title=title,
-                proof_data=proof_data,
-                lat=lat,
-                lng=lng,
-                occurred_date=parsed_occurred_date,
-                occurred_time=parsed_occurred_time,
-                tag_ids=parsed_tag_ids,
-                conflict_ids=parsed_conflict_ids,
-                sources=parsed_sources,
-                proof_files=proof_files,
-            )
+    geo = asyncio.run(
+        events_service.create_request(
+            db,
+            current_user=current_user,
+            title=title,
+            proof_data=proof_data,
+            lat=lat,
+            lng=lng,
+            occurred_date=parsed_occurred_date,
+            occurred_time=parsed_occurred_time,
+            tag_ids=parsed_tag_ids,
+            conflict_ids=parsed_conflict_ids,
+            sources=parsed_sources,
+            proof_files=proof_files,
         )
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)
-    except SnapshotRejected as exc:
-        raise_archive_error(exc)
+    )
 
     # Project the optional guess in Python rather than a second ST_X/ST_Y query.
     guess_lat: float | None = None

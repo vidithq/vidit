@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import { collection, eventRow } from "@/test/collection";
 import { textHtml } from "@/test/proofEditorStub";
 
 import {
@@ -29,7 +30,6 @@ import {
   updateCollection,
   userCollectionsPath,
   BULK_ADD_MAX_EVENTS,
-  type Collection,
   type PickableEvent,
 } from "./collections";
 import { apiFetch, apiFetchPage } from "./api";
@@ -45,43 +45,13 @@ function lastCall(): [string, RequestInit] {
   return mockFetch.mock.calls.at(-1) as [string, RequestInit];
 }
 
-const COLLECTION: Collection = {
-  id: "c1",
-  owner: { id: "u1", username: "ana", avatar_url: null },
-  title: "Kupiansk rail corridor",
-  description: "<p>Three days of strikes on the eastern approach.</p>",
-  description_text: "Three days of strikes on the eastern approach.",
-  cover: [],
-  tags: [],
-  event_count: 5,
-  first_date: "2026-03-14",
-  last_date: "2026-03-16",
-  created_at: "2026-03-21T09:00:00Z",
-  hidden_at: null,
-};
+const COLLECTION = collection();
 
-const item = (
-  over: Partial<EventListItem> & Pick<EventListItem, "id">,
-): EventListItem => ({
-  title: "Strike on the rail junction",
-  status: "geolocated",
-  occurred_date: "2026-03-14",
-  coords: { lat: 49.71, lng: 37.616 },
-  before_closed_status: null,
-  requested_at: null,
-  conflicts: [],
-  is_graphic: false,
-  media: null,
-  owner: { id: "u1", username: "ana", avatar_url: null },
-  geolocators: [],
-  tags: [],
-  ...over,
-});
+const item = ({ id, ...over }: Partial<EventListItem> & Pick<EventListItem, "id">) =>
+  eventRow(id, "Strike on the rail junction", over);
 
 beforeEach(() => {
-  mockFetch.mockReset();
   mockFetch.mockResolvedValue(COLLECTION);
-  mockFetchPage.mockReset();
 });
 
 describe("collection paths", () => {

@@ -8,6 +8,19 @@ import type { ExternalLinks, User } from "@/types";
  *  wholesale. */
 export type UserProfileUpdate = components["schemas"]["UserUpdate"];
 
+/** One analyst's API path. */
+export function userPath(username: string): string {
+  return `/users/${encodeURIComponent(username)}`;
+}
+
+/** Stage a registration: resolves once the confirmation email is queued and does not sign
+ *  in (`/confirm-registration` sets the session cookie). */
+export function register(
+  body: components["schemas"]["RegisterRequest"],
+): Promise<components["schemas"]["RegisterResponse"]> {
+  return apiFetch("/auth/register", { method: "POST", body: JSON.stringify(body) });
+}
+
 export function updateMyProfile(body: UserProfileUpdate): Promise<User> {
   return apiFetch<User>("/users/me", {
     method: "PATCH",
@@ -39,10 +52,6 @@ export type PublicProfile = Omit<
  *  `geolocated` and `detected` events: `activity` is one zero-filled bucket per month, oldest
  *  first; `source_hosts` + `other_hosts_count` + `no_source_count` add up to `total_events`. */
 export type UserStats = components["schemas"]["UserStatsRead"];
-
-export function getUserStats(username: string): Promise<UserStats> {
-  return apiFetch<UserStats>(`/users/${encodeURIComponent(username)}/stats`);
-}
 
 /** Security: `<a href>` is only safe if the destination parses as http(s). Auto-links pasted
  *  URLs, keeps handle-style values (`@me`, `me#1234`) as text, and keeps `javascript:` out

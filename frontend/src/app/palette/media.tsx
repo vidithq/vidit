@@ -33,13 +33,13 @@ function PaletteMediaLightbox() {
 }
 
 function PaletteMediaManager() {
-  const [staged, setStaged] = useState<File[]>([]);
+  const [picked, setPicked] = useState<File | null>(null);
   return (
     <div className="w-64">
       <MediaManager
-        staged={staged}
-        onAddFiles={staged.length ? undefined : setStaged}
-        onRemoveStaged={() => setStaged([])}
+        file={picked}
+        onAdd={picked ? undefined : setPicked}
+        onRemove={() => setPicked(null)}
       />
     </div>
   );
@@ -56,8 +56,8 @@ export const MEDIA: PaletteCategory = {
           <div className={TILE}>
             <MediaGallery media={MOCK_MEDIA} alt="Strike on a depot" />
           </div>
-          <Variant label="panel" className="w-64">
-            <MediaGallery media={MOCK_MEDIA} alt="Strike on a depot" variant="panel" />
+          <Variant label="compact" className="w-64">
+            <MediaGallery media={MOCK_MEDIA} alt="Strike on a depot" compact />
           </Variant>
           <Variant label="video" className={TILE}>
             <MediaGallery
@@ -76,7 +76,7 @@ export const MEDIA: PaletteCategory = {
             <MediaGallery media={null} alt="Strike on a depot" />
           </div>
           <Variant label="compact" className="w-64">
-            <MediaGallery media={null} alt="Strike on a depot" variant="panel" empty="No file" />
+            <MediaGallery media={null} alt="Strike on a depot" compact />
           </Variant>
         </>
       ),

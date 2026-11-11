@@ -2,6 +2,10 @@ import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+// Set before the workers start, since a worker cannot change the zone. West of UTC, a date
+// rendered in local time falls on the day before, so such a bug fails here on every machine.
+process.env.TZ = "America/New_York";
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -22,6 +26,7 @@ export default defineConfig({
       // hard-fails on import when unset, but no test sends real traffic.
       NEXT_PUBLIC_API_URL: "https://api.invalid",
     },
+    mockReset: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
   },

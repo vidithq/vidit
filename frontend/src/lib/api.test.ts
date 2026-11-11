@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const session = vi.hoisted(() => ({ reportSessionRejected: vi.fn() }));
 vi.mock("./session", () => session);
@@ -13,7 +13,6 @@ function answer(status: number) {
 }
 
 describe("apiFetch and a rejected session", () => {
-  beforeEach(() => session.reportSessionRejected.mockReset());
   afterEach(() => vi.unstubAllGlobals());
 
   it("reports a 401 on a call that needs the session, and still throws it", async () => {

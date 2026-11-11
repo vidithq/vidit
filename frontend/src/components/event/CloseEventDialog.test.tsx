@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import { CloseEventDialog } from "./CloseEventDialog";
 import { closeEvent } from "@/lib/events";
@@ -11,10 +11,6 @@ vi.mock("@/lib/events", async (importOriginal) => ({
 }));
 
 const mockClose = closeEvent as unknown as Mock;
-
-beforeEach(() => {
-  mockClose.mockReset();
-});
 
 describe("CloseEventDialog", () => {
   it("names the row it closes: a request", () => {

@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ANA } from "@/test/auth";
 import { useEventActions, type ActionSurface } from "./useEventActions";
 import type { Approval } from "@/lib/approvals";
-import type { BeforeClosedStatus, EventDetail, EventStatus } from "@/types";
+import type { EventDetail, EventStatus } from "@/types";
 import { apiFetch } from "@/test/apiStub";
 import { eventDetail } from "@/test/eventDetail";
 
 type Viewer = { id: string; username: string } | null;
+type BeforeClosedStatus = NonNullable<EventDetail["before_closed_status"]>;
 
 const mocks = vi.hoisted(() => ({
   approvals: [] as unknown[],
@@ -26,7 +27,6 @@ const ANALYST = { id: "u3", username: "cy" };
 beforeEach(() => {
   mocks.approvals = [];
   mocks.viewer = ANA;
-  apiFetch.mockReset();
   apiFetch.mockImplementation((path: string) =>
     Promise.resolve(
       path === "/events/e1/approvals?all_versions=true"
@@ -214,6 +214,12 @@ describe("the owner's edit", () => {
       "href",
       "/events/e1/edit",
     );
+  });
+
+  it("arms a detected row's share with its caveat rather than sharing at once", () => {
+    renderAs(ANALYST, { status: "detected", surface: "event" });
+    fireEvent.click(within(row()).getByRole("button", { name: "Share" }));
+    expect(screen.getByText("Detected and may still change. Click again to share.")).toBeVisible();
   });
 
   it("gives a closed request Share and Report, and no Geolocate", () => {

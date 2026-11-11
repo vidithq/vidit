@@ -1,3 +1,8 @@
+import type { components } from "@/lib/api-types";
+
+/** Every `code` a typed `{code, message}` body can carry. */
+export type ErrorCode = components["schemas"]["ErrorCode"];
+
 /** What a failed request says to a reader. `title` marks a fault the reader did not cause (no
  *  answer, a server fault): the notice leads with it and offers Retry. `fields` holds a refused
  *  body's field messages, keyed by the field's name, for a form to show under each field. */
@@ -37,8 +42,7 @@ function waitText(retryAfter: number | null): string {
   return minutes === 1 ? "in a minute" : `in ${minutes} minutes`;
 }
 
-// Mirrors backend main.READ_QUOTA_EXCEEDED_CODE; change both.
-function rateLimited(code: string | null, retryAfter: number | null): ReadableError {
+function rateLimited(code: ErrorCode | null, retryAfter: number | null): ReadableError {
   const lead =
     code === "read_quota_exceeded" ? "You reached the hourly reading limit." : "Too many attempts.";
   return plainError(`${lead} Try again ${waitText(retryAfter)}.`);
@@ -145,12 +149,12 @@ export function readResponse(
   status: number,
   body: unknown,
   retryAfter: number | null,
-): { error: ReadableError; code: string | null } {
+): { error: ReadableError; code: ErrorCode | null } {
   const detail =
     body && typeof body === "object" && "detail" in body
       ? (body as { detail: unknown }).detail
       : undefined;
-  let code: string | null = null;
+  let code: ErrorCode | null = null;
   let message: string | null = null;
   if (typeof detail === "string") {
     message = detail;
@@ -158,7 +162,7 @@ export function readResponse(
     return { error: validationError(detail as ValidationItem[]), code: null };
   } else if (detail && typeof detail === "object" && "code" in detail) {
     const typed = detail as { code: unknown; message: unknown };
-    code = typeof typed.code === "string" ? typed.code : null;
+    code = typeof typed.code === "string" ? (typed.code as ErrorCode) : null;
     message = typeof typed.message === "string" ? typed.message : null;
   }
   if (status === 429) return { error: rateLimited(code, retryAfter), code };

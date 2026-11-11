@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.errors import CodedError
 from app.models.invite_code import InviteCode
 from app.models.user import User
 from app.schemas.invite_code import SponsoredInviteCodeList, SponsoredInviteCodeRead
@@ -24,32 +25,29 @@ from app.services.email_layout import app_url
 DAILY_MINT_LIMIT = 5
 
 
-class SponsoredInviteError(Exception):
+class SponsoredInviteError(CodedError):
     code: str = "sponsored_invite_error"
+    status_code = 400
 
 
 class InviteMintingDisabledError(SponsoredInviteError):
     code = "invite_minting_disabled"
+    status_code = 403
 
 
 class InviteQuotaExceededError(SponsoredInviteError):
     code = "invite_quota_exceeded"
+    status_code = 429
 
 
 class InviteCodeNotFoundError(SponsoredInviteError):
     code = "invite_code_not_found"
+    status_code = 404
 
 
 class InviteCodeNotActiveError(SponsoredInviteError):
     code = "invite_code_not_active"
-
-
-ERROR_STATUS: dict[str, int] = {
-    InviteMintingDisabledError.code: 403,
-    InviteCodeNotFoundError.code: 404,
-    InviteCodeNotActiveError.code: 409,
-    InviteQuotaExceededError.code: 429,
-}
+    status_code = 409
 
 
 def _quota_window(now: datetime) -> tuple[datetime, datetime]:

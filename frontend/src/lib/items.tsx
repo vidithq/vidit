@@ -18,7 +18,7 @@ import { siteHref, type SiteKind } from "@/lib/sites";
 import type { AuthorRef, EventStatus, SearchHit, SearchHitType } from "@/types";
 
 /** The fields of an event every list payload carries; the others are optional. */
-export interface ItemEvent {
+interface ItemEvent {
   id: string;
   title: string;
   /** Absent on a payload that only holds located events, which then carries no badge. */
@@ -49,7 +49,7 @@ export function eventItem(event: ItemEvent): ItemData {
   };
 }
 
-export interface ItemSite {
+interface ItemSite {
   id: string;
   name: string;
   kind: SiteKind;

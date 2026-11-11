@@ -5,17 +5,14 @@ the verb its arguments and maps a typed service error to its status.
 """
 
 import uuid
-from typing import NoReturn
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_current_user_optional, get_db
-from app.models.collection import Collection
 from app.models.content_report import ContentReport
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_event_list
 from app.schemas.collection import (
     CollectableCount,
@@ -45,21 +42,6 @@ from app.services.pagination import (
 router = APIRouter()
 
 
-def _raise_collection_error(exc: collections_service.CollectionError) -> NoReturn:
-    """Translate a typed collections error into a structured HTTP response."""
-    raise_typed_error(exc, collections_service.COLLECTION_ERROR_STATUS)
-
-
-def _resolve(db: Session, collection_id: uuid.UUID, viewer: User | None) -> Collection:
-    """Resolve a readable collection or 404."""
-    try:
-        return collections_service.resolve_collection(
-            db, collection_id=collection_id, viewer=viewer
-        )
-    except collections_service.CollectionError as exc:
-        _raise_collection_error(exc)
-
-
 @router.post("", response_model=CollectionRead, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 def create_collection(
@@ -74,16 +56,13 @@ def create_collection(
     the refusals of ``PUT /collections/{id}/events/{event_id}``: a foreign or
     ineligible id fails the whole create.
     """
-    try:
-        collection = collections_service.create_collection(
-            db,
-            owner=current_user,
-            title=body.title,
-            description=body.description,
-            event_ids=body.event_ids,
-        )
-    except collections_service.CollectionError as exc:
-        _raise_collection_error(exc)
+    collection = collections_service.create_collection(
+        db,
+        owner=current_user,
+        title=body.title,
+        description=body.description,
+        event_ids=body.event_ids,
+    )
     return collections_service.build_collection_read(db, collection)
 
 
@@ -152,18 +131,15 @@ def report_collection(
     viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
     unknown, withheld, owner-deleted or orphaned collection answers 404.
     """
-    try:
-        return reports_service.create_collection_report(
-            db,
-            collection_id=collection_id,
-            reason=body.reason,
-            details=body.details,
-            reporter_id=current_user.id if current_user is not None else None,
-            reporter_username=current_user.username if current_user is not None else None,
-            background_tasks=background_tasks,
-        )
-    except reports_service.ReportError as exc:
-        raise_typed_error(exc, reports_service.REPORT_ERROR_STATUS)
+    return reports_service.create_collection_report(
+        db,
+        collection_id=collection_id,
+        reason=body.reason,
+        details=body.details,
+        reporter_id=current_user.id if current_user is not None else None,
+        reporter_username=current_user.username if current_user is not None else None,
+        background_tasks=background_tasks,
+    )
 
 
 @router.get("/{collection_id}", response_model=CollectionRead)
@@ -177,7 +153,9 @@ def get_collection(
 ) -> CollectionRead:
     """One collection's header: owner, title, item count and date range.
     Public; a withheld or owner-deleted collection is a 404 for everyone but an admin."""
-    collection = _resolve(db, collection_id, current_user)
+    collection = collections_service.resolve_collection(
+        db, collection_id=collection_id, viewer=current_user
+    )
     return collections_service.build_collection_read(db, collection)
 
 
@@ -195,17 +173,16 @@ def update_collection(
     Both travel together. A refused description is a 400
     (``invalid_description``), as on create.
     """
-    collection = _resolve(db, collection_id, current_user)
-    try:
-        updated = collections_service.update_collection_details(
-            db,
-            collection=collection,
-            user=current_user,
-            title=body.title,
-            description=body.description,
-        )
-    except collections_service.CollectionError as exc:
-        _raise_collection_error(exc)
+    collection = collections_service.resolve_collection(
+        db, collection_id=collection_id, viewer=current_user
+    )
+    updated = collections_service.update_collection_details(
+        db,
+        collection=collection,
+        user=current_user,
+        title=body.title,
+        description=body.description,
+    )
     return collections_service.build_collection_read(db, updated)
 
 
@@ -222,7 +199,9 @@ def delete_collection(
     Under an open content report the collection is only withheld, from every
     read but an admin's, until its last open report is resolved, which erases it.
     """
-    collection = _resolve(db, collection_id, current_user)
+    collection = collections_service.resolve_collection(
+        db, collection_id=collection_id, viewer=current_user
+    )
     collections_service.delete_collection(db, collection=collection, user=current_user)
 
 
@@ -244,7 +223,9 @@ def list_collection_events(
     a missing date or hour sorts last. Capped at 100 rows; follow the
     ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
     """
-    collection = _resolve(db, collection_id, current_user)
+    collection = collections_service.resolve_collection(
+        db, collection_id=collection_id, viewer=current_user
+    )
     size = page_size(limit)
     window = collections_service.list_items(
         db,
@@ -277,18 +258,17 @@ def add_events_to_collection(
     state a collection does not show. 403 for someone else's collection or event,
     422 ``too_many_events`` past 500 events.
     """
-    collection = _resolve(db, collection_id, current_user)
-    try:
-        outcome = collections_bulk.add_events(
-            db,
-            collection=collection,
-            user=current_user,
-            event_ids=body.event_ids,
-            match=body.match,
-            exclude_event_ids=body.exclude_event_ids,
-        )
-    except collections_service.CollectionError as exc:
-        _raise_collection_error(exc)
+    collection = collections_service.resolve_collection(
+        db, collection_id=collection_id, viewer=current_user
+    )
+    outcome = collections_bulk.add_events(
+        db,
+        collection=collection,
+        user=current_user,
+        event_ids=body.event_ids,
+        match=body.match,
+        exclude_event_ids=body.exclude_event_ids,
+    )
     return CollectionBulkAddResult(
         added=outcome.added,
         skipped=CollectionBulkAddSkipped(
@@ -313,13 +293,10 @@ def add_event_to_collection(
     belongs to someone else, 409 when the event's state is not one a collection
     shows.
     """
-    collection = _resolve(db, collection_id, current_user)
-    try:
-        collections_service.add_event(
-            db, collection=collection, event_id=event_id, user=current_user
-        )
-    except collections_service.CollectionError as exc:
-        _raise_collection_error(exc)
+    collection = collections_service.resolve_collection(
+        db, collection_id=collection_id, viewer=current_user
+    )
+    collections_service.add_event(db, collection=collection, event_id=event_id, user=current_user)
 
 
 @router.delete("/{collection_id}/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -333,7 +310,9 @@ def remove_event_from_collection(
 ) -> None:
     """Take one event off your collection (owner only). Idempotent (204); the
     event is untouched."""
-    collection = _resolve(db, collection_id, current_user)
+    collection = collections_service.resolve_collection(
+        db, collection_id=collection_id, viewer=current_user
+    )
     collections_service.remove_event(
         db, collection=collection, event_id=event_id, user=current_user
     )

@@ -69,9 +69,6 @@ function inRow(el: HTMLElement): HTMLElement | null {
 
 describe("SourcesField", () => {
   beforeEach(() => {
-    upload.mockReset();
-    copyProof.mockReset();
-    scrolledTo.mockReset();
     vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(function (this: HTMLElement) {
       const row = inRow(this);
       return row ? Array.from(row.children).indexOf(this) * ITEM_LEFT : 0;

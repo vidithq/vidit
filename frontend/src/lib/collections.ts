@@ -2,7 +2,7 @@ import { ACTION_ICONS } from "@/components/ui/Button";
 
 import { apiFetch, apiFetchPage } from "./api";
 import type { components } from "./api-types";
-import { EVENT_TITLE_MAX_LEN, eventListPath, type ContentReport } from "./events";
+import { EVENT_TITLE_MAX_LEN, eventListPath } from "./events";
 import { countLabel, formatDate } from "./format";
 import { eventFilterFields, hitsOf, search, type EventFilterParams } from "./search";
 import type {
@@ -13,6 +13,7 @@ import type {
   SearchEventHit,
 } from "@/types";
 import { withCursor } from "./pagination";
+import { userPath } from "./users";
 
 /** The collections surface: routes, the hand-kept caps, and the meta line and item pins
  *  every collection surface prints. */
@@ -68,7 +69,7 @@ export function newCollectionHref(eventId?: string): string {
 
 /** An analyst's collections, newest first. `perPage` is the profile grid's own size. */
 export function userCollectionsPath(username: string, perPage: number): string {
-  return `/users/${encodeURIComponent(username)}/collections?per_page=${perPage}`;
+  return `${userPath(username)}/collections?per_page=${perPage}`;
 }
 
 export function eventCollectionsPath(eventId: string): string {
@@ -236,18 +237,6 @@ export function deleteCollection(id: string): Promise<void> {
   return apiFetch<void>(`/collections/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
-}
-
-/** `POST /collections/{id}/report`. Twin of `reportEvent`: open to anyone, per-IP capped,
- *  and `apiFetch` omits the CSRF header with no session cookie. */
-export function reportCollection(
-  id: string,
-  body: components["schemas"]["ContentReportCreate"],
-): Promise<ContentReport> {
-  return apiFetch<ContentReport>(
-    `/collections/${encodeURIComponent(id)}/report`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
 }
 
 /** Idempotent server-side, so the panel can re-send an uncertain row. */

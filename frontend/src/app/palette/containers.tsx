@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { DetailCard, DetailPills, DetailRow } from "@/components/ui/DetailRow";
 import { HorizontalScroller } from "@/components/ui/HorizontalScroller";
 import { PageCenter } from "@/components/ui/PageFrame";
-import { PageShell } from "@/components/ui/PageShell";
+import { PageLoading, PageShell } from "@/components/ui/PageShell";
 import { ProofSection } from "@/components/ui/ProofSection";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -35,15 +35,23 @@ export const CONTAINERS: PaletteCategory = {
     {
       entry: "PageShell", tier: "high",
       demo: (
-        <div className="h-72 w-full overflow-hidden rounded-md border border-neutral-800">
-          <PageShell
-            title="Example page"
-            rail={<Card dense>Rail</Card>}
-            railLabel="Example rail"
-          >
-            <Card dense>Body</Card>
-          </PageShell>
-        </div>
+        <>
+          <div className="h-72 w-full overflow-hidden rounded-md border border-neutral-800">
+            <PageShell
+              title="Example page"
+              rail={<Card dense>Rail</Card>}
+              railLabel="Example rail"
+            >
+              <Card dense>Body</Card>
+            </PageShell>
+          </div>
+          <Variant label="PageLoading line">
+            <PageLoading variant="line" />
+          </Variant>
+          <Variant label="PageLoading compact">
+            <PageLoading variant="compact" />
+          </Variant>
+        </>
       ),
     },
     {

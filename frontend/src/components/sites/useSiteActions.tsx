@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { Eye, ImagePlus, Link2, SquarePen } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,10 +28,10 @@ import type { EventDetail } from "@/types";
 import { VersionSelector } from "@/components/event/VersionSelector";
 import { ShareControl } from "@/components/share/ShareControl";
 import { useReportContent } from "@/components/report/useReportContent";
-import { Button, buttonClasses } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
+import { IconLink } from "@/components/ui/IconLink";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { WithheldBanner } from "@/components/ui/WithheldBanner";
 import { LinkDialog } from "./LinkDialog";
 import { SatelliteSourcesOffer, fileOffered, useSatelliteOffer } from "./SatelliteSourcesOffer";
@@ -123,27 +122,22 @@ export function useSiteActions({
   const icons = [
     <VersionSelector key="versions" record={siteVersioned(site)} selected={site.version_no} />,
     owner && (
-      <Tooltip key="edit" label="Edit (saves a new version)">
-        <Link
-          href={siteEditHref(site.id)}
-          className={buttonClasses("ghost", { icon: true })}
-          aria-label="Edit"
-        >
-          <SquarePen size={14} />
-        </Link>
-      </Tooltip>
+      <IconLink
+        key="edit"
+        href={siteEditHref(site.id)}
+        label="Edit"
+        title="Edit (saves a new version)"
+        icon={<SquarePen size={14} />}
+      />
     ),
     <ShareControl key="share" path={siteHref(site.id)} title={site.name} />,
     user && !withheld && (
-      <Tooltip key="file" label="File a source">
-        <Link
-          href={siteFileSourceHref(site.id)}
-          className={buttonClasses("ghost", { icon: true })}
-          aria-label="File a source"
-        >
-          <ImagePlus size={14} />
-        </Link>
-      </Tooltip>
+      <IconLink
+        key="file"
+        href={siteFileSourceHref(site.id)}
+        label="File a source"
+        icon={<ImagePlus size={14} />}
+      />
     ),
     user && !withheld && (
       <Button

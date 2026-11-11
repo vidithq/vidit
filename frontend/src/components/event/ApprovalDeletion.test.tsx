@@ -42,7 +42,6 @@ function Panel() {
 let rows: Approval[];
 
 beforeEach(() => {
-  apiFetch.mockReset();
   mocks.admin = false;
   rows = [approval];
   apiFetch.mockImplementation((path: string, init?: { method?: string }) => {

@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-import { getDetectionStats, type DetectionStats } from "@/lib/admin";
-import { errorMessage } from "@/lib/api";
+import { useApiResource } from "@/hooks/useApiResource";
+import type { DetectionStats } from "@/lib/admin";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
 import { LIST_TILE } from "@/components/ui/form-styles";
 import { Card } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { PageLoading } from "@/components/ui/PageShell";
 
 // Local to this panel: admin surfaces inline their markup rather than mint primitives
 // (docs/design.md, admin dialect). A quiet bordered stat cell.
@@ -32,25 +31,7 @@ function Stat({
 }
 
 export function DetectionStatsPanel() {
-  const [stats, setStats] = useState<DetectionStats | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getDetectionStats()
-      .then((s) => {
-        if (cancelled) return;
-        setStats(s);
-        setError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(errorMessage(err, "Failed to load detection stats"));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: stats, error } = useApiResource<DetectionStats>("/admin/detection-stats");
 
   const rejectRate =
     stats && stats.machine_total > 0
@@ -86,7 +67,7 @@ export function DetectionStatsPanel() {
       {error && <ErrorNotice error={error} />}
 
       {stats === null && !error && (
-        <div className="text-xs text-neutral-500 py-2">Loading…</div>
+        <PageLoading variant="compact" className="py-2" />
       )}
 
       {stats !== null && (

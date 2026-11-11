@@ -34,7 +34,6 @@ describe("PreferencesSync", () => {
     window.localStorage.setItem("vidit:palette", "rose");
     window.localStorage.setItem("vidit:theme", "light");
     session.user = null;
-    apiFetch.mockReset();
   });
 
   it("leaves the local cache alone while signed out", () => {

@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_current_user_optional, get_db
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._errors import raise_typed_error
 from app.routers.events._common import build_event_list
 from app.schemas.collection import CollectionList
 from app.schemas.event import PaginatedEvents
@@ -76,10 +75,7 @@ def set_my_avatar(
     own media host (the only thing ``avatar_url`` points at), and deletes the
     picture it replaced.
     """
-    try:
-        return asyncio.run(users_service.set_avatar(db, owner=current_user, file=file))
-    except users_service.AvatarError as exc:
-        raise_typed_error(exc, users_service.AVATAR_ERROR_STATUS)
+    return asyncio.run(users_service.set_avatar(db, owner=current_user, file=file))
 
 
 @router.delete("/me/avatar", response_model=UserRead)
@@ -152,10 +148,7 @@ def mint_my_invite_code(
     current_user: User = Depends(get_current_user),
 ) -> SponsoredInviteCodeRead:
     """Mint a single-use invite code bound to the invitee's X handle."""
-    try:
-        return sponsored_invites.mint(db, sponsor=current_user, x_handle=body.x_handle)
-    except sponsored_invites.SponsoredInviteError as exc:
-        raise_typed_error(exc, sponsored_invites.ERROR_STATUS)
+    return sponsored_invites.mint(db, sponsor=current_user, x_handle=body.x_handle)
 
 
 @router.post("/me/invite-codes/{code_id}/revoke", response_model=SponsoredInviteCodeRead)
@@ -167,10 +160,7 @@ def revoke_my_invite_code(
     current_user: User = Depends(get_current_user),
 ) -> SponsoredInviteCodeRead:
     """Revoke an active invite code you minted. The row stays in your list."""
-    try:
-        return sponsored_invites.revoke_own(db, sponsor=current_user, code_id=code_id)
-    except sponsored_invites.SponsoredInviteError as exc:
-        raise_typed_error(exc, sponsored_invites.ERROR_STATUS)
+    return sponsored_invites.revoke_own(db, sponsor=current_user, code_id=code_id)
 
 
 @router.get("/{username}", response_model=UserProfile)

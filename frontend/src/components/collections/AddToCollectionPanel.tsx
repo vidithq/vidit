@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { CollectionPicker } from "@/components/collections/CollectionPicker";
 import { Item } from "@/components/ui/Item";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/collections";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { collectionItem } from "@/lib/items";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /**
  * The owner's shelving panel for one event: every collection they hold, each
@@ -35,12 +36,13 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
   const { data, error } = useApiResource<CollectionMemberships>(
     eventCollectionsPath(eventId),
   );
-  // Local copy so a toggle paints before its write lands.
+  // Local copy so a toggle paints before its write lands, reseeded during render when a read lands.
   const [rows, setRows] = useState<CollectionMembership[] | null>(null);
-
-  useEffect(() => {
-    if (data) setRows(data.items);
-  }, [data]);
+  const [seeded, setSeeded] = useState<CollectionMemberships | null>(null);
+  if (data && data !== seeded) {
+    setSeeded(data);
+    setRows(data.items);
+  }
 
   // The bit and the count move together. Setting the bit it already holds is a
   // no-op, so a rollback never counts twice.
@@ -80,7 +82,7 @@ export function AddToCollectionPanel({ eventId }: { eventId: string }) {
     return <ErrorNotice error={error} />;
   }
   if (rows === null) {
-    return <p className="text-sm text-neutral-500">Loading…</p>;
+    return <PageLoading variant="line" />;
   }
 
   return (

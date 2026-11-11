@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.errors import CodedError
 from app.models.approval import EventApproval
 from app.models.approval_request import ApprovalRequest
 from app.models.collection import Collection, CollectionEvent
@@ -39,7 +40,7 @@ CREDIT_LOAD = selectinload(Event.geolocators).joinedload(EventGeolocator.user)
 MAX_EVENT_GEOLOCATORS = 10
 
 
-class GeolocatorCreditError(Exception):
+class GeolocatorCreditError(CodedError):
     """A credit write the rules refuse, with a stable ``code``."""
 
     code: str
@@ -47,46 +48,42 @@ class GeolocatorCreditError(Exception):
 
 class EventNotPublishedError(GeolocatorCreditError):
     code = "invalid_state"
+    status_code = 409
 
 
 class InviteeNotFoundError(GeolocatorCreditError):
     code = "user_not_found"
+    status_code = 404
 
 
 class AlreadyGeolocatorError(GeolocatorCreditError):
     code = "already_geolocator"
+    status_code = 409
 
 
 class AlreadyInvitedError(GeolocatorCreditError):
     code = "already_invited"
+    status_code = 409
 
 
 class TooManyGeolocatorsError(GeolocatorCreditError):
     code = "too_many_geolocators"
+    status_code = 409
 
 
 class InviteNotFoundError(GeolocatorCreditError):
     code = "invite_not_found"
+    status_code = 404
 
 
 class GeolocatorNotFoundError(GeolocatorCreditError):
     code = "geolocator_not_found"
+    status_code = 404
 
 
 class OwnerCannotLeaveError(GeolocatorCreditError):
     code = "owner_cannot_leave"
-
-
-GEOLOCATOR_CREDIT_ERROR_STATUS: dict[str, int] = {
-    "invalid_state": 409,
-    "user_not_found": 404,
-    "already_geolocator": 409,
-    "already_invited": 409,
-    "too_many_geolocators": 409,
-    "invite_not_found": 404,
-    "geolocator_not_found": 404,
-    "owner_cannot_leave": 409,
-}
+    status_code = 409
 
 
 def live_geolocators(geo: Event) -> list[AuthorRef]:

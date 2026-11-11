@@ -8,14 +8,14 @@ import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, validatePasswordChange } from 
 import { useMutation } from "@/hooks/useMutation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
-import {
-  FORM_LABEL_COMPACT,
-} from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
+import { FieldLabel } from "@/components/ui/FieldLabel";
+import { FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { PageLoading } from "@/components/ui/PageShell";
 
 /** Opened from the email link. The backend returns one opaque 400 for every failure mode; the UI mirrors it with one "invalid link" path. */
 function ResetPasswordInner() {
@@ -107,12 +107,12 @@ function ResetPasswordInner() {
         )}
 
         <div className="space-y-1">
-          <label
+          <FieldLabel
             htmlFor="password"
-            className={incomplete.labelClass("password", FORM_LABEL_COMPACT)}
-          >
-            New password
-          </label>
+            label="New password"
+            invalid={invalidKeys.has("password")}
+            className={FORM_LABEL_COMPACT}
+          />
           <Input
             id="password"
             invalid={invalidKeys.has("password")}
@@ -124,12 +124,12 @@ function ResetPasswordInner() {
         </div>
 
         <div className="space-y-1">
-          <label
+          <FieldLabel
             htmlFor="confirm"
-            className={incomplete.labelClass("confirm", FORM_LABEL_COMPACT)}
-          >
-            Confirm
-          </label>
+            label="Confirm"
+            invalid={invalidKeys.has("confirm")}
+            className={FORM_LABEL_COMPACT}
+          />
           <Input
             id="confirm"
             invalid={invalidKeys.has("confirm")}
@@ -157,7 +157,7 @@ function ResetPasswordInner() {
 export default function ResetPasswordPage() {
   return (
     <Suspense
-      fallback={<span className="text-neutral-500 text-sm">Loading…</span>}
+      fallback={<PageLoading variant="line" />}
     >
       <ResetPasswordInner />
     </Suspense>

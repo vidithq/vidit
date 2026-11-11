@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FIELD_HELP } from "@/lib/fieldHelp";
 
@@ -10,8 +10,8 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/hooks/useRequireAuth", () => import("@/test/requireAuthStub"));
 
-import { useApiResource } from "@/test/apiResourceStub";
-vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
+import { ApiError, apiFetchPage } from "@/test/apiStub";
+vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import type { EventDetail } from "@/types";
 import { eventDetail } from "@/test/eventDetail";
@@ -21,26 +21,34 @@ import DetectionsPage from "./page";
 const detectionFixture = (overrides: Partial<EventDetail> = {}) =>
   eventDetail("d1", "Strike near Bakhmut", { status: "detected", geolocated_at: null, ...overrides });
 
-function payload(overrides: Record<string, unknown> = {}) {
-  return {
-    items: [detectionFixture()],
-    total: 1,
-    page: 1,
-    per_page: 10,
-    ready_total: 1,
-    incomplete_total: 0,
-    ...overrides,
-  };
+const pageOf = (path: string) => Number(new URLSearchParams(path.split("?")[1]).get("page"));
+
+/** Answers every page read with `overrides`, the page number read off the path. */
+function answer(overrides: (path: string) => Record<string, unknown> = () => ({})) {
+  apiFetchPage.mockImplementation(async (path: string) => ({
+    items: {
+      items: [detectionFixture()],
+      total: 1,
+      page: pageOf(path),
+      per_page: 10,
+      ready_total: 1,
+      incomplete_total: 0,
+      ...overrides(path),
+    },
+    nextCursor: null,
+  }));
 }
 
-describe("DetectionsPage queue filter", () => {
-  it("explains the one-word options behind the `?` beside the bar", () => {
-    useApiResource.mockReturnValue({ data: payload(), error: null });
+const lastPath = () => apiFetchPage.mock.calls.at(-1)?.[0];
 
+beforeEach(() => answer());
+
+describe("DetectionsPage queue filter", () => {
+  it("explains the one-word options behind the `?` beside the bar", async () => {
     render(<DetectionsPage />);
 
     // The labels do not say what they select, so one house `?` carries the sentence for the bar.
-    const help = screen.getByRole("button", {
+    const help = await screen.findByRole("button", {
       name: FIELD_HELP.detection_queue_filter.label,
     });
     fireEvent.focus(help);
@@ -53,159 +61,124 @@ describe("DetectionsPage queue filter", () => {
     }
   });
 
-  it("asks the server for the filtered queue instead of hiding loaded rows", () => {
+  it("asks the server for the filtered queue instead of hiding loaded rows", async () => {
     // Regression: the toggle used to filter the loaded ten rows while the pager cut server-side, reading "no ready detections" over a large queue.
-    useApiResource.mockReturnValue({ data: payload(), error: null });
     render(<DetectionsPage />);
 
-    expect(useApiResource).toHaveBeenLastCalledWith(
-      "/events/detections?page=1&per_page=10&readiness=all"
-    );
+    await screen.findByText("Strike near Bakhmut");
+    expect(lastPath()).toBe("/events/detections?page=1&per_page=10&readiness=all");
 
     fireEvent.click(screen.getByRole("button", { name: "Ready" }));
-    expect(useApiResource).toHaveBeenLastCalledWith(
-      "/events/detections?page=1&per_page=10&readiness=ready"
-    );
+    expect(lastPath()).toBe("/events/detections?page=1&per_page=10&readiness=ready");
 
-    fireEvent.click(screen.getByRole("button", { name: "Incomplete" }));
-    expect(useApiResource).toHaveBeenLastCalledWith(
-      "/events/detections?page=1&per_page=10&readiness=incomplete"
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Incomplete" }));
+    expect(lastPath()).toBe("/events/detections?page=1&per_page=10&readiness=incomplete");
   });
 
-  it("restarts the walk at page 1 when the filter changes", () => {
+  it("restarts the walk at page 1 when the filter changes", async () => {
     // A filter change resets the page: keeping it could land past the end of the filtered set.
-    useApiResource.mockImplementation((path: string | null) => ({
-      data: payload({
-        items: [detectionFixture({ id: path?.includes("page=2") ? "d2" : "d1" })],
-        total: 40,
-        ready_total: 12,
-        incomplete_total: 28,
-      }),
-      error: null,
+    answer((path) => ({
+      items: [detectionFixture({ id: pageOf(path) === 2 ? "d2" : "d1" })],
+      total: 40,
+      ready_total: 12,
+      incomplete_total: 28,
     }));
     render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
-    expect(useApiResource).toHaveBeenLastCalledWith(
-      "/events/detections?page=2&per_page=10&readiness=all"
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+    expect(lastPath()).toBe("/events/detections?page=2&per_page=10&readiness=all");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ready" }));
-    expect(useApiResource).toHaveBeenLastCalledWith(
-      "/events/detections?page=1&per_page=10&readiness=ready"
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Ready" }));
+    expect(lastPath()).toBe("/events/detections?page=1&per_page=10&readiness=ready");
   });
 
-  it("appends the next page under the rows already loaded", () => {
-    useApiResource.mockImplementation((path: string | null) => ({
-      data: payload({
-        items: [
-          detectionFixture(
-            path?.includes("page=2")
-              ? { id: "d2", title: "Strike near Avdiivka" }
-              : { id: "d1" },
-          ),
-        ],
-        total: 2,
-        per_page: 1,
-      }),
-      error: null,
+  it("appends the next page under the rows already loaded", async () => {
+    answer((path) => ({
+      items: [
+        detectionFixture(
+          pageOf(path) === 2 ? { id: "d2", title: "Strike near Avdiivka" } : { id: "d1" },
+        ),
+      ],
+      total: 2,
+      per_page: 1,
     }));
     render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
 
+    expect(await screen.findByText("Strike near Avdiivka")).toBeInTheDocument();
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
-    expect(screen.getByText("Strike near Avdiivka")).toBeInTheDocument();
     // The walk ends with the last row.
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
-  it("keeps the loaded rows when a later page fails, and retries it", () => {
-    const refetch = vi.fn();
-    useApiResource.mockImplementation((path: string | null) =>
-      path?.includes("page=2")
-        ? { data: null, error: { title: "Vidit hit a problem", message: "Retry in a moment.", fields: {} }, refetch }
-        : { data: payload({ total: 20 }), error: null, refetch },
+  it("keeps the loaded rows when a later page fails, and retries it", async () => {
+    answer(() => ({ total: 20 }));
+    render(<DetectionsPage />);
+    apiFetchPage.mockRejectedValueOnce(
+      new ApiError("Retry in a moment.", 500, null, false, {
+        title: "Vidit hit a problem",
+        message: "Retry in a moment.",
+        fields: {},
+      }),
     );
-    render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
 
+    expect(await screen.findByText("Vidit hit a problem")).toBeInTheDocument();
     expect(screen.getByText("Strike near Bakhmut")).toBeInTheDocument();
-    expect(screen.getByText("Vidit hit a problem")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(refetch).toHaveBeenCalled();
+    expect(lastPath()).toBe("/events/detections?page=2&per_page=10&readiness=all");
   });
 
-  it("states a failed queue read in the error banner", () => {
-    useApiResource.mockReturnValue({
-      data: null,
-      error: { title: null, message: "Server error", fields: {} },
-      refetch: vi.fn(),
-    });
+  it("states a failed queue read in the error banner", async () => {
+    apiFetchPage.mockRejectedValue(new ApiError("Server error", 500));
     render(<DetectionsPage />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Server error");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Server error");
   });
 
-  it("states the whole queue's split under every filter", () => {
+  it("states the whole queue's split under every filter", async () => {
     // The two figures must not depend on the loaded page or the filter.
-    useApiResource.mockReturnValue({
-      data: payload({ total: 12, ready_total: 12, incomplete_total: 28 }),
-      error: null,
-    });
+    answer(() => ({ total: 12, ready_total: 12, incomplete_total: 28 }));
     render(<DetectionsPage />);
 
-    expect(screen.getByText(/12 ready · 28 incomplete/)).toBeInTheDocument();
+    expect(await screen.findByText(/12 ready · 28 incomplete/)).toBeInTheDocument();
     expect(screen.queryByText(/on this page/)).not.toBeInTheDocument();
   });
 
-  it("names the queue in the filter's words only, with no helper line under the title", () => {
-    useApiResource.mockReturnValue({
-      data: payload({ total: 40, ready_total: 12, incomplete_total: 28 }),
-      error: null,
-    });
+  it("names the queue in the filter's words only, with no helper line under the title", async () => {
+    answer(() => ({ total: 40, ready_total: 12, incomplete_total: 28 }));
     render(<DetectionsPage />);
 
-    expect(screen.getByText("1 of 40 detections")).toBeInTheDocument();
+    expect(await screen.findByText("1 of 40 detections")).toBeInTheDocument();
     expect(screen.queryByText(/awaiting|pending|to submit|To confirm|Missing/)).toBeNull();
   });
 
-  it("counts the loaded rows against the filtered total, and names it", () => {
-    useApiResource.mockReturnValue({
-      data: payload({ total: 12, ready_total: 12, incomplete_total: 28 }),
-      error: null,
-    });
+  it("counts the loaded rows against the filtered total, and names it", async () => {
+    answer(() => ({ total: 12, ready_total: 12, incomplete_total: 28 }));
     render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Ready" }));
-    expect(screen.getByText("1 of 12 ready")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Ready" }));
+    expect(await screen.findByText("1 of 12 ready")).toBeInTheDocument();
   });
 
-  it("says which set came back empty, without blaming the page", () => {
-    useApiResource.mockReturnValue({
-      data: payload({ items: [], total: 0, ready_total: 0, incomplete_total: 7 }),
-      error: null,
-    });
+  it("says which set came back empty, without blaming the page", async () => {
+    answer(() => ({ items: [], total: 0, ready_total: 0, incomplete_total: 7 }));
     render(<DetectionsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Ready" }));
-    expect(screen.getByText("No ready detections.")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Ready" }));
+    expect(await screen.findByText("No ready detections.")).toBeInTheDocument();
     // The queue is not empty, so the toggle stays.
     expect(screen.queryByText("Nothing left to review.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Incomplete" })).toBeInTheDocument();
   });
 
-  it("reduces an emptied queue to one line, with no import pitch or link", () => {
-    useApiResource.mockReturnValue({
-      data: payload({ items: [], total: 0, ready_total: 0, incomplete_total: 0 }),
-      error: null,
-    });
+  it("reduces an emptied queue to one line, with no import pitch or link", async () => {
+    answer(() => ({ items: [], total: 0, ready_total: 0, incomplete_total: 0 }));
     render(<DetectionsPage />);
 
-    expect(screen.getByText("Nothing left to review.")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing left to review.")).toBeInTheDocument();
     // The header's back arrow returns to the profile; the list adds no control of its own.
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Ready" })).not.toBeInTheDocument();

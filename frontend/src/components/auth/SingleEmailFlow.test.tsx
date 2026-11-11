@@ -18,7 +18,7 @@ function renderFlow() {
 
 describe("SingleEmailFlow", () => {
   beforeEach(() => {
-    apiFetch.mockReset().mockResolvedValue(undefined);
+    apiFetch.mockResolvedValue(undefined);
   });
 
   it("posts the trimmed address and swaps in the sent view", async () => {

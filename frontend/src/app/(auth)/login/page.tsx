@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import LoginForm from "@/components/auth/LoginForm";
 import { useRedirectIfAuthenticated } from "@/hooks/useRedirectIfAuthenticated";
 import { safeNext } from "@/lib/navigation";
+import { PageLoading } from "@/components/ui/PageShell";
 
 function LoginPageInner() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function LoginPage() {
   // useSearchParams() forces a Suspense boundary.
   return (
     <Suspense
-      fallback={<span className="text-neutral-500 text-sm">Loading…</span>}
+      fallback={<PageLoading variant="line" />}
     >
       <LoginPageInner />
     </Suspense>

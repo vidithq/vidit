@@ -7,12 +7,10 @@ import { useMutation } from "@/hooks/useMutation";
 import Link from "next/link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
-import {
-  FORM_LABEL_COMPACT,
-  FORM_SUCCESS_BANNER,
-} from "@/components/ui/form-styles";
+import { FORM_LABEL_COMPACT, FORM_SUCCESS_BANNER } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -70,12 +68,12 @@ export default function LoginForm({ onSuccess }: Props) {
         )}
 
         <div className="space-y-1">
-          <label
+          <FieldLabel
             htmlFor="email"
-            className={incomplete.labelClass("email", FORM_LABEL_COMPACT)}
-          >
-            Email
-          </label>
+            label="Email"
+            invalid={invalidKeys.has("email")}
+            className={FORM_LABEL_COMPACT}
+          />
           <Input
             id="email"
             invalid={invalidKeys.has("email")}
@@ -87,12 +85,12 @@ export default function LoginForm({ onSuccess }: Props) {
 
         <div>
           <div className="flex items-baseline justify-between mb-1">
-            <label
+            <FieldLabel
               htmlFor="password"
-              className={incomplete.labelClass("password", FORM_LABEL_COMPACT)}
-            >
-              Password
-            </label>
+              label="Password"
+              invalid={invalidKeys.has("password")}
+              className={FORM_LABEL_COMPACT}
+            />
             <Link
               href="/forgot-password"
               className={`text-[10px] ${TEXT_LINK}`}

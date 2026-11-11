@@ -218,23 +218,6 @@ export const DATE_DIMENSIONS: Record<
 
 export const DATE_KEYS: ReadonlyArray<DateKey> = ["eventDate", "added"];
 
-/** The kinds other than events a Show field can list. */
-export const SHOW_KINDS: ReadonlyArray<Exclude<SearchHitType, "event">> = [
-  "site",
-  "collection",
-  "user",
-  "organization",
-];
-
-/** What each surface's Show field offers: the map draws no request and the feed no kind other
- *  than events. */
-export const SHOW_BY_SURFACE: Record<Surface, ReadonlyArray<string>> = {
-  map: ["detected", "geolocated", "site"],
-  search: [...FILTER_STATUSES, ...SHOW_KINDS],
-  feed: FILTER_STATUSES,
-  requests: [],
-};
-
 /** The dimensions each kind other than events answers, the rest leaving it out of the list.
  *  Mirrors backend `services/search._TYPE_FILTERS`; change both. */
 export const KIND_DIMENSIONS: Record<
@@ -245,6 +228,20 @@ export const KIND_DIMENSIONS: Record<
   collection: ["tags", "author"],
   user: [],
   organization: [],
+};
+
+/** The kinds other than events a Show field can list. */
+export const SHOW_KINDS = Object.keys(KIND_DIMENSIONS) as ReadonlyArray<
+  Exclude<SearchHitType, "event">
+>;
+
+/** What each surface's Show field offers: the map draws no request and the feed no kind other
+ *  than events. */
+export const SHOW_BY_SURFACE: Record<Surface, ReadonlyArray<string>> = {
+  map: ["detected", "geolocated", "site"],
+  search: [...FILTER_STATUSES, ...SHOW_KINDS],
+  feed: FILTER_STATUSES,
+  requests: [],
 };
 
 export const isStatus = (value: string) => (FILTER_STATUSES as ReadonlyArray<string>).includes(value);

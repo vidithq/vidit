@@ -8,7 +8,7 @@ import { EventLocation } from "@/components/event/EventLocation";
 import { GoToCoordinates } from "@/components/map/GoToCoordinates";
 import { DetailRow } from "@/components/ui/DetailRow";
 import type { CoordinatePair } from "@/lib/coordinates";
-import { formatInstantDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { eventHref } from "@/lib/routes";
 import { formatAreaKm2, positionsBounds, zoneAreaKm2, zoneVertices } from "@/lib/siteZone";
 import {
@@ -50,7 +50,7 @@ export function SiteLocation({
   const drawnOn = contour && site.sources.find((s) => s.id === contour.source_id);
   const legend = [
     reference &&
-      `Dashed: ${contour ? "the contour before it" : "the first contour"}, from ${formatInstantDate(reference.captured_at)}`,
+      `Dashed: ${contour ? "the contour before it" : "the first contour"}, from ${formatDate(reference.captured_at)}`,
     site.linked_events.some((e) => !e.inside_zone) && "Dotted: a linked event outside the zone of its date",
     site.linked_events.some((e) => e.measured_contour_id !== contour?.id) &&
       "Dimmed: an event measured against another contour",
@@ -89,13 +89,13 @@ export function SiteLocation({
       }
       rows={
         <>
-          <DetailRow label="Zone on" value={day ? formatInstantDate(day) : "No source yet"} />
+          <DetailRow label="Zone on" value={day ? formatDate(day) : "No source yet"} />
           <DetailRow
             label="Contour"
             concept="site_zone"
             value={
               contour
-                ? `${formatAreaKm2(zoneAreaKm2(zoneVertices(contour.zone)))}, from the source of ${formatInstantDate(
+                ? `${formatAreaKm2(zoneAreaKm2(zoneVertices(contour.zone)))}, from the source of ${formatDate(
                     drawnOn?.captured_at ?? contour.captured_at,
                   )}`
                 : "None drawn yet on this date"

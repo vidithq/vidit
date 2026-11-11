@@ -7,8 +7,12 @@ import { CLUSTER_MAX_ZOOM } from "./stack";
 /** Layer ids of the event pins, shared with the site layers that must stay under them. The
  *  cluster layer is the lowest of them. */
 export const CLUSTER_LAYER = "clusters";
+export const CLUSTER_COUNT_LAYER = "cluster-count";
 export const STACK_LAYER = "stacks-circle";
-export const POINT_LAYERS = ["points-selected", "points-circle"];
+export const STACK_COUNT_LAYER = "stacks-count";
+export const SELECTED_POINT_LAYER = "points-selected";
+export const POINT_LAYER = "points-circle";
+export const POINT_LAYERS = [SELECTED_POINT_LAYER, POINT_LAYER];
 
 /** A lone site's ring, and the ring around a cluster that holds a site, in the event points
  *  source. */
@@ -20,7 +24,12 @@ export const SITE_RING_LAYER = "sites-cluster-ring";
 export const SITE_POINT_MAX_ZOOM = 10;
 
 /** Every layer a tap can target (a query returns matches topmost first whatever the order here). */
-export const TAP_TARGET_LAYERS = [CLUSTER_LAYER, SITE_RING_LAYER, STACK_LAYER, ...POINT_LAYERS];
+const TAP_TARGET_LAYERS = [CLUSTER_LAYER, SITE_RING_LAYER, STACK_LAYER, ...POINT_LAYERS];
+
+/** The tap targets the style holds now: `queryRenderedFeatures` throws on an unknown layer id. */
+export function presentTapLayers(map: { getLayer(id: string): unknown }): string[] {
+  return TAP_TARGET_LAYERS.filter((id) => map.getLayer(id));
+}
 
 const IS_SITE: ExpressionSpecification = ["==", ["get", "kind"], "site"];
 

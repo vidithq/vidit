@@ -2,21 +2,21 @@
 
 import asyncio
 import logging
-from typing import NoReturn
+from typing import Literal, NoReturn, get_args
 
 from fastapi import (
     APIRouter,
     Depends,
-    HTTPException,
     Request,
 )
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_current_user, get_db
+from app.errors import CodedError
 from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.tweet_import import ImportNote, TweetImportRead, TweetImportRequest
-from app.services.detection import NotYourPost, import_pasted_post
+from app.services.detection import import_pasted_post
 from app.services.storage import scrub_log
 from app.services.tweet_ingest import (
     POST_UNREADABLE,
@@ -36,9 +36,22 @@ router = APIRouter()
 _UNNAMED_REFUSAL = "That post produced no detection."
 
 
-def _refuse(status_code: int, code: str, message: str) -> NoReturn:
-    """Answer with the shared typed ``{code, message}`` envelope."""
-    raise HTTPException(status_code=status_code, detail={"code": code, "message": message})
+TweetImportRefusalCode = Literal[
+    "invalid_tweet_url", "post_unreadable", "upstream_busy", "upstream_unreadable"
+]
+
+
+class TweetImportRefused(CodedError):
+    instance_codes = get_args(TweetImportRefusalCode)
+
+    def __init__(self, status_code: int, code: TweetImportRefusalCode, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
+def _refuse(status_code: int, code: TweetImportRefusalCode, message: str) -> NoReturn:
+    raise TweetImportRefused(status_code, code, message)
 
 
 # ``def``, so FastAPI runs the handler in its threadpool: the import is one long
@@ -64,8 +77,6 @@ def import_from_tweet(
     """
     try:
         outcome = asyncio.run(import_pasted_post(db, owner=current_user, url=body.url))
-    except NotYourPost as exc:
-        _refuse(400, exc.code, str(exc))
     except InvalidTweetUrl as exc:
         _refuse(400, "invalid_tweet_url", str(exc))
     except TweetNotAccessible:

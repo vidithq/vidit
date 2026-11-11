@@ -13,14 +13,12 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.routers.events._common import _raise_event_error
 from app.schemas.event import (
     BatchCompletionCreate,
     BatchCompletionRead,
     BatchCompletionRowRead,
 )
 from app.services import events as events_service
-from app.services.evidence_intake import EvidenceIntakeError
 
 router = APIRouter()
 
@@ -49,15 +47,12 @@ def batch_complete_events(
     resolvable conflict (400) and a targeted detection owned by another
     analyst (403; rows are owner-only).
     """
-    try:
-        outcomes = events_service.complete_detections(
-            db,
-            current_user=current_user,
-            conflict_ids=body.conflict_ids,
-            rows=[(row.event_id, row.kind) for row in body.rows],
-        )
-    except EvidenceIntakeError as exc:
-        _raise_event_error(exc)
+    outcomes = events_service.complete_detections(
+        db,
+        current_user=current_user,
+        conflict_ids=body.conflict_ids,
+        rows=[(row.event_id, row.kind) for row in body.rows],
+    )
 
     rows = [
         BatchCompletionRowRead(
