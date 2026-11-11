@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, date, datetime, time
+from datetime import UTC, datetime
 
-from fastapi import UploadFile
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
@@ -13,36 +12,20 @@ from sqlalchemy.orm import Session
 from app.cache import points_cache
 from app.models.event import Event
 from app.models.user import User
-from app.schemas.source import SourceCreate
 from app.services import geolocator_credit
-from app.services.evidence_intake import attach_evidence_and_commit
 
 from .coordinates import validate_coordinates
-from .rules import (
-    _credit_geolocator,
-    _require_conflict,
-    _require_proof_image,
-    _resolve_conflicts,
-    _resolve_tags,
-    _sanitize_proof,
-)
-from .sources import apply_sources, check_publish_floor, plan_sources, planned_floor
+from .form import EventForm, commit_form, prepare_form, write_form
+from .rules import _credit_geolocator
 
 
 async def create_with_evidence(
     db: Session,
     *,
     current_user: User,
-    title: str,
+    form: EventForm,
     lat: float,
     lng: float,
-    occurred_date: date | None,
-    occurred_time: time | None = None,
-    proof_data: str | None,
-    tag_ids: list,
-    conflict_ids: list,
-    sources: list[SourceCreate],
-    proof_files: list[UploadFile],
     geolocator_invites: Sequence[str] = (),
 ) -> Event:
     """Create a ``geolocated`` event with its evidence (a direct geolocate).
@@ -62,40 +45,15 @@ async def create_with_evidence(
     upload; any later failure rolls back and sweeps what landed.
     """
     validate_coordinates(lat, lng)
-    proof_data = _sanitize_proof(proof_data)
-    _require_proof_image(proof_data)
-    effective_tags = _resolve_tags(db, tag_ids)
-    effective_conflicts = _resolve_conflicts(db, conflict_ids)
-    _require_conflict(effective_conflicts)
-    planned = plan_sources(db, geo=None, specs=sources, uploader=current_user)
-    check_publish_floor(planned_floor(planned))
+    prepared = prepare_form(db, form, geo=None, uploader=current_user, publication=True)
 
-    geo = Event(
-        owner_id=current_user.id,
-        title=title,
-        coords=from_shape(Point(lng, lat), srid=4326),
-        # ``proof`` lands via the intake below; the model default covers NOT NULL until then.
-        occurred_date=occurred_date,
-        occurred_time=occurred_time,
-        geolocated_at=datetime.now(UTC),
-    )
-    geo.tags = effective_tags
-    geo.conflicts = effective_conflicts
-
+    # ``proof`` lands via the intake below; the model default covers NOT NULL until then.
+    geo = Event(owner_id=current_user.id, geolocated_at=datetime.now(UTC))
+    write_form(db, geo, form, prepared, from_shape(Point(lng, lat), srid=4326))
     db.add(geo)
     db.flush()
     _credit_geolocator(db, geo, current_user)
     geolocator_credit.invite_on_publish(db, geo=geo, usernames=geolocator_invites)
-    apply_sources(db, geo, planned)
-
-    await attach_evidence_and_commit(
-        db,
-        event=geo,
-        proof_html=proof_data,
-        proof_files=proof_files,
-        sweep_context="event create rollback",
-    )
-
-    db.refresh(geo)
+    await commit_form(db, geo, form, prepared, sweep_context="event create rollback")
     points_cache.invalidate()
     return geo

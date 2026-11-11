@@ -6,9 +6,10 @@ routers), the projection helpers, :func:`resolve_live_event` and
 """
 
 import uuid
+from dataclasses import dataclass
 from typing import Annotated, Any
 
-from fastapi import HTTPException
+from fastapi import File, Form, HTTPException, UploadFile
 from pydantic import Field, TypeAdapter, ValidationError
 from sqlalchemy import ColumnElement
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -16,6 +17,11 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.event import Event, EventVersion
 from app.models.source import Source
 from app.models.user import User
+from app.routers._forms import (
+    parse_json_id_list,
+    parse_optional_iso_date,
+    parse_optional_iso_time,
+)
 from app.schemas.event import (
     EventList,
     EventRead,
@@ -24,6 +30,7 @@ from app.schemas.event import (
 )
 from app.schemas.source import CoordsRead, SourceCreate
 from app.services.event_filters import visible_events
+from app.services.events.form import EventForm
 from app.services.events.sources import build_source_read
 from app.services.geolocator_credit import (
     CREDIT_LOAD,
@@ -64,7 +71,6 @@ GEOLOCATOR_INVITES_FIELD_DESCRIPTION = (
     "event is published, in the same transaction."
 )
 
-# Help text of the ``sources`` form field, shared by every event write.
 SOURCES_FIELD_DESCRIPTION = (
     "JSON array of SourceCreate: the event's whole source list, which replaces the stored one."
 )
@@ -97,6 +103,43 @@ def parse_geolocator_invites(raw: str | None) -> list[str]:
     ``GeolocatorInviteCreate``."""
     invites = _parse_json_field(_INVITES_ADAPTER, raw, field="geolocator_invites")
     return [invite.username for invite in invites]
+
+
+@dataclass(frozen=True)
+class EventFormFields:
+    """The multipart fields every event write posts but the title, as sent; a dependency of the
+    four writes.
+
+    Each write declares its own ``title`` field and its own title rule. Parsed in the handler
+    (:meth:`parse`), not here, so the rate limit counts a malformed form.
+    """
+
+    # No ``max_length``: ``date.fromisoformat`` is the source of truth (a cap of 10 would
+    # reject ``2026-05-01T00:00:00`` with a generic 422).
+    occurred_date: str | None = Form(None)
+    occurred_time: str | None = Form(None)
+    proof: str | None = Form(None)
+    tag_ids: str | None = Form(None)
+    conflict_ids: str | None = Form(None)
+    sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION)
+    # Matched to the proof's ``placeholder://`` srcs.
+    proof_files: list[UploadFile] | None = File(None)
+
+    def parse(self, title: str, *, reject_blank_title: bool = False) -> EventForm:
+        parsed_sources = parse_sources(self.sources)
+        if reject_blank_title and not title.strip():
+            raise HTTPException(status_code=400, detail="title is required")
+        return EventForm(
+            title=title,
+            proof_data=self.proof or None,
+            tag_ids=parse_json_id_list(self.tag_ids, field="tag_ids"),
+            conflict_ids=parse_json_id_list(self.conflict_ids, field="conflict_ids"),
+            # Form(str) does not validate the shape; a raw value would 500 at flush.
+            occurred_date=parse_optional_iso_date(self.occurred_date, field="occurred_date"),
+            occurred_time=parse_optional_iso_time(self.occurred_time, field="occurred_time"),
+            sources=parsed_sources,
+            proof_files=self.proof_files or [],
+        )
 
 
 def _or_404(geo: Event | None) -> Event:

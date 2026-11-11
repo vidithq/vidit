@@ -12,13 +12,11 @@ from app.models.event import STATUS_REQUESTED, DetectedVia, Event, EventDetectio
 from app.models.user import User
 from app.schemas.source import SourceCreate
 from app.services.event_filters import lock_event
-from app.services.evidence_intake import attach_evidence_and_commit
 from app.services.permissions import ensure_owner
 
 from .coordinates import _optional_point
 from .errors import EventStateError
-from .rules import _resolve_conflicts, _resolve_tags, _sanitize_proof
-from .sources import apply_sources, check_publish_floor, plan_sources, planned_floor
+from .form import EventForm, commit_form, prepare_form, write_form
 
 
 @dataclass(frozen=True)
@@ -69,64 +67,62 @@ async def create_request(
     proof_files: list[UploadFile],
     provenance: ImportProvenance | None = None,
 ) -> Event:
+    """:func:`submit_request` for a caller holding the fields one by one (``detection``)."""
+    form = EventForm(
+        title=title,
+        proof_data=proof_data,
+        occurred_date=occurred_date,
+        occurred_time=occurred_time,
+        tag_ids=tag_ids,
+        conflict_ids=conflict_ids,
+        sources=sources,
+        proof_files=proof_files,
+    )
+    return await submit_request(
+        db, current_user=current_user, form=form, lat=lat, lng=lng, provenance=provenance
+    )
+
+
+async def submit_request(
+    db: Session,
+    *,
+    current_user: User,
+    form: EventForm,
+    lat: float | None = None,
+    lng: float | None = None,
+    provenance: ImportProvenance | None = None,
+) -> Event:
     """Create a ``requested`` event with its sources (an open call).
 
     ``owner_id`` and ``requested_by_id`` are both ``current_user``: the poster
     keeps edit rights until a fulfiller takes over and stays credited as
     requester.
 
-    The row is version 0 (``models/event.version_no``) until it is published through
-    :func:`save_version`.
-
     Coordinates (a guess) are optional, both-or-neither. Tags and conflicts are optional
-    (:func:`save_version` enforces the publication floor at the publish), but the footage must be on the row
-    from the start: a ``direct`` or ``indirect`` source with its file. The proof body may
-    carry images (``proof_files`` resolve ``placeholder://`` srcs) but has no image floor.
+    (:func:`save_version` enforces the publication floor at the publish), but the footage must
+    be on the row from the start: a ``direct`` or ``indirect`` source with its file. The proof
+    body may carry images but has no image floor.
 
-    ``provenance`` is set only by a machine writer (``detection.open_request``)
-    and attaches the ``event_detections`` row via :func:`stamp_provenance`, so a re-import
-    recognises the row.
-
-    Raises :class:`InvalidCoordinatesError`, the source errors of ``sources.plan_sources`` and
-    ``sources.check_publish_floor``, :class:`InvalidProofError`, ``SnapshotRejected``, or a
-    proof intake error. Any failure rolls back and sweeps what landed.
+    ``provenance`` is set only by a machine writer (``detection.open_request``) and attaches the
+    ``event_detections`` row, so a re-import recognises the row.
     """
     guess_point = _optional_point(lat, lng, field="coords")
-    proof_data = _sanitize_proof(proof_data)
-    planned = plan_sources(db, geo=None, specs=sources, uploader=current_user)
-    check_publish_floor(planned_floor(planned))
+    prepared = prepare_form(db, form, geo=None, uploader=current_user, publication=False)
 
     geo = Event(
         owner_id=current_user.id,
         # Survives fulfilment, when ``owner_id`` transfers to the fulfiller.
         requested_by_id=current_user.id,
-        title=title,
-        coords=guess_point,
         # ``proof`` lands via the intake below; the model default covers a blank request.
-        occurred_date=occurred_date,
-        occurred_time=occurred_time,
         status=STATUS_REQUESTED,
         requested_at=datetime.now(UTC),
     )
     if provenance is not None:
         stamp_provenance(geo, provenance)
-    geo.tags = _resolve_tags(db, tag_ids)
-    geo.conflicts = _resolve_conflicts(db, conflict_ids)
-
+    write_form(db, geo, form, prepared, guess_point)
     db.add(geo)
     db.flush()
-    apply_sources(db, geo, planned)
-
-    await attach_evidence_and_commit(
-        db,
-        event=geo,
-        proof_html=proof_data,
-        proof_files=proof_files,
-        sweep_context="event request create rollback",
-    )
-
-    db.refresh(geo)
-    return geo
+    return await commit_form(db, geo, form, prepared, sweep_context="event request create rollback")
 
 
 async def update_request(
@@ -134,34 +130,19 @@ async def update_request(
     *,
     geo: Event,
     current_user: User,
-    title: str,
-    proof_data: str | None,
+    form: EventForm,
     lat: float | None = None,
     lng: float | None = None,
-    occurred_date: date | None = None,
-    occurred_time: time | None = None,
-    tag_ids: list,
-    conflict_ids: list,
-    sources: list[SourceCreate],
-    proof_files: list[UploadFile],
 ) -> Event:
     """Correct an open request in place (owner-only, only while ``requested``).
 
-    The form posts the whole state and this overwrites the row. **No version is
-    filed**: the request stays version 0 until it is published, when
-    :func:`save_version` files it. ``updated_at`` moves; id, ``requested_at``,
-    requester and provenance stay.
-
-    Fields and floor follow :func:`create_request`. The posted ``sources`` replace the stored
-    ones (``sources.apply_sources``); a file nothing names any more is swept after the commit
-    (no version renders it).
+    **No version is filed**: the request stays version 0 until it is published, when
+    :func:`save_version` files it. ``updated_at`` moves; id, ``requested_at``, requester and
+    provenance stay. Fields and floor follow :func:`submit_request`. A file nothing names any
+    more is swept after the commit (no version renders it).
 
     The row is locked and the status re-checked, as in :func:`save_version` and
-    :func:`close`, so a racing publish or withdrawal
-    gives the loser a 409.
-
-    Raises :class:`EventStateError` (409) off ``requested``, the 403 of
-    ``ensure_owner``, and the errors of :func:`create_request`.
+    :func:`close`, so a racing publish or withdrawal gives the loser a 409.
     """
     geo = lock_event(db, geo.id)
     ensure_owner(geo, current_user)
@@ -169,29 +150,9 @@ async def update_request(
         raise EventStateError("Only an open request can be edited")
 
     guess_point = _optional_point(lat, lng, field="coords")
-    proof_data = _sanitize_proof(proof_data)
-    planned = plan_sources(db, geo=geo, specs=sources, uploader=current_user)
-    check_publish_floor(planned_floor(planned))
-
-    # The collection assignments lazy-load, which would flush a half-edited row.
-    with db.no_autoflush:
-        geo.title = title
-        geo.coords = guess_point
-        geo.occurred_date = occurred_date
-        geo.occurred_time = occurred_time
-        geo.tags = _resolve_tags(db, tag_ids)
-        geo.conflicts = _resolve_conflicts(db, conflict_ids)
-    removed = apply_sources(db, geo, planned)
-
-    await attach_evidence_and_commit(
-        db,
-        event=geo,
-        proof_html=proof_data,
-        proof_files=proof_files,
-        sweep_context=f"event {geo.id} request edit rollback",
-        removed=removed,
-    )
-
-    db.refresh(geo)
+    prepared = prepare_form(db, form, geo=geo, uploader=current_user, publication=False)
+    write_form(db, geo, form, prepared, guess_point)
     # No points-cache invalidation: the map serves located rows only.
-    return geo
+    return await commit_form(
+        db, geo, form, prepared, sweep_context=f"event {geo.id} request edit rollback"
+    )

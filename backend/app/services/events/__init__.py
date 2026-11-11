@@ -17,7 +17,13 @@ from .coordinates import validate_coordinates
 from .create import create_with_evidence
 from .errors import EventStateError, InvalidCoordinatesError
 from .readiness import DetectionReadiness, detection_ready_predicate
-from .request import ImportProvenance, create_request, stamp_provenance, update_request
+from .request import (
+    ImportProvenance,
+    create_request,
+    stamp_provenance,
+    submit_request,
+    update_request,
+)
 from .revision import save_version
 
 __all__ = [
@@ -32,6 +38,7 @@ __all__ = [
     "detection_ready_predicate",
     "save_version",
     "stamp_provenance",
+    "submit_request",
     "update_request",
     "validate_coordinates",
 ]

@@ -13,13 +13,11 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
-    File,
     Form,
     HTTPException,
     Query,
     Request,
     Response,
-    UploadFile,
     status,
 )
 from geoalchemy2.functions import ST_X, ST_Y
@@ -30,19 +28,13 @@ from app.models.content_report import ContentReport
 from app.models.event import TITLE_MAX_LENGTH, Event
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._forms import (
-    parse_json_id_list,
-    parse_optional_iso_date,
-    parse_optional_iso_time,
-)
 from app.routers.events._common import (
     DETAIL_LOADS,
     GEOLOCATOR_INVITES_FIELD_DESCRIPTION,
-    SOURCES_FIELD_DESCRIPTION,
+    EventFormFields,
     build_event_read,
     build_version_read,
     parse_geolocator_invites,
-    parse_sources,
     readable_events,
     resolve_live_event,
     resolve_readable_event,
@@ -169,20 +161,13 @@ def get_event(
 def update_event_request(
     request: Request,
     geolocation_id: uuid.UUID,
-    # Multipart like ``POST /events/requests``: same fields and ceilings.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
-    proof: str | None = Form(None),
     # The approximate guess a request may carry: both halves or neither.
     lat: float | None = Form(None),
     lng: float | None = Form(None),
-    occurred_date: str | None = Form(None),
-    occurred_time: str | None = Form(None),
-    tag_ids: str | None = Form(None),
-    conflict_ids: str | None = Form(None),
-    sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION),
-    proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    fields: EventFormFields = Depends(),
 ):
     """Correct an open request, overwriting it in place (owner-only).
 
@@ -195,34 +180,12 @@ def update_event_request(
     publication floor stays unenforced until the publish, but the row must still
     hold a direct or indirect source with its file. Soft-deleted rows read as 404.
     """
-    parsed_sources = parse_sources(sources)
-    proof_files = proof_files or []
-    if not title.strip():
-        raise HTTPException(status_code=400, detail="title is required")
-
-    proof_data = proof or None
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
-    parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
-    parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
-
+    form = fields.parse(title, reject_blank_title=True)
     # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
     edited = asyncio.run(
         events_service.update_request(
-            db,
-            geo=geo,
-            current_user=current_user,
-            title=title,
-            proof_data=proof_data,
-            lat=lat,
-            lng=lng,
-            occurred_date=parsed_occurred_date,
-            occurred_time=parsed_occurred_time,
-            tag_ids=parsed_tag_ids,
-            conflict_ids=parsed_conflict_ids,
-            sources=parsed_sources,
-            proof_files=proof_files,
+            db, geo=geo, current_user=current_user, form=form, lat=lat, lng=lng
         )
     )
     return _serialize_event(db, edited)
@@ -233,18 +196,9 @@ def update_event_request(
 def save_event_version(
     request: Request,
     geolocation_id: uuid.UUID,
-    # Multipart like create: the service writes the editable state and the
-    # superseded version atomically. ``max_length`` uses the shared model
-    # constant so over-length input is rejected before any work.
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
-    occurred_date: str | None = Form(None),
-    occurred_time: str | None = Form(None),
-    proof: str | None = Form(None),
-    tag_ids: str | None = Form(None),
-    conflict_ids: str | None = Form(None),
-    sources: str = Form(..., description=SOURCES_FIELD_DESCRIPTION),
     # The editor's note, stored on the version this edit supersedes.
     note: str | None = Form(None, max_length=VERSION_NOTE_MAX_LENGTH),
     version_no: int | None = Form(
@@ -253,10 +207,9 @@ def save_event_version(
         description="The version the form was loaded at; a row that moved past it answers 409.",
     ),
     geolocator_invites: str | None = Form(None, description=GEOLOCATOR_INVITES_FIELD_DESCRIPTION),
-    # New inline proof images, matched to ``placeholder://`` srcs.
-    proof_files: list[UploadFile] | None = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    fields: EventFormFields = Depends(),
 ):
     """Publish a request or a detection, or correct a published event, filing a version.
 
@@ -280,15 +233,8 @@ def save_event_version(
     post-edit state. A save whose only change is a link's archived copy is accepted even at
     the version ceiling. Soft-deleted rows read as 404.
     """
-    parsed_sources = parse_sources(sources)
-    parsed_invites = parse_geolocator_invites(geolocator_invites)
-    proof_files = proof_files or []
-    parsed_occurred_date = parse_optional_iso_date(occurred_date, field="occurred_date")
-    parsed_occurred_time = parse_optional_iso_time(occurred_time, field="occurred_time")
-    proof_data = proof or None
-    parsed_tag_ids = parse_json_id_list(tag_ids, field="tag_ids")
-    parsed_conflict_ids = parse_json_id_list(conflict_ids, field="conflict_ids")
-
+    form = fields.parse(title)
+    invites = parse_geolocator_invites(geolocator_invites)
     # The service re-checks ownership and status under the row lock (race-free).
     geo = resolve_live_event(db, geolocation_id)
     edited = asyncio.run(
@@ -296,19 +242,12 @@ def save_event_version(
             db,
             geo=geo,
             current_user=current_user,
-            title=title,
+            form=form,
             lat=lat,
             lng=lng,
-            occurred_date=parsed_occurred_date,
-            occurred_time=parsed_occurred_time,
-            proof_data=proof_data,
-            tag_ids=parsed_tag_ids,
-            conflict_ids=parsed_conflict_ids,
-            sources=parsed_sources,
-            proof_files=proof_files,
             note=note,
             expected_version=version_no,
-            geolocator_invites=parsed_invites,
+            geolocator_invites=invites,
         )
     )
     return _serialize_event(db, edited)

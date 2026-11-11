@@ -4,9 +4,8 @@ detection."""
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, date, datetime, time
+from datetime import UTC, datetime
 
-from fastapi import UploadFile
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
@@ -14,29 +13,15 @@ from sqlalchemy.orm import Session
 from app.cache import points_cache
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, STATUS_REQUESTED, Event
 from app.models.user import User
-from app.schemas.source import SourceCreate
 from app.services import geolocator_credit, notifications, versions
 from app.services.event_filters import lock_event
-from app.services.evidence_intake import attach_evidence_and_commit
 from app.services.permissions import ensure_owner
 
 from .coordinates import validate_coordinates
 from .errors import EventStateError, NothingChangedError, VersionMismatchError
-from .rules import (
-    _credit_geolocator,
-    _require_conflict,
-    _require_proof_image,
-    _resolve_conflicts,
-    _resolve_tags,
-    _sanitize_proof,
-)
-from .sources import (
-    apply_sources,
-    check_publish_floor,
-    comparable,
-    plan_sources,
-    planned_floor,
-)
+from .form import EventForm, commit_form, prepare_form, write_form
+from .rules import _credit_geolocator
+from .sources import comparable
 
 # The states this write accepts. The first two are version 0 and leave it published.
 _UNPUBLISHED = (STATUS_REQUESTED, STATUS_DETECTED)
@@ -48,16 +33,9 @@ async def save_version(
     *,
     geo: Event,
     current_user: User,
-    title: str,
+    form: EventForm,
     lat: float,
     lng: float,
-    occurred_date: date | None,
-    occurred_time: time | None,
-    proof_data: str | None,
-    tag_ids: list,
-    conflict_ids: list,
-    sources: list[SourceCreate],
-    proof_files: list[UploadFile],
     note: str | None = None,
     expected_version: int | None = None,
     geolocator_invites: Sequence[str] = (),
@@ -128,28 +106,28 @@ async def save_version(
         ensure_owner(geo, current_user)
 
     validate_coordinates(lat, lng)
-    proof_data = _sanitize_proof(proof_data)
-    _require_proof_image(proof_data if proof_data is not None else geo.proof)
-    effective_tags = _resolve_tags(db, tag_ids)
-    effective_conflicts = _resolve_conflicts(db, conflict_ids)
-    _require_conflict(effective_conflicts)
-    planned = plan_sources(db, geo=geo, specs=sources, uploader=current_user)
-    check_publish_floor(planned_floor(planned))
+    prepared = prepare_form(db, form, geo=geo, uploader=current_user, publication=True)
+    proof = prepared.proof if prepared.proof is not None else geo.proof
 
     # An edit that moves nothing is refused: a version spends a number in a
     # public address space (``/events/{id}/vN``) and must record a real change.
     # The note is not compared.
     proposed = {
-        "title": title,
+        "title": form.title,
         "coords": {"lat": lat, "lng": lng},
-        "occurred_date": occurred_date.isoformat() if occurred_date is not None else None,
-        "occurred_time": occurred_time.isoformat() if occurred_time is not None else None,
-        "tags": versions.tag_entries(effective_tags),
-        "conflicts": versions.conflict_entries(effective_conflicts),
-        "proof": proof_data if proof_data is not None else geo.proof,
+        "occurred_date": (
+            form.occurred_date.isoformat() if form.occurred_date is not None else None
+        ),
+        "occurred_time": (
+            form.occurred_time.isoformat() if form.occurred_time is not None else None
+        ),
+        "tags": versions.tag_entries(prepared.tags),
+        "conflicts": versions.conflict_entries(prepared.conflicts),
+        "proof": proof,
     }
     # Built once: serves the no-change check and the filed snapshot.
     current_snapshot = versions.build_snapshot(geo)
+    planned = prepared.sources
     fields_move = (
         publishing
         or not versions.matches_current(current_snapshot, proposed)
@@ -172,36 +150,19 @@ async def save_version(
         enforce_ceiling=fields_move,
     )
 
-    # The collection assignments lazy-load, which would flush a half-edited row.
-    with db.no_autoflush:
-        geo.title = title
-        geo.coords = from_shape(Point(lng, lat), srid=4326)
-        geo.occurred_date = occurred_date
-        geo.occurred_time = occurred_time
-        geo.tags = effective_tags
-        geo.conflicts = effective_conflicts
-        if publishing:
-            geo.status = STATUS_GEOLOCATED
-            geo.geolocated_at = datetime.now(UTC)
+    write_form(db, geo, form, prepared, from_shape(Point(lng, lat), srid=4326))
     if publishing:
+        geo.status = STATUS_GEOLOCATED
+        geo.geolocated_at = datetime.now(UTC)
         # Hands edit-rights to the fulfiller of a request and records the credit.
         _credit_geolocator(db, geo, current_user)
         geolocator_credit.invite_on_publish(db, geo=geo, usernames=geolocator_invites)
     if fulfils_request:
         notifications.notify_request_fulfilled(db, event=geo, fulfiller=current_user)
     # The version filed above renders the dropped files, so the sweep keeps them.
-    removed = apply_sources(db, geo, planned)
-
-    await attach_evidence_and_commit(
-        db,
-        event=geo,
-        proof_html=proof_data,
-        proof_files=proof_files,
-        sweep_context=f"event {geo.id} save_version rollback",
-        removed=removed,
+    await commit_form(
+        db, geo, form, prepared, sweep_context=f"event {geo.id} save_version rollback"
     )
-
-    db.refresh(geo)
     # Coordinates may have moved, and a publish puts the row on the map.
     points_cache.invalidate()
     return geo
