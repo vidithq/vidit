@@ -26,7 +26,7 @@ from sqlalchemy.engine.default import DefaultExecutionContext
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, CreatedAt, UpdatedAt, literal_check
+from app.database import Base, CreatedAt, UpdatedAt, literal_check, literal_in
 from app.models.source import Source, source_order
 
 # Lifecycle status (value-domain source of truth: the ORM column, the Read
@@ -361,12 +361,11 @@ class Event(Base):
             name="ck_events_geolocated_stamp",
         ),
         # ``before_closed_status`` is set exactly when ``closed`` and in-domain.
-        # Mirror of ``BeforeClosedStatus``; keep the two in step.
         CheckConstraint(
             # ``IS NOT NULL`` is load-bearing: ``NULL IN (...)`` is unknown, and
             # Postgres accepts any CHECK that is not FALSE.
             "(status = 'closed' AND before_closed_status IS NOT NULL"
-            " AND before_closed_status IN ('requested', 'detected', 'geolocated'))"
+            f" AND {literal_in('before_closed_status', BeforeClosedStatus)})"
             " OR (status <> 'closed' AND before_closed_status IS NULL)",
             name="ck_events_before_closed_status",
         ),

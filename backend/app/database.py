@@ -34,14 +34,18 @@ CreatedAt = Annotated[datetime, mapped_column(default=_utcnow)]
 UpdatedAt = Annotated[datetime, mapped_column(default=_utcnow, onupdate=_utcnow)]
 
 
+def literal_in(column: str, values: Any) -> str:
+    members = ", ".join(f"'{v}'" for v in get_args(values))
+    return f"{column} IN ({members})"
+
+
 def literal_check(
     column: str, values: Any, name: str, *, nullable: bool = False
 ) -> CheckConstraint:
     """A CHECK pinning ``column`` to the members of the ``Literal`` ``values``, so the model's
     constraint follows the type. ``nullable`` also admits NULL. The migration that creates the
     constraint still changes by hand with the type."""
-    members = ", ".join(f"'{v}'" for v in get_args(values))
-    allowed = f"{column} IN ({members})"
+    allowed = literal_in(column, values)
     return CheckConstraint(f"{column} IS NULL OR {allowed}" if nullable else allowed, name=name)
 
 
