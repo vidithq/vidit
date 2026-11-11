@@ -108,6 +108,11 @@ def _fake_tile(_http: httpx.Client, _template: str, tile_id: int) -> bytes:
     return PNG + tile_id.to_bytes(4, "big")
 
 
+@pytest.fixture(autouse=True)
+def _fake_tiles(monkeypatch):
+    monkeypatch.setattr(map_files, "_fetch_tile", _fake_tile)
+
+
 @pytest.fixture
 def s3():
     with mock_aws():
@@ -126,7 +131,7 @@ def _keys(s3) -> set[str]:
 
 def _run(s3, fake: FakeOpenFreeMap, **overrides) -> dict:
     with fake.client() as http:
-        return run(_config(**overrides), http=http, s3=s3, now=lambda: NOW, fetch=_fake_tile)
+        return run(_config(**overrides), http=http, s3=s3, now=lambda: NOW)
 
 
 def test_latest_version_picks_the_newest_complete_folder():
@@ -263,7 +268,7 @@ def test_a_dropped_download_resumes_where_it_stopped(s3, monkeypatch):
         return httpx.Response(200, content=broken())
 
     with httpx.Client(transport=httpx.MockTransport(flaky)) as http:
-        latest = run(_config(), http=http, s3=s3, now=lambda: NOW, fetch=_fake_tile)
+        latest = run(_config(), http=http, s3=s3, now=lambda: NOW)
 
     assert ranges == [None, "bytes=100-"]
     assert latest["planet"]["sha256"] == hashlib.sha256(planet).hexdigest()
@@ -282,7 +287,7 @@ def test_a_download_that_keeps_failing_gives_up_and_aborts_the_upload(s3, monkey
         httpx.Client(transport=httpx.MockTransport(failing)) as http,
         pytest.raises(MapUpdateError, match="expected"),
     ):
-        run(_config(), http=http, s3=s3, now=lambda: NOW, fetch=_fake_tile)
+        run(_config(), http=http, s3=s3, now=lambda: NOW)
 
     assert "map/latest.json" not in _keys(s3)
     assert not s3.list_multipart_uploads(Bucket=BUCKET).get("Uploads")
@@ -295,7 +300,6 @@ def _run_local(root, fake: FakeOpenFreeMap, **overrides) -> dict:
             http=http,
             s3=map_files.LocalBucket(root),
             now=lambda: NOW,
-            fetch=_fake_tile,
         )
 
 
