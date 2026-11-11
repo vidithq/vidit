@@ -38,7 +38,13 @@ from app.schemas.organization import (
 from app.services import admin as admin_service
 from app.services import notifications, social
 from app.services.storage import avatar_key_of, sweep_keys
-from app.services.users import apply_profile_update, get_live_by_username, x_handle_holder
+from app.services.users import (
+    UserNotFoundError,
+    XHandleConflictError,
+    apply_profile_update,
+    get_live_by_username,
+    x_handle_holder,
+)
 
 
 class OrganizationError(CodedError):
@@ -53,18 +59,8 @@ class OrganizationNotFoundError(OrganizationError):
     status_code = 404
 
 
-class UserNotFoundError(OrganizationError):
-    code = "user_not_found"
-    status_code = 404
-
-
 class SlugTakenError(OrganizationError):
     code = "slug_taken"
-    status_code = 409
-
-
-class XHandleConflictError(OrganizationError):
-    code = "x_handle_conflict"
     status_code = 409
 
 

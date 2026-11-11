@@ -49,23 +49,12 @@ from app.services.pagination import keyset_before
 from app.services.sites import owned_site_objects
 from app.services.storage import avatar_key_of, sweep_keys
 from app.services.uploads import upload_object
-from app.services.users import x_handle_holder
+from app.services.users import UserNotFoundError, XHandleConflictError, x_handle_holder
 
 
 class AdminError(CodedError):
-    """Base for friendly errors raised by admin services.
-
-    Carries a ``code`` so the router maps to an HTTP status without string-matching exception
-    text. Mirrors :class:`app.services.registration.RegistrationError`.
-    """
-
     code: str = "admin_error"
     status_code = 400
-
-
-class UserNotFoundError(AdminError):
-    code = "user_not_found"
-    status_code = 404
 
 
 class EventNotFoundError(AdminError):
@@ -73,14 +62,7 @@ class EventNotFoundError(AdminError):
     status_code = 404
 
 
-class XHandleConflictError(AdminError):
-    code = "x_handle_conflict"
-    status_code = 409
-
-
 class VersionNotFoundError(AdminError):
-    """The event carries no version under that number."""
-
     code = "version_not_found"
     status_code = 404
 
@@ -93,15 +75,11 @@ class InviteCodeUsedError(AdminError):
 
 
 class CollectionNotFoundError(AdminError):
-    """No collection carries that id."""
-
     code = "collection_not_found"
     status_code = 404
 
 
 class SiteNotFoundError(AdminError):
-    """No site carries that id."""
-
     code = "site_not_found"
     status_code = 404
 

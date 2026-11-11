@@ -32,6 +32,16 @@ class AvatarError(CodedError):
     status_code = 422
 
 
+class UserNotFoundError(CodedError):
+    code = "user_not_found"
+    status_code = 404
+
+
+class XHandleConflictError(CodedError):
+    code = "x_handle_conflict"
+    status_code = 409
+
+
 class ProfileOwner(Protocol):
     """A row with a public profile: ``users`` or ``organizations``."""
 
