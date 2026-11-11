@@ -428,7 +428,7 @@ async def test_drain_failure_path_posts_the_diagnosis_to_linked_author(db, linke
 
     outcome, posted, liked = await _drain(db)
 
-    assert outcome.no_detection == 1
+    assert outcome.outcomes["no_detection"] == 1
     assert liked == []
     (payload,) = posted
     text = payload["text"]
@@ -446,7 +446,7 @@ async def test_drain_unlinked_author_is_fully_silent(db):
 
     outcome, posted, liked = await _drain(db)
 
-    assert outcome.no_account == 1
+    assert outcome.outcomes["no_account"] == 1
     assert posted == []
     assert liked == []
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == COORD_ID).one()
@@ -584,6 +584,6 @@ async def test_gesture_budget_spans_drain_passes(db, linked_owner, monkeypatch):
     )
     outcome, posted, liked = await _drain(db)
 
-    assert outcome.no_detection == 1  # the mention still processed
+    assert outcome.outcomes["no_detection"] == 1  # the mention still processed
     assert posted == []  # but the hourly caps held across passes
     assert liked == []

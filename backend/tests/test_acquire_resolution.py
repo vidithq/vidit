@@ -16,7 +16,7 @@ from app.services.tweet_ingest import (
     acquire_thread,
     resolve_threads,
 )
-from app.services.tweet_ingest.records import ChasedPost, ChaseResult
+from app.services.tweet_ingest.records import ChaseResult, SourceLink, SourcePost
 from app.services.tweet_ingest.syndication import (
     extract_source_links,
 )
@@ -35,9 +35,9 @@ def test_extract_source_links_expands_dedupes_skips_tco():
         }
     }
     assert extract_source_links(body) == [
-        ("https://t.me/foo/123", "https://t.co/aaa"),
-        ("https://x.com/bar/status/456", "https://t.co/bbb"),
-        ("https://youtu.be/xyz", None),
+        SourceLink("https://t.me/foo/123", "https://t.co/aaa"),
+        SourceLink("https://x.com/bar/status/456", "https://t.co/bbb"),
+        SourceLink("https://youtu.be/xyz", None),
     ]
 
 
@@ -89,7 +89,6 @@ def test_acquire_thread_joins_the_same_authors_parent():
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     # Parent first: the head anchors provenance and the event date.
     assert [r.tweet_id for r in acquired.records] == [_PARENT_ID, _POST_ID]
-    assert acquired.post.tweet_id == _POST_ID
 
 
 def test_acquire_thread_joins_the_parent_whatever_case_the_caller_spelled():
@@ -122,7 +121,7 @@ def test_acquire_thread_fetches_nothing_for_a_non_reply():
     seen: list[str] = []
     with _client(bodies, seen) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_POST_ID]
     assert seen == [_POST_ID]
 
 
@@ -134,7 +133,7 @@ def test_acquire_thread_drops_another_authors_parent():
     }
     with _client(bodies) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_POST_ID]
 
 
 def test_acquire_thread_unreadable_parent_degrades_to_the_post_alone():
@@ -142,7 +141,7 @@ def test_acquire_thread_unreadable_parent_degrades_to_the_post_alone():
     bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text="reply", reply_to=_PARENT_ID)}
     with _client(bodies) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_POST_ID]
     # Gone is an end of the thread, not a cut: the refusal stays ``coords_missing``.
     assert acquired.truncated is False
     assert acquired.resolve().reason == COORDS_MISSING
@@ -152,7 +151,7 @@ def test_a_parent_x_will_not_serve_truncates_the_one_hop_read():
     bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text="reply", reply_to=_PARENT_ID)}
     with _client(bodies, down=frozenset({_PARENT_ID})) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_POST_ID]
     assert acquired.truncated is True
     assert acquired.resolve().reason == THREAD_TRUNCATED
 
@@ -363,7 +362,7 @@ def test_a_bare_tag_under_another_authors_post_acquires_the_tag_alone():
     bodies[_CLIMB_IDS[1]]["user"]["screen_name"] = "someone_else"
     with _client(bodies) as client:
         acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[0]]
 
 
 @pytest.mark.parametrize(
@@ -440,7 +439,7 @@ def test_the_sole_x_status_candidate_is_chased_into_the_quote_slot():
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
     assert record.quoted is not None
-    assert record.quoted.tweet_id == _CHASED_ID
+    assert record.quoted.status_id == _CHASED_ID
     assert [m.kind for m in record.quoted.media] == ["video"]
 
 
@@ -450,7 +449,7 @@ def test_a_chase_that_404s_degrades_to_link_only():
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
     assert record.quoted is None
-    assert record.telegram is None
+    assert record.linked is None
 
 
 def test_a_chased_status_that_turns_out_to_be_the_analysts_own_is_dropped():
@@ -469,15 +468,15 @@ def test_the_sole_telegram_candidate_is_chased_into_the_telegram_slot(monkeypatc
         assert target == _TG_URL
         return ChaseResult(
             outcome="chased",
-            post=ChasedPost(url=target, posted_at="2026-03-04T09:00:00+00:00"),
+            post=SourcePost(url=target, posted_at="2026-03-04T09:00:00+00:00"),
         )
 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     with _client({_POST_ID: _linking_body(_TG_URL)}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
-    assert record.telegram is not None
-    assert record.telegram.posted_at == "2026-03-04T09:00:00+00:00"
+    assert record.linked is not None
+    assert record.linked.posted_at == "2026-03-04T09:00:00+00:00"
 
 
 @pytest.mark.parametrize(
@@ -495,7 +494,7 @@ def test_a_chase_that_found_nothing_reports_its_class_to_the_resolution(
     with _client({_POST_ID: _linking_body(_TG_URL)}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
-    assert record.telegram is None
+    assert record.linked is None
     assert (record.chase_outcome == "transient_failure") is expected
 
     [detection] = resolve_threads([acquired.records]).detections
@@ -514,7 +513,7 @@ def test_nothing_is_chased_when_the_candidates_are_ambiguous(monkeypatch):
     )
     with _client({_POST_ID: body}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records[0].telegram is None
+    assert acquired.records[0].linked is None
 
 
 def test_an_off_vocabulary_candidate_is_not_chased():
@@ -524,13 +523,13 @@ def test_an_off_vocabulary_candidate_is_not_chased():
     with _client(bodies, seen) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     assert acquired.records[0].quoted is None
-    assert acquired.records[0].telegram is None
+    assert acquired.records[0].linked is None
     assert seen == [_POST_ID]
 
 
 def test_the_sole_tiktok_candidate_is_chased_into_the_off_platform_slot(monkeypatch):
     tiktok = "https://www.tiktok.com/@war/video/7"
-    footage = ChasedPost(url=tiktok, posted_at="2026-03-04T13:20:00+00:00")
+    footage = SourcePost(url=tiktok, posted_at="2026-03-04T13:20:00+00:00")
     monkeypatch.setattr(
         tiktok_mod,
         "chase",
@@ -538,5 +537,5 @@ def test_the_sole_tiktok_candidate_is_chased_into_the_off_platform_slot(monkeypa
     )
     with _client({_POST_ID: _linking_body(tiktok)}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records[0].telegram is not None
-    assert acquired.records[0].telegram.url == tiktok
+    assert acquired.records[0].linked is not None
+    assert acquired.records[0].linked.url == tiktok

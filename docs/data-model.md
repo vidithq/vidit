@@ -1215,7 +1215,7 @@ One membership: this event is on this collection.
 | `event_id` | `UUID` | FK → `events.id` ON DELETE CASCADE |
 | `added_at` | `TIMESTAMPTZ` | NOT NULL. When the owner put the event on the collection. Not a read key: the list orders by when the events happened, not by when they were shelved. |
 
-Composite PK: `(collection_id, event_id)`. The pair is the identity, so adding an event twice is the same row and the add verb is idempotent without a read-then-write.
+Composite PK: `(collection_id, event_id)`. The pair is the identity, so adding an event twice is the same row. Both add verbs write through `services/collections.insert_memberships`, an `INSERT ... ON CONFLICT DO NOTHING` on the pair, so they are idempotent without a read-then-write.
 
 **Indexes:**
 - `ix_collection_events_event_id` on `(event_id)`. The PK's leading `collection_id` serves the forward read, what is on this collection; this covers the reverse, which of my collections hold this event, behind `GET /events/{id}/collections`.

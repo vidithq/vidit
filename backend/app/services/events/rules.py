@@ -16,7 +16,7 @@ from .errors import ConflictRequiredError, InvalidProofError, ProofImageRequired
 
 
 def _sanitize_proof(proof_data: str | None) -> str | None:
-    """Sanitise a proof body, ``placeholder://`` srcs admitted; ``None`` passes through."""
+    """``placeholder://`` srcs are admitted; ``None`` passes through."""
     if proof_data is None:
         return None
     try:
@@ -26,18 +26,13 @@ def _sanitize_proof(proof_data: str | None) -> str | None:
 
 
 def _require_conflict(conflicts: list[Conflict]) -> None:
-    """Require one conflict on a publication.
-
-    A create runs it up front; a request or detection runs it at the publish. Checked on
-    resolved rows, so bogus ids fail like an empty list. The ``Other`` value keeps the rule
-    satisfiable.
-    """
+    """Checked on resolved rows, so bogus ids fail like an empty list. The ``Other`` value keeps
+    the rule satisfiable."""
     if not conflicts:
         raise ConflictRequiredError("A conflict is required")
 
 
 def _require_proof_image(proof: str | None) -> None:
-    """Require at least one image in the proof, uploaded or ``placeholder://``."""
     if proof is None or not extract_image_srcs(proof):
         raise ProofImageRequiredError("At least one proof image is required")
 

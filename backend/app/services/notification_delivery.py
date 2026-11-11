@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 from datetime import UTC, datetime, timedelta
 from functools import partial
 
@@ -130,106 +130,112 @@ def _event_path(n: Notification) -> str:
     return f"/events/{n.event.id}"
 
 
-def _organization_path(n: Notification) -> str:
-    return f"/organizations/{n.organization.slug}"
-
-
 def _organization_name(n: Notification) -> str | None:
     """The organization an approval or approval request row is about, when it names one."""
     return n.organization.name if n.organization is not None else None
 
 
-def _request_fulfilled(n: Notification) -> _Copy:
-    actor, title = n.actor.username, n.event.title
-    return _Copy(
-        title=f"{actor} geolocated your request",
-        text=f"{actor} answered your request “{title}” with a geolocation.",
+# Read only when a template names them: a kind without an actor or an organization never
+# touches that relationship.
+_FIELDS: dict[str, Callable[[Notification], object]] = {
+    "actor": lambda n: n.actor.username,
+    "title": lambda n: n.event.title,
+    "event_id": lambda n: n.event.id,
+    "name": lambda n: n.organization.name,
+    "slug": lambda n: n.organization.slug,
+    "former": lambda n: n.organization_name or "An organization",
+}
+
+
+class _Fields(dict[str, object]):
+    def __init__(self, n: Notification) -> None:
+        super().__init__()
+        self._n = n
+
+    def __missing__(self, key: str) -> object:
+        return _FIELDS[key](self._n)
+
+
+def _fill(template: _Copy, n: Notification) -> _Copy:
+    fields = _Fields(n)
+    return _Copy(*(part.format_map(fields) for part in astuple(template)))
+
+
+_EVENT = "/events/{event_id}"
+_ORGANIZATION = "/organizations/{slug}"
+
+# The kinds whose copy does not branch on an organization.
+_TEMPLATES: dict[NotificationKind, _Copy] = {
+    "request_fulfilled": _Copy(
+        title="{actor} geolocated your request",
+        text="{actor} answered your request “{title}” with a geolocation.",
         action="View the geolocation",
-        path=_event_path(n),
+        path=_EVENT,
         setting="Request fulfilled",
-    )
-
-
-def _new_follower(n: Notification) -> _Copy:
-    actor = n.actor.username
-    return _Copy(
-        title=f"{actor} follows you on Vidit",
-        text=f"{actor} now follows your work on Vidit.",
+    ),
+    "new_follower": _Copy(
+        title="{actor} follows you on Vidit",
+        text="{actor} now follows your work on Vidit.",
         action="View their profile",
-        path=f"/profile/{actor}",
+        path="/profile/{actor}",
         setting="New follower",
-    )
-
-
-def _co_geolocator_invite(n: Notification) -> _Copy:
-    actor, title = n.actor.username, n.event.title
-    return _Copy(
-        title=f"{actor} invites you to share a geolocation",
-        text=f"{actor} invites you to be credited as a geolocator of “{title}”. "
+    ),
+    "co_geolocator_invite": _Copy(
+        title="{actor} invites you to share a geolocation",
+        text="{actor} invites you to be credited as a geolocator of “{title}”. "
         "Accept or decline on the geolocation's page. Editing and closing stay with the owner.",
         action="View the invitation",
-        path=_event_path(n),
+        path=_EVENT,
         setting="Geolocator invitation",
-    )
-
-
-def _co_geolocator_removed(n: Notification) -> _Copy:
-    actor, title = n.actor.username, n.event.title
-    return _Copy(
-        title=f"{actor} removed you from a geolocation",
-        text=f"{actor} removed you from the geolocators of “{title}”.",
+    ),
+    "co_geolocator_removed": _Copy(
+        title="{actor} removed you from a geolocation",
+        text="{actor} removed you from the geolocators of “{title}”.",
         action="View the geolocation",
-        path=_event_path(n),
+        path=_EVENT,
         setting="Credit removed",
-    )
-
-
-def _ownership_transferred(n: Notification) -> _Copy:
-    title = n.event.title
-    return _Copy(
+    ),
+    "ownership_transferred": _Copy(
         title="A geolocation you share is now yours",
-        text=f"You now own “{title}”: the account of its previous owner was removed. "
+        text="You now own “{title}”: the account of its previous owner was removed. "
         "You can edit, correct and close it.",
         action="View the geolocation",
-        path=_event_path(n),
+        path=_EVENT,
         setting="Ownership transferred",
-    )
-
-
-def _organization_invite(n: Notification) -> _Copy:
-    actor, name = n.actor.username, n.organization.name
-    return _Copy(
-        title=f"{actor} invites you to join {name}",
-        text=f"{actor}, an org manager of {name}, invites you to join the organization on Vidit. "
+    ),
+    "organization_invite": _Copy(
+        title="{actor} invites you to join {name}",
+        text="{actor}, an org manager of {name}, invites you to join the organization on Vidit. "
         "Accept or decline on its page.",
         action="View the invitation",
-        path=_organization_path(n),
+        path=_ORGANIZATION,
         setting="Organization invite",
-    )
-
-
-def _organization_invite_accepted(n: Notification) -> _Copy:
-    actor, name = n.actor.username, n.organization.name
-    return _Copy(
-        title=f"{actor} joined {name}",
-        text=f"{actor} accepted your invitation and is now a member of {name}.",
+    ),
+    "organization_invite_accepted": _Copy(
+        title="{actor} joined {name}",
+        text="{actor} accepted your invitation and is now a member of {name}.",
         action="View the organization",
-        path=_organization_path(n),
+        path=_ORGANIZATION,
         setting="Invite accepted",
-    )
-
-
-def _organization_manager_inherited(n: Notification) -> _Copy:
-    name = n.organization.name
-    return _Copy(
-        title=f"You are now an org manager of {name}",
-        text=f"The account of the last org manager of {name} was removed, and you were its "
+    ),
+    "organization_manager_inherited": _Copy(
+        title="You are now an org manager of {name}",
+        text="The account of the last org manager of {name} was removed, and you were its "
         "earliest member, so you are now its org manager. You can invite analysts, "
         "change roles and edit its profile.",
         action="View the organization",
-        path=_organization_path(n),
+        path=_ORGANIZATION,
         setting="Now org manager",
-    )
+    ),
+    "organization_approval_removed": _Copy(
+        title="{former} was removed from Vidit",
+        text="{former} was removed from Vidit, and its approval of “{title}” "
+        "went with it. The event and its other approvals are unchanged.",
+        action="View the geolocation",
+        path=_EVENT,
+        setting="Organization approval removed",
+    ),
+}
 
 
 def _re_approve_requested(n: Notification) -> _Copy:
@@ -284,33 +290,13 @@ def _approval_request_declined(n: Notification) -> _Copy:
     )
 
 
-def _organization_approval_removed(n: Notification) -> _Copy:
-    org, title = n.organization_name or "An organization", n.event.title
-    return _Copy(
-        title=f"{org} was removed from Vidit",
-        text=f"{org} was removed from Vidit, and its approval of “{title}” "
-        "went with it. The event and its other approvals are unchanged.",
-        action="View the geolocation",
-        path=_event_path(n),
-        setting="Organization approval removed",
-    )
-
-
 # One entry per kind; a kind missing here is skipped.
 _COPY: dict[NotificationKind, Callable[[Notification], _Copy]] = {
-    "request_fulfilled": _request_fulfilled,
-    "new_follower": _new_follower,
-    "co_geolocator_invite": _co_geolocator_invite,
-    "co_geolocator_removed": _co_geolocator_removed,
-    "ownership_transferred": _ownership_transferred,
-    "organization_invite": _organization_invite,
-    "organization_invite_accepted": _organization_invite_accepted,
-    "organization_manager_inherited": _organization_manager_inherited,
+    **{kind: partial(_fill, template) for kind, template in _TEMPLATES.items()},
     "re_approve_requested": _re_approve_requested,
     "approval_received": _approval_received,
     "approval_request_received": _approval_request_received,
     "approval_request_declined": _approval_request_declined,
-    "organization_approval_removed": _organization_approval_removed,
 }
 
 

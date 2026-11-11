@@ -62,7 +62,7 @@ from app.models.organization import Organization
 from app.models.site import Site
 from app.models.source import Source, SourceLink
 from app.models.user import User
-from app.schemas.search import SearchType
+from app.schemas.search import SearchResponse, SearchSection, SearchType
 from app.services import organizations
 from app.services.collections import (
     build_collection_reads,
@@ -147,7 +147,6 @@ def _parse(db: Session, *queries: str) -> list[_Query]:
 
 
 def _tsquery(parsed: str) -> ColumnElement:
-    """A :class:`_Query` text back as a ``tsquery`` value."""
     return cast(bindparam(None, parsed, type_=Text), TSQUERY)
 
 
@@ -160,7 +159,6 @@ def _rank(tsvector, query: _Query) -> ColumnElement[float]:
 
 
 def _geo_tsvector():
-    """The event title's ``tsvector``, which the rank and the highlight read."""
     return func.to_tsvector(_TS_CONFIG, func.coalesce(Event.title, literal_column("''")))
 
 
@@ -346,7 +344,6 @@ def _searchable_events() -> ColumnElement[bool]:
 
 
 def _candidate(type_: str, id_col: Any, rank: ColumnElement[Any], created_at: Any) -> list[Any]:
-    """The four columns every type's candidate select carries, in the union's order."""
     return [
         literal_column(f"'{type_}'", String).label("type"),
         id_col.label("id"),
@@ -369,10 +366,8 @@ def _event_candidates(db: Session, terms: _EventTerms, filters: EventFilters) ->
 def search_dates(
     db: Session, *, query: str, types: frozenset[str], filters: EventFilters
 ) -> dict[str, Any]:
-    """The events :func:`search` lists for ``query`` and ``filters`` (:func:`_event_candidates`),
-    counted per day by ``services/event_filters.date_histogram``. Unlike :func:`search`, an empty
-    ``query`` with no active filter counts every searchable event; ``types`` without ``event``
-    counts nothing."""
+    """Unlike :func:`search`, an empty ``query`` with no active filter counts every searchable
+    event."""
     if "event" not in types:
         return {"occurred_date": [], "submitted": [], "total": 0}
     terms = _event_terms(db, query.strip())
@@ -385,7 +380,6 @@ def search_dates(
 
 
 def _site_name_tsvector():
-    """The site name's ``tsvector``, which the rank and the highlight read."""
     return func.to_tsvector(_TS_CONFIG, func.coalesce(Site.name, literal_column("''")))
 
 
@@ -408,8 +402,6 @@ def _site_document():
 
 
 def _site_candidates(parsed: _Query | None, filters: EventFilters) -> Select[Any]:
-    """Visible sites (``services/sites.visible_sites``, the rule of ``GET /sites``), owned by
-    ``filters.author`` when set."""
     criteria: list[ColumnElement[bool]] = [*visible_sites()]
     if filters.author:
         criteria.append(Site.owner.has(owner_username_matches(filters.author)))
@@ -451,7 +443,6 @@ def _user_candidates(parsed: _Query, query: str) -> Select[Any]:
 
 
 def _organization_candidates(parsed: _Query) -> Select[Any]:
-    """Organizations matching on their name, slug and bio."""
     tsvector: ColumnClause[Any] = literal_column(_ORGANIZATION_TSVECTOR)
     return select(
         *_candidate(
@@ -516,16 +507,6 @@ def _next_cursor(rows: Sequence[Row[Any]], limit: int) -> str | None:
     return encode_ranked_cursor(last.rank, last.created_at, last.id)
 
 
-@dataclass(frozen=True)
-class SearchPage:
-    """One page of hits in rank order, the whole match count, and the next page's cursor
-    (``None`` on the last page)."""
-
-    hits: list[dict]
-    total: int
-    cursor: str | None
-
-
 def search(
     db: Session,
     *,
@@ -534,41 +515,31 @@ def search(
     limit: int,
     filters: EventFilters | None = None,
     after: tuple[float, datetime, uuid.UUID] | None = None,
-) -> SearchPage:
-    """One ranked list across ``types`` (a subset of :data:`SEARCH_TYPES`).
-
-    Each type ranks on its own text with the same ``ts_rank``: an event on its title, a site on
-    its name, a collection on its title and description, an analyst on their username and bio,
-    an organization on its name, slug and bio, in the order of :func:`_ranking`. ``total`` is the
-    whole match count, whatever ``after`` skips.
-
-    With an empty ``query`` and an active filter the list browses: every hit ranks 0, so the
-    order is newest first. An empty ``query`` with no active filter matches nothing.
-    """
+) -> SearchResponse:
+    """One ranked list across ``types``. Each type ranks on its own text with the same
+    ``ts_rank``. With an empty ``query`` and an active filter every hit ranks 0, so the list
+    browses newest first."""
     filters = filters or EventFilters()
     q = query.strip()
+    empty = SearchResponse(hits=[], total=0, cursor=None, query=query)
     union = _union(db, query=q, types=types, filters=filters)
     if union is None:
-        return SearchPage([], 0, None)
+        return empty
     counted = select(union, func.count().over().label("total_count")).subquery("counted")
     page = select(counted)
     if after is not None:
         page = page.where(tuple_(counted.c.rank, counted.c.created_at, counted.c.id) < after)
     rows = db.execute(page.order_by(*_ranking(counted.c)).limit(limit + 1)).all()
     if not rows:
-        return SearchPage([], 0, None)
-    hits = _hydrate(db, [(row.type, row.id) for row in rows[:limit]], query=q)
-    return SearchPage(hits, int(rows[0].total_count), _next_cursor(rows, limit))
-
-
-@dataclass(frozen=True)
-class SearchSection:
-    """The first page of one type's list: what :func:`search` returns for that type alone."""
-
-    type: str
-    hits: list[dict]
-    total: int
-    cursor: str | None
+        return empty
+    return SearchResponse.model_validate(
+        {
+            "hits": _hydrate(db, [(row.type, row.id) for row in rows[:limit]], query=q),
+            "total": int(rows[0].total_count),
+            "cursor": _next_cursor(rows, limit),
+            "query": query,
+        }
+    )
 
 
 def search_sections(
@@ -606,11 +577,13 @@ def search_sections(
     served = [(row.type, row.id) for type_ in present for row in by_type[type_][:limit]]
     hits = _hydrate(db, served, query=q)
     sections = [
-        SearchSection(
-            type=type_,
-            hits=[hit for hit in hits if hit["type"] == type_],
-            total=int(by_type[type_][0].total_count),
-            cursor=_next_cursor(by_type[type_], limit),
+        SearchSection.model_validate(
+            {
+                "type": type_,
+                "hits": [hit for hit in hits if hit["type"] == type_],
+                "total": int(by_type[type_][0].total_count),
+                "cursor": _next_cursor(by_type[type_], limit),
+            }
         )
         for type_ in present
     ]
@@ -779,15 +752,8 @@ def collectable_matches(
     db: Session, *columns: Any, query: str, filters: EventFilters, user: User
 ) -> SAQuery:
     """``columns`` (``Event.id`` when none) of each of ``user``'s located events search lists
-    for ``query`` and ``filters`` that a collection can hold. Unordered and unlimited, so
-    the set does not depend on how many hits a page has loaded; the count, the paged read and
-    the bulk add of ``services/collections_bulk`` all read it.
-
-    Search's own matching (:func:`_matching` on :func:`_located_hits`), narrowed to the
-    events credited to ``user`` (``services/event_filters.credited_to``) and to
-    ``services/event_filters.collectable_events``. An empty ``query`` with no active filter
-    matches nothing, as in :func:`search`.
-    """
+    for ``query`` and ``filters`` that a collection can hold. Unordered and unlimited, so the
+    set does not depend on how many hits a page has loaded."""
     q = query.strip()
     stmt = _matching(
         db.query(*(columns or (Event.id,))),
@@ -889,13 +855,8 @@ def spelling_suggestion(
 
 
 def suggest_authors(db: Session, *, query: str, limit: int = 8) -> list[str]:
-    """Usernames matching ``query`` for the author-filter typeahead.
-
-    Case-insensitive substring, prefix matches first then alphabetical. Scoped
-    to live users credited on at least one live event: all the filter can
-    match, and it keeps this anonymous endpoint from enumerating accounts. ``query``
-    is gated by ``AUTHOR_FILTER_PATTERN`` at the router.
-    """
+    """Scoped to live users credited on at least one live event: all the filter can match, and
+    it keeps this anonymous endpoint from enumerating accounts."""
     q = query.strip()
     if not q:
         return []

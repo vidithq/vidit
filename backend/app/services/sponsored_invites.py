@@ -18,8 +18,8 @@ from app.errors import CodedError
 from app.models.invite_code import InviteCode
 from app.models.user import User
 from app.schemas.invite_code import SponsoredInviteCodeList, SponsoredInviteCodeRead
-from app.services.admin import log_admin_event, revoke_invite_code
-from app.services.auth import generate_invite_code, invite_code_status
+from app.services.admin import mint_invite_code, revoke_invite_code
+from app.services.auth import invite_code_status
 from app.services.email_layout import app_url
 
 DAILY_MINT_LIMIT = 5
@@ -100,17 +100,13 @@ def mint(db: Session, *, sponsor: User, x_handle: str) -> SponsoredInviteCodeRea
             f"The quota resets at {resets_at:%Y-%m-%d %H:%M} UTC."
         )
 
-    invite = InviteCode(code=generate_invite_code(), x_handle=x_handle, created_by_id=sponsor.id)
-    db.add(invite)
-    db.flush()
-    log_admin_event(
+    invite = mint_invite_code(
         db,
         actor_id=sponsor.id,
         action="invite_sponsored",
-        target={"invite_code_id": str(invite.id), "x_handle": x_handle},
+        x_handle=x_handle,
+        created_by_id=sponsor.id,
     )
-    db.commit()
-    db.refresh(invite)
     return _read(invite)
 
 

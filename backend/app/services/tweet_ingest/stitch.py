@@ -1,9 +1,4 @@
-"""Recombine tweet records into threads (union-find on reply edges).
-
-A geolocation often spans a self-thread (footage in the head, coordinate in a
-reply). An archive carries ``in_reply_to_status_id``, so threads assemble; the
-syndication path returns one tweet with no edge, so ``stitch`` is the identity.
-"""
+"""Recombine an export's tweet records into threads (union-find on reply edges)."""
 
 from __future__ import annotations
 

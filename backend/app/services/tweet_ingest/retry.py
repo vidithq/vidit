@@ -1,17 +1,5 @@
 """The retry policy every outgoing fetch of the ingestion shares.
 
-Callers: :func:`syndication.fetch_syndication`, the Telegram embed read in
-``chase/telegram.py``, and ``archive.download_cdn_media``. All three hit
-throttled public endpoints, and one attempt would turn a short outage into a
-detection with no footage.
-
-:data:`ATTEMPTS` attempts, pausing :data:`BACKOFF_S`, never sleeping more than
-:data:`RETRY_BUDGET_S` in total (the paste request runs this inline). One
-schedule for every entry, so the bot and the paste behave alike under throttling.
-
-Only transient failures are retried (:func:`is_transient`); a gone or
-restricted post or an unparseable body fails on the first attempt.
-
 :func:`retrying` blocks on purpose: every sync caller already runs off the
 event loop. :func:`retrying_async` serves the async CDN media fetch.
 """
@@ -123,5 +111,4 @@ def _sleep(seconds: float) -> None:
 
 
 async def _sleep_async(seconds: float) -> None:
-    """Async twin of :func:`_sleep`."""
     await asyncio.sleep(seconds)

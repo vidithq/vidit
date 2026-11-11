@@ -76,6 +76,31 @@ SnapshotRejectionCode = Literal[
 ]
 
 
+# Per provider: the path shapes of a snapshot, and the refusal of any other path.
+_SNAPSHOT_PATHS: dict[
+    ArchiveProvider, tuple[tuple[re.Pattern[str], ...], SnapshotRejectionCode, str]
+] = {
+    "wayback": (
+        (_WAYBACK_REPLAY_RE,),
+        "snapshot_not_a_replay_url",
+        "A Wayback Machine link must be a snapshot URL "
+        "(web.archive.org/web/<timestamp>/<original link>).",
+    ),
+    "archive_today": (
+        (_ARCHIVE_TODAY_CODE_RE, _ARCHIVE_TODAY_CAPTURE_RE),
+        "snapshot_not_a_snapshot_code",
+        "An archive.today link must be a snapshot code (archive.ph/<code>) or a "
+        "capture URL (archive.ph/<timestamp>/<original link>).",
+    ),
+    "ghostarchive": (
+        (_GHOSTARCHIVE_PATH_RE,),
+        "snapshot_not_a_snapshot_code",
+        "A Ghostarchive link must be a snapshot path "
+        "(ghostarchive.org/archive/<id> or ghostarchive.org/varchive/<id>).",
+    ),
+}
+
+
 class SnapshotRejected(CodedError):
     """The pasted URL is not a snapshot address; the per-instance ``code`` says which check
     failed."""
@@ -151,31 +176,9 @@ def validate_snapshot(snapshot_url: str) -> ArchiveProvider:
             "snapshot_provider_not_allowed",
             "An archive link must be on one of: " + ", ".join(PROVIDER_HOSTS) + ".",
         )
-    if provider == "wayback":
-        if _WAYBACK_REPLAY_RE.match(parsed.path) is None:
-            raise SnapshotRejected(
-                "snapshot_not_a_replay_url",
-                "A Wayback Machine link must be a snapshot URL "
-                "(web.archive.org/web/<timestamp>/<original link>).",
-            )
-        return provider
-    if provider == "ghostarchive":
-        if _GHOSTARCHIVE_PATH_RE.match(parsed.path) is None:
-            raise SnapshotRejected(
-                "snapshot_not_a_snapshot_code",
-                "A Ghostarchive link must be a snapshot path "
-                "(ghostarchive.org/archive/<id> or ghostarchive.org/varchive/<id>).",
-            )
-        return provider
-    if (
-        _ARCHIVE_TODAY_CODE_RE.match(parsed.path) is None
-        and _ARCHIVE_TODAY_CAPTURE_RE.match(parsed.path) is None
-    ):
-        raise SnapshotRejected(
-            "snapshot_not_a_snapshot_code",
-            "An archive.today link must be a snapshot code (archive.ph/<code>) or a "
-            "capture URL (archive.ph/<timestamp>/<original link>).",
-        )
+    patterns, code, message = _SNAPSHOT_PATHS[provider]
+    if not any(pattern.match(parsed.path) for pattern in patterns):
+        raise SnapshotRejected(code, message)
     return provider
 
 

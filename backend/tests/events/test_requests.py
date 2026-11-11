@@ -37,6 +37,7 @@ from app.services.events import (
     stamp_provenance,
     update_request,
 )
+from app.services.events.form import EventForm
 from app.services.sanitize import extract_image_srcs
 from tests._fixtures import fake_sha256, make_event
 from tests.conftest import login_as
@@ -320,7 +321,7 @@ def test_create_request_event_time_without_occurred_date(author):
 
 
 def test_create_request_blank_proof_stores_an_empty_body(db, author):
-    """The model default must fire: ``events.proof`` is NOT NULL and ``create_request``
+    """The model default must fire: ``events.proof`` is NOT NULL and ``submit_request``
     omits ``proof=``."""
     response = _create_request(author, title="No proof yet")
     assert response.status_code == 201, response.text
@@ -726,16 +727,20 @@ async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
             db,
             geo=request,
             current_user=author,
-            title="Raced edit",
-            proof_data=None,
-            tag_ids=[],
-            conflict_ids=[],
-            sources=[
-                SourceCreate.model_validate(
-                    source_spec("https://example.com/raced", kind="unknown")
-                )
-            ],
-            proof_files=[],
+            form=EventForm(
+                title="Raced edit",
+                proof_data=None,
+                occurred_date=None,
+                occurred_time=None,
+                tag_ids=[],
+                conflict_ids=[],
+                sources=[
+                    SourceCreate.model_validate(
+                        source_spec("https://example.com/raced", kind="unknown")
+                    )
+                ],
+                proof_files=[],
+            ),
         )
 
     db.rollback()

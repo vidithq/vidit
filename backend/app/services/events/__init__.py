@@ -1,15 +1,5 @@
 """Event lifecycle orchestration over the unified event model.
 
-`routers/events/*` parse the forms and call the write verbs here, which own
-every business rule, the S3 upload loop, the DB commit, and the post-commit S3
-sweep on rollback. Verbs: :func:`create_with_evidence` (``geolocated``),
-:func:`create_request` (``requested``), :func:`update_request`,
-:func:`save_version` (publish a request or a detection, or correct a published row, filing
-the superseded state), :func:`complete_detections` (publish detections in a batch),
-:func:`close` (withdraw / reject / retract, any live state).
-
-Errors are `EventError` subclasses, each with a stable `.code` and its HTTP `status_code`.
-
 One module per verb over shared modules. A verb module imports shared modules,
 a shared module imports only other shared modules, ``errors`` imports no sibling, and
 no verb module imports another.
@@ -21,62 +11,32 @@ no verb module imports another.
 
 from __future__ import annotations
 
-from .batch import ROW_INTERNAL_ERROR_CODE, DetectionCompletion, complete_detections
+from .batch import complete_detections
 from .closure import close
 from .coordinates import validate_coordinates
 from .create import create_with_evidence
-from .errors import (
-    ConflictRequiredError,
-    CoordinatesRequiredError,
-    EventError,
-    EventNotFoundError,
-    EventStateError,
-    InvalidCoordinatesError,
-    InvalidProofError,
-    NothingChangedError,
-    ProofImageRequiredError,
-    SourceFileRequiredError,
-    SourceLinkRequiredError,
-    SourceMediaNotFoundError,
-    SourceNotFoundError,
-    SourceRequiredError,
-    TooManySourceLinksError,
-    TooManySourcesError,
-    VersionMismatchError,
-)
+from .errors import EventStateError, InvalidCoordinatesError
 from .readiness import DetectionReadiness, detection_ready_predicate
-from .request import ImportProvenance, create_request, stamp_provenance, update_request
+from .request import (
+    ImportProvenance,
+    stamp_provenance,
+    submit_request,
+    update_request,
+)
 from .revision import save_version
 
 __all__ = [
     "DetectionReadiness",
-    "ROW_INTERNAL_ERROR_CODE",
-    "ConflictRequiredError",
-    "CoordinatesRequiredError",
-    "DetectionCompletion",
-    "EventError",
-    "EventNotFoundError",
     "EventStateError",
     "ImportProvenance",
     "InvalidCoordinatesError",
-    "InvalidProofError",
-    "NothingChangedError",
-    "ProofImageRequiredError",
-    "SourceFileRequiredError",
-    "SourceLinkRequiredError",
-    "SourceMediaNotFoundError",
-    "SourceNotFoundError",
-    "SourceRequiredError",
-    "TooManySourceLinksError",
-    "TooManySourcesError",
-    "VersionMismatchError",
     "close",
     "complete_detections",
-    "create_request",
     "create_with_evidence",
     "detection_ready_predicate",
     "save_version",
     "stamp_provenance",
+    "submit_request",
     "update_request",
     "validate_coordinates",
 ]

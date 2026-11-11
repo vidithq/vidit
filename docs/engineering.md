@@ -410,7 +410,7 @@ flowchart LR
 | **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response`, never raises `HTTPException`. Raises a subclass of [`errors.CodedError`](../backend/app/errors.py) that declares its stable `code` and its HTTP `status_code` next to each other. |
 | **models/** | SQLAlchemy tables | Structure only, no logic |
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
-| **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |
+| **dependencies.py** | FastAPI injection | `get_db`, `get_current_user`, and the `Annotated` aliases a handler declares them with: `DB`, `CurrentUser`, `OptionalUser`, `AdminUser` |
 
 ### Eager-load sets
 
@@ -421,6 +421,7 @@ A query that builds a read model loads every relationship the assembler reads, o
 | `DETAIL_LOADS` | [`routers/events/_common.py`](../backend/app/routers/events/_common.py) | Everything `build_event_read` reads | The event page, the detection queue |
 | `SOURCE_LOAD` | [`routers/events/_common.py`](../backend/app/routers/events/_common.py) | Sources with their links, tags and files | `DETAIL_LOADS` |
 | `CREDIT_LOAD` | [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py) | Geolocator rows and their users | Every surface that prints the byline |
+| `CARD_LOADS` | [`services/geolocator_credit.py`](../backend/app/services/geolocator_credit.py) | Everything `build_event_list` reads: owner, tags, conflicts, thumbnail and credit | The feed, a profile's geolocations, a collection's events and its collectable matches |
 | `thumbnail_loads()` | [`services/thumbnails.py`](../backend/app/services/thumbnails.py) | The candidates of the card thumbnail pick | Every card surface |
 | `_HIT_LOADS` | [`services/search.py`](../backend/app/services/search.py) | Owner, credit, thumbnail and tags of a search hit | The event hits of `GET /search` |
 
@@ -435,6 +436,8 @@ The API runs as one uvicorn process with one event loop (the `CMD` in [`backend/
 - Keep `async def` for a handler that awaits the request itself, and run each of its database calls through `run_in_threadpool`, as the X webhook receiver ([`routers/webhooks.py`](../backend/app/routers/webhooks.py)) does: it reads the raw body for its signature check.
 
 [`tests/test_request_concurrency.py`](../backend/tests/test_request_concurrency.py) fails on an `async def` handler that depends on `get_db`, the webhook receiver excepted.
+
+A service that serializes the writes on one row re-reads it under `SELECT ... FOR UPDATE` with `populate_existing()`, through `lock_row` in [`services/row_locks.py`](../backend/app/services/row_locks.py), or `lock_event` in [`services/event_filters.py`](../backend/app/services/event_filters.py) for an event. Without `populate_existing()` the locked read returns the row the session already loaded, with its values from before the lock.
 
 The API process caps every lock wait at `LOCK_TIMEOUT_MS`, 5 seconds. [`main.py`](../backend/app/main.py) calls `bound_lock_waits` from [`database.py`](../backend/app/database.py) at import, and from then on every connection the engine opens sets the Postgres `lock_timeout` in its startup options. A statement that waits longer for a lock fails, and `get_db` answers the request with a `409` carrying the typed envelope `{"code": "lock_timeout", …}`. The cap protects the API's threadpool: a request queued on a lock holds a worker thread for as long as it waits.
 
@@ -462,7 +465,7 @@ flowchart LR
 
   inline["`**auth, archive import, digest, content report**
   sent inline, never capped`"]:::spec
-  emit["`**notifications._emit**
+  emit["`**notifications.emit**
   writes the notification, and a delivery row when the email switch is on`"]:::spec
   queue[("`**notification_deliveries**
   queued, running, done, failed, skipped`")]:::store
@@ -589,6 +592,8 @@ Every table, column, constraint and API field follows these rules. The API field
 | Leading underscore | A column or field name never starts with one | `token_hash` |
 | Creation stamp | Every entity table has `created_at`. A join table has none. | `tags.created_at`, `conflicts.created_at` |
 | Queue status | Background queues share `queued`, `running`, `done`, `failed`, `skipped`, and use the subset they need | `notification_deliveries.status` |
+
+A model declares a column through its `Mapped[...]` annotation alone wherever the annotation says enough: `Mapped[str | None]` makes the column nullable, and `Base` in `app/database.py` maps every `datetime` to `TIMESTAMPTZ`. Declare a creation stamp as `created_at: Mapped[CreatedAt]` and an update stamp as `updated_at: Mapped[UpdatedAt]`; both aliases in `app/database.py` stamp the current UTC time.
 
 ### Migration house style
 

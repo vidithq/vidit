@@ -7,11 +7,8 @@ bodies if it signed arbitrary input; the ``crc_token`` charset gate closes
 that (a JSON body never fits it). No rate limiter: a signature rejection is
 one HMAC, cheaper than limiter bookkeeping.
 
-The POST does no pipeline work: it verifies, reduces the payload to the
-internal ``Mention`` shape, inserts ``queued`` ``bot_mentions`` rows through
-``services/bot.enqueue_mentions`` (which drops the bot's own posts and the
-mentions settled without a read) and answers 200 (one insert batch, one
-commit, since X retries on slow answers). The import worker drains them.
+The POST does no pipeline work, since X retries on slow answers: it verifies, queues the
+mentions in one insert batch and answers 200. The import worker drains them.
 """
 
 from __future__ import annotations
@@ -23,12 +20,11 @@ import json
 import logging
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
-from app.dependencies import get_db
+from app.dependencies import DB
 from app.services.bot import enqueue_mentions
 from app.services.x_api import Mention
 
@@ -116,7 +112,7 @@ def _event_to_mention(event: object) -> Mention | None:
 
 
 @router.post("/x")
-async def receive_account_activity(request: Request, db: Session = Depends(get_db)) -> dict:
+async def receive_account_activity(request: Request, db: DB) -> dict:
     """Verify, queue, answer. Valid-but-irrelevant deliveries still get a 200:
     a non-2xx makes X retry and eventually deactivate the webhook."""
     if not settings.x_api_consumer_secret or not settings.x_bot_user_id:

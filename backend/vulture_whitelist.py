@@ -58,6 +58,7 @@ archives_imported  # schemas/admin.py AdminInviteRedeemerRead
 bot_detection_count  # schemas/admin.py AdminInviteRedeemerRead
 detected_via  # schemas/event.py EventRead, read from event_detections
 last_seen_at  # schemas/admin.py AdminInviteRedeemerRead
+reporter_id  # schemas/report.py ContentReportRead, from models/content_report.py
 deleted_events  # schemas/admin.py AdminPurgeDetectedResponse
 media_count  # schemas/admin.py
 pending_registrations_deleted  # schemas/admin.py
@@ -132,3 +133,7 @@ _body  # main.py enforce_request_body_size
 _is_machine_detection_expression  # models/event.py Event
 # The SQL half of ``Event.is_graphic``, bound the same way.
 _is_graphic_expression  # models/event.py Event
+
+# ── SQLAlchemy declarative configuration ──────────────────────────────────────
+# Read by DeclarativeBase when the subclass is created.
+type_annotation_map  # app/database.py Base

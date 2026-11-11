@@ -125,7 +125,7 @@ def approved_organization_ids(geo: Event) -> Select[tuple[uuid.UUID | None]]:
     )
 
 
-def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
+def build_read(row: EventApproval) -> ApprovalRead:
     """``current`` holds while the approval covers the live version of a published event: a
     closed event keeps its approvals readable, none of them current."""
     return ApprovalRead(
@@ -144,7 +144,7 @@ def build_read(row: EventApproval, *, live_version: int) -> ApprovalRead:
             else None
         ),
         created_at=row.created_at,
-        current=row.version_no == live_version and row.event.status == STATUS_GEOLOCATED,
+        current=row.version_no == row.event.version_no and row.event.status == STATUS_GEOLOCATED,
     )
 
 
@@ -202,14 +202,7 @@ def approve(
 ) -> EventApproval:
     """Approve the live version of ``geo`` as ``reviewer``, or for ``organization`` with
     ``reviewer`` as the acting member. Resolve the approval requests that target received for
-    the event, and notify the owner and those requesters.
-
-    409 ``invalid_state`` off ``geolocated`` (a closed event keeps its approvals readable but
-    takes no new one); 403 ``not_organization_member`` when ``reviewer`` is not a member of
-    ``organization``; 403 ``geolocator_cannot_approve`` for a current or former geolocator of the event; 409
-    ``version_mismatch`` when ``version_no`` is not the live version; 409 ``already_approved``
-    when ``reviewer``, or ``organization``, already approved that version.
-    """
+    the event, and notify the owner and those requesters."""
     geo = lock_event(db, geo.id)
     # Mirrored by the frontend's lib/approvals.canApprove; change both.
     if geo.status != STATUS_GEOLOCATED:
@@ -259,7 +252,6 @@ def approve(
     ).all()
     notifications.notify_approval_received(db, event=geo, approval=row, requester_ids=requester_ids)
     db.commit()
-    db.refresh(row)
     return row
 
 
@@ -325,5 +317,5 @@ def list_for_organization(
 def build_organization_read(row: EventApproval) -> OrganizationApprovalRead:
     return OrganizationApprovalRead(
         event=NotificationEventRef.model_validate(row.event),
-        approval=build_read(row, live_version=row.event.version_no),
+        approval=build_read(row),
     )

@@ -164,8 +164,6 @@ class UserRead(BaseModel):
 
 
 class XHandleRead(BaseModel):
-    """Body of ``GET /users/me/x-handle``."""
-
     x_handle: str | None
 
 

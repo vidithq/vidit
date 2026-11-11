@@ -4,7 +4,9 @@ one dependency for every read that lists events.
 Mirrored by the surfaces of ``frontend/src/components/filters/model.ts::DIMENSIONS``; change both.
 """
 
-from fastapi import Query
+from typing import Annotated
+
+from fastapi import Depends, Query
 
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
@@ -45,7 +47,7 @@ def event_filters(
     has_coords: bool | None = Query(None, description="true: with a location; false: without"),
 ) -> EventFilters:
     """The filter set, ``status`` left unset; 422 on a value outside its domain. Dates are
-    parsed when the filters apply (``services/event_filters.apply_filters``)."""
+    parsed when the filters apply (``EventFilters.apply``)."""
     validate_media_types(media)
     validate_source_filters(source_kind, level)
     return EventFilters(
@@ -64,3 +66,6 @@ def event_filters(
         approved_by_org=approved_by_org,
         has_coords=has_coords,
     )
+
+
+Filters = Annotated[EventFilters, Depends(event_filters)]

@@ -1,53 +1,8 @@
-"""The @ViditBot pipeline: a tag on X becomes a detection and a reply.
+"""The @ViditBot pipeline: a tag on X becomes a detection and a reply (``docs/ingestion.md``).
 
-Two paths insert a mention as a ``queued`` ``bot_mentions`` row
-(:func:`enqueue_mentions`, ``ON CONFLICT (mention_post_id) DO NOTHING``):
-
-* **Webhook (nominal)**: the X Account Activity webhook delivers the mention to
-  ``routers/webhooks``.
-* **Catch-up (reconciliation)**: the import worker pulls the mentions timeline
-  once a day at :data:`CATCH_UP_SLOT` (:func:`catch_up`), from the newest
-  mention the previous pull returned (``bot_catch_up_cursor``), so the billed
-  read covers each mention once. While the webhook is live
-  (``X_WEBHOOK_ENABLED``), a mention first queued here raises a "webhook gap"
-  Sentry message so a dead webhook pages.
-
-The worker drains the ``queued`` rows (:func:`drain_mentions`), so a mention is
-processed (and billed) at most once.
-
-A mention counts as a tag only when the author typed it. X prefixes a reply
-with the parent's author and the parent's mentions. The enqueue drops what the
-text alone settles (:func:`_settled_before_queue`): the bot's own posts, and a
-reply to the bot's post whose only tag sits in that prefix. For any other reply
-with the tag only in the prefix, :func:`_tag_is_inherited` spends one
-syndication read of the parent; an inherited tag lands ``inherited`` without
-acquiring, answering or billing.
-
-The grammar lives in the shared engine, not here. Acquisition is
-:func:`tweet_ingest.acquire_thread` (the tagged post plus the same author's
-parent; a bare tag climbs the same author's parents to the coordinate post, plus
-the footage post above it). ``AcquiredThread.resolve`` reads the thread
-through ``tweet_ingest.resolve_threads`` and ``detection.persist_detections``
-writes it, owned by the account ``detection.linked_owner`` maps the author's
-handle to (the bot never mints users: an unknown handle lands
-``no_account``). A thread with footage and a source link but no coordinate
-opens a ``requested`` row through ``detection.open_request`` instead of
-``coords_missing``; one that branch cannot serve is refused
-``request_not_possible``. A coordinate-less thread whose read was cut short (a
-parent X would not serve, or the climb's cap) is refused ``thread_truncated``
-and opens nothing. This module is orchestration: the X API, the reply, the
-queue, the budget and the drain.
-
-Response model: the reply is the only gesture (a like would signal nothing the
-reply does not, and was the most expensive call). Replies open with the
-verdict glyph. A detection created or overwritten, or a request opened
-(:func:`compose_request_reply`), earns the success reply. A linked author whose
-tag produced nothing gets a failure reply with the diagnosis, unless the tagged
-tweet replies to the bot (loop guard). An unlinked author stays silent. Reply
-text is linkless (a URL costs 13x per post; the link lives in the bot bio) and
-unique per mention (X 403s duplicates); the composers own both. Every reply
-spends the hourly and per-author budgets (:class:`GestureBudget`, seeded from
-the ledger's trailing window so the caps hold across passes).
+This module is orchestration: the X API, the reply, the queue, the budget and the drain; the
+grammar lives in the shared engine. The reply is the only gesture: a like would signal
+nothing the reply does not.
 """
 
 from __future__ import annotations
@@ -56,6 +11,7 @@ import asyncio
 import dataclasses
 import logging
 import uuid
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
@@ -75,7 +31,6 @@ from app.services.tweet_ingest import (
     POST_UNREADABLE,
     REFUSAL_MESSAGES,
     WARNING_MESSAGES,
-    AcquiredThread,
     TweetImportError,
     TweetNotAccessible,
     acquire_thread,
@@ -109,11 +64,7 @@ def _char_weight(ch: str) -> int:
 
 
 def reply_weighted_len(text: str) -> int:
-    """X's weighted character count for a composed reply.
-
-    Weight 1 for code points in U+0000..U+10FF, U+2000..U+200D,
-    U+2010..U+201F and U+2032..U+2037; weight 2 for everything else.
-    """
+    """X's weighted character count for a composed reply."""
     return sum(_char_weight(ch) for ch in text)
 
 
@@ -217,36 +168,8 @@ class BotRunOutcome:
     # Mentions the drain ran through the pipeline.
     mentions_processed: int = 0
     created_event_count: int = 0
-    # Mentions that opened a ``requested`` row (not counted in ``created_event_count``).
-    requests_opened: int = 0
-    # Mentions that only overwrote an open detection (none created, one or more updated).
-    events_updated: int = 0
     replies_posted: int = 0
-    # Mentions whose tag came from X's reply prefix; nothing acquired or answered.
-    inherited: int = 0
-    no_detection: int = 0
-    no_account: int = 0
-    skipped: int = 0
-    failed: int = 0
-
-
-def acquire_tagged_thread(
-    tweet_id: str, author_handle: str, *, client: httpx.Client | None = None
-) -> AcquiredThread:
-    """The thread behind one mention, through :func:`tweet_ingest.acquire_thread`.
-
-    A parent by another author never joins the thread and ends the climb, so a
-    tag under someone else's post (or a courtesy reply to the bot) reads only
-    itself.
-
-    Raises ``TweetNotAccessible`` when X serves nothing for the tagged post.
-
-    The handle is case-folded: it is the record's fallback screen name, feeds
-    every provenance permalink and the own-status exclusion, so the payload's
-    spelling must not leak through. Idempotency anchors on the post id
-    (``event_detections.from_post_id``).
-    """
-    return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
+    outcomes: Counter[BotMentionOutcome] = dataclasses.field(default_factory=Counter)
 
 
 def _parent_carries_tag(parent_id: str, handle: str, *, client: httpx.Client | None) -> bool:
@@ -317,13 +240,7 @@ _REPLY_REF_CHARS = 8
 def _reply(
     header: str, warnings: Iterable[str], *, footer: str = "Review from your profile"
 ) -> str:
-    """The success reply's shape: header, one warning line each, footer.
-
-    Shared by both success composers. Sentences come from ``WARNING_MESSAGES``
-    (also used by the archive email and import panel); this owns only the glyph
-    and the length cap. ``footer`` differs: review for a detection, the edit
-    under the profile's *Open requests* block for a request.
-    """
+    """The success reply's shape: header, one warning line each, footer."""
     raised = set(warnings)
     lines = [header]
     lines.extend(f"⚠ {message}" for code, message in WARNING_MESSAGES.items() if code in raised)
@@ -336,13 +253,8 @@ def compose_reply(
 ) -> str:
     """The in-thread reply for a mention that wrote its detections.
 
-    ``updated`` swaps the verb when the pass overwrote an open detection
-    instead of creating one.
-
-    Linkless by contract: a bare event ref (``_REPLY_REF_CHARS``), never a URL
-    (X bills links about 13x higher; the link lives in the bot bio). The ref
-    also makes each reply unique against X's duplicate-content 403. The ❌ twin
-    is :func:`compose_failure_reply`; the body is :func:`_reply`.
+    Linkless by contract: a bare event ref, never a URL (X bills links about 13x higher). The
+    ref also makes each reply unique against X's duplicate-content 403.
     """
     plural = "s" if detections > 1 else ""
     verb = "updated" if updated else "saved"
@@ -352,13 +264,8 @@ def compose_reply(
 
 
 def compose_request_reply(event_id: str, *, warnings: Iterable[str]) -> str:
-    """The in-thread reply for a mention that opened a request.
-
-    The twin of :func:`compose_reply` for a thread with footage and a source
-    but no coordinate. The header names a request, so the analyst does not
-    look for a coordinate the bot never read; the footer names the edit, since
-    a request has no review queue. Linkless and unique via the event ref.
-    """
+    """The in-thread reply for a mention that opened a request: the footer names the edit,
+    since a request has no review queue. Linkless and unique via the event ref."""
     return _reply(
         f"✅ Geolocation request opened · ref {event_id[:_REPLY_REF_CHARS]}",
         warnings,
@@ -373,14 +280,8 @@ _ADMIN_CONTACT = "@vidithq"
 def compose_failure_reply(reason: str | None = None, *, mention_id: str) -> str:
     """The in-thread reply for a linked author whose tag produced nothing.
 
-    Mirrors :func:`compose_reply`: a header, one line naming what the engine
-    saw (``REFUSAL_MESSAGES``, the same sentence the paste uses), and a footer.
-    No lesson or fix recipe: the rules live behind the bio link.
-
-    Linkless (the "source link" phrase is a placeholder). Only posted to linked
-    authors, never on a reply to the bot (the caller's loop guard). The
-    ``mention_id`` tail makes each reply unique (X 403s a repeat) and is
-    greppable in the ledger. Length must stay under ``REPLY_MAX_WEIGHTED_LEN``.
+    The ``mention_id`` tail makes each reply unique (X 403s a repeat) and is greppable in the
+    ledger.
     """
     head = "❌ Nothing saved"
     ref = f" (m{mention_id[-5:]})"
@@ -423,6 +324,18 @@ def _post_reply_failsoft(mention: Mention, text: str, *, client: httpx.Client | 
         return None
 
 
+def _reply_within_budget(
+    mention: Mention, text: str, *, allowed: bool, written: str, client: httpx.Client | None
+) -> str | None:
+    """Post the success reply when the budget allows it, else log what landed unanswered."""
+    if allowed:
+        return _post_reply_failsoft(mention, text, client=client)
+    logger.warning(
+        "Reply budget reached; %s without reply for mention %s", written, mention.tweet_id
+    )
+    return None
+
+
 async def _process_mention(
     db: Session,
     mention: Mention,
@@ -435,9 +348,9 @@ async def _process_mention(
     try:
         # Blocking I/O; offloaded to keep the event loop serving siblings.
         acquired = await asyncio.to_thread(
-            acquire_tagged_thread,
+            acquire_thread,
             mention.tweet_id,
-            mention.author_handle,
+            handle=mention.author_handle,
             client=syndication_client,
         )
     except TweetNotAccessible:
@@ -470,20 +383,15 @@ async def _process_mention(
             fetch_media=fetch_cdn_media,
         )
         if opened is not None and opened.created is not None:
-            request_reply_id: str | None = None
-            if reply_allowed:
-                # Same budget as a detection's reply; a second allowance would
-                # exceed the cap the ledger reads back.
-                request_reply_id = _post_reply_failsoft(
-                    mention,
-                    compose_request_reply(str(opened.created), warnings=opened.warnings),
-                    client=x_write_client,
-                )
-            else:
-                logger.warning(
-                    "Reply budget reached; request opened without reply for mention %s",
-                    mention.tweet_id,
-                )
+            # Same budget as a detection's reply; a second allowance would
+            # exceed the cap the ledger reads back.
+            request_reply_id = _reply_within_budget(
+                mention,
+                compose_request_reply(str(opened.created), warnings=opened.warnings),
+                allowed=reply_allowed,
+                written="request opened",
+                client=x_write_client,
+            )
             return "requested", 0, request_reply_id, None
         if opened is not None and opened.existing is not None:
             # The analyst already holds a row for it; silent like other dedups.
@@ -502,14 +410,13 @@ async def _process_mention(
         # ``skipped`` is dedup; a persist that raised on every detection is
         # ``failed``, which stays on the operator's retry path (delete the row).
         return ("failed" if assembled.failed else "skipped"), 0, None, None
-    reply_id: str | None = None
-    if reply_allowed:
-        reply_id = _post_reply_failsoft(mention, _success_reply(assembled), client=x_write_client)
-    else:
-        logger.warning(
-            "Reply budget reached; detection written without reply for mention %s",
-            mention.tweet_id,
-        )
+    reply_id = _reply_within_budget(
+        mention,
+        _success_reply(assembled),
+        allowed=reply_allowed,
+        written="detection written",
+        client=x_write_client,
+    )
     if assembled.created:
         return "created", len(assembled.created), reply_id, None
     # An edited, already-imported post: the newer parse landed on the open
@@ -615,20 +522,7 @@ async def _process_claimed(
     if reply_id is not None:
         budget.note_reply(mention.author_handle)
         outcome.replies_posted += 1
-    if verdict == "updated":
-        outcome.events_updated += 1
-    elif verdict == "requested":
-        outcome.requests_opened += 1
-    elif verdict == "inherited":
-        outcome.inherited += 1
-    elif verdict == "no_detection":
-        outcome.no_detection += 1
-    elif verdict == "no_account":
-        outcome.no_account += 1
-    elif verdict == "skipped":
-        outcome.skipped += 1
-    elif verdict == "failed":
-        outcome.failed += 1
+    outcome.outcomes[verdict] += 1
     return verdict
 
 
@@ -677,7 +571,6 @@ def catch_up_due(db: Session, *, now: datetime | None = None) -> bool:
 
 
 def is_configured() -> bool:
-    """Whether the mentions-read credentials are set, so the catch-up can run."""
     return bool(settings.x_bot_bearer_token and settings.x_bot_user_id)
 
 
@@ -792,28 +685,11 @@ def _claim(db: Session) -> BotMention | None:
 
 
 def _mention_from_payload(payload: dict | None) -> Mention | None:
-    if payload is None:
+    """The mention :func:`enqueue_mentions` stored with ``dataclasses.asdict``, or ``None``."""
+    try:
+        return Mention(**(payload or {}))
+    except TypeError:
         return None
-    tweet_id = payload.get("tweet_id")
-    author_id = payload.get("author_id")
-    author_handle = payload.get("author_handle")
-    text = payload.get("text")
-    reply_to = payload.get("in_reply_to_user_id")
-    reply_to_status = payload.get("in_reply_to_status_id")
-    if (
-        not isinstance(tweet_id, str)
-        or not isinstance(author_id, str)
-        or not isinstance(author_handle, str)
-    ):
-        return None
-    return Mention(
-        tweet_id=tweet_id,
-        author_id=author_id,
-        author_handle=author_handle,
-        text=text if isinstance(text, str) else "",
-        in_reply_to_user_id=reply_to if isinstance(reply_to, str) else None,
-        in_reply_to_status_id=reply_to_status if isinstance(reply_to_status, str) else None,
-    )
 
 
 async def drain_mentions(

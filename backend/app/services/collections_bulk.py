@@ -14,34 +14,33 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import NamedTuple
 
-from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session
 
-from app.models.collection import Collection, CollectionEvent
+from app.models.collection import Collection
 from app.models.event import Event
 from app.models.user import User
 from app.schemas.collection import MAX_CREATE_EVENTS, SearchMatch
-from app.services.collections import TooManyEventsError, ensure_owned_live, split_collectable
-from app.services.geolocator_credit import CREDIT_LOAD
+from app.services.collections import (
+    TooManyEventsError,
+    ensure_owned_live,
+    insert_memberships,
+    split_collectable,
+)
+from app.services.geolocator_credit import CARD_LOADS
 from app.services.pagination import keyset_before
 from app.services.search import collectable_matches
-from app.services.thumbnails import thumbnail_loads
 
 
 class BulkAddOutcome(NamedTuple):
-    """What one bulk add wrote and what it skipped."""
-
     added: int
     already_in_collection: int
     not_collectable: int
 
 
 def count_matches(db: Session, *, match: SearchMatch, user: User) -> int:
-    """How many of ``user``'s collectable events ``match`` lists (:func:`services.search.collectable_matches`)."""
     match.filters.validate()
     return collectable_matches(db, query=match.q, filters=match.filters, user=user).count()
 
@@ -53,33 +52,20 @@ def list_matches(
     user: User,
     limit: int,
     after: tuple[datetime, uuid.UUID] | None = None,
-) -> list[tuple[Event, float | None, float | None]]:
-    """One window of the events :func:`count_matches` counts, newest first (``created_at``,
-    ``id``, both descending), over-fetched by one row for ``pagination.paged``.
-
-    Returns ``(event, lat, lng)`` rows with the card loads of a collection's item page. ``after``
-    is the decoded cursor of the previous page's last row.
-    """
+) -> list[Event]:
+    """One window of the events :func:`count_matches` counts, newest first, over-fetched by one
+    row for ``pagination.paged``."""
     match.filters.validate()
     query = collectable_matches(
         db,
         Event,
-        ST_Y(Event.coords).label("lat"),
-        ST_X(Event.coords).label("lng"),
         query=match.q,
         filters=match.filters,
         user=user,
-    ).options(
-        joinedload(Event.owner),
-        selectinload(Event.tags),
-        selectinload(Event.conflicts),
-        *thumbnail_loads(),
-        CREDIT_LOAD,
-    )
+    ).options(*CARD_LOADS)
     if after is not None:
         query = query.filter(keyset_before(Event.created_at, Event.id, after))
-    rows = query.order_by(Event.created_at.desc(), Event.id.desc()).limit(limit + 1).all()
-    return [(event, lat, lng) for event, lat, lng in rows]
+    return query.order_by(Event.created_at.desc(), Event.id.desc()).limit(limit + 1).all()
 
 
 def _too_many() -> TooManyEventsError:
@@ -99,17 +85,12 @@ def add_events(
 ) -> BulkAddOutcome:
     """Put ``event_ids``, or the events ``match`` names, on ``collection``. One transaction.
 
-    The collection must be the caller's (403). Ids run
-    :func:`services.collections.split_collectable`: an unknown id is a 404 and an
-    uncredited one a 403 for the whole call, a non-collectable one is skipped. A
-    match resolves server-side to the caller's collectable events only, so it
-    skips nothing on that ground. ``exclude_event_ids`` (match only, the schema
-    refuses it beside ids) leaves those events out of the match before the cap
-    counts it, and is itself capped like ``event_ids``.
+    A match resolves server-side to the caller's collectable events only, so it skips nothing
+    on that ground. ``exclude_event_ids`` leaves events out of the match before the cap counts
+    it, and is itself capped like ``event_ids``.
 
-    ``ON CONFLICT DO NOTHING`` on the membership key is the idempotency, so a row
-    already present, or one a concurrent add writes first, counts as
-    ``already_in_collection``.
+    A row already present, or one a concurrent add writes first, counts as
+    ``already_in_collection`` (:func:`services.collections.insert_memberships`).
     """
     ensure_owned_live(collection, user)
     if match is not None:
@@ -129,21 +110,7 @@ def add_events(
             raise _too_many()
         ids, not_collectable = split_collectable(db, event_ids=requested, user=user)
 
-    added = 0
-    if ids:
-        now = datetime.now(UTC)
-        inserted = db.execute(
-            insert(CollectionEvent)
-            .values(
-                [
-                    {"collection_id": collection.id, "event_id": event_id, "added_at": now}
-                    for event_id in ids
-                ]
-            )
-            .on_conflict_do_nothing(index_elements=["collection_id", "event_id"])
-            .returning(CollectionEvent.event_id)
-        ).all()
-        added = len(inserted)
+    added = insert_memberships(db, collection_id=collection.id, event_ids=ids)
     db.commit()
     return BulkAddOutcome(
         added=added,

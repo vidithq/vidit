@@ -1,11 +1,5 @@
 """Shared evidence-intake orchestration: proof images, and the sweep of stored objects.
 
-Every event write funnels its proof body through :func:`attach_evidence_and_commit`:
-validate the proof images, upload them with key tracking, attach one ``Media`` row per image,
-rewrite the body's ``placeholder://`` srcs, drop proof rows the body no longer references,
-then commit-or-sweep. A source's file is not uploaded here: it is staged before the write
-(``services/uploads``) and attached by ``services/events/sources``.
-
 Proof images travel inside the multipart submit: the proof HTML references a not-yet-uploaded
 file as ``placeholder://<filename>`` and the file arrives in ``proof_files``. Matching is by
 sanitised original filename; a placeholder with no file, or a file no placeholder references,
@@ -14,9 +8,6 @@ is a 400 and nothing uploads.
 Several ``media`` rows may name one stored object (a source added to another event is copied
 by row, not by object), so a write never deletes an object outright: :func:`sweep_unreferenced`
 deletes the ones no ``media`` row and no readable version still names, after the commit.
-
-Errors are :class:`EvidenceIntakeError` subclasses, each with a stable ``.code`` and its HTTP
-``status_code``. A service's own domain errors subclass it, so a caller catches one base.
 """
 
 from __future__ import annotations
@@ -55,11 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 class EvidenceIntakeError(CodedError):
-    """Base for evidence-intake errors; ``code`` maps to an HTTP status.
-
-    Mirrors :class:`app.services.admin.AdminError` and
-    :class:`app.services.registration.RegistrationError`.
-    """
+    """A service's own domain errors subclass it, so a caller catches one base."""
 
     code: str = "evidence_intake_error"
     status_code = 400
@@ -72,19 +59,16 @@ class TooManyFilesError(EvidenceIntakeError):
 
 class InvalidFileError(EvidenceIntakeError):
     code = "invalid_file"
-    status_code = 400
 
 
 class EvidenceProcessingFailedError(EvidenceIntakeError):
     code = "evidence_processing_failed"
-    status_code = 400
 
 
 class ProofFilesMismatchError(EvidenceIntakeError):
     """A ``placeholder://`` src with no matching upload, or vice versa."""
 
     code = "proof_files_mismatch"
-    status_code = 400
 
 
 class StoredObject(NamedTuple):
@@ -243,11 +227,7 @@ def _history_pinned_source_srcs(db: Session, event: Event) -> set[str]:
     """The source-file URLs this event's readable snapshots render."""
     if event.version_no == 0:
         return set()
-    return {
-        url
-        for entry in versions.referenced_source_media(db, event.id)
-        if isinstance(url := entry.get("storage_url"), str)
-    }
+    return versions.storage_urls(versions.referenced_source_media(db, event.id))
 
 
 def _reject_foreign_proof_srcs(db: Session, event: Event, displayed_srcs: set[str]) -> None:
@@ -319,31 +299,18 @@ async def attach_evidence_and_commit(
 
     ``event`` must already be flushed (its id feeds the ``Media`` FK), and its sources already
     written (``services/events/sources.apply_sources``), whose dropped files arrive in
-    ``removed``.
-
-    ``proof_html`` is the sanitised incoming proof HTML, or ``None`` to keep ``event.proof``.
-    Its ``placeholder://`` srcs are matched to ``proof_files`` (see :func:`_match_proof_files`),
-    uploaded without derivatives, rewritten to public URLs, and get proof ``Media`` rows. A GIF
-    stores one PNG per frame, and its image repeats in the body once per frame.
-    Already-uploaded URLs pass through (the edit flow) and must name this event's own images
-    (see :func:`_reject_foreign_proof_srcs`). Proof rows the final body no longer shows, and no
-    readable snapshot displays, are deleted.
+    ``removed``. ``proof_html`` is the sanitised incoming proof HTML, or ``None`` to keep
+    ``event.proof``. A GIF stores one PNG per frame, and its image repeats in the body once per
+    frame.
 
     ``max_proof_images_per_event`` is checked twice before anything reaches S3:
     on ``proof_files`` alone (an over-ceiling batch should not cost a decode per
     file), then on what the final body displays, a GIF counting once per frame,
     which bounds the event.
 
-    Every file is validated up front so a bad file can't strand its siblings in S3. The commit
-    is inside the try, so a commit failure also sweeps the new objects. After the commit, the
-    dropped proof images and ``removed`` are swept where nothing names them any more
-    (:func:`sweep_unreferenced`), sparing what the final proof body displays.
-
-    Raises :class:`TooManyFilesError` (the proof body would display more than
-    ``max_proof_images_per_event`` images), :class:`InvalidFileError` (a non-image in
-    ``proof_files``, or a proof src naming another event's stored image),
-    :class:`ProofFilesMismatchError`, or :class:`EvidenceProcessingFailedError` (also for a GIF
-    past ``storage.MAX_GIF_FRAMES`` frames).
+    Every file is validated up front so a bad file can't strand its siblings in S3. After the
+    commit, the dropped proof images and ``removed`` are swept where nothing names them any
+    more, sparing what the final proof body displays.
     """
     if len(proof_files) > settings.max_proof_images_per_event:
         raise TooManyFilesError(

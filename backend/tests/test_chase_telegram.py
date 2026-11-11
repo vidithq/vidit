@@ -11,8 +11,8 @@ import httpx
 import pytest
 
 from app.services.tweet_ingest import retry
-from app.services.tweet_ingest.chase.telegram import chase
-from app.services.tweet_ingest.records import ChasedPost, ChaseResult
+from app.services.tweet_ingest.chase import chase_post
+from app.services.tweet_ingest.records import ChaseResult, SourcePost
 from app.services.tweet_ingest.urls import telegram_post_url
 
 # ── SSRF URL guard ────────────────────────────────────────────────────────
@@ -63,8 +63,8 @@ def test_disallowed_url_never_fetches() -> None:
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     try:
-        assert chase("https://evil.com/chan/12", client=client).outcome == "no_target"
-        assert chase("https://t.me/joinchat/AAA", client=client).outcome == "no_target"
+        assert chase_post("https://evil.com/chan/12", client=client).outcome == "no_target"
+        assert chase_post("https://t.me/joinchat/AAA", client=client).outcome == "no_target"
     finally:
         client.close()
 
@@ -89,7 +89,7 @@ def _raising_client(exc: httpx.HTTPError) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _fetch(html_text: str, *, status: int = 200) -> ChasedPost | None:
+def _fetch(html_text: str, *, status: int = 200) -> SourcePost | None:
     """The post one chase of a canned embed yields, or ``None``."""
     return _chase(html_text, status=status).post
 
@@ -97,7 +97,7 @@ def _fetch(html_text: str, *, status: int = 200) -> ChasedPost | None:
 def _chase(html_text: str, *, status: int = 200) -> ChaseResult:
     client = _client(html_text, status=status)
     try:
-        return chase("https://t.me/somechannel/12345", client=client)
+        return chase_post("https://t.me/somechannel/12345", client=client)
     finally:
         client.close()
 
@@ -310,7 +310,7 @@ def test_a_throttled_embed_is_retried_and_named_transient(retry_sleeps) -> None:
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     try:
-        result = chase("https://t.me/somechannel/12345", client=client)
+        result = chase_post("https://t.me/somechannel/12345", client=client)
     finally:
         client.close()
     assert result.post is None
@@ -322,7 +322,7 @@ def test_a_throttled_embed_is_retried_and_named_transient(retry_sleeps) -> None:
 def test_transport_error_yields_none(retry_sleeps) -> None:
     client = _raising_client(httpx.ConnectError("boom"))
     try:
-        result = chase("https://t.me/somechannel/12345", client=client)
+        result = chase_post("https://t.me/somechannel/12345", client=client)
     finally:
         client.close()
     assert result.post is None

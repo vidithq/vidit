@@ -4,7 +4,7 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from app.services.storage import S3Storage, StorageDeleteError
+from app.services.storage import S3Storage, StorageDeleteError, store
 from tests._fixtures import upload_file
 
 REGION = "us-east-1"
@@ -19,13 +19,13 @@ def s3_setup():
         yield client
 
 
-async def test_s3_storage_upload_puts_object_and_returns_s3_url(s3_setup):
+async def test_s3_storage_streams_a_file_and_returns_s3_url(s3_setup):
     import hashlib
 
     backend = S3Storage(bucket=BUCKET, region=REGION)
     file = upload_file("evidence.jpg", b"image-bytes", "image/jpeg")
 
-    result = await backend.upload(file, "uploads/abc/evidence.jpg")
+    result = await store(backend, file.file, "uploads/abc/evidence.jpg", "image/jpeg")
 
     assert result.url == f"https://{BUCKET}.s3.{REGION}.amazonaws.com/uploads/abc/evidence.jpg"
     body = s3_setup.get_object(Bucket=BUCKET, Key="uploads/abc/evidence.jpg")["Body"].read()
@@ -33,12 +33,12 @@ async def test_s3_storage_upload_puts_object_and_returns_s3_url(s3_setup):
     assert result.sha256 == hashlib.sha256(b"image-bytes").hexdigest()
 
 
-async def test_s3_storage_upload_bytes_puts_object_with_content_type(s3_setup):
+async def test_s3_storage_puts_bytes_with_content_type(s3_setup):
     import hashlib
 
     backend = S3Storage(bucket=BUCKET, region=REGION)
 
-    result = await backend.upload_bytes(b"raw", "seed/demo/x.png", "image/png")
+    result = await store(backend, b"raw", "seed/demo/x.png", "image/png")
 
     head = s3_setup.head_object(Bucket=BUCKET, Key="seed/demo/x.png")
     assert head["ContentType"] == "image/png"
@@ -102,8 +102,8 @@ def test_s3_storage_key_from_url_rejects_unknown_host(s3_setup):
 
 async def test_s3_storage_delete_many_removes_objects(s3_setup):
     backend = S3Storage(bucket=BUCKET, region=REGION)
-    await backend.upload_bytes(b"a", "proof/u/a.jpg", "image/jpeg")
-    await backend.upload_bytes(b"b", "proof/u/b.jpg", "image/jpeg")
+    await backend.put(b"a", "proof/u/a.jpg", "image/jpeg")
+    await backend.put(b"b", "proof/u/b.jpg", "image/jpeg")
 
     backend.delete_many(["proof/u/a.jpg", "proof/u/b.jpg"])
 

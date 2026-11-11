@@ -560,8 +560,8 @@ async def test_tagging_either_post_shares_the_parent_idempotency_key(db, linked_
     )
 
     assert outcome.created_event_count == 1
-    assert outcome.events_updated == 2
-    assert outcome.skipped == 0
+    assert outcome.outcomes["updated"] == 2
+    assert outcome.outcomes["skipped"] == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).count() == 1
     assert [p["text"].splitlines()[0].split(" · ")[0] for p in posted] == [
         "✅ 1 detection saved",
@@ -574,7 +574,7 @@ async def test_a_tag_under_a_foreign_parent_reads_only_the_tag(db, linked_owner)
     # Same-author guard: the foreign post is never read.
     outcome, _, posted, _ = await _run(db, [FOREIGN_PARENT_TAG_ID])
 
-    assert outcome.no_detection == 1
+    assert outcome.outcomes["no_detection"] == 1
     assert outcome.created_event_count == 0
     (payload,) = posted  # the linked author still gets the diagnosis
     assert payload["text"].startswith("❌ Nothing saved\n⚠ No coordinate in the post\n")
@@ -590,8 +590,8 @@ async def test_tombstoned_tagged_post_earns_a_reply_not_a_page(db, linked_owner,
 
     outcome, _, posted, _ = await _run(db, [TOMBSTONE_ID])
 
-    assert outcome.no_detection == 1
-    assert outcome.failed == 0
+    assert outcome.outcomes["no_detection"] == 1
+    assert outcome.outcomes["failed"] == 0
     assert outcome.created_event_count == 0
     assert captured == []
     (payload,) = posted
@@ -763,7 +763,7 @@ async def test_unlinked_handle_records_no_account_and_creates_nothing(db):
     # No account carries HANDLE: ledgered only.
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
-    assert outcome.no_account == 1
+    assert outcome.outcomes["no_account"] == 1
     assert outcome.created_event_count == 0
     assert outcome.replies_posted == 0
     assert posted == []
@@ -782,7 +782,7 @@ async def test_deactivated_linked_owner_records_no_account(db, linked_owner):
 
     outcome, _, posted, liked = await _run(db, [TAGGED_ID])
 
-    assert outcome.no_account == 1
+    assert outcome.outcomes["no_account"] == 1
     assert outcome.created_event_count == 0
     assert posted == []
     assert liked == []
@@ -801,7 +801,7 @@ async def test_a_persist_that_raised_on_every_detection_answers_the_analyst(
     monkeypatch.setattr(detection_mod, "_persist_one", _boom)
     outcome, _, posted, _ = await _run(db, [TAGGED_ID])
 
-    assert outcome.failed == 1
+    assert outcome.outcomes["failed"] == 1
     assert outcome.created_event_count == 0
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == TAGGED_ID).one()
     assert ledger.outcome == "failed"
@@ -816,7 +816,7 @@ async def test_non_conforming_mention_from_unlinked_author_records_silently(db):
     # No linked account: no failure reply, no like.
     outcome, _, posted, liked = await _run(db, [NO_COORD_ID])
 
-    assert outcome.no_detection == 1
+    assert outcome.outcomes["no_detection"] == 1
     assert outcome.created_event_count == 0
     assert posted == []
     assert liked == []
@@ -828,7 +828,7 @@ async def test_non_conforming_mention_from_unlinked_author_records_silently(db):
 async def test_non_conforming_mention_from_linked_author_gets_failure_reply(db, linked_owner):
     outcome, _, posted, liked = await _run(db, [NO_COORD_ID])
 
-    assert outcome.no_detection == 1
+    assert outcome.outcomes["no_detection"] == 1
     assert outcome.created_event_count == 0
     assert outcome.replies_posted == 1
     assert liked == []
@@ -848,7 +848,7 @@ async def test_failure_reply_loop_guard_on_replies_to_the_bot(db, linked_owner):
     # The tagged tweet is a reply to the bot; a failure reply would loop on every thanks.
     outcome, _, posted, liked = await _run(db, [NO_COORD_ID], reply_to={NO_COORD_ID: BOT_USER_ID})
 
-    assert outcome.no_detection == 1
+    assert outcome.outcomes["no_detection"] == 1
     assert posted == []
     assert liked == []
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == NO_COORD_ID).one()
@@ -907,8 +907,8 @@ async def test_a_reply_that_only_inherits_the_tag_is_not_a_mention(db, linked_ow
         fetched=fetched,
     )
 
-    assert outcome.inherited == 1
-    assert outcome.no_detection == 0
+    assert outcome.outcomes["inherited"] == 1
+    assert outcome.outcomes["no_detection"] == 0
     assert outcome.created_event_count == 0
     assert posted == []
     assert liked == []
@@ -928,7 +928,7 @@ async def test_a_tag_typed_under_someone_elses_post_is_processed(db, linked_owne
         parent_of={TYPED_UNDER_FOREIGN_ID: INHERITED_PARENT_ID},
     )
 
-    assert outcome.inherited == 0
+    assert outcome.outcomes["inherited"] == 0
     assert outcome.created_event_count == 1
     assert outcome.replies_posted == 1
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
@@ -947,7 +947,7 @@ async def test_a_bare_tag_under_an_untagged_parent_still_climbs(db, linked_owner
         db, [BARE_TAG_ID], parent_of={BARE_TAG_ID: TWO_POST_PARENT_ID}
     )
 
-    assert outcome.inherited == 0
+    assert outcome.outcomes["inherited"] == 0
     assert outcome.created_event_count == 1
     event = db.query(Event).filter(Event.owner_id == linked_owner.id).one()
     assert event.detection.from_url == f"https://x.com/{HANDLE}/status/{TWO_POST_PARENT_ID}"
@@ -962,8 +962,8 @@ async def test_a_climb_cut_by_a_parent_x_will_not_serve_says_so(db, linked_owner
         db, [CUT_BARE_TAG_ID], parent_of={CUT_BARE_TAG_ID: CUT_SOURCE_REPLY_ID}
     )
 
-    assert outcome.no_detection == 1
-    assert outcome.requests_opened == 0
+    assert outcome.outcomes["no_detection"] == 1
+    assert outcome.outcomes["requested"] == 0
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
     (payload,) = posted
     text = payload["text"]
@@ -979,7 +979,7 @@ async def test_a_follow_up_under_the_analysts_own_tagged_post_inherits(db, linke
         db, [OWN_FOLLOW_UP_ID], parent_of={OWN_FOLLOW_UP_ID: TAGGED_ID}
     )
 
-    assert outcome.inherited == 1
+    assert outcome.outcomes["inherited"] == 1
     assert outcome.created_event_count == 0
     assert posted == []
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == OWN_FOLLOW_UP_ID).one()
@@ -996,7 +996,7 @@ async def test_an_unreadable_parent_reads_as_an_inherited_tag(db, linked_owner):
         fetched=fetched,
     )
 
-    assert outcome.inherited == 1
+    assert outcome.outcomes["inherited"] == 1
     assert posted == []
     assert fetched == [UNREADABLE_PARENT_ID]
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == ORPHAN_REPLY_ID).one()
@@ -1052,7 +1052,7 @@ async def test_a_coordinate_less_mirror_post_opens_a_request(
     """
     outcome, _, posted, liked = await _run(db, [mention_id])
 
-    assert outcome.requests_opened == 1
+    assert outcome.outcomes["requested"] == 1
     assert outcome.created_event_count == 0
     assert outcome.replies_posted == 1
     assert liked == []
@@ -1102,8 +1102,8 @@ async def test_the_same_mirror_posted_twice_opens_one_request(db, linked_owner, 
     await _run(db, [MIRROR_TG_ID])
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_REPOST_ID])
 
-    assert outcome.requests_opened == 0
-    assert outcome.skipped == 1
+    assert outcome.outcomes["requested"] == 0
+    assert outcome.outcomes["skipped"] == 1
     assert posted == []
     assert len(db.query(Event).filter(Event.owner_id == linked_owner.id).all()) == 1
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_TG_REPOST_ID).one()
@@ -1119,7 +1119,7 @@ async def test_a_second_owner_mirroring_the_same_clip_is_told_it_is_a_duplicate(
     await _run(db, [MIRROR_TG_ID])
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_OTHER_ID], handle=OTHER_HANDLE)
 
-    assert outcome.requests_opened == 1
+    assert outcome.outcomes["requested"] == 1
     row = _request_row(db, other_linked_owner)
     assert row.status == STATUS_REQUESTED
     assert row.owner_id == other_linked_owner.id
@@ -1134,8 +1134,8 @@ async def test_a_request_shaped_post_from_an_unlinked_author_stays_silent(db, _s
     """A request-shaped tag from an unlinked handle is ledgered ``no_account`` and nothing else."""
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_ID])
 
-    assert outcome.no_account == 1
-    assert outcome.requests_opened == 0
+    assert outcome.outcomes["no_account"] == 1
+    assert outcome.outcomes["requested"] == 0
     assert posted == []
     assert db.query(User).filter(User.x_handle == HANDLE).first() is None
     ledger = db.query(BotMention).filter(BotMention.mention_post_id == MIRROR_TG_ID).one()
@@ -1151,8 +1151,8 @@ async def test_footage_that_will_not_fetch_falls_back_to_the_refusal(db, linked_
     monkeypatch.setattr("app.services.bot.fetch_cdn_media", _nothing)
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_ID])
 
-    assert outcome.requests_opened == 0
-    assert outcome.no_detection == 1
+    assert outcome.outcomes["requested"] == 0
+    assert outcome.outcomes["no_detection"] == 1
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
 
     (payload,) = posted
@@ -1165,7 +1165,7 @@ async def test_a_mirror_of_a_clip_on_another_host_opens_a_request(db, linked_own
     """The analyst's upload is the footage; nothing chased the video, so the reply warns of the missing source date."""
     outcome, _, posted, _ = await _run(db, [MIRROR_YT_ID])
 
-    assert outcome.requests_opened == 1
+    assert outcome.outcomes["requested"] == 1
     row = _request_row(db, linked_owner)
     assert row.status == STATUS_REQUESTED
     (source,) = row.sources
@@ -1190,8 +1190,8 @@ async def test_a_mirror_carrying_no_clip_of_its_own_is_told_to_attach_one(
     analyst hunting for a coordinate they did not write, so the reply names what to attach."""
     outcome, _, posted, _ = await _run(db, [MIRROR_YT_NO_VIDEO_ID])
 
-    assert outcome.requests_opened == 0
-    assert outcome.no_detection == 1
+    assert outcome.outcomes["requested"] == 0
+    assert outcome.outcomes["no_detection"] == 1
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
 
     (payload,) = posted
@@ -1210,8 +1210,8 @@ async def test_footage_the_intake_refuses_is_named_back(db, linked_owner, _stub_
     monkeypatch.setattr(settings, "max_video_size", 8)
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_ID])
 
-    assert outcome.requests_opened == 0
-    assert outcome.no_detection == 1
+    assert outcome.outcomes["requested"] == 0
+    assert outcome.outcomes["no_detection"] == 1
     assert db.query(Event).filter(Event.owner_id == linked_owner.id).all() == []
 
     (payload,) = posted
@@ -1234,7 +1234,7 @@ async def test_a_coordinate_bearing_re_tag_lands_a_detection_beside_the_request(
     outcome, _, _, _ = await _run(db, [MIRROR_TG_GEO_ID])
 
     assert outcome.created_event_count == 1
-    assert outcome.requests_opened == 0
+    assert outcome.outcomes["requested"] == 0
 
     rows = db.query(Event).filter(Event.owner_id == linked_owner.id).all()
     assert sorted(row.status for row in rows) == [STATUS_DETECTED, STATUS_REQUESTED]
@@ -1252,7 +1252,7 @@ async def test_the_reply_budget_skips_the_reply_and_keeps_the_request(
     monkeypatch.setattr(settings, "bot_max_replies_per_hour", 0)
     outcome, _, posted, _ = await _run(db, [MIRROR_TG_ID])
 
-    assert outcome.requests_opened == 1
+    assert outcome.outcomes["requested"] == 1
     assert outcome.replies_posted == 0
     assert posted == []
     assert _request_row(db, linked_owner).status == STATUS_REQUESTED
@@ -1393,7 +1393,7 @@ async def test_poll_flags_a_webhook_gap_for_every_fresh_verdict(db, linked_owner
                 db, syndication_client=syn, x_read_client=read, x_write_client=write
             )
 
-        assert outcome.failed == 1
+        assert outcome.outcomes["failed"] == 1
         assert any("webhook gap" in m and unknown_id in m for m, _ in captured)
     finally:
         db.query(BotMention).filter(BotMention.mention_post_id == unknown_id).delete(

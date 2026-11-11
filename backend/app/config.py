@@ -156,12 +156,14 @@ class Settings(BaseSettings):
         let any localhost page make credentialed reads against the API (writes
         stay blocked by the CSRF token). Only the exact shipped default is
         dropped: an operator-set pattern is always honoured."""
-        if self.cors_origin_regex != DEFAULT_CORS_ORIGIN_REGEX:
-            return self.cors_origin_regex
-        host = urlparse(self.database_url).hostname
-        if host is not None and host.lower() in LOCAL_DB_HOSTS:
+        if self.cors_origin_regex != DEFAULT_CORS_ORIGIN_REGEX or self.database_is_local:
             return self.cors_origin_regex
         return ""
+
+    @property
+    def database_is_local(self) -> bool:
+        host = urlparse(self.database_url).hostname
+        return host is not None and host.lower() in LOCAL_DB_HOSTS
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -177,24 +179,17 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def _validate_jwt_secret(self) -> "Settings":
-        if self.jwt_secret != DEFAULT_JWT_SECRET:
+    def _validate_deployment_auth(self) -> "Settings":
+        if self.database_is_local:
             return self
         host = urlparse(self.database_url).hostname
-        if host is None or host.lower() not in LOCAL_DB_HOSTS:
+        if self.jwt_secret == DEFAULT_JWT_SECRET:
             raise ValueError(
                 f"JWT_SECRET must be set to a non-default value when DATABASE_URL "
                 f"points to a non-local host (got {host!r}). Refusing to start with "
                 f"the placeholder secret."
             )
-        return self
-
-    @model_validator(mode="after")
-    def _validate_cookie_secure(self) -> "Settings":
-        if self.cookie_secure:
-            return self
-        host = urlparse(self.database_url).hostname
-        if host is None or host.lower() not in LOCAL_DB_HOSTS:
+        if not self.cookie_secure:
             raise ValueError(
                 f"COOKIE_SECURE must be true when DATABASE_URL points to a "
                 f"non-local host (got {host!r}). A non-local deployment must "

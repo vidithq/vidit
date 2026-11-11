@@ -17,26 +17,9 @@ from .errors import EventStateError
 
 
 def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> Event:
-    """Close an event (owner-only, any live state).
-
-    ``before_closed_status`` records the state the row left:
-
-    * ``requested``: a withdrawn call for help.
-    * ``detected``: a rejected machine detection. It stays in the located
-      catalog as an audit row and stays re-importable
-      (see ``detection._row_disposition``).
-    * ``geolocated``: a public retraction. The page stays readable with its
-      id, credits, archives and versions, and leaves the published set, feeds
-      and map (``event_filters.published_events`` and ``view_predicate``).
-
-    The row stays publicly visible in every case. Nothing reopens a closed
-    row, which is why the reason is required; the admin delete removes one.
-
-    Raises :class:`EventStateError` (409) on a ``closed`` row. Commits and
-    invalidates the points cache.
-    """
-    # Lock the row like ``save_version`` and ``update_request``, so a concurrent
-    # publish or version save lands wholly before or after this close.
+    """Close an event (owner-only, any live state). Nothing reopens a closed row."""
+    # Locked like ``save_version`` and ``update_request``, so a concurrent publish or
+    # version save lands wholly before or after this close.
     geo = lock_event(db, geo.id)
     ensure_owner(geo, current_user)
     if geo.status == STATUS_CLOSED:
@@ -47,6 +30,5 @@ def close(db: Session, *, geo: Event, current_user: User, close_reason: str) -> 
     geo.closed_at = datetime.now(UTC)
     geo.close_reason = close_reason
     db.commit()
-    db.refresh(geo)
     points_cache.invalidate()
     return geo

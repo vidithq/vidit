@@ -2,11 +2,9 @@
 
 Endpoint: ``https://cdn.syndication.twimg.com/tweet-result?id=<id>&token=<token>&lang=en``,
 the backend of the embeddable tweet widget. It is unauthenticated and
-unofficial, and X can change the schema anytime. The paste route surfaces
-failures as a `502`. The ``token`` algorithm is copied from Vercel's
-`react-tweet` (MIT), a deterministic hash X requires on every request.
-
-Fetch and payload reading only; URL meaning is :mod:`tweet_ingest.urls`.
+unofficial, and X can change the schema anytime. The ``token`` algorithm is
+copied from Vercel's `react-tweet` (MIT), a deterministic hash X requires on
+every request.
 
 Cache: in-memory TTL (1h) keyed by tweet ID, so a repeated "Import" click skips
 the round trip. Process-local; restarts wipe it.
@@ -19,6 +17,8 @@ import re
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -30,7 +30,7 @@ from .errors import (
     TweetUpstreamBusy,
     TweetUpstreamUnreachable,
 )
-from .records import MediaKind, ParsedMedia
+from .records import MediaKind, ParsedMedia, SourceLink, SourcePost
 from .retry import parse_retry_after, retrying
 from .urls import T_CO_HOST_RE, hostname, is_trusted_media_url
 
@@ -84,8 +84,47 @@ def _to_base36(value: float) -> str:
 
 
 _SYNDICATION_ENDPOINT = "https://cdn.syndication.twimg.com/tweet-result"
-_HTTP_TIMEOUT_S = 5.0
-_USER_AGENT = "vidit-tweet-import/1.0"
+HTTP_TIMEOUT_S = 5.0
+USER_AGENT = "vidit-tweet-import/1.0"
+
+
+@contextmanager
+def upstream_unreachable() -> Iterator[None]:
+    """Raise a transport failure inside the block as :class:`TweetUpstreamUnreachable`."""
+    try:
+        yield
+    except httpx.HTTPError as exc:
+        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
+
+
+def raise_if_busy(resp: httpx.Response, *, who: str = "upstream") -> None:
+    """Raise a 429 or a 5xx as :class:`TweetUpstreamBusy`, the failure the retry schedule retries."""
+    if resp.status_code == 429 or resp.status_code >= 500:
+        raise TweetUpstreamBusy(
+            f"{who} returned {resp.status_code}",
+            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
+        )
+
+
+def http_get(
+    url: str,
+    *,
+    headers: dict[str, str],
+    client: httpx.Client | None,
+    params: dict[str, str] | None = None,
+) -> httpx.Response:
+    """One GET of ``url``, any status but a transient one; redirects are never followed.
+
+    ``client`` is for tests (a ``MockTransport``).
+    """
+    with upstream_unreachable():
+        if client is None:
+            with httpx.Client(timeout=HTTP_TIMEOUT_S, follow_redirects=False) as own_client:
+                resp = own_client.get(url, params=params, headers=headers)
+        else:
+            resp = client.get(url, params=params, headers=headers)
+    raise_if_busy(resp)
+    return resp
 
 
 _CACHE_TTL_S = 3600.0  # 1h
@@ -126,7 +165,6 @@ def _cache_put(tweet_id: str, value: dict[str, Any]) -> None:
 
 
 def _cache_clear() -> None:
-    """Wipe the in-memory cache (tests)."""
     with _cache_lock:
         _cache.clear()
 
@@ -160,25 +198,10 @@ def _read_syndication(tweet_id: str, *, client: httpx.Client | None) -> dict[str
         "token": _syndication_token(tweet_id),
         "lang": "en",
     }
-    headers = {"User-Agent": _USER_AGENT, "Accept": "application/json"}
-
-    try:
-        if client is None:
-            with httpx.Client(timeout=_HTTP_TIMEOUT_S) as own_client:
-                resp = own_client.get(_SYNDICATION_ENDPOINT, params=params, headers=headers)
-        else:
-            resp = client.get(_SYNDICATION_ENDPOINT, params=params, headers=headers)
-    except httpx.HTTPError as exc:
-        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
-
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    resp = http_get(_SYNDICATION_ENDPOINT, headers=headers, client=client, params=params)
     if resp.status_code == 404:
         raise TweetNotAccessible("Tweet not accessible")
-    # Ahead of the catch-all: a 429 says "retry", not "the payload changed shape".
-    if resp.status_code == 429 or resp.status_code >= 500:
-        raise TweetUpstreamBusy(
-            f"upstream returned {resp.status_code}",
-            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
-        )
     if resp.status_code >= 300:
         raise TweetFetchFailed(f"upstream returned {resp.status_code}")
 
@@ -259,11 +282,6 @@ def media_entry(entry: Any) -> tuple[MediaKind, str] | None:
     return ("video", mp4) if mp4 is not None else None
 
 
-def _cdn_media(kind: MediaKind, url: str, origin: Literal["op", "quote"]) -> ParsedMedia:
-    """One media fetched straight from the X CDN."""
-    return ParsedMedia(kind=kind, remote_url=url, origin=origin)
-
-
 def extract_media(
     syndication: dict[str, Any],
     *,
@@ -276,7 +294,7 @@ def extract_media(
     """
     details = syndication.get("mediaDetails")
     media = [
-        _cdn_media(*read, origin)
+        ParsedMedia(kind=read[0], remote_url=read[1], origin=origin)
         for entry in (details if isinstance(details, list) else [])
         if (read := media_entry(entry)) is not None and is_trusted_media_url(read[1])
     ]
@@ -284,7 +302,7 @@ def extract_media(
         return media
     photos = syndication.get("photos")
     return [
-        _cdn_media("image", url, origin)
+        ParsedMedia(kind="image", remote_url=url, origin=origin)
         for entry in (photos if isinstance(photos, list) else [])
         if isinstance(entry, dict)
         and isinstance(url := entry.get("url"), str)
@@ -292,18 +310,17 @@ def extract_media(
     ]
 
 
-def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str | None]]:
-    """Every URL the post links (``entities.urls``) as ``(expanded_url, shortlink)``.
+def extract_source_links(syndication: dict[str, Any]) -> list[SourceLink]:
+    """Every URL the post links (``entities.urls``), in order and de-duplicated.
 
-    Host-blind (the resolution decides what can be a source). Uses
-    ``expanded_url``, never a bare ``t.co``, and de-dupes in order.
-    ``shortlink`` is the ``t.co`` token in the raw text, ``None`` when absent.
+    Host-blind (the resolution decides what can be a source). Reads
+    ``expanded_url``, never a bare ``t.co``.
     """
     entities = syndication.get("entities")
     urls = entities.get("urls") if isinstance(entities, dict) else None
     if not isinstance(urls, list):
         return []
-    out: list[tuple[str, str | None]] = []
+    out: list[SourceLink] = []
     seen: set[str] = set()
     for entry in urls:
         if not isinstance(entry, dict):
@@ -315,5 +332,28 @@ def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str | N
             continue
         seen.add(expanded)
         wrapper = entry.get("url")
-        out.append((expanded, wrapper if isinstance(wrapper, str) and wrapper else None))
+        out.append(
+            SourceLink(
+                url=expanded, shortlink=wrapper if isinstance(wrapper, str) and wrapper else None
+            )
+        )
     return out
+
+
+def source_post(body: dict[str, Any], status_id: str) -> SourcePost | None:
+    """The X post ``body`` carries as a source, ``None`` without an author (an authorless
+    post cannot be attributed). Its media is fetched as source footage (``origin="quote"``).
+    """
+    user = body.get("user")
+    author = user.get("screen_name") if isinstance(user, dict) else None
+    if not isinstance(author, str) or not author:
+        return None
+    text = body.get("text")
+    created_at = body.get("created_at")
+    return SourcePost.x_status(
+        status_id,
+        author,
+        text=text if isinstance(text, str) else "",
+        posted_at=created_at if isinstance(created_at, str) and created_at else None,
+        media=extract_media(body, origin="quote"),
+    )

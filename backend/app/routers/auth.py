@@ -7,7 +7,6 @@ from urllib.parse import urlencode
 from fastapi import (
     APIRouter,
     BackgroundTasks,
-    Depends,
     HTTPException,
     Request,
     Response,
@@ -16,7 +15,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.dependencies import get_current_user, get_db
+from app.dependencies import DB, CurrentUser
 from app.models.audit_log import (
     ACTION_FAILED_LOGIN,
     ACTION_LOGIN,
@@ -48,6 +47,7 @@ from app.services.auth import (
     decode_session_token_with_reason,
     hash_password,
     maybe_promote_admin,
+    session_subject,
     verify_password,
 )
 from app.services.auth_cookies import (
@@ -55,6 +55,7 @@ from app.services.auth_cookies import (
     clear_session_cookies,
     issue_session_cookies,
 )
+from app.services.email_layout import app_url
 
 logger = logging.getLogger(__name__)
 
@@ -63,43 +64,39 @@ router = APIRouter()
 
 
 def _session_or_ip_key(request: Request) -> str:
-    """Rate-limit key for cookie-authenticated endpoints.
-
-    Keys on the hashed session (never the raw JWT) so analysts behind one NAT
-    don't collide; falls back to :func:`rate_limit_key` without a cookie.
-    """
+    """Keys on the hashed session (never the raw JWT) so analysts behind one NAT don't collide."""
     cookie = request.cookies.get(SESSION_COOKIE)
     if cookie:
         return f"session:{hashlib.sha256(cookie.encode('utf-8')).hexdigest()[:16]}"
     return rate_limit_key(request)
 
 
-def _build_link(path: str, token: str) -> str:
-    base = settings.frontend_url.rstrip("/")
-    return f"{base}{path}?{urlencode({'token': token})}"
-
-
-def _send_password_changed_notification_best_effort(*, user_id: uuid.UUID, to: str) -> None:
-    """Send the change-password heads-up email but never raise.
-
-    The credential is already written, so a Resend outage must not fail the
-    rotation.
-    """
-    email.send_best_effort(
-        email.password_changed_email(to=to),
-        what=f"password changed notification for user_id={user_id}",
-    )
+def _token_link(path: str, token: str) -> str:
+    return app_url(f"{path}?{urlencode({'token': token})}")
 
 
 def _send_registration_confirmation_best_effort(*, to: str, raw_token: str) -> None:
-    """Send the confirmation email but never raise.
-
-    The pending row already exists; the user can request a resend.
-    """
-    link = _build_link("/confirm-registration", raw_token)
+    link = _token_link("/confirm-registration", raw_token)
     email.send_best_effort(
         email.registration_confirmation_email(to=to, link=link), what="registration confirmation"
     )
+
+
+def _sign_in(db: Session, response: Response, user: User, *, action: str) -> User:
+    # Sign-in is activity; the ``_touch_last_seen`` throttle would otherwise leave the row stale.
+    user.last_seen_at = datetime.now(UTC)
+    audit.log_auth_event(db, action=action, user_id=user.id)
+    db.commit()
+    issue_session_cookies(response, create_access_token(user))
+    return user
+
+
+def _set_password(db: Session, user: User, password: str, *, action: str) -> None:
+    user.password_hash = hash_password(password)
+    # Every JWT minted before now 401s at ``get_current_user``.
+    bump_token_version(user)
+    audit.log_auth_event(db, action=action, user_id=user.id)
+    db.commit()
 
 
 # ── Registration: pre-creation flow ──────────────────────────────────────
@@ -112,15 +109,9 @@ def _send_registration_confirmation_best_effort(*, to: str, raw_token: str) -> N
 )
 @limiter.limit("10/hour")
 def register(
-    request: Request,
-    body: RegisterRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    request: Request, body: RegisterRequest, background_tasks: BackgroundTasks, db: DB
 ) -> RegisterResponse:
-    """Stage a registration. No ``users`` row is created and no cookie is set.
-
-    The account is created at ``POST /auth/confirm-registration``.
-    """
+    """Stage a registration. No ``users`` row is created and no cookie is set."""
     mint = registration.create_pending_registration(
         db,
         email=body.email,
@@ -129,10 +120,7 @@ def register(
         invite_code=body.invite_code,
     )
 
-    audit.log_auth_event(
-        db,
-        action=ACTION_REGISTER_PENDING,
-    )
+    audit.log_auth_event(db, action=ACTION_REGISTER_PENDING)
     db.commit()
 
     # Sent off-thread like /forgot-password: an inline Resend round-trip would
@@ -148,40 +136,17 @@ def register(
 @router.post("/confirm-registration", response_model=UserRead)
 @limiter.limit("30/hour")
 def confirm_registration(
-    request: Request,
-    response: Response,
-    body: ConfirmRegistrationRequest,
-    db: Session = Depends(get_db),
+    request: Request, response: Response, body: ConfirmRegistrationRequest, db: DB
 ) -> User:
-    """Consume the confirmation token, create the user, sign them in.
-
-    Re-validates the invite and uniqueness in the same transaction as the user
-    insert (the pending row held the address until now).
-    """
+    """Consume the confirmation token, create the user, sign them in."""
     user = registration.confirm_pending_registration(db, body.token)
-
-    # Same stamp as login: this call signs the analyst in without a ``login`` event.
-    user.last_seen_at = datetime.now(UTC)
-    audit.log_auth_event(
-        db,
-        action=ACTION_REGISTER_CONFIRMED,
-        user_id=user.id,
-    )
-    db.commit()
-    db.refresh(user)
-
-    token = create_access_token(user)
-    issue_session_cookies(response, token)
-    return user
+    return _sign_in(db, response, user, action=ACTION_REGISTER_CONFIRMED)
 
 
 @router.post("/resend-confirmation", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("5/hour")
 def resend_confirmation(
-    request: Request,
-    body: ResendConfirmationRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    request: Request, body: ResendConfirmationRequest, background_tasks: BackgroundTasks, db: DB
 ) -> None:
     """Re-mint + re-send the confirmation email for an outstanding pending row.
 
@@ -191,11 +156,7 @@ def resend_confirmation(
 
     # Audit on both branches like ``/forgot-password``. ``user_id`` stays NULL
     # so the row leaks nothing about which addresses have a pending row.
-    audit.log_auth_event(
-        db,
-        action=ACTION_REGISTER_RESENT,
-        user_id=None,
-    )
+    audit.log_auth_event(db, action=ACTION_REGISTER_RESENT, user_id=None)
     db.commit()
     if mint is None:
         return
@@ -212,12 +173,7 @@ def resend_confirmation(
 
 @router.post("/login", response_model=UserRead)
 @limiter.limit("5/minute;30/hour")
-def login(
-    request: Request,
-    response: Response,
-    body: LoginRequest,
-    db: Session = Depends(get_db),
-):
+def login(request: Request, response: Response, body: LoginRequest, db: DB):
     user = db.query(User).filter(User.email == body.email).first()
     # Always run bcrypt (dummy hash for unknown or soft-deleted users) so every
     # failure branch takes the same time; otherwise response time is an oracle
@@ -241,27 +197,11 @@ def login(
 
     # Re-check ADMIN_EMAILS each login (the env var may be added after registration).
     maybe_promote_admin(user)
-    # Sign-in is activity; the ``_touch_last_seen`` throttle would otherwise
-    # leave the row stale.
-    user.last_seen_at = datetime.now(UTC)
-    audit.log_auth_event(
-        db,
-        action=ACTION_LOGIN,
-        user_id=user.id,
-    )
-    db.commit()
-
-    token = create_access_token(user)
-    issue_session_cookies(response, token)
-    return user
+    return _sign_in(db, response, user, action=ACTION_LOGIN)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db),
-) -> None:
+def logout(request: Request, response: Response, db: DB) -> None:
     # Idempotent, with or without a session cookie. Mutating the injected
     # ``response`` is what makes FastAPI send the Set-Cookie clear headers.
     # The cookie is decoded best-effort to attach a user_id to the audit row;
@@ -274,12 +214,7 @@ def logout(
             # WARN so a forged cookie is greppable (a missing cookie is silent).
             logger.warning("logout: rejected session cookie: %s", reason)
         else:
-            sub = payload.get("sub")
-            if isinstance(sub, str):
-                try:
-                    user_id = uuid.UUID(sub)
-                except ValueError:
-                    user_id = None
+            user_id = session_subject(payload)
 
     # Bump `token_version` so every outstanding session 401s at
     # `get_current_user`. Skipped for a bad or unknown cookie so a guessed sub
@@ -289,17 +224,13 @@ def logout(
         if user is not None and user.deleted_at is None:
             bump_token_version(user)
 
-    audit.log_auth_event(
-        db,
-        action=ACTION_LOGOUT,
-        user_id=user_id,
-    )
+    audit.log_auth_event(db, action=ACTION_LOGOUT, user_id=user_id)
     db.commit()
     clear_session_cookies(response)
 
 
 @router.get("/me", response_model=UserRead)
-def me(current_user: User = Depends(get_current_user)):
+def me(current_user: CurrentUser):
     return current_user
 
 
@@ -330,7 +261,7 @@ def _process_forgot_password(user_id, email_address: str) -> None:
         )
         db.commit()
 
-        link = _build_link("/reset-password", raw_token)
+        link = _token_link("/reset-password", raw_token)
         email.send_best_effort(
             email.password_reset_email(to=email_address, link=link),
             what=f"password reset for user_id={user.id}",
@@ -342,10 +273,7 @@ def _process_forgot_password(user_id, email_address: str) -> None:
 @router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("5/hour")
 def forgot_password(
-    request: Request,
-    body: ForgotPasswordRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    request: Request, body: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: DB
 ) -> None:
     """Always 204, and at the same time on every branch.
 
@@ -372,11 +300,7 @@ def forgot_password(
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("10/hour")
-def reset_password(
-    request: Request,
-    body: ResetPasswordRequest,
-    db: Session = Depends(get_db),
-) -> None:
+def reset_password(request: Request, body: ResetPasswordRequest, db: DB) -> None:
     row = password_reset_tokens.consume(db, body.token)
     if row is None:
         # One opaque error for every failure mode, so a probe can't tell
@@ -393,16 +317,8 @@ def reset_password(
         db.rollback()
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
-    user.password_hash = hash_password(body.new_password)
-    # A reset may mean the user never controlled the logged-in devices, so
-    # invalidate every outstanding JWT now, not at `exp`.
-    bump_token_version(user)
-    audit.log_auth_event(
-        db,
-        action=ACTION_PASSWORD_RESET_COMPLETED,
-        user_id=user.id,
-    )
-    db.commit()
+    # A reset may mean the user never controlled the logged-in devices.
+    _set_password(db, user, body.new_password, action=ACTION_PASSWORD_RESET_COMPLETED)
 
 
 @router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
@@ -412,41 +328,26 @@ def change_password(
     response: Response,
     body: ChangePasswordRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> None:
     """Authenticated password change. Requires the current password.
 
     Cookie-only auth means a stolen session can act as the user, so
     re-asserting the current password keeps a thief from locking the owner out.
-    Same hash + audit shape as ``/auth/reset-password`` so the flows are
-    indistinguishable.
-
-    The heads-up email is a best-effort background task after the commit.
     """
     if not verify_password(body.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
-    # Capture the address before the commit: ``expire_on_commit`` would make a
-    # later read lazy-reload, and this keeps the task closure free of ORM state.
-    user_id = current_user.id
-    notify_to = current_user.email
+    # Built before the commit: ``expire_on_commit`` would make a later read lazy-reload, and
+    # this keeps the task free of ORM state.
+    notice = email.password_changed_email(to=current_user.email)
+    what = f"password changed notification for user_id={current_user.id}"
 
-    current_user.password_hash = hash_password(body.new_password)
-    # Bumping `token_version` 401s every JWT minted before now, including this
-    # request's; the fresh cookie below keeps this device logged in.
-    bump_token_version(current_user)
-    audit.log_auth_event(
-        db,
-        action=ACTION_PASSWORD_CHANGED,
-        user_id=user_id,
-    )
-    db.commit()
+    _set_password(db, current_user, body.new_password, action=ACTION_PASSWORD_CHANGED)
+    # The bump voided this request's JWT too; the fresh cookie keeps this device logged in.
     db.refresh(current_user)
     issue_session_cookies(response, create_access_token(current_user))
 
-    background_tasks.add_task(
-        _send_password_changed_notification_best_effort,
-        user_id=user_id,
-        to=notify_to,
-    )
+    # The credential is already written, so a provider outage must not fail the rotation.
+    background_tasks.add_task(email.send_best_effort, notice, what=what)

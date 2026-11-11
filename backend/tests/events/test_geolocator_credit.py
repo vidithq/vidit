@@ -229,7 +229,7 @@ def test_the_per_actor_cap_spares_fan_out_and_is_not_spent_by_it(
     db.commit()
     geo = published_geo(db, author)
     for _ in range(2):
-        notifications_service._emit(
+        notifications_service.emit(
             db,
             recipient_id=second_user.id,
             kind="re_approve_requested",

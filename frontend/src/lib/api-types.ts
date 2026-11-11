@@ -37,10 +37,6 @@ export interface paths {
         /**
          * Hide Collection Admin
          * @description Withhold a collection from every read but an admin's.
-         *
-         *     Alias of ``PATCH /admin/collections/{id}/moderation`` with
-         *     ``{"hidden": true}``: same stamp, audit row and response. Idempotent; 404
-         *     on an unknown collection.
          */
         delete: operations["hide_collection_admin_api_v1_admin_collections__collection_id__delete"];
         options?: never;
@@ -64,14 +60,6 @@ export interface paths {
         /**
          * Set Collection Moderation
          * @description Set a collection's moderation state: withhold it, or restore it.
-         *
-         *     ``true`` stamps ``hidden_at`` and drops the shelf from every read but an
-         *     admin's; ``false`` clears it. The collection's events are untouched (each
-         *     is moderated on its own).
-         *
-         *     Counterpart of ``PATCH /admin/events/{id}/moderation`` and the undo of
-         *     ``DELETE /admin/collections/{id}``. Idempotent: an unchanged state writes
-         *     no audit row. 404 on an unknown collection.
          */
         patch: operations["set_collection_moderation_api_v1_admin_collections__collection_id__moderation_patch"];
         trace?: never;
@@ -85,9 +73,7 @@ export interface paths {
         };
         /**
          * Detection Stats
-         * @description Machine-extraction quality signal: reject-rate over machine detections
-         *     plus missing-piece counts on the pending queue. Read-only, no audit row.
-         *     See ``AdminDetectionStatsRead``.
+         * @description Machine-extraction quality: reject-rate and missing-piece counts on the pending queue.
          */
         get: operations["detection_stats_api_v1_admin_detection_stats_get"];
         put?: never;
@@ -110,9 +96,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Geolocation Admin
-         * @description Remove a geolocation. Default soft (sets `deleted_at`); `?hard=true` is
-         *     GDPR-grade erasure (row, media rows, S3 objects). Both paths invalidate
-         *     the points cache.
+         * @description Remove a geolocation: soft by default, `?hard=true` for GDPR erasure.
          */
         delete: operations["delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete"];
         options?: never;
@@ -136,10 +120,6 @@ export interface paths {
         /**
          * Set Event Moderation
          * @description Set an event's moderation state directly, with no report behind it.
-         *
-         *     Both fields are optional and independent; an omitted or unchanged field
-         *     writes no audit row. The one verb that also UNDOES a takedown. 404 for an
-         *     unknown or soft-deleted event.
          */
         patch: operations["set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch"];
         trace?: never;
@@ -156,15 +136,6 @@ export interface paths {
         /**
          * Redact Event Version
          * @description Blank one filed version of an event's history.
-         *
-         *     ``event_versions`` is append-only and version numbers are public
-         *     addresses, so a version the record must stop serving is blanked, not
-         *     removed: the snapshot and note go, while the row, ``version_no`` and
-         *     ``created_at`` stay and the version is listed as ``redacted``. A proof
-         *     image only it pointed at is deleted with it.
-         *
-         *     Idempotent: an already-redacted version writes no audit row. 404 for an
-         *     unknown or soft-deleted event, or a version the event does not carry.
          */
         post: operations["redact_event_version_api_v1_admin_events__geolocation_id__versions__version_no__redact_post"];
         delete?: never;
@@ -265,8 +236,7 @@ export interface paths {
         put?: never;
         /**
          * Maintenance Reap Pending Registrations
-         * @description Drop expired ``pending_registrations`` rows. The create path sweeps
-         *     inline, so this mostly clears abandoned signups.
+         * @description Drop expired ``pending_registrations`` rows.
          */
         post: operations["maintenance_reap_pending_registrations_api_v1_admin_maintenance_reap_pending_registrations_post"];
         delete?: never;
@@ -287,11 +257,6 @@ export interface paths {
         /**
          * Maintenance Send Completion Digests
          * @description Email every analyst holding unpublished detections.
-         *
-         *     One message per analyst: how many wait, and the link to their Detections
-         *     queue. One provider round-trip per analyst, capped at
-         *     ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a provider failure on
-         *     one is counted, not raised.
          */
         post: operations["maintenance_send_completion_digests_api_v1_admin_maintenance_send_completion_digests_post"];
         delete?: never;
@@ -394,10 +359,6 @@ export interface paths {
         /**
          * List Reports
          * @description The moderation queue: open reports first, newest first within each group.
-         *
-         *     Resolved rows stay (a report is never deleted), so the queue is also the
-         *     record of decisions. Offset-paged (``ContentReportList``), capped at 100
-         *     rows per page.
          */
         get: operations["list_reports_api_v1_admin_reports_get"];
         put?: never;
@@ -420,12 +381,6 @@ export interface paths {
         /**
          * Resolve Report
          * @description Close one report with a verdict, applying it to what the report names.
-         *
-         *     One route for event and collection reports: the service applies the
-         *     verdicts the target kind takes. 404 on an unknown report, 409 on one that
-         *     already has a verdict (never reopened) or a verdict the target cannot
-         *     take. The service owns the mutation and audit trail; the points cache is
-         *     dropped here, only when an event actually left the map.
          */
         post: operations["resolve_report_api_v1_admin_reports__report_id__resolve_post"];
         delete?: never;
@@ -450,10 +405,6 @@ export interface paths {
         /**
          * Set Site Moderation
          * @description Withhold a site from every read but an admin's, or restore it.
-         *
-         *     ``true`` stamps ``hidden_at``: the site leaves the map, the event links and the
-         *     suggestions. ``false`` clears it. Idempotent: an unchanged state writes no audit row.
-         *     404 on an unknown site.
          */
         patch: operations["set_site_moderation_api_v1_admin_sites__site_id__moderation_patch"];
         trace?: never;
@@ -467,8 +418,7 @@ export interface paths {
         };
         /**
          * Search Users
-         * @description Case-insensitive substring match on username or email. Empty query
-         *     returns [] so the search box doesn't preload the user table.
+         * @description Case-insensitive substring match on username or email.
          */
         get: operations["search_users_api_v1_admin_users_get"];
         put?: never;
@@ -491,11 +441,7 @@ export interface paths {
         post?: never;
         /**
          * Delete User Admin
-         * @description Remove a user account. Default soft (sets `users.deleted_at` and
-         *     cascade-soft-deletes their submissions); `?hard=true` is GDPR erasure
-         *     (drops the row, their geolocations and S3 objects, and hands a co-credited
-         *     event to its earliest live co-geolocator). Both paths invalidate the points
-         *     cache.
+         * @description Remove a user account: soft by default, `?hard=true` for GDPR erasure.
          */
         delete: operations["delete_user_admin_api_v1_admin_users__user_id__delete"];
         options?: never;
@@ -515,8 +461,7 @@ export interface paths {
         post?: never;
         /**
          * Purge Detected Events Admin
-         * @description Hard-delete every detection the user owns (rows + S3 media), keeping
-         *     the account and everything else. The broken-archive repair.
+         * @description Hard-delete every detection the user owns, keeping the account and everything else.
          */
         delete: operations["purge_detected_events_admin_api_v1_admin_users__user_id__detected_events_delete"];
         options?: never;
@@ -579,8 +524,7 @@ export interface paths {
         head?: never;
         /**
          * Set User X Handle
-         * @description Link or clear the X handle the bot attributes mentions to. The only
-         *     write path for ``users.x_handle``.
+         * @description Link or clear the X handle the bot attributes mentions to.
          */
         patch: operations["set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch"];
         trace?: never;
@@ -600,10 +544,6 @@ export interface paths {
          *
          *     Cookie-only auth means a stolen session can act as the user, so
          *     re-asserting the current password keeps a thief from locking the owner out.
-         *     Same hash + audit shape as ``/auth/reset-password`` so the flows are
-         *     indistinguishable.
-         *
-         *     The heads-up email is a best-effort background task after the commit.
          */
         post: operations["change_password_api_v1_auth_change_password_post"];
         delete?: never;
@@ -624,9 +564,6 @@ export interface paths {
         /**
          * Confirm Registration
          * @description Consume the confirmation token, create the user, sign them in.
-         *
-         *     Re-validates the invite and uniqueness in the same transaction as the user
-         *     insert (the pending row held the address until now).
          */
         post: operations["confirm_registration_api_v1_auth_confirm_registration_post"];
         delete?: never;
@@ -722,8 +659,6 @@ export interface paths {
         /**
          * Register
          * @description Stage a registration. No ``users`` row is created and no cookie is set.
-         *
-         *     The account is created at ``POST /auth/confirm-registration``.
          */
         post: operations["register_api_v1_auth_register_post"];
         delete?: never;
@@ -783,10 +718,6 @@ export interface paths {
         /**
          * Create Collection
          * @description Open a collection under a title and description, holding ``event_ids``.
-         *
-         *     Ids are optional. With them the create and the shelving are one act under
-         *     the refusals of ``PUT /collections/{id}/events/{event_id}``: a foreign or
-         *     ineligible id fails the whole create.
          */
         post: operations["create_collection_api_v1_collections_post"];
         delete?: never;
@@ -807,8 +738,6 @@ export interface paths {
         /**
          * Count Collectable Matches
          * @description Count your events a search lists in its Geolocations group that a collection can hold.
-         *
-         *     The set ``POST /collections/{id}/events`` shelves for the same ``match``.
          */
         post: operations["count_collectable_matches_api_v1_collections_collectable_count_post"];
         delete?: never;
@@ -829,9 +758,6 @@ export interface paths {
         /**
          * List Collectable Matches
          * @description Page through the events ``POST /collections/collectable-count`` counts, newest first.
-         *
-         *     The set ``POST /collections/{id}/events`` shelves for the same ``match``. Capped at 100
-         *     rows; follow the ``Link: rel="next"`` cursor.
          */
         post: operations["list_collectable_matches_api_v1_collections_collectable_events_post"];
         delete?: never;
@@ -850,17 +776,13 @@ export interface paths {
         /**
          * Get Collection
          * @description One collection's header: owner, title, item count and date range.
-         *     Public; a withheld or owner-deleted collection is a 404 for everyone but an admin.
          */
         get: operations["get_collection_api_v1_collections__collection_id__get"];
         put?: never;
         post?: never;
         /**
          * Delete Collection
-         * @description Drop your collection (owner only). Its events stay.
-         *
-         *     Under an open content report the collection is only withheld, from every
-         *     read but an admin's, until its last open report is resolved, which erases it.
+         * @description Drop your collection (owner only).
          */
         delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
         options?: never;
@@ -868,9 +790,6 @@ export interface paths {
         /**
          * Update Collection
          * @description Write your collection's title and description (owner only, else 403).
-         *
-         *     Both travel together. A refused description is a 400
-         *     (``invalid_description``), as on create.
          */
         patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;
@@ -885,20 +804,12 @@ export interface paths {
         /**
          * List Collection Events
          * @description The collection's items in the order the events happened.
-         *
-         *     Ordered ascending by ``occurred_date``, ``occurred_time``, ``created_at``, ``id``;
-         *     a missing date or hour sorts last. Capped at 100 rows; follow the
-         *     ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
          */
         get: operations["list_collection_events_api_v1_collections__collection_id__events_get"];
         put?: never;
         /**
          * Add Events To Collection
          * @description Put many of your events on one of your collections, by id or by search, in one write.
-         *
-         *     Idempotent: an event already on it is skipped and counted, as is one whose
-         *     state a collection does not show. 403 for someone else's collection or event,
-         *     422 ``too_many_events`` past 500 events.
          */
         post: operations["add_events_to_collection_api_v1_collections__collection_id__events_post"];
         delete?: never;
@@ -918,17 +829,12 @@ export interface paths {
         /**
          * Add Event To Collection
          * @description Put one of your events on one of your collections.
-         *
-         *     Idempotent (204, no second row). 403 when the collection or the event
-         *     belongs to someone else, 409 when the event's state is not one a collection
-         *     shows.
          */
         put: operations["add_event_to_collection_api_v1_collections__collection_id__events__event_id__put"];
         post?: never;
         /**
          * Remove Event From Collection
-         * @description Take one event off your collection (owner only). Idempotent (204); the
-         *     event is untouched.
+         * @description Take one event off your collection (owner only).
          */
         delete: operations["remove_event_from_collection_api_v1_collections__collection_id__events__event_id__delete"];
         options?: never;
@@ -948,10 +854,6 @@ export interface paths {
         /**
          * Report Collection
          * @description Report a collection for moderation.
-         *
-         *     Same gesture, body and per-IP limit as an event report: open to anonymous
-         *     viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
-         *     unknown, withheld, owner-deleted or orphaned collection answers 404.
          */
         post: operations["report_collection_api_v1_collections__collection_id__report_post"];
         delete?: never;
@@ -971,19 +873,9 @@ export interface paths {
          * List Conflicts
          * @description Return the conflicts referential, ongoing first then by name.
          *
-         *     The default returns every row: the submit picker needs the whole
-         *     referential (ended conflicts behind its toggle) so analysts can tag
-         *     archival footage. It is server-managed (Wikipedia sync, Wikidata seed,
-         *     operator rows); there is no create endpoint.
-         *
-         *     ``used=true`` is the map-filter view: only conflicts on at least one live
-         *     event. Mirrors the orphan filter on ``GET /tags``.
-         *
-         *     Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: the picker
-         *     filters the whole referential client-side. The daily sync's sanity band
-         *     bounds one parse pass, not the table (rows accumulate across passes), so
-         *     the ceiling bounds the response. A response landing on it is logged because
-         *     the payload can't say it was cut.
+         *     The daily sync's sanity band bounds one parse pass, not the table (rows accumulate across
+         *     passes), so ``REFERENTIAL_MAX_ROWS`` bounds the response. A response landing on it is logged
+         *     because the payload can't say it was cut.
          */
         get: operations["list_conflicts_api_v1_conflicts_get"];
         put?: never;
@@ -1005,26 +897,13 @@ export interface paths {
          * List Events
          * @description Cards for one lifecycle view, newest or oldest first.
          *
-         *     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-         *     queue. Two steps (ids, then full rows) so eager-loads can't inflate the
-         *     LIMIT count.
-         *
-         *     Capped at 100 rows however large ``limit`` is; the ``Link: rel="next"``
-         *     cursor is present exactly when a next page holds a row. Ordering is
-         *     ``created_at, id``, descending for ``sort=newest`` and ascending for
-         *     ``sort=oldest``. Both are total, so a walk can't duplicate or skip rows.
+         *     Two steps (ids, then full rows) so eager-loads can't inflate the LIMIT count.
          */
         get: operations["list_events_api_v1_events_get"];
         put?: never;
         /**
          * Create Event
          * @description Direct geolocate: create an event born ``geolocated``.
-         *
-         *     Parses the form into clean types; business rules and IO live in
-         *     ``services/events.create_with_evidence``. A pasted archived copy that is not
-         *     a snapshot is a 400 with the failing check's code and no event is created. Each
-         *     analyst in ``geolocator_invites`` is invited to share the credit, refused as
-         *     ``POST /events/{id}/geolocator-invites`` refuses, and a refusal creates no event.
          */
         post: operations["create_event_api_v1_events_post"];
         delete?: never;
@@ -1045,20 +924,6 @@ export interface paths {
         /**
          * Batch Complete Events
          * @description Publish the selected detections: ``detected`` → ``geolocated``.
-         *
-         *     JSON, not multipart: nothing uploads. The detections keep their imported
-         *     evidence; the call supplies the conflict set and one source kind per row,
-         *     which goes onto every source that carries a file.
-         *
-         *     Each row commits on its own: one that fails the floor (no proof image,
-         *     coordinates, direct or indirect source file, or a source without a URL)
-         *     rolls back alone, stays a
-         *     detection and gets its reason in ``rows[]``. Publishing credits the caller
-         *     as geolocator, as the single-row transition does.
-         *
-         *     Two conditions reject the whole call before anything publishes: no
-         *     resolvable conflict (400) and a targeted detection owned by another
-         *     analyst (403; rows are owner-only).
          */
         post: operations["batch_complete_events_api_v1_events_batch_complete_post"];
         delete?: never;
@@ -1077,22 +942,6 @@ export interface paths {
         /**
          * List Detections
          * @description The caller's ``detected`` events awaiting a publish, newest first.
-         *
-         *     Owner-scoped to ``current_user`` (never a URL username): the Detections
-         *     queue. Returns full ``EventRead`` so the queue shows evidence and what each
-         *     detection still lacks without a per-row round-trip. Ordered by
-         *     ``created_at DESC, id DESC``.
-         *
-         *     ``readiness`` narrows the queue server-side to detections that clear the
-         *     publish floor (``ready``), those that don't (``incomplete``), or ``all``;
-         *     anything else is a 422. The floor is :func:`detection_ready_predicate`, the
-         *     SQL projection of ``services/events/batch._publish_detection``. Filtering
-         *     here, not over the loaded page, because the queue pages at 10 rows over
-         *     imports of hundreds.
-         *
-         *     ``total`` counts the filtered set; ``ready_total`` and ``incomplete_total``
-         *     always count the whole queue. Offset-paged (``page`` / ``per_page``),
-         *     capped at 100 rows per page.
          */
         get: operations["list_detections_api_v1_events_detections_get"];
         put?: never;
@@ -1187,12 +1036,9 @@ export interface paths {
          * Import From Tweet
          * @description Import the caller's own X post as detections.
          *
-         *     Runs the same engine and write path as the bot and the archive backfill
-         *     (``detection.import_pasted_post``): one detection per coordinate, owned by
-         *     the caller, and a repeat paste overwrites the open detection.
-         *
-         *     Auth-only, own posts only (the author must be the handle linked to the
-         *     caller). Per-IP 30/minute bounds the shared syndication budget.
+         *     One detection per coordinate, owned by the caller; a repeat paste overwrites the open
+         *     detection. Own posts only: the author must be the handle linked to the caller. Per-IP
+         *     30/minute bounds the shared syndication budget.
          */
         post: operations["import_from_tweet_api_v1_events_import_from_tweet_post"];
         delete?: never;
@@ -1212,15 +1058,6 @@ export interface paths {
          * List Points
          * @description Return the map's events inside ``bbox`` as a compact array:
          *     ``[[id, lat, lng, occurred_date, added_date, detected], ...]``.
-         *
-         *     No joins, built for client-side clustering. ``bbox``
-         *     (``south,west,north,east``) is required and bounds the payload by area; a
-         *     missing or malformed value is a 422 (:func:`parse_bbox`). Live
-         *     ``geolocated`` / ``detected`` rows with a subject coordinate only. Dates
-         *     are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
-         *     ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
-         *     status string, to keep the payload small. Cached in memory for 60s per
-         *     snapped bbox + filter combination (:func:`snap_bbox`).
          */
         get: operations["list_points_api_v1_events_points_get"];
         put?: never;
@@ -1276,10 +1113,6 @@ export interface paths {
         /**
          * Create Event Request
          * @description Open a request (a ``requested`` event).
-         *
-         *     The footage the poster has must be on the row from the start: a direct or
-         *     indirect source with its file. Business rules and IO live in
-         *     ``services/events.create_request``.
          */
         post: operations["create_event_request_api_v1_events_requests_post"];
         delete?: never;
@@ -1415,14 +1248,6 @@ export interface paths {
         /**
          * Close Event
          * @description Close an event: withdraw, reject or retract it (owner-only).
-         *
-         *     One terminal verb for all three, in every live state;
-         *     ``before_closed_status`` records the state left and the required
-         *     ``close_reason`` is public. The row stays readable and drops off the map. A
-         *     closed detection stays in the located catalog and re-importable; closing a
-         *     ``geolocated`` row is a public retraction that keeps the page, versions,
-         *     credits and archives and leaves the published set for good. Already closed
-         *     409; soft-deleted 404; not the owner 403.
          */
         post: operations["close_event_api_v1_events__geolocation_id__close_post"];
         delete?: never;
@@ -1441,10 +1266,6 @@ export interface paths {
         /**
          * List Event Collections
          * @description Your collections, each saying whether this event is already on it.
-         *
-         *     The add-to-collection popover's read, for an analyst credited on the event
-         *     (its owner or a co-geolocator). Empty collections are listed. 404 on a
-         *     soft-deleted or withheld event, 403 when you are not credited.
          */
         get: operations["list_event_collections_api_v1_events__geolocation_id__collections_get"];
         put?: never;
@@ -1572,12 +1393,6 @@ export interface paths {
         /**
          * Report Event
          * @description Report an event for moderation.
-         *
-         *     Open to anonymous viewers: the people footage harms rarely hold an account
-         *     here. A signed-in reporter is recorded; an anonymous one leaves
-         *     ``reporter_id`` NULL. The per-IP limit is the abuse floor.
-         *
-         *     An unknown, soft-deleted or already-withheld event answers 404.
          */
         post: operations["report_event_api_v1_events__geolocation_id__report_post"];
         delete?: never;
@@ -1598,15 +1413,6 @@ export interface paths {
         /**
          * Update Event Request
          * @description Correct an open request, overwriting it in place (owner-only).
-         *
-         *     No version is filed: the request stays version 0 until it is published
-         *     through ``POST /events/{id}/versions``. The row keeps its id,
-         *     ``requested_at``, requester and provenance, and moves ``updated_at``.
-         *     Allowed only while ``requested`` (409 otherwise).
-         *
-         *     Every create-form field is editable, the coordinate guess included; the
-         *     publication floor stays unenforced until the publish, but the row must still
-         *     hold a direct or indirect source with its file. Soft-deleted rows read as 404.
          */
         post: operations["update_event_request_api_v1_events__geolocation_id__request_post"];
         delete?: never;
@@ -1631,9 +1437,6 @@ export interface paths {
         /**
          * Link Site
          * @description Link your published event to a site, or change the effect of its link (idempotent).
-         *
-         *     403 ``not_event_owner`` for anyone but the event's owner, 409 ``event_not_linkable`` for an
-         *     event that is not published, 404 ``site_not_found`` for an unknown or withheld site.
          */
         post: operations["link_site_api_v1_events__geolocation_id__site_links_post"];
         delete?: never;
@@ -1693,40 +1496,12 @@ export interface paths {
         /**
          * List Event Versions
          * @description The event's superseded versions, newest first.
-         *
-         *     Public: a corrected record is only auditable if corrections are readable.
-         *     The live row is the current version and is not listed. Visibility as
-         *     ``GET /{id}``.
-         *
-         *     Paged: ``services/versions.HISTORY_PAGE_SIZE`` rows by default, capped at
-         *     100, following the ``Link: rel="next"`` cursor. ``total`` is the whole
-         *     history.
          */
         get: operations["list_event_versions_api_v1_events__geolocation_id__versions_get"];
         put?: never;
         /**
          * Save Event Version
          * @description Publish a request or a detection, or correct a published event, filing a version.
-         *
-         *     The caller posts the whole form (title, coordinates, dates, proof + images, tags,
-         *     conflicts, sources). The pre-edit state is filed as an ``event_versions`` row and the
-         *     event moves to the next ``version_no``, in one transaction under a row lock.
-         *
-         *     On a ``requested`` or ``detected`` event (version 0) this publishes: the event becomes
-         *     ``geolocated`` at version 1 and the caller is credited as a geolocator. A detection is
-         *     owner-only (403 otherwise); a request is answerable by anyone, and the fulfiller becomes
-         *     its owner (``requested_by`` keeps the poster). A publish invites each analyst in
-         *     ``geolocator_invites`` to share the credit, refused as
-         *     ``POST /events/{id}/geolocator-invites`` refuses, and a refusal publishes nothing; a
-         *     ``geolocated`` event takes none (409). On a ``geolocated`` event it is an
-         *     owner-only correction, refused when nothing changed. Other statuses 409, and 409
-         *     ``version_mismatch`` when ``version_no`` names a version the event has moved past.
-         *
-         *     The sources are versioned too: the posted list replaces the stored one and the filed
-         *     version keeps what it supersedes, files included. The publication floor (coordinates, a
-         *     direct or indirect source with its file, a proof image, a conflict) is checked on the
-         *     post-edit state. A save whose only change is a link's archived copy is accepted even at
-         *     the version ceiling. Soft-deleted rows read as 404.
          */
         post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
         delete?: never;
@@ -1745,11 +1520,6 @@ export interface paths {
         /**
          * Get Event Version
          * @description One superseded version of an event, by its number.
-         *
-         *     The direct read behind the ``/vN`` address, visibility-gated like the list.
-         *     The live row's number answers 404 (read it at ``GET /{id}``), as does a
-         *     number the event never carried. A redacted version answers with its
-         *     blanked shape.
          */
         get: operations["get_event_version_api_v1_events__geolocation_id__versions__version_no__get"];
         put?: never;
@@ -1796,10 +1566,6 @@ export interface paths {
         /**
          * Get Feed Dates
          * @description The rows ``GET /feed`` walks for the request, counted per day on each date axis.
-         *
-         *     Takes the ``scope``, ``status`` and filters of ``GET /feed``. ``occurred_date`` ignores the
-         *     request's own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own
-         *     ``submitted_from`` / ``submitted_to``. ``total`` counts the rows under every filter.
          */
         get: operations["get_feed_dates_api_v1_feed_dates_get"];
         put?: never;
@@ -1820,8 +1586,6 @@ export interface paths {
         /**
          * List Notifications
          * @description Your notifications, newest first, capped at 100 per page (``Link: rel="next"`` cursor).
-         *
-         *     Listing marks nothing read; ``POST /notifications/read`` does.
          */
         get: operations["list_notifications_api_v1_notifications_get"];
         put?: never;
@@ -1882,19 +1646,12 @@ export interface paths {
         /**
          * Unsubscribe Email Page
          * @description Send a mail client that opens the ``List-Unsubscribe`` URL to the confirmation page.
-         *
-         *     Changes nothing: a mail scanner opens links too. The page posts the token back here once
-         *     the reader confirms.
          */
         get: operations["unsubscribe_email_page_api_v1_notifications_unsubscribe_get"];
         put?: never;
         /**
          * Unsubscribe Email
          * @description Turn off one kind of notification email, named by a signed token.
-         *
-         *     Needs no session: a mail client posts it one-click from the
-         *     ``List-Unsubscribe`` header. Idempotent; 400 on a token that does not
-         *     verify.
          */
         post: operations["unsubscribe_email_api_v1_notifications_unsubscribe_post"];
         delete?: never;
@@ -2171,15 +1928,6 @@ export interface paths {
         /**
          * Search
          * @description One ranked list of events, sites, collections, analysts and organizations.
-         *
-         *     An empty ``q`` with no active filter returns an empty list (keeps the still-typing hits
-         *     cheap); with an active filter it browses the filtered view, newest first.
-         *
-         *     ``type`` picks the hit types. ``status`` narrows the events. Every other filter narrows the
-         *     events, narrows the sites and collections it applies to, and leaves out the types it does
-         *     not apply to; see ``docs/api.md``.
-         *
-         *     When nothing matches, ``suggestion`` may hold a respelling of ``q`` that finds results.
          */
         get: operations["search_api_v1_search_get"];
         put?: never;
@@ -2199,8 +1947,7 @@ export interface paths {
         };
         /**
          * Suggest Authors
-         * @description Usernames for the author-filter typeahead. The filter is an exact match;
-         *     this is how a partial name becomes a handle. Empty ``q`` returns [].
+         * @description Usernames for the author-filter typeahead.
          */
         get: operations["suggest_authors_api_v1_search_authors_get"];
         put?: never;
@@ -2221,11 +1968,6 @@ export interface paths {
         /**
          * Search Dates
          * @description The events ``GET /search`` lists for the request, counted per day on each date axis.
-         *
-         *     Takes the query, types and filters of ``GET /search``. ``occurred_date`` ignores the request's
-         *     own ``occurred_date_from`` / ``occurred_date_to`` and ``submitted`` its own ``submitted_from``
-         *     / ``submitted_to``. ``total`` counts the events under every filter. An empty ``q`` with no
-         *     active filter counts every searchable event; a ``type`` without ``event`` counts nothing.
          */
         get: operations["search_dates_api_v1_search_dates_get"];
         put?: never;
@@ -2246,9 +1988,6 @@ export interface paths {
         /**
          * Search Sections
          * @description The top hits of each type, one section per type with a hit.
-         *
-         *     Takes the query, types and filters of ``GET /search``; each section is the first page that
-         *     ``GET /search`` returns for its type alone, its ``cursor`` included.
          */
         get: operations["search_sections_api_v1_search_sections_get"];
         put?: never;
@@ -2269,17 +2008,12 @@ export interface paths {
         /**
          * List Sites
          * @description The visible sites whose zone valid on ``as_of`` meets the box, newest site first.
-         *
-         *     A site with no contour on or before ``as_of`` is absent. Capped at 1000 sites.
          */
         get: operations["list_sites_api_v1_sites_get"];
         put?: never;
         /**
          * Create Site
          * @description Create a site with its first source, the contour that source shows and your linked events.
-         *
-         *     ``overlapping_sites`` lists the visible sites whose current zone shares area with the new
-         *     one, as a duplicate warning; it never blocks the create.
          */
         post: operations["create_site_api_v1_sites_post"];
         delete?: never;
@@ -2318,7 +2052,7 @@ export interface paths {
         /**
          * List Site Suggestions
          * @description Sites a point may link to, nearest first: those within ``margin_m`` metres of ``lat``,
-         *     ``lng``, or with ``q``, those whose name contains it. Capped at 20.
+         *     ``lng``, or with ``q``, those whose name contains it.
          */
         get: operations["list_site_suggestions_api_v1_sites_suggestions_get"];
         put?: never;
@@ -2339,7 +2073,6 @@ export interface paths {
         /**
          * Get Site
          * @description One site: current zone and last source, sources, contours and visible linked events.
-         *     A withheld site is a 404 for everyone but an admin.
          */
         get: operations["get_site_api_v1_sites__site_id__get"];
         put?: never;
@@ -2362,9 +2095,6 @@ export interface paths {
         /**
          * Report Site
          * @description Report a site for moderation.
-         *
-         *     Same gesture, body and per-IP limit as an event report: open to anonymous viewers. An
-         *     unknown or withheld site answers 404 ``site_not_found``.
          */
         post: operations["report_site_api_v1_sites__site_id__report_post"];
         delete?: never;
@@ -2384,8 +2114,7 @@ export interface paths {
         put?: never;
         /**
          * File Site Source
-         * @description File a dated satellite source on a site, filing a version. Any signed-in analyst; a site
-         *     source is never edited.
+         * @description File a dated satellite source on a site, filing a version.
          */
         post: operations["file_site_source_api_v1_sites__site_id__sources_post"];
         delete?: never;
@@ -2406,8 +2135,7 @@ export interface paths {
         post?: never;
         /**
          * Remove Site Source
-         * @description Remove a source you filed from the site, filing a version. 409 ``source_carries_contour``
-         *     while the source carries a contour.
+         * @description Remove a source you filed from the site, filing a version.
          */
         delete: operations["remove_site_source_api_v1_sites__site_id__sources__source_id__delete"];
         options?: never;
@@ -2424,20 +2152,14 @@ export interface paths {
         };
         /**
          * List Site Versions
-         * @description The site's superseded versions, newest first. The live state is not listed.
-         *
-         *     Paged like ``GET /events/{id}/versions``; ``total`` is the whole history.
+         * @description The site's superseded versions, newest first.
          */
         get: operations["list_site_versions_api_v1_sites__site_id__versions_get"];
         put?: never;
         /**
          * Save Site Version
          * @description Edit your site in one transaction: name, kind, added and removed sources, contour changes
-         *     and your linked events. Owner only.
-         *
-         *     A change to the record, the sources or a contour files the superseded state as one version;
-         *     a change to your links alone files none. 409 ``version_mismatch`` when ``version_no`` names
-         *     a version the site has moved past, 409 ``nothing_changed`` when nothing changes.
+         *     and your linked events.
          */
         post: operations["save_site_version_api_v1_sites__site_id__versions_post"];
         delete?: never;
@@ -2455,7 +2177,7 @@ export interface paths {
         };
         /**
          * Get Site Version
-         * @description One superseded version of a site, by its number. The live number answers 404.
+         * @description One superseded version of a site, by its number.
          */
         get: operations["get_site_version_api_v1_sites__site_id__versions__version_no__get"];
         put?: never;
@@ -2478,9 +2200,6 @@ export interface paths {
         /**
          * Check Source
          * @description The imagery provider each link opens, and the warnings the source would carry.
-         *
-         *     Writes nothing. The warnings are the ones ``SourceRead.warnings`` serves once the source is
-         *     saved, so the form shows them while the analyst types.
          */
         post: operations["check_source_api_v1_sources_check_post"];
         delete?: never;
@@ -2500,11 +2219,6 @@ export interface paths {
          * List Tags
          * @description Return tags referenced by at least one *live* event or one of its sources, so the map
          *     filter shows no chips that match nothing.
-         *
-         *     Bounded by ``REFERENTIAL_MAX_ROWS``, not the 100-row list cap: pickers and
-         *     the filter panel hydrate the vocabulary whole and filter client-side. A
-         *     response landing on the ceiling is logged because the payload can't say it
-         *     was cut.
          */
         get: operations["list_tags_api_v1_tags_get"];
         put?: never;
@@ -2532,9 +2246,6 @@ export interface paths {
         /**
          * List Suggested Tags
          * @description Return the tags a form offers in one click: your most used tags, then the platform's.
-         *
-         *     Ranked by uses on live events you own and their sources, then filled with the most used
-         *     live tags. The list never holds an orphan tag.
          */
         get: operations["list_suggested_tags_api_v1_tags_suggested_get"];
         put?: never;
@@ -2557,10 +2268,6 @@ export interface paths {
         /**
          * Create Upload
          * @description Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``.
-         *
-         *     The file is validated (type, size) and stored now, and each row expires
-         *     after 24 hours unless a write takes it. 400 on an invalid file, 429 past
-         *     the per-account ceiling of staged files.
          */
         post: operations["create_upload_api_v1_uploads_post"];
         delete?: never;
@@ -2625,10 +2332,6 @@ export interface paths {
         /**
          * Update My Profile
          * @description Edit your own profile.
-         *
-         *     ``exclude_unset`` separates omitted (column untouched) from null (clears
-         *     it; empty string normalises to ``None``). ``external_links`` replaces the
-         *     whole JSONB blob, since the form submits the entire panel.
          */
         patch: operations["update_my_profile_api_v1_users_me_patch"];
         trace?: never;
@@ -2644,10 +2347,6 @@ export interface paths {
         /**
          * Set My Avatar
          * @description Replace your profile picture with an uploaded image.
-         *
-         *     Accepts one JPEG / PNG / WebP, stores a stripped and resized JPEG on our
-         *     own media host (the only thing ``avatar_url`` points at), and deletes the
-         *     picture it replaced.
          */
         put: operations["set_my_avatar_api_v1_users_me_avatar_put"];
         post?: never;
@@ -2776,10 +2475,6 @@ export interface paths {
         /**
          * Get User Collections
          * @description One analyst's collections, newest first.
-         *
-         *     A collection with nothing showable is scaffolding, so readers get the
-         *     non-empty ones and the owner gets all. ``total`` is narrowed too; withheld
-         *     collections are in neither view. Offset-paged, capped at 100 per page.
          */
         get: operations["get_user_collections_api_v1_users__username__collections_get"];
         put?: never;
@@ -2799,14 +2494,7 @@ export interface paths {
         };
         /**
          * Get User Geolocations
-         * @description One analyst's published geolocations, newest event date first, capped
-         *     at 100 per page.
-         *
-         *     Published, not merely visible: :func:`published_events` narrows to
-         *     ``geolocated``, so detections and rejected rows are never credited. The
-         *     filter applies to the count and the rows, and ``geolocations_count`` on the
-         *     profile counts the same set. The wider live total is ``total_events`` on
-         *     :func:`get_user_stats`.
+         * @description One analyst's published geolocations, newest event date first.
          *
          *     Offset-paged: the profile orders by ``occurred_date``, which is nullable and
          *     editable, so it cannot key a cursor.
@@ -2831,14 +2519,12 @@ export interface paths {
         put?: never;
         /**
          * Follow User
-         * @description Follow another analyst. Idempotent (204, no extra row). Self-follow is
-         *     a 400 (``ck_follows_no_self_follow``).
+         * @description Follow another analyst.
          */
         post: operations["follow_user_api_v1_users__username__follow_post"];
         /**
          * Unfollow User
-         * @description Unfollow an analyst. Idempotent (204). A typo username is still a 404
-         *     so the UI can surface it.
+         * @description Unfollow an analyst.
          */
         delete: operations["unfollow_user_api_v1_users__username__follow_delete"];
         options?: never;
@@ -2875,8 +2561,7 @@ export interface paths {
         };
         /**
          * Get User Stats
-         * @description Aggregated shape-of-work stats for a public profile (anonymous, live
-         *     rows only; aggregation lives in ``services/user_stats``).
+         * @description Aggregated shape-of-work stats for a public profile.
          */
         get: operations["get_user_stats_api_v1_users__username__stats_get"];
         put?: never;
@@ -3017,11 +2702,7 @@ export interface components {
             /** Reject Rate */
             reject_rate: number;
         };
-        /**
-         * AdminEventDeleteResponse
-         * @description Response for `DELETE /admin/events/{id}`: which row, soft vs hard, what
-         *     was swept.
-         */
+        /** AdminEventDeleteResponse */
         AdminEventDeleteResponse: {
             /** Deleted At */
             deleted_at?: string | null;
@@ -3323,10 +3004,7 @@ export interface components {
             /** X Handle */
             x_handle: string | null;
         };
-        /**
-         * AdminUserRestoreResponse
-         * @description Response for `POST /admin/users/{id}/restore`.
-         */
+        /** AdminUserRestoreResponse */
         AdminUserRestoreResponse: {
             /** Restored Events */
             restored_events: number;
@@ -3788,11 +3466,8 @@ export interface components {
          * CollectionBulkAdd
          * @description Body of ``POST /collections/{id}/events``: exactly one of ``event_ids`` or ``match``.
          *
-         *     ``event_ids`` are de-duplicated in arrival order. ``match`` names the
-         *     caller's collectable events a search lists in its Geolocations group, less
-         *     ``exclude_event_ids`` (match only, de-duplicated). Past
-         *     :data:`MAX_CREATE_EVENTS` events, or exclusions, is a 422 ``too_many_events``,
-         *     raised by the service so every mode answers with the same code.
+         *     The service, not the schema, caps the events and the exclusions, so every mode answers
+         *     with the same ``too_many_events`` code.
          */
         CollectionBulkAdd: {
             /** Event Ids */
@@ -3822,15 +3497,8 @@ export interface components {
         };
         /**
          * CollectionCoverTile
-         * @description One tile of a collection's mosaic and what kind of file it is.
-         *
-         *     ``url`` is the media of one held item. ``kind``
-         *     (``models/media.MediaKind``) lets a client pick the element that renders
-         *     it (most source media are clips, and an ``<img>`` on one paints an empty
-         *     band). ``role`` (``models/media.MediaRole``) says whether the picture has
-         *     display derivatives: only a source's image does
-         *     (``services/storage.upload_source_file``); a ``proof`` image has no ``_hero`` /
-         *     ``_thumb`` sibling.
+         * @description One tile of a collection's mosaic. ``role`` says whether the picture has display
+         *     derivatives: a ``proof`` image has no ``_hero`` or ``_thumb`` sibling.
          */
         CollectionCoverTile: {
             /**
@@ -3849,12 +3517,6 @@ export interface components {
         /**
          * CollectionCreate
          * @description Body of ``POST /collections``: title, description and the opening events.
-         *
-         *     ``event_ids`` defaults empty. With ids, the create and shelving are one
-         *     transaction through the checks of ``PUT /collections/{id}/events/{event_id}``,
-         *     so an ineligible or foreign id fails the whole create. Ids are
-         *     de-duplicated in arrival order and capped at :data:`MAX_CREATE_EVENTS`;
-         *     items order by event date, so arrival order carries nothing else.
          */
         CollectionCreate: {
             /** Description */
@@ -3867,9 +3529,6 @@ export interface components {
         /**
          * CollectionList
          * @description One page of an analyst's collections, newest first.
-         *
-         *     Offset-paged like ``GET /users/{username}/events``; ``total`` counts the
-         *     collections the caller may see.
          */
         CollectionList: {
             /** Items */
@@ -3892,11 +3551,6 @@ export interface components {
         /**
          * CollectionMembershipRead
          * @description One of the caller's collections, and whether one event is already in it.
-         *
-         *     The add-to-collection popover's row, thinner than :class:`CollectionRead`
-         *     (no description or date range). ``event_count`` and ``cover`` use the same
-         *     predicate as the collection reads
-         *     (``services/event_filters.collectable_events``).
          */
         CollectionMembershipRead: {
             /** Cover */
@@ -3915,27 +3569,8 @@ export interface components {
         };
         /**
          * CollectionRead
-         * @description One collection as every read surface renders it.
-         *
-         *     ``title`` and ``description`` (sanitised HTML) are the owner's two
-         *     required fields. ``description_text`` is its plain-text projection
-         *     (``services/sanitize.html_text``) for surfaces without rich text
-         *     (card clamp, share card, snippet).
-         *
-         *     ``event_count``, ``first_date`` and ``last_date`` are computed at read time
-         *     over the events the collection may show
-         *     (``services/event_filters.collectable_events``), so a closed, taken-down or
-         *     soft-deleted row leaves them without a write. The dates are the min and max
-         *     ``occurred_date`` and are null for an empty or undated collection.
-         *
-         *     ``cover`` is the card's mosaic: zero to four tiles, computed at read time
-         *     (``services/collections.cover_tiles_for``), empty when no item has showable
-         *     media. Each tile carries url, kind and role together (see
-         *     :class:`CollectionCoverTile`).
-         *
-         *     ``tags`` is the union of the tags of the events the collection may show
-         *     and their sources, ordered by name (``services/collections.tags_for``), derived
-         *     and never stored; empty when nothing is tagged.
+         * @description One collection as every read surface renders it. The counts, dates, cover and tags are
+         *     computed at read time over the events the collection may show.
          */
         CollectionRead: {
             /** Cover */
@@ -3990,12 +3625,8 @@ export interface components {
         };
         /**
          * ConflictRead
-         * @description One row of the conflicts referential on the wire.
-         *
-         *     ``last_seen_at`` and ``source`` are sync internals and stay off it.
-         *     ``is_ongoing`` drives the picker default; ``start_year`` / ``end_year``
-         *     disambiguate same-named entries; ``tier`` (NULL when unknown) ranks ongoing
-         *     conflicts.
+         * @description One row of the conflicts referential. ``last_seen_at`` and ``origin`` are sync internals
+         *     and stay off it.
          */
         ConflictRead: {
             /** End Year */
@@ -4019,10 +3650,7 @@ export interface components {
         /**
          * ContentReportCreate
          * @description Body for ``POST /events/{id}/report``, ``POST /collections/{id}/report``
-         *     and ``POST /sites/{id}/report``.
-         *
-         *     ``reason`` is one of ``ContentReportReason``; ``details`` is optional. One
-         *     body for every target, the path names the thing.
+         *     and ``POST /sites/{id}/report``: the path names the target.
          */
         ContentReportCreate: {
             /** Details */
@@ -4035,10 +3663,8 @@ export interface components {
         };
         /**
          * ContentReportList
-         * @description One page of the admin report queue.
-         *
-         *     Offset-paged: the leading open/resolved group flag isn't a column a keyset
-         *     cursor can walk. ``total`` counts every report, resolved included.
+         * @description One page of the admin report queue. Offset-paged: the leading open or resolved group flag
+         *     is not a column a keyset cursor can walk.
          */
         ContentReportList: {
             /** Items */
@@ -4052,14 +3678,8 @@ export interface components {
         };
         /**
          * ContentReportRead
-         * @description One report as the admin queue reads it.
-         *
-         *     ``resolved_at`` / ``resolution`` / ``resolved_by_id`` are all NULL while open
-         *     and all set once resolved, so ``resolved_at is None`` is the open test.
-         *
-         *     A row names one target: ``event`` (with its ``event_id``), ``collection``
-         *     or ``site``. All are NULL once the target is destroyed (the orphan row,
-         *     closed only by ``dismissed``).
+         * @description One report as the admin queue reads it. A row names one target: ``event`` (with its
+         *     ``event_id``), ``collection`` or ``site``, all NULL once the target is destroyed.
          */
         ContentReportRead: {
             collection?: components["schemas"]["ReportedCollection"] | null;
@@ -4093,8 +3713,7 @@ export interface components {
         };
         /**
          * ContentReportUpdate
-         * @description Body for ``POST /admin/reports/{id}/resolve``: one of
-         *     ``ContentReportResolution``. No re-resolve (409).
+         * @description Body for ``POST /admin/reports/{id}/resolve``.
          */
         ContentReportUpdate: {
             /**
@@ -4736,10 +4355,7 @@ export interface components {
             /** X Handle */
             x_handle?: string | null;
         };
-        /**
-         * OrganizationInviteCreate
-         * @description Body for ``POST /organizations/{slug}/invites``.
-         */
+        /** OrganizationInviteCreate */
         OrganizationInviteCreate: {
             /** Username */
             username: string;
@@ -4782,10 +4398,7 @@ export interface components {
             role: "manager" | "member";
             user: components["schemas"]["AuthorRef"];
         };
-        /**
-         * OrganizationMemberUpdate
-         * @description Body for ``PATCH /organizations/{slug}/members/{username}``.
-         */
+        /** OrganizationMemberUpdate */
         OrganizationMemberUpdate: {
             /**
              * Role
@@ -5145,12 +4758,8 @@ export interface components {
         };
         /**
          * SearchMatch
-         * @description What one search names: ``q`` and the event filters of ``GET /search``, as a JSON body.
-         *
-         *     ``filters`` takes the query parameters' names and values
-         *     (``services/event_filters.EventFilters``), checked by ``EventFilters.validate``.
-         *     The ``match`` of :class:`CollectionBulkAdd` and the body of
-         *     ``POST /collections/collectable-count``.
+         * @description What one search names: ``q`` and the event filters of ``GET /search``, as a JSON body,
+         *     under the query parameters' names.
          */
         SearchMatch: {
             filters?: components["schemas"]["EventFilters"];
@@ -6088,19 +5697,11 @@ export interface components {
          * TweetImportRead
          * @description What one pasted post did, in the order the engine produced it.
          *
-         *     One coordinate makes one detection. ``created`` holds new detections,
-         *     ``updated`` open detections a re-import overwrote, ``skipped`` rows the
-         *     import must not touch (published, closed, withheld) or found up to date.
-         *
-         *     ``warnings`` is what review still has to answer, never a refusal. Three
-         *     codes say what the engine could not settle from the post
-         *     (``several_coordinates``, ``source_ambiguous``, ``source_missing``); four
-         *     say what the detections ended with (``source_footage_missing``,
-         *     ``source_fetch_failed``, ``source_date_unknown``, ``duplicate_media``;
-         *     fetch-failed may fill on a later import). ``reason`` is the refusal when no
-         *     detection was produced (``coords_missing``, ``coords_invalid``,
-         *     ``thread_truncated``), else null.
-         *     ``failed`` counts detections that raised mid-persist.
+         *     ``created`` holds new detections, ``updated`` open detections a re-import overwrote,
+         *     ``skipped`` rows the import must not touch (published, closed, withheld) or found up to
+         *     date. ``warnings`` is what review still has to answer, never a refusal. ``reason`` is the
+         *     refusal when no detection was produced, else null. ``failed`` counts detections that raised
+         *     mid-persist.
          */
         TweetImportRead: {
             /** Created */
@@ -6184,10 +5785,7 @@ export interface components {
             /** Storage Url */
             storage_url: string;
         };
-        /**
-         * UserInviteMintingUpdate
-         * @description Body for `PATCH /admin/users/{id}/invite-minting`.
-         */
+        /** UserInviteMintingUpdate */
         UserInviteMintingUpdate: {
             /** Enabled */
             enabled: boolean;
@@ -6381,10 +5979,7 @@ export interface components {
             /** Error Type */
             type: string;
         };
-        /**
-         * XHandleRead
-         * @description Body of ``GET /users/me/x-handle``.
-         */
+        /** XHandleRead */
         XHandleRead: {
             /** X Handle */
             x_handle: string | null;

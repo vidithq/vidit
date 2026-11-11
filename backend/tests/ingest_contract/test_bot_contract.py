@@ -1,6 +1,6 @@
 """Bot entry contract: every typology through the bot's per-mention detection.
 
-Runs ``bot.acquire_tagged_thread`` then ``resolve_threads`` offline (``MockTransport``,
+Runs ``tweet_ingest.acquire_thread`` then ``resolve_threads`` offline (``MockTransport``,
 no DB) against the shared typology fixtures. Expected values are ``expected.json``'s top
 level; a ``paths.bot`` block holds only the bot's failure reason or a ``skip``.
 A coordinate-less mirror post also yields the refusal plus one request draft (the second exit).
@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.bot import acquire_tagged_thread
-from app.services.tweet_ingest import Resolution, resolve_threads
+from app.services.tweet_ingest import Resolution, acquire_thread, resolve_threads
 
 from . import loader
 
@@ -25,7 +24,9 @@ def _resolution(typology: str) -> Resolution:
     """
     body = loader.load_body(typology)
     with loader.syndication_client(typology) as client:
-        acquired = acquire_tagged_thread(body["id_str"], body["user"]["screen_name"], client=client)
+        # Both mention producers lowercase the author handle.
+        handle = body["user"]["screen_name"].lower()
+        acquired = acquire_thread(body["id_str"], handle=handle, client=client)
     return resolve_threads([acquired.records], with_requests=True)
 
 

@@ -2,11 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import Row, Select, and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query as SAQuery
-from sqlalchemy.orm import Session, aliased, joinedload, selectinload
+from sqlalchemy.orm import Session, aliased
 
 from app.models.event import Event, feed_at
 from app.models.follow import Follow
@@ -22,29 +21,16 @@ from app.services.event_filters import (
     published_events,
     visible_events,
 )
-from app.services.geolocator_credit import CREDIT_LOAD
+from app.services.geolocator_credit import CARD_LOADS
 from app.services.pagination import keyset_before
-from app.services.thumbnails import thumbnail_loads
 
 FeedScope = Literal["following", "all"]
 
 
 def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
-    """Insert a follow row and notify the followed analyst. Idempotent: returns
-    ``False`` if the edge exists.
-
-    The router resolves the target user and rejects self-follows first.
-
-    Two requests can race past the existence check. The INSERT runs in a
-    SAVEPOINT so the loser's ``IntegrityError`` rolls back without poisoning
-    the outer transaction (same pattern as ``routers/tags``).
-    """
-    existing = (
-        db.query(Follow)
-        .filter(and_(Follow.follower_id == follower_id, Follow.followed_id == followed_user.id))
-        .first()
-    )
-    if existing is not None:
+    """Two requests can race past the existence check. The INSERT runs in a SAVEPOINT so the
+    loser's ``IntegrityError`` rolls back without poisoning the outer transaction."""
+    if is_following(db, follower_id=follower_id, followed_id=followed_user.id):
         return False
     try:
         with db.begin_nested():
@@ -56,12 +42,7 @@ def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> 
 
 
 def unfollow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
-    """Delete a follow row. Idempotent: returns ``False`` if no edge exists."""
-    follow = (
-        db.query(Follow)
-        .filter(and_(Follow.follower_id == follower_id, Follow.followed_id == followed_user.id))
-        .first()
-    )
+    follow = db.get(Follow, (follower_id, followed_user.id))
     if follow is None:
         return False
     db.delete(follow)
@@ -69,16 +50,10 @@ def unfollow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -
 
 
 def is_following(db: Session, *, follower_id: uuid.UUID, followed_id: uuid.UUID) -> bool:
-    return (
-        db.query(Follow)
-        .filter(and_(Follow.follower_id == follower_id, Follow.followed_id == followed_id))
-        .first()
-        is not None
-    )
+    return db.get(Follow, (follower_id, followed_id)) is not None
 
 
 def is_mutual_follow(db: Session, *, a_id: uuid.UUID, b_id: uuid.UUID) -> bool:
-    """Whether ``a`` and ``b`` follow each other."""
     return is_following(db, follower_id=a_id, followed_id=b_id) and is_following(
         db, follower_id=b_id, followed_id=a_id
     )
@@ -126,43 +101,23 @@ def get_feed(
     size: int,
     filters: EventFilters,
     cursor: tuple[datetime, uuid.UUID] | None = None,
-) -> list[Row[tuple[Event, float | None, float | None, datetime]]]:
-    """One window of the feed, newest first, over-fetched by one row for ``pagination.paged``.
+) -> list[Row[tuple[Event, datetime]]]:
+    """One window of the feed, over-fetched by one row for ``pagination.paged``.
 
-    The feed carries three kinds of row: a geolocation an analyst published
-    (:func:`services.event_filters.published_events`), a request an analyst has open
-    (:func:`services.event_filters.open_requests`) and a machine detection
-    (:func:`services.event_filters.live_detections`). An open request's owner is its requester:
-    ownership moves only when a request is geolocated. A detection's owner is the analyst whose
-    post was imported. ``scope="following"`` keeps the geolocations credited to an analyst
-    ``user_id`` follows (owner or co-geolocator) and the requests and detections such an analyst
-    owns; ``"all"`` keeps every row.
-
-    ``filters`` narrows the rows as on ``GET /events``
-    (:class:`services.event_filters.EventFilters`): its ``status`` keeps the named kinds.
-
-    Rows are ``(event, lat, lng, feed_at)`` ordered by ``feed_at DESC, id DESC``
-    (:func:`models.event.feed_at`), a total order over the three kinds, so a keyset walk
-    neither repeats nor skips a row.
+    An open request's owner is its requester: ownership moves only when a request is
+    geolocated. A detection's owner is the analyst whose post was imported. ``feed_at DESC, id
+    DESC`` is a total order over the three kinds, so a keyset walk neither repeats nor skips a
+    row.
     """
     key = feed_at()
     query = _feed_rows(
         db,
         Event,
-        ST_Y(Event.coords).label("lat"),
-        ST_X(Event.coords).label("lng"),
         key.label("feed_at"),
         user_id=user_id,
         scope=scope,
         filters=filters,
-    ).options(
-        # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
-        joinedload(Event.owner),
-        selectinload(Event.tags),
-        selectinload(Event.conflicts),
-        *thumbnail_loads(),
-        CREDIT_LOAD,
-    )
+    ).options(*CARD_LOADS)
     if cursor is not None:
         query = query.filter(keyset_before(key, Event.id, cursor))
     return query.order_by(key.desc(), Event.id.desc()).limit(size + 1).all()
@@ -217,25 +172,14 @@ def build_profile(db: Session, user: User, *, viewer: User | None) -> UserProfil
 
 def list_published_geolocations(
     db: Session, *, user_id: uuid.UUID, page: int, per_page: int
-) -> tuple[list[Row[tuple[Event, float | None, float | None]]], int]:
+) -> tuple[list[Event], int]:
     """One offset page of the published geolocations credited to ``user_id``, newest event date
     first, and their total."""
     credited_and_published = (published_credited_to([user_id]), *visible_events())
     total = db.query(Event).filter(*credited_and_published).count()
     rows = (
-        db.query(
-            Event,
-            ST_Y(Event.coords).label("lat"),
-            ST_X(Event.coords).label("lng"),
-        )
-        # Loader choice: see ``list_detections`` in ``routers/events/read.py``.
-        .options(
-            joinedload(Event.owner),
-            selectinload(Event.tags),
-            selectinload(Event.conflicts),
-            *thumbnail_loads(),
-            CREDIT_LOAD,
-        )
+        db.query(Event)
+        .options(*CARD_LOADS)
         .filter(*credited_and_published)
         # ``occurred_date`` is neither unique nor non-null, so ties could repeat or
         # skip rows across OFFSET pages; ``created_at, id`` makes it total.

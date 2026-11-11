@@ -48,7 +48,6 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if request.url.path in CSRF_EXEMPT_PATHS:
             return await call_next(request)
 
-        # No session cookie: anonymous, CSRF n/a (downstream auth 401s).
         if SESSION_COOKIE not in request.cookies:
             return await call_next(request)
 

@@ -16,9 +16,8 @@ import pytest
 from app.services.tweet_ingest import COORDS_MISSING, chase_thread, resolve_threads
 from app.services.tweet_ingest.records import (
     ParsedMedia,
-    QuotedTweet,
     SourceLink,
-    TelegramFootage,
+    SourcePost,
     TweetRecord,
 )
 from tests._fixtures import single_detection
@@ -108,7 +107,7 @@ _TG_URL = "https://t.me/somechannel/12345"
 
 
 def _telegram_record(
-    telegram: TelegramFootage | None,
+    telegram: SourcePost | None,
     *,
     extra_links: list[SourceLink] | None = None,
 ) -> TweetRecord:
@@ -120,12 +119,12 @@ def _telegram_record(
         created_at="2026-03-04T13:20:00+00:00",
         media=[ParsedMedia("image", "https://pbs.twimg.com/media/op.jpg", "op")],
         external_sources=[SourceLink(_TG_URL), *(extra_links or [])],
-        telegram=telegram,
+        linked=telegram,
     )
 
 
 def test_chased_telegram_fills_source_date_and_media() -> None:
-    footage = TelegramFootage(
+    footage = SourcePost(
         url=_TG_URL,
         posted_at="2026-03-04T09:00:00+00:00",
         media=[ParsedMedia("video", "https://cdn4.cdn-telegram.org/file/v.mp4", "quote")],
@@ -138,7 +137,7 @@ def test_chased_telegram_fills_source_date_and_media() -> None:
 
 
 def test_chased_telegram_sensitive_is_date_only() -> None:
-    footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
+    footage = SourcePost(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
     detection = single_detection([_telegram_record(footage)])
     assert detection.source_url == _TG_URL
     assert detection.source_posted_at == datetime.fromisoformat("2026-03-04T09:00:00+00:00")
@@ -148,7 +147,7 @@ def test_chased_telegram_sensitive_is_date_only() -> None:
 
 def test_two_candidate_links_leave_the_source_empty() -> None:
     """Two candidate links make the source ambiguous: even chased Telegram footage is dropped and the source stays empty for review."""
-    footage = TelegramFootage(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
+    footage = SourcePost(url=_TG_URL, posted_at="2026-03-04T09:00:00+00:00", media=[])
     record = _telegram_record(
         footage,
         extra_links=[SourceLink("https://www.youtube.com/watch?v=FAKEVIDEO01")],
@@ -172,11 +171,11 @@ def test_second_link_becomes_a_secondary_source() -> None:
         text=f"Geolocated 44.612300, 33.522100 airfield perimeter\nMirror: {_TG_URL}",
         created_at="2026-03-04T13:20:00+00:00",
         external_sources=[SourceLink(_TG_URL)],
-        quoted=QuotedTweet(
-            tweet_id="8400000000000000002",
-            handle="front_cam",
+        quoted=SourcePost.x_status(
+            status_id="8400000000000000002",
+            author="front_cam",
             text="raw footage",
-            created_at="2026-03-04T09:00:00+00:00",
+            posted_at="2026-03-04T09:00:00+00:00",
         ),
     )
     detection = single_detection([record])

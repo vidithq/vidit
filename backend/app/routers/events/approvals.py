@@ -1,15 +1,10 @@
-"""Approvals of one event: the per-version read and approving the live version.
-
-Business rules live in ``services/approvals``; this module maps its typed errors.
-"""
+"""Approvals of one event: the per-version read and approving the live version."""
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query, Request, status
 
-from app.dependencies import get_current_user, get_current_user_optional, get_db
-from app.models.user import User
+from app.dependencies import DB, CurrentUser, OptionalUser
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import resolve_live_event, resolve_readable_event
 from app.schemas.approval import ApprovalCreate, ApprovalList, ApprovalRead
@@ -24,6 +19,8 @@ router = APIRouter()
 def list_approvals(
     request: Request,
     geolocation_id: uuid.UUID,
+    db: DB,
+    current_user: OptionalUser,
     version_no: int | None = Query(
         None,
         ge=1,
@@ -31,8 +28,6 @@ def list_approvals(
     ),
     reviewer: str | None = Query(None, min_length=1, max_length=50),
     all_versions: bool = Query(False, description="Every version's approvals, oldest first"),
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
 ) -> ApprovalList:
     """The approvals of the event: one version's, every version's, or one analyst's across
     versions, and whether you may approve it."""
@@ -41,7 +36,7 @@ def list_approvals(
         version_no = geo.version_no
     rows = approvals.list_approvals(db, geo=geo, version_no=version_no, reviewer=reviewer)
     return ApprovalList(
-        items=[approvals.build_read(row, live_version=geo.version_no) for row in rows],
+        items=[approvals.build_read(row) for row in rows],
         viewer_can_approve=approvals.may_approve(db, geo=geo, user=current_user),
     )
 
@@ -56,8 +51,8 @@ def approve_event(
     request: Request,
     geolocation_id: uuid.UUID,
     body: ApprovalCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user: CurrentUser,
+    db: DB,
 ) -> ApprovalRead:
     """Approve the live version of a published geolocation you are not credited on, as
     yourself or, as one of its members, for an organization."""
@@ -72,4 +67,4 @@ def approve_event(
         version_no=body.version_no,
         organization=organization,
     )
-    return approvals.build_read(row, live_version=geo.version_no)
+    return approvals.build_read(row)

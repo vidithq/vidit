@@ -1,29 +1,10 @@
-"""Tweet ingestion: acquire a tweet / thread, extract structured data.
-
-* ``urls``: post URL parsing and writing, host predicates (pure string work).
-* ``records``: the normalized, source-agnostic acquire units.
-* ``extract``: pure text core (coordinates, title, proof body).
-* ``stitch``: recombine records into threads.
-* ``resolve``: the engine, threads to one ``Detection`` per coordinate, plus the
-  refusal reason and any ``RequestDraft``.
-* ``syndication``: X I/O (fetch, token, cache, payload mappers).
-* ``chase``: the one fetch a thread's declared source costs, one module per
-  technology behind a dispatcher.
-* ``acquire``: the live acquisition the bot and the paste both resolve.
-* ``archive``: the export reader (pure disk) and the CDN media fetchers.
-* ``retry``: the retry schedule every outgoing fetch shares.
-
-The pure modules (``records``, ``extract``, ``stitch``, ``resolve``) read no I/O
-module (``tests/test_ingest_boundaries.py``). ``errors`` is a leaf module.
-Callers import from this package.
-"""
+"""Tweet ingestion. Callers import from this package; ``docs/ingestion.md`` maps its modules."""
 
 from __future__ import annotations
 
 from .acquire import (
     AcquiredThread,
     acquire_from_post,
-    acquire_pasted_thread,
     acquire_thread,
     read_pasted_post,
     record_by_id,
@@ -42,7 +23,6 @@ from .extract import (
     ParsedCoord,
     clean_proof_text,
     derive_title,
-    extract_coords,
     tags_bot,
 )
 from .records import ParsedMedia, TweetRecord
@@ -101,7 +81,6 @@ __all__ = [
     "TweetRecord",
     "TweetUpstreamBusy",
     "acquire_from_post",
-    "acquire_pasted_thread",
     "acquire_thread",
     "archive_media_fetcher",
     "chase_post",
@@ -109,7 +88,6 @@ __all__ = [
     "clean_proof_text",
     "derive_title",
     "download_cdn_media",
-    "extract_coords",
     "fetch_cdn_media",
     "is_importable_link",
     "is_trusted_media_url",

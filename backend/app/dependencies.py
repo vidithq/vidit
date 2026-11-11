@@ -1,8 +1,9 @@
 import logging
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, Query, status
 from psycopg2.errors import LockNotAvailable
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.errors import CodedError
 from app.models.user import User
-from app.services.auth import decode_session_token
+from app.services.auth import decode_session_token, session_subject
 from app.services.auth_cookies import SESSION_COOKIE
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,9 @@ def get_db() -> Generator[Session]:
         db.close()
 
 
+DB = Annotated[Session, Depends(get_db)]
+
+
 def _touch_last_seen(db: Session, user: User) -> None:
     """Stamp ``users.last_seen_at``, at most once per ``LAST_SEEN_THROTTLE``.
 
@@ -62,7 +66,7 @@ def _touch_last_seen(db: Session, user: User) -> None:
 
 
 def get_current_user(
-    db: Session = Depends(get_db),
+    db: DB,
     session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> User:
     if not session_cookie:
@@ -75,9 +79,9 @@ def get_current_user(
     payload = decode_session_token(session_cookie)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    user_id = payload.get("sub")
+    user_id = session_subject(payload)
     token_version = payload.get("tv")
-    if not isinstance(user_id, str) or not isinstance(token_version, int):
+    if user_id is None or not isinstance(token_version, int):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     user = db.query(User).filter(User.id == user_id).first()
@@ -95,24 +99,26 @@ def get_current_user(
 
 
 def get_current_user_optional(
-    db: Session = Depends(get_db),
+    db: DB,
     session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> User | None:
-    """Like get_current_user but returns None instead of raising when
-    unauthenticated, for public reads that personalize (e.g. `is_following`)."""
+    """For public reads that personalize, such as ``is_following``."""
     try:
         return get_current_user(db, session_cookie)
     except HTTPException:
         return None
 
 
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Authorize admin-only routes.
+CurrentUser = Annotated[User, Depends(get_current_user)]
+OptionalUser = Annotated[User | None, Depends(get_current_user_optional)]
 
-    Built on ``get_current_user``, so a deactivated admin loses access at once.
-    Returns 403 (not 404) for non-admins: the route exists. The frontend learns
-    the role via ``GET /admin/me``, which answers every analyst.
-    """
+
+def require_admin(current_user: CurrentUser) -> User:
+    """403, not 404, for non-admins: the route exists."""
     if not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
+
+
+AdminUser = Annotated[User, Depends(require_admin)]
+Cursor = Annotated[str | None, Query(description="Opaque cursor from a Link: rel=next header")]

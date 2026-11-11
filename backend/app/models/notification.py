@@ -1,9 +1,8 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal, get_args
 
 from sqlalchemy import (
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -13,11 +12,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base, literal_check
+from app.database import Base, CreatedAt, literal_check
 
-# What happened, one value per emitter. Value-domain source of truth: the ORM
-# column, the Read schemas and the generated frontend type derive from it, and
-# ``ck_notifications_kind_valid`` pins it at the DB (keep the two in step).
 NotificationKind = Literal[
     "request_fulfilled",
     "new_follower",
@@ -34,10 +30,6 @@ NotificationKind = Literal[
     "organization_approval_removed",
 ]
 
-# The kind registry: every kind with its email default. The in-app feed always
-# shows every kind. Analysts store only overrides
-# (``user_preferences.notification_overrides``), so changing a default here
-# moves everyone who never touched that switch.
 NOTIFICATION_KINDS: dict[NotificationKind, bool] = {
     "request_fulfilled": True,
     "new_follower": False,
@@ -57,49 +49,22 @@ assert set(NOTIFICATION_KINDS) == set(get_args(NotificationKind))
 
 
 class Notification(Base):
-    """One thing that happened to ``user_id``, written in the transaction of the
-    action that caused it.
-
-    The typed FKs name what the row points at. Each one cascades, so a
-    hard-deleted target takes its rows with it. Soft deletes and takedowns are
-    filtered at read time (``services/notifications``), so a row hides when its
-    event or actor goes and shows again if that is undone.
-    """
-
     __tablename__ = "notifications"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    kind: Mapped[NotificationKind] = mapped_column(String(40), nullable=False)
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
-    )
-    event_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), nullable=True
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[NotificationKind] = mapped_column(String(40))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("organizations.id", ondelete="CASCADE")
     )
-    # The name of an organization the row speaks of once it is gone: an
-    # ``organization_approval_removed`` row outlives the organization it names.
-    organization_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # The approval an ``approval_received`` row reports: the row goes when the approval is
-    # deleted.
+    organization_name: Mapped[str | None] = mapped_column(String(100))
     approval_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("event_approvals.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("event_approvals.id", ondelete="CASCADE")
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    # Set when the feed shows this row to its recipient; NULL is unread. Per
-    # row rather than one marker: ``created_at`` is stamped at flush, and an
-    # action that commits late would otherwise land behind a marker already
-    # moved past it.
-    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[CreatedAt]
+    read_at: Mapped[datetime | None]
 
     actor = relationship("User", foreign_keys=[actor_id])
     event = relationship("Event")
@@ -108,15 +73,12 @@ class Notification(Base):
 
     __table_args__ = (
         literal_check("kind", NotificationKind, "ck_notifications_kind_valid"),
-        # The feed walk, newest first per recipient.
         Index("ix_notifications_user_created_at", "user_id", "created_at", "id"),
-        # The unread count.
         Index(
             "ix_notifications_user_unread",
             "user_id",
             postgresql_where=text("read_at IS NULL"),
         ),
-        # Back the cascades of a hard-deleted actor, event, organization or approval.
         Index("ix_notifications_actor_id", "actor_id"),
         Index("ix_notifications_event_id", "event_id"),
         Index("ix_notifications_organization_id", "organization_id"),
@@ -128,12 +90,6 @@ class Notification(Base):
     )
 
 
-# The background queue vocabulary. ``queued``: waiting for the worker.
-# ``running``: claimed, the provider call under way or its outcome unknown;
-# never retried, it turns ``failed`` once stale. ``done``: the provider accepted
-# it. ``failed``: refused past the attempt budget, or stale in ``running``.
-# ``skipped``: dropped unsent (the switch went off, the account went away, the
-# notification was hidden, or it aged out in the queue).
 NotificationDeliveryStatus = Literal["queued", "running", "done", "failed", "skipped"]
 
 
@@ -145,34 +101,16 @@ DeliveryOutcome = Literal["sent", "skipped", "refused", "unknown"]
 
 
 class NotificationDelivery(Base):
-    """One notification to email, written beside the ``Notification`` row when
-    the recipient's email switch for that kind is on.
-
-    The worker drains the queue (``services/notification_delivery``), so a send
-    happens after the action commits and never inside it.
-    """
-
     __tablename__ = "notification_deliveries"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    status: Mapped[NotificationDeliveryStatus] = mapped_column(
-        String(10), nullable=False, default="queued"
-    )
-    # Provider refusals so far; the row fails at ``MAX_ATTEMPTS``.
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
-        nullable=False,
-    )
-    # The latest claim: the stale clock while ``running``, the retry clock once
-    # a refusal puts the row back in ``queued``.
-    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # SET NULL: a deleted notification leaves its sent rows behind for the daily
-    # email cap (``services/notifications.delete`` removes the unsent ones).
+    status: Mapped[NotificationDeliveryStatus] = mapped_column(String(10), default="queued")
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[CreatedAt]
+    claimed_at: Mapped[datetime | None]
+    sent_at: Mapped[datetime | None]
     notification_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("notifications.id", ondelete="SET NULL")
     )
 
     notification = relationship("Notification")
@@ -182,13 +120,11 @@ class NotificationDelivery(Base):
             "status", NotificationDeliveryStatus, "ck_notification_deliveries_status_valid"
         ),
         UniqueConstraint("notification_id", name="uq_notification_deliveries_notification_id"),
-        # The claim walk, oldest first.
         Index(
             "ix_notification_deliveries_queued",
             "created_at",
             postgresql_where="status = 'queued'",
         ),
-        # The daily cap counts.
         Index(
             "ix_notification_deliveries_sent_at",
             "sent_at",

@@ -1,17 +1,15 @@
 """The ``/collections`` endpoints: one analyst's curated sets of their own events.
 
-Rules live in ``services/collections``; this module resolves the row, hands
-the verb its arguments and maps a typed service error to its status.
+Rules live in ``services/collections``; this module resolves the row and hands
+the verb its arguments.
 """
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, BackgroundTasks, Query, Request, Response, status
 
-from app.dependencies import get_current_user, get_current_user_optional, get_db
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.content_report import ContentReport
-from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list
 from app.schemas.collection import (
@@ -45,17 +43,9 @@ router = APIRouter()
 @router.post("", response_model=CollectionRead, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 def create_collection(
-    request: Request,
-    body: CollectionCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, body: CollectionCreate, db: DB, current_user: CurrentUser
 ) -> CollectionRead:
-    """Open a collection under a title and description, holding ``event_ids``.
-
-    Ids are optional. With them the create and the shelving are one act under
-    the refusals of ``PUT /collections/{id}/events/{event_id}``: a foreign or
-    ineligible id fails the whole create.
-    """
+    """Open a collection under a title and description, holding ``event_ids``."""
     collection = collections_service.create_collection(
         db,
         owner=current_user,
@@ -70,15 +60,9 @@ def create_collection(
 @router.post("/collectable-count", response_model=CollectableCount)
 @limiter.limit("60/minute")
 def count_collectable_matches(
-    request: Request,
-    body: SearchMatch,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, body: SearchMatch, db: DB, current_user: CurrentUser
 ) -> CollectableCount:
-    """Count your events a search lists in its Geolocations group that a collection can hold.
-
-    The set ``POST /collections/{id}/events`` shelves for the same ``match``.
-    """
+    """Count your events a search lists in its Geolocations group that a collection can hold."""
     return CollectableCount(total=collections_bulk.count_matches(db, match=body, user=current_user))
 
 
@@ -89,26 +73,22 @@ def list_collectable_matches(
     request: Request,
     response: Response,
     body: SearchMatch,
+    db: DB,
+    current_user: CurrentUser,
     limit: int = Query(20, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    cursor: Cursor = None,
 ) -> list[EventList]:
-    """Page through the events ``POST /collections/collectable-count`` counts, newest first.
-
-    The set ``POST /collections/{id}/events`` shelves for the same ``match``. Capped at 100
-    rows; follow the ``Link: rel="next"`` cursor.
-    """
+    """Page through the events ``POST /collections/collectable-count`` counts, newest first."""
     size = page_size(limit)
     window = collections_bulk.list_matches(
         db,
         match=body,
         user=current_user,
         limit=size,
-        after=decode_cursor(cursor) if cursor is not None else None,
+        after=decode_cursor(cursor),
     )
-    rows = paged(request, response, window, size, lambda r: encode_cursor(r[0].created_at, r[0].id))
-    return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
+    return [build_event_list(event) for event in rows]
 
 
 @router.post(
@@ -122,22 +102,16 @@ def report_collection(
     collection_id: uuid.UUID,
     body: ContentReportCreate,
     background_tasks: BackgroundTasks,
-    current_user: User | None = Depends(get_current_user_optional),
-    db: Session = Depends(get_db),
+    current_user: OptionalUser,
+    db: DB,
 ) -> ContentReport:
-    """Report a collection for moderation.
-
-    Same gesture, body and per-IP limit as an event report: open to anonymous
-    viewers (``reporter_id`` NULL), a signed-in reporter is recorded. An
-    unknown, withheld, owner-deleted or orphaned collection answers 404.
-    """
-    return reports_service.create_collection_report(
+    """Report a collection for moderation."""
+    return reports_service.create_report(
         db,
-        collection_id=collection_id,
-        reason=body.reason,
-        details=body.details,
-        reporter_id=current_user.id if current_user is not None else None,
-        reporter_username=current_user.username if current_user is not None else None,
+        kind="collection",
+        target_id=collection_id,
+        body=body,
+        reporter=current_user,
         background_tasks=background_tasks,
     )
 
@@ -146,13 +120,9 @@ def report_collection(
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def get_collection(
-    request: Request,
-    collection_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    request: Request, collection_id: uuid.UUID, db: DB, current_user: OptionalUser
 ) -> CollectionRead:
-    """One collection's header: owner, title, item count and date range.
-    Public; a withheld or owner-deleted collection is a 404 for everyone but an admin."""
+    """One collection's header: owner, title, item count and date range."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -165,14 +135,10 @@ def update_collection(
     request: Request,
     collection_id: uuid.UUID,
     body: CollectionUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> CollectionRead:
-    """Write your collection's title and description (owner only, else 403).
-
-    Both travel together. A refused description is a 400
-    (``invalid_description``), as on create.
-    """
+    """Write your collection's title and description (owner only, else 403)."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -189,16 +155,9 @@ def update_collection(
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
 def delete_collection(
-    request: Request,
-    collection_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    request: Request, collection_id: uuid.UUID, db: DB, current_user: CurrentUser
 ) -> None:
-    """Drop your collection (owner only). Its events stay.
-
-    Under an open content report the collection is only withheld, from every
-    read but an admin's, until its last open report is resolved, which erases it.
-    """
+    """Drop your collection (owner only)."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -212,17 +171,12 @@ def list_collection_events(
     request: Request,
     response: Response,
     collection_id: uuid.UUID,
+    db: DB,
+    current_user: OptionalUser,
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
+    cursor: Cursor = None,
 ):
-    """The collection's items in the order the events happened.
-
-    Ordered ascending by ``occurred_date``, ``occurred_time``, ``created_at``, ``id``;
-    a missing date or hour sorts last. Capped at 100 rows; follow the
-    ``Link: rel="next"`` cursor, sent exactly when the next page holds a row.
-    """
+    """The collection's items in the order the events happened."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -231,16 +185,16 @@ def list_collection_events(
         db,
         collection_id=collection.id,
         limit=size,
-        cursor=decode_chronological_cursor(cursor) if cursor is not None else None,
+        cursor=decode_chronological_cursor(cursor),
     )
     rows = paged(
         request,
         response,
         window,
         size,
-        lambda r: encode_chronological_cursor(*collections_service.cursor_values(r[0])),
+        lambda r: encode_chronological_cursor(*collections_service.cursor_values(r)),
     )
-    return [build_event_list(event, lat=lat, lng=lng) for event, lat, lng in rows]
+    return [build_event_list(event) for event in rows]
 
 
 @router.post("/{collection_id}/events", response_model=CollectionBulkAddResult)
@@ -249,15 +203,10 @@ def add_events_to_collection(
     request: Request,
     collection_id: uuid.UUID,
     body: CollectionBulkAdd,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> CollectionBulkAddResult:
-    """Put many of your events on one of your collections, by id or by search, in one write.
-
-    Idempotent: an event already on it is skipped and counted, as is one whose
-    state a collection does not show. 403 for someone else's collection or event,
-    422 ``too_many_events`` past 500 events.
-    """
+    """Put many of your events on one of your collections, by id or by search, in one write."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -284,15 +233,10 @@ def add_event_to_collection(
     request: Request,
     collection_id: uuid.UUID,
     event_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> None:
-    """Put one of your events on one of your collections.
-
-    Idempotent (204, no second row). 403 when the collection or the event
-    belongs to someone else, 409 when the event's state is not one a collection
-    shows.
-    """
+    """Put one of your events on one of your collections."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )
@@ -305,11 +249,10 @@ def remove_event_from_collection(
     request: Request,
     collection_id: uuid.UUID,
     event_id: uuid.UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> None:
-    """Take one event off your collection (owner only). Idempotent (204); the
-    event is untouched."""
+    """Take one event off your collection (owner only)."""
     collection = collections_service.resolve_collection(
         db, collection_id=collection_id, viewer=current_user
     )

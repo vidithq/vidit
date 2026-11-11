@@ -10,12 +10,10 @@ zip never transits the API, so the size limit is a storage-side guard
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException, Request, status
 
-from app.dependencies import get_current_user, get_db
+from app.dependencies import DB, CurrentUser
 from app.models.archive_import_job import ArchiveImportJob
-from app.models.user import User
 from app.ratelimit import limiter
 from app.schemas.event import (
     ArchiveImportEnqueue,
@@ -33,10 +31,7 @@ router = APIRouter()
 
 @router.post("/import-archive/presign", response_model=ArchiveImportPresignRead)
 @limiter.limit("10/hour")
-def presign_import_archive(
-    request: Request,
-    current_user: User = Depends(get_current_user),
-):
+def presign_import_archive(request: Request, current_user: CurrentUser):
     """Mint a staging key + presigned upload for the caller's stripped zip.
 
     No content validation: the worker re-runs the hardened allowlist. The key
@@ -57,12 +52,7 @@ def presign_import_archive(
     status_code=status.HTTP_202_ACCEPTED,
 )
 @limiter.limit("10/hour")
-def import_archive(
-    request: Request,
-    body: ArchiveImportEnqueue,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def import_archive(request: Request, body: ArchiveImportEnqueue, current_user: CurrentUser, db: DB):
     """Enqueue the caller's staged X "Download your data" zip for the worker.
 
     The upload is the consent: every row lands ``detected``, attributed to the
@@ -85,12 +75,7 @@ def import_archive(
 
 @router.get("/import-archive/{job_id}", response_model=ArchiveImportJobRead)
 @limiter.limit("60/minute")
-def get_import_job(
-    request: Request,
-    job_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def get_import_job(request: Request, job_id: uuid.UUID, current_user: CurrentUser, db: DB):
     """The caller's import job, polled until terminal. Someone else's job id
     reads as 404, same as unknown."""
     job = db.get(ArchiveImportJob, job_id)

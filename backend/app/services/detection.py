@@ -1,14 +1,8 @@
-"""Persist machine detections: a ``Resolution``'s detections become ``detected`` rows.
+"""Persist machine detections: the one write path every entry shares.
 
-:func:`persist_detections` is the one write path for every entry (the bot,
-:func:`import_pasted_post`, :func:`backfill_from_archive`) over what
-``tweet_ingest.resolve_threads`` returns. Each ``Detection`` becomes an ``Event`` owned by the
-importer, with media through the evidence pipeline and idempotency on ``(the thread's post ids
-OR a source URL, coordinate)``. The ``Detection`` never reaches the ORM, which keeps the engine
-pure.
-
-:func:`open_request` is the second write path: a ``RequestDraft`` becomes a ``requested`` row
-through ``events.create_request``. Only the bot's request branch calls it.
+A ``Resolution``'s detections become ``detected`` rows (:func:`persist_detections`) and a
+``RequestDraft`` a ``requested`` row (:func:`open_request`). The ``Detection`` never reaches
+the ORM, which keeps the engine pure.
 """
 
 from __future__ import annotations
@@ -22,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, cast
 
 import httpx
 from fastapi import UploadFile
@@ -42,12 +36,13 @@ from app.models.event import (
     EventVersion,
 )
 from app.models.media import Media, MediaRole
-from app.models.source import EVIDENCE_LEVELS, Source, SourceLink
+from app.models.source import EVIDENCE_LEVELS, Source, SourceKind, SourceLevel, SourceLink
 from app.models.user import User
 from app.schemas.source import SourceCreate, SourceLinkCreate
 from app.services import uploads
 from app.services.event_filters import lock_event
-from app.services.events import ImportProvenance, create_request, stamp_provenance
+from app.services.events import ImportProvenance, stamp_provenance, submit_request
+from app.services.events.form import EventForm
 from app.services.evidence_intake import (
     EvidenceIntakeError,
     StoredObject,
@@ -99,7 +94,7 @@ MediaFetcher = Callable[[ParsedMedia], Awaitable[tuple[bytes, str] | None]]
 # a multi-coordinate thread prepares identical media once.
 _MediaCache = dict[tuple[str, bool], PreparedMedia | None]
 
-# Coordinate-equality tolerance, matching the dedup rounding in ``extract_coords``.
+# Coordinate-equality tolerance, matching the dedup rounding in ``scan_coords``.
 _COORD_PLACES = 6
 
 
@@ -142,18 +137,11 @@ def _media_type(content_type: str) -> str:
 
 
 def _row_disposition(row: Event) -> Verdict:
-    """What a re-import may do with one matched row.
+    """What a re-import may do with one matched row (the matrix in ``docs/ingestion.md``).
 
-    1. An admin removal (``deleted_at``) stays removed, so a re-import cannot undo a takedown.
-    2. A withheld row (``hidden_at``) is frozen for its owner too
-       (``routers/events/_common.resolve_live_event``).
-    3. A row past version 0 carries a version a person saved (the publish files version 0 and
-       the row becomes version 1), so a machine never touches it, whatever its status.
-    4. An open detection at version 0 is machine-authored and no analyst path edits it in
-       place, so a newer parse overwrites it.
-    5. A ``closed`` row (rejected, withdrawn or retracted) is not the import's to reopen.
-    6. Anything else live (a ``requested`` event matched through its source URL) belongs to a
-       human flow.
+    Only an open detection at version 0 is machine-authored with no analyst path editing it in
+    place; anything else live, a ``requested`` row matched through its source URL included,
+    belongs to a human flow.
     """
     if row.deleted_at is not None:
         return "skip"
@@ -204,20 +192,9 @@ def _match_legs(
 def _disposition(db: Session, owner: User, detection: Detection) -> tuple[Verdict, Event | None]:
     """Verdict for one detection, with the row it applies to (only ``create`` has none).
 
-    Scoped to ``owner``. Matches every row the detection's provenance or source URL hits,
-    in any state, on the coordinate to ``_COORD_PLACES``. Each match is read by
-    :func:`_row_disposition`, and a single ``skip`` wins. No match creates.
-
-    The provenance leg is the thread's post ids, not a URL (one post spells its URL several
-    ways) and not the anchor alone (entries anchor differently on one self-thread, so one
-    geolocation through two entries would land twice). It is an array overlap, which holds
-    whichever entry ran first. The anchor equality stays for rows written before the array.
-
-    The source leg catches delete-and-repost duplicates (same footage and coordinate, different
-    provenance posts): any source link equal to the declared source URL. A source-less detection
-    matches on provenance only. The leg reads version history too, since correcting a source
-    files a version that still carries the imported URL. A redacted snapshot is blank and matches
-    nothing.
+    Matches the owner's rows in any state on the coordinate to ``_COORD_PLACES`` (the legs:
+    ``docs/ingestion.md``, Re-import); a single ``skip`` wins. The anchor equality stays for
+    rows written before ``thread_post_ids``.
     """
     legs = _match_legs(
         tweet_id=detection.detected_from_post_id,
@@ -385,43 +362,46 @@ async def _store_media(
     return source_media, proof_image_urls
 
 
-def _import_sources(detection: Detection, source_media: Media | None) -> list[Source]:
-    """The sources a detection declares, in its order.
+# What an import owns of one source: its level, kind, title and ``(url, posted_at)`` links.
+_SourceShape = tuple[SourceLevel, SourceKind, str, list[tuple[str, datetime | None]]]
 
-    The declared source (its URL and post time, and the footage) when there is one, ``direct``
-    and ``unknown`` (a review names the kind); then one source per mirror or context link, with
+
+def _declared_shape(work: Detection | RequestDraft, has_footage: bool) -> list[_SourceShape]:
+    """The sources the engine's work declares, in order.
+
+    The declared source, ``direct`` and ``unknown`` (a review names the kind), with its URL and
+    post time, when there is a URL or footage; then one source per mirror or context link, with
     the level, kind, title and post time the resolution gave it.
     """
-    sources: list[Source] = []
-    if detection.source_url is not None or source_media is not None:
-        sources.append(
-            Source(
-                level="direct",
-                kind="unknown",
-                links=(
-                    [SourceLink(url=detection.source_url, posted_at=detection.source_posted_at)]
-                    if detection.source_url is not None
-                    else []
-                ),
-                media=source_media,
-            )
+    shape: list[_SourceShape] = []
+    if work.source_url is not None:
+        shape.append(("direct", "unknown", "", [(work.source_url, work.source_posted_at)]))
+    elif has_footage:
+        shape.append(("direct", "unknown", "", []))
+    shape += [
+        (extra.level, extra.kind, extra.title, [(extra.url, extra.posted_at)])
+        for extra in work.secondary_sources
+    ]
+    return shape
+
+
+def _import_sources(detection: Detection, source_media: Media | None) -> list[Source]:
+    """The sources a detection declares, the footage on the declared one."""
+    sources = [
+        Source(
+            level=level,
+            kind=kind,
+            title=title,
+            position=position,
+            links=[SourceLink(url=url, posted_at=posted_at) for url, posted_at in links],
         )
-    for extra in detection.secondary_sources:
-        sources.append(
-            Source(
-                level=extra.level,
-                kind=extra.kind,
-                title=extra.title,
-                links=[SourceLink(url=extra.url, posted_at=extra.posted_at)],
-            )
+        for position, (level, kind, title, links) in enumerate(
+            _declared_shape(detection, source_media is not None)
         )
-    for position, source in enumerate(sources):
-        source.position = position
+    ]
+    if source_media is not None:
+        sources[0].media = source_media
     return sources
-
-
-# What an import owns of one source: its level, kind, title and ``(url, posted_at)`` links.
-_SourceShape = tuple[str, str, str, list[tuple[str, datetime | None]]]
 
 
 def _import_shape(sources: Sequence[Source]) -> list[_SourceShape]:
@@ -437,19 +417,14 @@ def _import_shape(sources: Sequence[Source]) -> list[_SourceShape]:
     ]
 
 
-def _declared_shape(detection: Detection, has_footage: bool) -> list[_SourceShape]:
-    shape: list[_SourceShape] = []
-    if detection.source_url is not None:
-        shape.append(
-            ("direct", "unknown", "", [(detection.source_url, detection.source_posted_at)])
-        )
-    elif has_footage:
-        shape.append(("direct", "unknown", "", []))
-    shape += [
-        (extra.level, extra.kind, extra.title, [(extra.url, extra.posted_at)])
-        for extra in detection.secondary_sources
-    ]
-    return shape
+def _provenance(work: Detection | RequestDraft, via: DetectedVia) -> ImportProvenance:
+    return ImportProvenance(
+        tweet_id=work.detected_from_post_id,
+        url=work.detected_from_url,
+        thread_tweet_ids=list(work.thread_tweet_ids),
+        via=via,
+        post_at=work.detected_post_at,
+    )
 
 
 async def _persist_one(
@@ -473,18 +448,8 @@ async def _persist_one(
             status=STATUS_DETECTED,
             detected_at=datetime.now(UTC),
         )
-        # Provenance, written once through the home both write paths read (see
-        # :func:`_apply_import_fields`).
-        stamp_provenance(
-            geo,
-            ImportProvenance(
-                tweet_id=detection.detected_from_post_id,
-                url=detection.detected_from_url,
-                thread_tweet_ids=list(detection.thread_tweet_ids),
-                via=via,
-                post_at=detection.detected_post_at,
-            ),
-        )
+        # Written once (see :func:`_apply_import_fields`).
+        stamp_provenance(geo, _provenance(detection, via))
         db.add(geo)
         db.flush()  # populate geo.id for media keys + the Media FK
 
@@ -714,44 +679,30 @@ def _engine_warnings(persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, 
     return Counter(code for _event_id, detection in persisted for code in detection.warnings)
 
 
-class _WarningSubject(Protocol):
-    """What :func:`_write_warnings` reads off the engine work behind one row."""
-
-    @property
-    def warnings(self) -> list[str]: ...
-
-    @property
-    def source_posted_at(self) -> datetime | None: ...
-
-    @property
-    def source_fetch_failed(self) -> bool: ...
-
-
 def _write_warnings(
-    db: Session, persisted: Sequence[tuple[uuid.UUID, _WarningSubject]]
+    db: Session, persisted: Sequence[tuple[uuid.UUID, Detection]]
 ) -> dict[str, int]:
     """The warnings only the write path can raise, counted per row it wrote.
 
     No footage stored from the declared source (``SOURCE_FETCH_FAILED`` when the upstream would
     not answer, else ``SOURCE_FOOTAGE_MISSING``), source post date unknown, and media already on
     Vidit. The footage and date warnings are dropped on a row whose engine work carries
-    ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``. Both write paths read it; a request row is never
-    footage-less, so the footage legs are reachable only through ``Detection``.
+    ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``.
     """
     counts: Counter[str] = Counter()
     if not persisted:
         return counts
-    ids = [event_id for event_id, _subject in persisted]
+    ids = [event_id for event_id, _detection in persisted]
     footage_less = _rows_without_footage(db, ids)
     duplicated = _rows_with_duplicate_media(db, ids)
-    for event_id, subject in persisted:
+    for event_id, detection in persisted:
         raised: list[str] = []
-        if not set(subject.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
+        if not set(detection.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
             if event_id in footage_less:
                 raised.append(
-                    SOURCE_FETCH_FAILED if subject.source_fetch_failed else SOURCE_FOOTAGE_MISSING
+                    SOURCE_FETCH_FAILED if detection.source_fetch_failed else SOURCE_FOOTAGE_MISSING
                 )
-            if subject.source_posted_at is None:
+            if detection.source_posted_at is None:
                 raised.append(SOURCE_DATE_UNKNOWN)
         if event_id in duplicated:
             raised.append(DUPLICATE_MEDIA)
@@ -770,21 +721,9 @@ async def persist_detections(
 ) -> Outcome:
     """Persist each of the resolution's detections as a ``detected`` ``Event`` owned by ``owner``.
 
-    The one write path for every entry (bot, paste, archive). ``owner`` is the importer, the
-    account whose verified handle the posts belong to. ``via`` stamps every created row
-    (``event_detections.via``); an upsert leaves it alone.
-
-    A detection is matched on its provenance (the thread's post ids) or its ``source_url``,
-    plus the coordinate, across states, then dispatched by :func:`_row_disposition`. A second
-    pass over the same export writes nothing and counts as ``skipped``.
-
-    Each detection commits in its own transaction: a raise is caught, counted in
-    ``outcome.failed``, rolled back, and the loop moves on, so one failure neither loses the
-    others nor strands S3 objects. A detection may carry no media.
-
-    ``on_progress(done, total)`` fires after every handled detection (skips and failures
-    included), between per-row transactions, so a callback that commits on the same session
-    never splits one.
+    Each detection commits in its own transaction, so one failure neither loses the others nor
+    strands S3 objects. ``on_progress(done, total)`` fires after every handled detection, between
+    per-row transactions, so a callback that commits on the same session never splits one.
     """
     detections = resolution.detections
     outcome = Outcome(refusals=resolution.refusals)
@@ -804,42 +743,41 @@ async def persist_detections(
         if verdict == "skip":
             if matched is not None:  # always: a skip names the row it protects
                 outcome.skipped.append(matched.id)
-        elif matched is not None:  # ``upsert``: the verdict carries its row
-            try:
-                changed = await _upsert_one(
-                    db,
-                    row=matched,
-                    detection=detection,
-                    fetch_media=fetch_media,
-                    media_cache=media_cache,
-                )
-            except Exception:
-                logger.exception("Detection upsert failed for %s", detection.detected_from_url)
-                db.rollback()
-                outcome.failed += 1
-            else:
-                if changed:
-                    outcome.updated.append(matched.id)
-                    persisted.append((matched.id, detection))
-                else:
-                    outcome.skipped.append(matched.id)
         else:
             try:
-                geo = await _persist_one(
-                    db,
-                    owner=owner,
-                    detection=detection,
-                    via=via,
-                    fetch_media=fetch_media,
-                    media_cache=media_cache,
-                )
+                if matched is not None:  # ``upsert``: the verdict carries its row
+                    changed = await _upsert_one(
+                        db,
+                        row=matched,
+                        detection=detection,
+                        fetch_media=fetch_media,
+                        media_cache=media_cache,
+                    )
+                    event_id = matched.id
+                else:
+                    geo = await _persist_one(
+                        db,
+                        owner=owner,
+                        detection=detection,
+                        via=via,
+                        fetch_media=fetch_media,
+                        media_cache=media_cache,
+                    )
+                    changed, event_id = True, geo.id
             except Exception:
-                logger.exception("Detection persist failed for %s", detection.detected_from_url)
+                logger.exception(
+                    "Detection %s failed for %s",
+                    "persist" if matched is None else "upsert",
+                    detection.detected_from_url,
+                )
                 db.rollback()
                 outcome.failed += 1
             else:
-                outcome.created.append(geo.id)
-                persisted.append((geo.id, detection))
+                if not changed:
+                    outcome.skipped.append(event_id)
+                else:
+                    (outcome.created if matched is None else outcome.updated).append(event_id)
+                    persisted.append((event_id, detection))
         if on_progress is not None:
             on_progress(index, total)
     for counts in (_engine_warnings(persisted), _write_warnings(db, persisted)):
@@ -895,7 +833,7 @@ async def open_request(
     """Write one :class:`RequestDraft` as a ``requested`` row owned by ``owner``.
 
     The bot's request branch is the one caller. The row is born through
-    ``events.create_request`` like a person's request, plus provenance (``event_detections.via='bot'``)
+    ``events.submit_request`` like a person's request, plus provenance (``event_detections.via='bot'``)
     so a second mention recognises it. The footage is the draft's ordered candidates; the first
     that fetches is staged like a person's upload (``uploads.stage_upload``, which validates
     it) and becomes the file of the declared source. Each mirror and context link becomes a source
@@ -906,8 +844,8 @@ async def open_request(
     lands a ``detected`` row beside the open request (:func:`_row_disposition` leaves a
     ``requested`` row alone).
 
-    Warnings come entirely from :func:`_write_warnings`. The engine adds none, and the footage
-    warnings never apply since the slot is filled by construction.
+    The engine drafts no warning; the row raises ``SOURCE_DATE_UNKNOWN`` and ``DUPLICATE_MEDIA``
+    as a detection's does.
 
     ``None`` means nothing was written and there is nothing to name (no candidate fetched, or
     the write raised): the caller degrades to the refusal reply, and a re-tag retries. An intake
@@ -937,44 +875,32 @@ async def open_request(
     )
     try:
         [staged] = await uploads.stage_upload(db, uploader=owner, file=upload)
-        row = await create_request(
-            db,
-            current_user=owner,
+        form = EventForm(
             title=draft.title,
             proof_data=html_from_text(draft.proof_text),
             occurred_date=draft.occurred_date,
+            occurred_time=None,
             tag_ids=[],
             conflict_ids=[],
             sources=[
                 SourceCreate(
-                    level="direct",
-                    kind="unknown",
-                    links=[
-                        SourceLinkCreate(url=draft.source_url, posted_at=draft.source_posted_at)
-                    ],
-                    upload_id=staged.id,
-                ),
-                *(
-                    SourceCreate(
-                        level=extra.level,
-                        kind=extra.kind,
-                        title=extra.title,
-                        links=[SourceLinkCreate(url=extra.url, posted_at=extra.posted_at)],
-                    )
-                    for extra in draft.secondary_sources
-                ),
+                    level=level,
+                    kind=kind,
+                    title=title,
+                    links=[SourceLinkCreate(url=url, posted_at=at) for url, at in links],
+                    upload_id=staged.id if position == 0 else None,
+                )
+                for position, (level, kind, title, links) in enumerate(
+                    _declared_shape(draft, has_footage=True)
+                )
             ],
             proof_files=[],
-            provenance=ImportProvenance(
-                tweet_id=draft.detected_from_post_id,
-                url=draft.detected_from_url,
-                thread_tweet_ids=list(draft.thread_tweet_ids),
-                via="bot",
-                post_at=draft.detected_post_at,
-            ),
+        )
+        row = await submit_request(
+            db, current_user=owner, form=form, provenance=_provenance(draft, "bot")
         )
     except EvidenceIntakeError:
-        # Roll back what ``create_request`` staged (event row, sources) so it does not ride
+        # Roll back what ``submit_request`` staged (event row, sources) so it does not ride
         # the caller's ledger commit. A staged upload left behind expires with the reaper.
         logger.warning(
             "The request drafted from %s was refused by the evidence intake",
@@ -989,8 +915,11 @@ async def open_request(
         logger.exception("The request drafted from %s failed to write", draft.detected_from_url)
         db.rollback()
         return None
-    # The engine drafts a request with no warnings, so the write path is the whole answer.
-    warnings = list(_write_warnings(db, [(row.id, draft)]))
+    # The publish floor ``submit_request`` checks holds footage on the row, so only the date and
+    # duplicate warnings can apply.
+    warnings = [SOURCE_DATE_UNKNOWN] if draft.source_posted_at is None else []
+    if _rows_with_duplicate_media(db, [row.id]):
+        warnings.append(DUPLICATE_MEDIA)
     return RequestOutcome(created=row.id, warnings=warnings)
 
 
