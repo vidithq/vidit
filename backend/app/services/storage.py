@@ -7,7 +7,7 @@ import tempfile
 import unicodedata
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
-from typing import NamedTuple, Protocol
+from typing import BinaryIO, NamedTuple, Protocol
 from uuid import UUID, uuid4
 
 import boto3
@@ -18,12 +18,9 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# 64 KB: one chunk in memory during the hash, whatever the file size.
-_HASH_CHUNK_SIZE = 64 * 1024
-
 
 class UploadResult(NamedTuple):
-    """What an ``upload`` / ``upload_bytes`` call hands back.
+    """What a :func:`store` call hands back.
 
     ``sha256`` is stored on the ``Media`` row (the S3 ETag is unfit: MD5, not
     stable across copies). ``derivative_keys`` are the sibling hero and
@@ -34,20 +31,6 @@ class UploadResult(NamedTuple):
     url: str
     sha256: str  # hex-encoded, always 64 chars
     derivative_keys: tuple[str, ...] = ()
-
-
-def _hash_uploadfile(file: UploadFile) -> str:
-    """Stream-hash an ``UploadFile`` in bounded memory (a full read would pin up to
-    ``max_video_size`` per upload), then rewind for the uploader."""
-    hasher = hashlib.sha256()
-    file.file.seek(0)
-    while True:
-        chunk = file.file.read(_HASH_CHUNK_SIZE)
-        if not chunk:
-            break
-        hasher.update(chunk)
-    file.file.seek(0)
-    return hasher.hexdigest()
 
 
 class StorageDeleteError(RuntimeError):
@@ -160,8 +143,7 @@ def validate_file(file: UploadFile) -> str:
 
 
 class Storage(Protocol):
-    async def upload(self, file: UploadFile, key: str) -> UploadResult: ...
-    async def upload_bytes(self, data: bytes, key: str, content_type: str) -> UploadResult: ...
+    async def put(self, body: bytes | BinaryIO, key: str, content_type: str) -> None: ...
     def public_url(self, key: str) -> str: ...
     def key_from_url(self, url: str) -> str | None: ...
     def delete_many(self, keys: list[str]) -> None: ...
@@ -191,18 +173,8 @@ class LocalStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
-    async def upload(self, file: UploadFile, key: str) -> UploadResult:
-        # Buffering is fine: size is bounded and we hash the bytes anyway.
-        file.file.seek(0)
-        data = await file.read()
-        sha256 = content_sha256(data)
-        self._path(key).write_bytes(data)
-        return UploadResult(url=self.public_url(key), sha256=sha256)
-
-    async def upload_bytes(self, data: bytes, key: str, content_type: str) -> UploadResult:
-        sha256 = content_sha256(data)
-        self._path(key).write_bytes(data)
-        return UploadResult(url=self.public_url(key), sha256=sha256)
+    async def put(self, body: bytes | BinaryIO, key: str, content_type: str) -> None:
+        self._path(key).write_bytes(body if isinstance(body, bytes) else body.read())
 
     def public_url(self, key: str) -> str:
         return f"{LOCAL_STORAGE_URL_PREFIX}/{key}"
@@ -277,33 +249,22 @@ class S3Storage:
             client_kwargs["aws_secret_access_key"] = aws_secret_access_key
         self.client = boto3.client("s3", **client_kwargs)
 
-    async def upload(self, file: UploadFile, key: str) -> UploadResult:
-        # Hash in chunks, then stream via ``upload_fileobj``: buffering a
-        # whole video per upload would OOM the single worker.
-        sha256 = _hash_uploadfile(file)
-        extra_args = {"ContentType": file.content_type} if file.content_type else {}
-        # ``upload_fileobj`` is sync; ``to_thread`` keeps the loop free.
+    async def put(self, body: bytes | BinaryIO, key: str, content_type: str) -> None:
+        # boto3 blocks; ``to_thread`` keeps the loop free.
+        if isinstance(body, bytes):
+            await asyncio.to_thread(
+                self.client.put_object,
+                Bucket=self.bucket,
+                Key=key,
+                Body=body,
+                ContentType=content_type,
+            )
+            return
+        # Streamed: buffering a whole video per upload would OOM the single worker.
+        extra_args = {"ContentType": content_type} if content_type else {}
         await asyncio.to_thread(
-            self.client.upload_fileobj,
-            file.file,
-            self.bucket,
-            key,
-            ExtraArgs=extra_args,
+            self.client.upload_fileobj, body, self.bucket, key, ExtraArgs=extra_args
         )
-        return UploadResult(url=self.public_url(key), sha256=sha256)
-
-    async def upload_bytes(self, data: bytes, key: str, content_type: str) -> UploadResult:
-        # ``to_thread`` matters: the seeder loops hundreds of rows and a
-        # blocking ``put_object`` would starve the loop.
-        sha256 = content_sha256(data)
-        await asyncio.to_thread(
-            self.client.put_object,
-            Bucket=self.bucket,
-            Key=key,
-            Body=data,
-            ContentType=content_type,
-        )
-        return UploadResult(url=self.public_url(key), sha256=sha256)
 
     def public_url(self, key: str) -> str:
         if self.cloudfront_domain:
@@ -404,6 +365,24 @@ def scrub_log(value: str) -> str:
 def content_sha256(data: bytes) -> str:
     """The ``Media.sha256`` digest of a bytes payload (the re-import upsert compares against it)."""
     return hashlib.sha256(data).hexdigest()
+
+
+async def store(
+    storage: Storage, body: bytes | BinaryIO, key: str, content_type: str
+) -> UploadResult:
+    """Put ``body`` at ``key`` and return its URL and the SHA-256 of the stored bytes."""
+    if isinstance(body, bytes):
+        sha256 = content_sha256(body)
+    else:
+        # In chunks, so a video is never held in memory whole; rewound for the put.
+        hasher = hashlib.sha256()
+        body.seek(0)
+        while chunk := body.read(64 * 1024):
+            hasher.update(chunk)
+        body.seek(0)
+        sha256 = hasher.hexdigest()
+    await storage.put(body, key, content_type)
+    return UploadResult(url=storage.public_url(key), sha256=sha256)
 
 
 def sweep_keys(keys: list[str], *, context: str) -> None:
@@ -512,17 +491,17 @@ async def upload_prepared_media(prepared: PreparedMedia, key: str) -> UploadResu
 
     storage = get_storage()
     if prepared.hero is None or prepared.thumb is None:
-        return await storage.upload_bytes(prepared.cleaned, key, prepared.content_type)
+        return await store(storage, prepared.cleaned, key, prepared.content_type)
 
     hero_key = derivative_key(key, "hero")
     thumb_key = derivative_key(key, "thumb")
     uploaded: list[str] = []
     try:
-        result = await storage.upload_bytes(prepared.cleaned, key, prepared.content_type)
+        result = await store(storage, prepared.cleaned, key, prepared.content_type)
         uploaded.append(key)
-        await storage.upload_bytes(prepared.hero, hero_key, DERIVATIVE_CONTENT_TYPE)
+        await store(storage, prepared.hero, hero_key, DERIVATIVE_CONTENT_TYPE)
         uploaded.append(hero_key)
-        await storage.upload_bytes(prepared.thumb, thumb_key, DERIVATIVE_CONTENT_TYPE)
+        await store(storage, prepared.thumb, thumb_key, DERIVATIVE_CONTENT_TYPE)
         uploaded.append(thumb_key)
     except Exception:
         sweep_keys(uploaded, context=f"partial upload of {key}")
@@ -562,7 +541,7 @@ async def _upload_with_optional_strip(
       then :func:`upload_bytes_with_optional_strip`. ``produce_derivatives=False``
       for proof images, which render from the raw URL (derivatives would be
       unfetched objects locked for the bucket's Object Lock retention).
-    * **Video**: streamed via ``upload`` with no strip (it needs ffmpeg and
+    * **Video**: streamed with no strip (it needs ffmpeg and
       buffering a 95 MiB MP4 would OOM the worker) and no derivatives.
     """
     if file.content_type in ALLOWED_IMAGE_TYPES:
@@ -571,7 +550,7 @@ async def _upload_with_optional_strip(
         return await upload_bytes_with_optional_strip(
             raw, content_type, key, produce_derivatives=produce_derivatives
         )
-    return await get_storage().upload(file, key)
+    return await store(get_storage(), file.file, key, file.content_type or "")
 
 
 def _read_upload(file: UploadFile) -> bytes:
@@ -798,7 +777,7 @@ async def upload_avatar_image(file: UploadFile, owner_id: UUID) -> UploadResult:
         return render_avatar_jpeg(file.file.read(), content_type)
 
     data = await asyncio.to_thread(_render)
-    return await get_storage().upload_bytes(data, avatar_key(owner_id), "image/jpeg")
+    return await store(get_storage(), data, avatar_key(owner_id), "image/jpeg")
 
 
 # 255: common filesystem-name max (NTFS / ext4), above any camera filename.
