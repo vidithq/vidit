@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from app.services.tweet_ingest import retry
-from app.services.tweet_ingest.chase.tiktok import chase
+from app.services.tweet_ingest.chase import chase_post
 from app.services.tweet_ingest.records import ChaseResult
 from app.services.tweet_ingest.urls import is_importable_link, tiktok_post_id, tiktok_short_url
 
@@ -84,7 +84,7 @@ def _chase(answers: dict[str, Answer], target: str = _POST) -> tuple[ChaseResult
         return answers[str(request.url)]()
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        return chase(target, client=client), seen
+        return chase_post(target, client=client), seen
 
 
 @pytest.mark.parametrize(

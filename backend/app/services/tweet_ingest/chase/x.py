@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import httpx
 
-from ..errors import TweetFetchFailed, TweetNotAccessible
 from ..records import ChasedPost, ChaseResult
-from ..retry import is_transient
 from ..syndication import extract_media, fetch_syndication
 from ..urls import canonical_tweet_url, x_status_id
 
@@ -18,19 +16,15 @@ from ..urls import canonical_tweet_url, x_status_id
 def chase(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
     """The X status ``target`` (a bare id or a status URL) read through syndication.
 
-    ``no_target`` when it names no X status; ``transient_failure`` when throttled
-    or unanswered after the retry schedule (``fetch_syndication``);
-    ``not_accessible`` otherwise, including a payload with no author (an
-    authorless post cannot be attributed).
+    ``no_target`` when it names no X status; ``not_accessible`` for a payload
+    with no author (an authorless post cannot be attributed). Raises what
+    ``fetch_syndication`` raises.
     """
     # ``isdigit`` alone accepts any Unicode decimal digit, which X cannot read.
     status_id = target if target.isascii() and target.isdigit() else x_status_id(target)
     if status_id is None:
         return ChaseResult(outcome="no_target")
-    try:
-        body = fetch_syndication(status_id, client=client)
-    except (TweetFetchFailed, TweetNotAccessible) as exc:
-        return ChaseResult(outcome="transient_failure" if is_transient(exc) else "not_accessible")
+    body = fetch_syndication(status_id, client=client)
     user = body.get("user")
     handle = user.get("screen_name") if isinstance(user, dict) else None
     if not isinstance(handle, str) or not handle:

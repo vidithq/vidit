@@ -16,17 +16,11 @@ from typing import Any
 
 import httpx
 
-from .errors import (
-    MediaTooLarge,
-    TweetImportError,
-    TweetNotAccessible,
-    TweetUpstreamBusy,
-    TweetUpstreamUnreachable,
-)
+from .errors import MediaTooLarge, TweetImportError, TweetNotAccessible
 from .extract import is_retweet
 from .records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
-from .retry import parse_retry_after, retrying_async
-from .syndication import extract_source_links, media_entry
+from .retry import retrying_async
+from .syndication import extract_source_links, media_entry, raise_if_busy, upstream_unreachable
 from .urls import is_trusted_media_url
 
 # Byte cap on one remote-media fetch, streamed into memory: the upload ceilings
@@ -196,16 +190,12 @@ async def fetch_cdn_media(parsed: ParsedMedia) -> tuple[bytes, str] | None:
 async def _read_cdn_media(url: str) -> bytes:
     """One streamed GET. Only throttling or an unreachable CDN raises an error that earns
     the retry."""
-    try:
+    with upstream_unreachable():
         async with (
             httpx.AsyncClient(timeout=20.0) as client,
             client.stream("GET", url) as resp,
         ):
-            if resp.status_code == 429 or resp.status_code >= 500:
-                raise TweetUpstreamBusy(
-                    f"cdn returned {resp.status_code}",
-                    retry_after=parse_retry_after(resp.headers.get("Retry-After")),
-                )
+            raise_if_busy(resp, who="cdn")
             if resp.status_code != 200:
                 raise TweetNotAccessible(f"cdn returned {resp.status_code}")
             buffer = bytearray()
@@ -213,8 +203,6 @@ async def _read_cdn_media(url: str) -> bytes:
                 buffer.extend(chunk)
                 if len(buffer) > MEDIA_FETCH_MAX_BYTES:
                     raise MediaTooLarge(f"cdn body over {MEDIA_FETCH_MAX_BYTES} bytes")
-    except httpx.HTTPError as exc:
-        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
     return bytes(buffer)
 
 

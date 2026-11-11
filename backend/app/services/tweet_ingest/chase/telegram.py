@@ -5,8 +5,8 @@ always carries the post date and only sometimes the footage (a sensitive post
 serves the date alone). The result is a link with a date, stored by the
 resolution as off-platform footage.
 
-Fail-soft: any error or unexpected HTML yields a footage-less
-:class:`ChaseResult` naming the failure. A date without media is a valid result.
+Unexpected HTML yields a footage-less :class:`ChaseResult` naming the failure.
+A date without media is a valid result.
 
 SSRF guard: :func:`urls.telegram_post_url` is the only gate to the fetch,
 redirects are not followed, and every extracted media URL is re-checked with
@@ -16,18 +16,13 @@ redirects are not followed, and every extracted media URL is re-checked with
 from __future__ import annotations
 
 import html
-import logging
 import re
 
 import httpx
 
-from ..errors import TweetImportError
-from ..records import ChasedPost, ChaseResult, ParsedMedia
-from ..retry import is_transient, retrying
+from ..records import ChaseResult, ParsedMedia
 from ..urls import is_trusted_media_url, telegram_post_url
-from ._http import get_page
-
-logger = logging.getLogger(__name__)
+from ._http import embed_result, read_page
 
 # ``mode=tme`` is the bare single-post view.
 _EMBED_QUERY = "?embed=1&mode=tme"
@@ -59,25 +54,6 @@ _CLIENT_FALLBACK_RE = re.compile(
 )
 
 
-def _fetch_embed_html(post_url: str, *, client: httpx.Client | None) -> str | None:
-    """The embed HTML for a canonical post URL, ``None`` when there is none.
-
-    A throttled or unreachable Telegram is retried (:mod:`tweet_ingest.retry`)
-    then raised, so the caller can tell "not readable now" from "no such post".
-    """
-    return retrying(lambda: _read_embed(post_url, client=client), what=post_url)
-
-
-def _read_embed(post_url: str, *, client: httpx.Client | None) -> str | None:
-    """One GET of the embed: the HTML, ``None``, or a transient raise.
-
-    A 3xx reads as "unavailable": :func:`urls.telegram_post_url` vets only the
-    first hop (:func:`_http.get_page`).
-    """
-    resp = get_page(post_url + _EMBED_QUERY, client=client)
-    return resp.text if resp.status_code == 200 else None
-
-
 def _extract_media(embed_html: str) -> list[ParsedMedia]:
     """The footage the embed serves: the inlined mp4, else the wrapper photo(s).
 
@@ -105,34 +81,16 @@ def _extract_media(embed_html: str) -> list[ParsedMedia]:
 def chase(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
     """The Telegram post ``target`` names, read through its public embed.
 
-    ``chased`` with at least a date or media; ``no_target`` for a non-t.me
-    target; ``transient_failure`` when throttled or unanswered after the retry
-    schedule; ``not_accessible`` for a gone or unreadable embed. Never raises.
-    ``client`` is for tests.
+    ``no_target`` for a non-t.me target; ``not_accessible`` for a gone or
+    unreadable embed. A throttled or unreachable Telegram raises once the
+    retries are spent (``chase.chase_post`` names it ``transient_failure``).
     """
-    try:
-        return _chase(target, client=client)
-    except TweetImportError as exc:
-        return ChaseResult(outcome="transient_failure" if is_transient(exc) else "not_accessible")
-    except Exception:
-        # Last-resort net: a chase must never fail the ingestion.
-        logger.debug("Telegram embed chase failed for %s", target, exc_info=True)
-        return ChaseResult(outcome="not_accessible")
-
-
-def _chase(target: str, *, client: httpx.Client | None) -> ChaseResult:
     post_url = telegram_post_url(target)
     if post_url is None:
         return ChaseResult(outcome="no_target")
-    embed_html = _fetch_embed_html(post_url, client=client)
+    embed_html = read_page(post_url + _EMBED_QUERY, client=client)
     if embed_html is None or _MESSAGE_RE.search(embed_html) is None:
         return ChaseResult(outcome="not_accessible")
     time_match = _TIME_RE.search(embed_html)
     posted_at = html.unescape(time_match.group(1)) if time_match is not None else None
-    media = _extract_media(embed_html)
-    if posted_at is None and not media:
-        return ChaseResult(outcome="not_accessible")
-    # ``url`` is the target as written: the resolution matches it back to the declared link.
-    return ChaseResult(
-        outcome="chased", post=ChasedPost(url=target, posted_at=posted_at, media=media)
-    )
+    return embed_result(target, posted_at, _extract_media(embed_html))

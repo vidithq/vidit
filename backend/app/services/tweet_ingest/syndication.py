@@ -19,6 +19,8 @@ import re
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -84,8 +86,47 @@ def _to_base36(value: float) -> str:
 
 
 _SYNDICATION_ENDPOINT = "https://cdn.syndication.twimg.com/tweet-result"
-_HTTP_TIMEOUT_S = 5.0
-_USER_AGENT = "vidit-tweet-import/1.0"
+HTTP_TIMEOUT_S = 5.0
+USER_AGENT = "vidit-tweet-import/1.0"
+
+
+@contextmanager
+def upstream_unreachable() -> Iterator[None]:
+    """Raise a transport failure inside the block as :class:`TweetUpstreamUnreachable`."""
+    try:
+        yield
+    except httpx.HTTPError as exc:
+        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
+
+
+def raise_if_busy(resp: httpx.Response, *, who: str = "upstream") -> None:
+    """Raise a 429 or a 5xx as :class:`TweetUpstreamBusy`, the failure the retry schedule retries."""
+    if resp.status_code == 429 or resp.status_code >= 500:
+        raise TweetUpstreamBusy(
+            f"{who} returned {resp.status_code}",
+            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
+        )
+
+
+def http_get(
+    url: str,
+    *,
+    headers: dict[str, str],
+    client: httpx.Client | None,
+    params: dict[str, str] | None = None,
+) -> httpx.Response:
+    """One GET of ``url``, any status but a transient one; redirects are never followed.
+
+    ``client`` is for tests (a ``MockTransport``).
+    """
+    with upstream_unreachable():
+        if client is None:
+            with httpx.Client(timeout=HTTP_TIMEOUT_S, follow_redirects=False) as own_client:
+                resp = own_client.get(url, params=params, headers=headers)
+        else:
+            resp = client.get(url, params=params, headers=headers)
+    raise_if_busy(resp)
+    return resp
 
 
 _CACHE_TTL_S = 3600.0  # 1h
@@ -160,25 +201,10 @@ def _read_syndication(tweet_id: str, *, client: httpx.Client | None) -> dict[str
         "token": _syndication_token(tweet_id),
         "lang": "en",
     }
-    headers = {"User-Agent": _USER_AGENT, "Accept": "application/json"}
-
-    try:
-        if client is None:
-            with httpx.Client(timeout=_HTTP_TIMEOUT_S) as own_client:
-                resp = own_client.get(_SYNDICATION_ENDPOINT, params=params, headers=headers)
-        else:
-            resp = client.get(_SYNDICATION_ENDPOINT, params=params, headers=headers)
-    except httpx.HTTPError as exc:
-        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
-
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    resp = http_get(_SYNDICATION_ENDPOINT, headers=headers, client=client, params=params)
     if resp.status_code == 404:
         raise TweetNotAccessible("Tweet not accessible")
-    # Ahead of the catch-all: a 429 says "retry", not "the payload changed shape".
-    if resp.status_code == 429 or resp.status_code >= 500:
-        raise TweetUpstreamBusy(
-            f"upstream returned {resp.status_code}",
-            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
-        )
     if resp.status_code >= 300:
         raise TweetFetchFailed(f"upstream returned {resp.status_code}")
 

@@ -16,12 +16,17 @@ declaring record, since "could not read it now" differs from "no footage".
 from __future__ import annotations
 
 import dataclasses
+import logging
 
 import httpx
 
+from ..errors import TweetImportError
 from ..records import ChasedPost, ChaseResult, QuotedTweet, TelegramFootage, TweetRecord
 from ..resolve import sole_candidate
+from ..retry import is_transient
 from . import telegram, tiktok, x
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["apply_chase", "chase_post", "chase_thread"]
 
@@ -30,14 +35,24 @@ def chase_post(target: str, *, client: httpx.Client | None = None) -> ChaseResul
     """The footage post ``target`` names, chased by the module serving its host.
 
     ``target`` is a linked URL or a bare X status id (all an export holds for a
-    quote). ``no_target`` hands it to the next chaser; the last answer stands.
-    ``client`` is for tests (a ``MockTransport``).
+    quote). ``no_target`` hands it to the next chaser. Never raises: a chase
+    must never fail the ingestion, and a throttled or unanswered upstream reads
+    ``transient_failure``. ``client`` is for tests (a ``MockTransport``).
     """
-    for chaser in (x.chase, telegram.chase):
-        chased = chaser(target, client=client)
+    # Looked up per call, so a test can patch one chaser.
+    for chaser in (x.chase, telegram.chase, tiktok.chase):
+        try:
+            chased = chaser(target, client=client)
+        except TweetImportError as exc:
+            return ChaseResult(
+                outcome="transient_failure" if is_transient(exc) else "not_accessible"
+            )
+        except Exception:
+            logger.debug("Chase of %s failed", target, exc_info=True)
+            return ChaseResult(outcome="not_accessible")
         if chased.outcome != "no_target":
             return chased
-    return tiktok.chase(target, client=client)
+    return ChaseResult(outcome="no_target")
 
 
 def apply_chase(record: TweetRecord, chased: ChasedPost) -> TweetRecord:
