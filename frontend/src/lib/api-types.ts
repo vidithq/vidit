@@ -1187,12 +1187,9 @@ export interface paths {
          * Import From Tweet
          * @description Import the caller's own X post as detections.
          *
-         *     Runs the same engine and write path as the bot and the archive backfill
-         *     (``detection.import_pasted_post``): one detection per coordinate, owned by
-         *     the caller, and a repeat paste overwrites the open detection.
-         *
-         *     Auth-only, own posts only (the author must be the handle linked to the
-         *     caller). Per-IP 30/minute bounds the shared syndication budget.
+         *     One detection per coordinate, owned by the caller; a repeat paste overwrites the open
+         *     detection. Own posts only: the author must be the handle linked to the caller. Per-IP
+         *     30/minute bounds the shared syndication budget.
          */
         post: operations["import_from_tweet_api_v1_events_import_from_tweet_post"];
         delete?: never;
@@ -6088,19 +6085,11 @@ export interface components {
          * TweetImportRead
          * @description What one pasted post did, in the order the engine produced it.
          *
-         *     One coordinate makes one detection. ``created`` holds new detections,
-         *     ``updated`` open detections a re-import overwrote, ``skipped`` rows the
-         *     import must not touch (published, closed, withheld) or found up to date.
-         *
-         *     ``warnings`` is what review still has to answer, never a refusal. Three
-         *     codes say what the engine could not settle from the post
-         *     (``several_coordinates``, ``source_ambiguous``, ``source_missing``); four
-         *     say what the detections ended with (``source_footage_missing``,
-         *     ``source_fetch_failed``, ``source_date_unknown``, ``duplicate_media``;
-         *     fetch-failed may fill on a later import). ``reason`` is the refusal when no
-         *     detection was produced (``coords_missing``, ``coords_invalid``,
-         *     ``thread_truncated``), else null.
-         *     ``failed`` counts detections that raised mid-persist.
+         *     ``created`` holds new detections, ``updated`` open detections a re-import overwrote,
+         *     ``skipped`` rows the import must not touch (published, closed, withheld) or found up to
+         *     date. ``warnings`` is what review still has to answer, never a refusal. ``reason`` is the
+         *     refusal when no detection was produced, else null. ``failed`` counts detections that raised
+         *     mid-persist.
          */
         TweetImportRead: {
             /** Created */
