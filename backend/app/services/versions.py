@@ -252,13 +252,18 @@ def _media_entries(fragment: Any) -> list[dict[str, Any]]:
     return [entry for entry in fragment if isinstance(entry, dict)]
 
 
+def _source_files(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [source["media"] for source in sources if isinstance(source.get("media"), dict)]
+
+
+def storage_urls(entries: Iterable[Mapping[str, Any]]) -> set[str]:
+    """The ``storage_url`` of each snapshot media entry that carries one."""
+    return {url for entry in entries if isinstance(url := entry.get("storage_url"), str)}
+
+
 def source_media_of(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The files of one already-read snapshot's sources."""
-    return [
-        source["media"]
-        for source in _media_entries(snapshot.get("sources"))
-        if isinstance(source.get("media"), dict)
-    ]
+    return _source_files(_media_entries(snapshot.get("sources")))
 
 
 def _fragments(db: Session, event_id: uuid.UUID, key: str) -> list[dict[str, Any]]:
@@ -283,11 +288,7 @@ def referenced_media_urls(db: Session, event_id: uuid.UUID) -> set[str]:
     The proof-media floor: a ``media`` row whose URL is in this set survives its
     removal from the current proof body.
     """
-    return {
-        url
-        for entry in _fragments(db, event_id, "proof_media")
-        if isinstance(url := entry.get("storage_url"), str)
-    }
+    return storage_urls(_fragments(db, event_id, "proof_media"))
 
 
 def referenced_source_media(db: Session, event_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -296,11 +297,7 @@ def referenced_source_media(db: Session, event_id: uuid.UUID) -> list[dict[str, 
     Returns entries, not URLs: a dropped source deletes the row, so the storage key
     (derivatives included) resolves from the snapshot alone. Sweeps ask here first.
     """
-    return [
-        source["media"]
-        for source in _fragments(db, event_id, "sources")
-        if isinstance(source.get("media"), dict)
-    ]
+    return _source_files(_fragments(db, event_id, "sources"))
 
 
 def version_zero(db: Session, geo: Event) -> VersionZero | None:

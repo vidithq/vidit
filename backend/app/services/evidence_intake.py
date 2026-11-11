@@ -240,11 +240,7 @@ def _history_pinned_source_srcs(db: Session, event: Event) -> set[str]:
     """The source-file URLs this event's readable snapshots render."""
     if event.version_no == 0:
         return set()
-    return {
-        url
-        for entry in versions.referenced_source_media(db, event.id)
-        if isinstance(url := entry.get("storage_url"), str)
-    }
+    return versions.storage_urls(versions.referenced_source_media(db, event.id))
 
 
 def _reject_foreign_proof_srcs(db: Session, event: Event, displayed_srcs: set[str]) -> None:
