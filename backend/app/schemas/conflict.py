@@ -6,13 +6,8 @@ from app.models.conflict import ConflictTier
 
 
 class ConflictRead(BaseModel):
-    """One row of the conflicts referential on the wire.
-
-    ``last_seen_at`` and ``source`` are sync internals and stay off it.
-    ``is_ongoing`` drives the picker default; ``start_year`` / ``end_year``
-    disambiguate same-named entries; ``tier`` (NULL when unknown) ranks ongoing
-    conflicts.
-    """
+    """One row of the conflicts referential. ``last_seen_at`` and ``origin`` are sync internals
+    and stay off it."""
 
     id: uuid.UUID
     name: str

@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class UploadResult(NamedTuple):
-    """What a :func:`store` call hands back.
-
-    ``sha256`` is stored on the ``Media`` row (the S3 ETag is unfit: MD5, not
+    """``sha256`` is stored on the ``Media`` row (the S3 ETag is unfit: MD5, not
     stable across copies). ``derivative_keys`` are the sibling hero and
     thumbnail keys (empty for videos); callers add them to their cleanup list
     so a failed commit sweeps them too.
@@ -79,10 +77,7 @@ def content_type_of_key(key: str) -> str | None:
 
 
 def safe_storage_extension(content_type: str | None) -> str:
-    """Canonical extension for an allowed MIME type, ``""`` for anything else.
-
-    Shared by every key this module mints and by ``detection.open_request``.
-    """
+    """Canonical extension for an allowed MIME type, ``""`` for anything else."""
     if content_type is None:
         return ""
     return _EXTENSION_FOR_CONTENT_TYPE.get(content_type, "")
@@ -119,7 +114,7 @@ def _checked_media_type(content_type: str | None, size: int, *, gif: bool = Fals
 
 
 def validate_file(file: UploadFile) -> str:
-    """Validate type + size; return media_type ('image' or 'video'). A GIF is an image."""
+    """A GIF counts as an image."""
     file.file.seek(0, 2)
     size = file.file.tell()
     file.file.seek(0)
@@ -354,7 +349,6 @@ def content_sha256(data: bytes) -> str:
 async def store(
     storage: Storage, body: bytes | BinaryIO, key: str, content_type: str
 ) -> UploadResult:
-    """Put ``body`` at ``key`` and return its URL and the SHA-256 of the stored bytes."""
     if isinstance(body, bytes):
         sha256 = content_sha256(body)
     else:
@@ -639,24 +633,18 @@ def _source_file_key(content_type: str | None) -> str:
 
 
 async def upload_source_file(file: UploadFile) -> list[StoredFile]:
-    """A source file staged ahead of the event write (``services/uploads.stage_upload``).
-
-    One stored file, or one per frame of a GIF.
-    """
+    """One stored file, or one per frame of a GIF."""
     return await _upload_picked(file, _source_file_key)
 
 
 async def upload_source_bytes(data: bytes, content_type: str) -> UploadResult:
-    """A fetched source file staged ahead of the event write (``services/uploads.stage_from_link``)."""
     return await upload_bytes_with_optional_strip(
         data, content_type, _source_file_key(content_type)
     )
 
 
 async def upload_source_copy(data: bytes, content_type: str) -> UploadResult:
-    """A stored proof image staged as a source file (``services/uploads.stage_from_proof``).
-
-    A new object under ``uploads/``: the proof's own object stays where it is, under the
+    """A new object under ``uploads/``: the proof's own object stays where it is, under the
     bucket's Object Lock retention. The bytes land as they are, already stripped at intake, so
     the copy keeps the proof's sha256, and gain the hero and thumbnail a source image has.
     """
