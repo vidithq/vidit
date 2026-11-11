@@ -1,7 +1,4 @@
-"""Shared geolocation credit on one event: invitations, answers and removals.
-
-Business rules live in ``services/geolocator_credit``; this module maps its typed errors.
-"""
+"""Shared geolocation credit on one event: invitations, answers and removals."""
 
 import uuid
 

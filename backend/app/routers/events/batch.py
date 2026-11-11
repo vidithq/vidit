@@ -1,11 +1,4 @@
-"""Batch completion: publish a selection of detections in one call.
-
-A detection arrives with title, coordinates, sources and usually proof images;
-what the machine can't supply is the conflict and the source kind. This endpoint
-takes those (conflicts once for the selection, source kind per row) and runs each
-detection through the same floor as a publish through ``POST /events/{id}/versions``,
-filing it as version 0. Transactions and verdicts are per row.
-"""
+"""Batch completion: publish a selection of detections in one call."""
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
@@ -13,11 +6,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.ratelimit import limiter
-from app.schemas.event import (
-    BatchCompletionCreate,
-    BatchCompletionRead,
-    BatchCompletionRowRead,
-)
+from app.schemas.event import BatchCompletionCreate, BatchCompletionRead
 from app.services import events as events_service
 
 router = APIRouter()
@@ -31,37 +20,12 @@ def batch_complete_events(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> BatchCompletionRead:
-    """Publish the selected detections: ``detected`` → ``geolocated``.
-
-    JSON, not multipart: nothing uploads. The detections keep their imported
-    evidence; the call supplies the conflict set and one source kind per row,
-    which goes onto every source that carries a file.
-
-    Each row commits on its own: one that fails the floor (no proof image,
-    coordinates, direct or indirect source file, or a source without a URL)
-    rolls back alone, stays a
-    detection and gets its reason in ``rows[]``. Publishing credits the caller
-    as geolocator, as the single-row transition does.
-
-    Two conditions reject the whole call before anything publishes: no
-    resolvable conflict (400) and a targeted detection owned by another
-    analyst (403; rows are owner-only).
-    """
-    outcomes = events_service.complete_detections(
+    """Publish the selected detections: ``detected`` → ``geolocated``."""
+    rows = events_service.complete_detections(
         db,
         current_user=current_user,
         conflict_ids=body.conflict_ids,
         rows=[(row.event_id, row.kind) for row in body.rows],
     )
-
-    rows = [
-        BatchCompletionRowRead(
-            event_id=outcome.event_id,
-            published=outcome.code is None,
-            code=outcome.code,
-            message=outcome.message,
-        )
-        for outcome in outcomes
-    ]
     published = sum(1 for row in rows if row.published)
     return BatchCompletionRead(published=published, failed=len(rows) - published, rows=rows)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,19 +14,19 @@ from app.models.conflict import Conflict
 from app.models.event import STATUS_DETECTED, STATUS_GEOLOCATED, Event
 from app.models.source import SourceKind
 from app.models.user import User
+from app.schemas.event import BatchCompletionRowRead
 from app.services import versions
 from app.services.event_filters import visible_events
 from app.services.evidence_intake import EvidenceIntakeError
 from app.services.permissions import ensure_owner
 
 from .errors import (
-    ConflictRequiredError,
     CoordinatesRequiredError,
     EventNotFoundError,
     EventStateError,
     SourceLinkRequiredError,
 )
-from .rules import _credit_geolocator, _require_proof_image, _resolve_conflicts
+from .rules import _credit_geolocator, _require_conflict, _require_proof_image, _resolve_conflicts
 from .sources import check_publish_floor, stored_floor
 
 logger = logging.getLogger(__name__)
@@ -36,16 +35,6 @@ logger = logging.getLogger(__name__)
 # The one per-row code that is not a floor verdict: a database failure on that
 # row. Part of the contract (``docs/api.md``): clients tell "incomplete" from "retry".
 ROW_INTERNAL_ERROR_CODE = "internal_error"
-
-
-@dataclass(frozen=True)
-class DetectionCompletion:
-    """One row's outcome: ``code`` is ``None`` when published, else the failing
-    error's code (or :data:`ROW_INTERNAL_ERROR_CODE`). A failed row is untouched."""
-
-    event_id: uuid.UUID
-    code: str | None = None
-    message: str | None = None
 
 
 def _assert_owns_all(db: Session, *, event_ids: list[uuid.UUID], current_user: User) -> None:
@@ -72,20 +61,10 @@ def _publish_detection(
     conflicts: list[Conflict],
 ) -> None:
     """Promote one detection to ``geolocated`` with the conflicts and source kind the batch
-    supplies.
+    supplies, on the floor :func:`save_version` runs on a publish. Commits on success.
 
-    No other field edits, uploads or proof rewrite: the import already put the rest on the
-    row. ``kind`` goes onto every source that carries a file. The floor is the one
-    :func:`save_version` runs on a publish, so a batch is no looser a door to ``geolocated``.
-    Like that publish, it files the detection as version 0 and the row becomes version 1.
-
-    Locked like :func:`save_version`, so a race with a publish from the form serializes.
-    Commits on success. The floor is projected into SQL by
-    :func:`detection_ready_predicate`: change a leg in both.
-
-    Raises the typed floor errors, :class:`EventStateError` off ``detected``,
-    :class:`EventNotFoundError` when the row is gone, and the 403 of
-    :func:`ensure_owner`. The caller rolls back and records the code.
+    Locked like :func:`save_version`, so a race with a publish from the form serializes. The
+    floor is projected into SQL by :func:`detection_ready_predicate`: change a leg in both.
     """
     geo = (
         db.query(Event)
@@ -131,26 +110,16 @@ def complete_detections(
     current_user: User,
     conflict_ids: list[uuid.UUID],
     rows: list[tuple[uuid.UUID, SourceKind]],
-) -> list[DetectionCompletion]:
-    """Publish a selection of detections, one transaction per row.
-
-    ``conflict_ids`` applies to the whole selection; ``rows`` are ordered
-    ``(event_id, kind)`` pairs. A row that fails the floor
-    rolls back alone and stays a detection. Results mirror ``rows`` order.
-
-    Two conditions fail the whole call before anything commits: an empty or
-    unresolvable ``conflict_ids`` (:class:`ConflictRequiredError`) and a row
-    owned by someone else (403). After the first commit, a database error on
-    one row is reported as :data:`ROW_INTERNAL_ERROR_CODE` against that row.
-    """
+) -> list[BatchCompletionRowRead]:
+    """Publish a selection of detections, one transaction per row, verdicts in ``rows`` order."""
     conflicts = _resolve_conflicts(db, conflict_ids)
-    if not conflicts:
-        raise ConflictRequiredError("A conflict is required")
+    _require_conflict(conflicts)
     _assert_owns_all(db, event_ids=[event_id for event_id, _ in rows], current_user=current_user)
 
-    outcomes: list[DetectionCompletion] = []
-    published = 0
+    outcomes: list[BatchCompletionRowRead] = []
     for event_id, kind in rows:
+        code: str | None = None
+        message: str | None = None
         try:
             _publish_detection(
                 db,
@@ -162,24 +131,20 @@ def complete_detections(
         # The shared base, not ``EventError``: the upload errors are siblings of it.
         except EvidenceIntakeError as exc:
             db.rollback()
-            outcomes.append(DetectionCompletion(event_id=event_id, code=exc.code, message=str(exc)))
-            continue
+            code, message = exc.code, str(exc)
         # A database failure escaping would 500 the call and lose the verdicts of
         # rows already published.
         except SQLAlchemyError:
             db.rollback()
             logger.exception("batch completion failed on event %s", event_id)
-            outcomes.append(
-                DetectionCompletion(
-                    event_id=event_id,
-                    code=ROW_INTERNAL_ERROR_CODE,
-                    message="This detection could not be published; try it again.",
-                )
+            code = ROW_INTERNAL_ERROR_CODE
+            message = "This detection could not be published; try it again."
+        outcomes.append(
+            BatchCompletionRowRead(
+                event_id=event_id, published=code is None, code=code, message=message
             )
-            continue
-        published += 1
-        outcomes.append(DetectionCompletion(event_id=event_id))
+        )
 
-    if published:
+    if any(outcome.published for outcome in outcomes):
         points_cache.invalidate()
     return outcomes

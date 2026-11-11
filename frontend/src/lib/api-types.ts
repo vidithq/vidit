@@ -907,26 +907,13 @@ export interface paths {
          * List Events
          * @description Cards for one lifecycle view, newest or oldest first.
          *
-         *     ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-         *     queue. Two steps (ids, then full rows) so eager-loads can't inflate the
-         *     LIMIT count.
-         *
-         *     Capped at 100 rows however large ``limit`` is; the ``Link: rel="next"``
-         *     cursor is present exactly when a next page holds a row. Ordering is
-         *     ``created_at, id``, descending for ``sort=newest`` and ascending for
-         *     ``sort=oldest``. Both are total, so a walk can't duplicate or skip rows.
+         *     Two steps (ids, then full rows) so eager-loads can't inflate the LIMIT count.
          */
         get: operations["list_events_api_v1_events_get"];
         put?: never;
         /**
          * Create Event
          * @description Direct geolocate: create an event born ``geolocated``.
-         *
-         *     Parses the form into clean types; business rules and IO live in
-         *     ``services/events.create_with_evidence``. A pasted archived copy that is not
-         *     a snapshot is a 400 with the failing check's code and no event is created. Each
-         *     analyst in ``geolocator_invites`` is invited to share the credit, refused as
-         *     ``POST /events/{id}/geolocator-invites`` refuses, and a refusal creates no event.
          */
         post: operations["create_event_api_v1_events_post"];
         delete?: never;
@@ -947,20 +934,6 @@ export interface paths {
         /**
          * Batch Complete Events
          * @description Publish the selected detections: ``detected`` → ``geolocated``.
-         *
-         *     JSON, not multipart: nothing uploads. The detections keep their imported
-         *     evidence; the call supplies the conflict set and one source kind per row,
-         *     which goes onto every source that carries a file.
-         *
-         *     Each row commits on its own: one that fails the floor (no proof image,
-         *     coordinates, direct or indirect source file, or a source without a URL)
-         *     rolls back alone, stays a
-         *     detection and gets its reason in ``rows[]``. Publishing credits the caller
-         *     as geolocator, as the single-row transition does.
-         *
-         *     Two conditions reject the whole call before anything publishes: no
-         *     resolvable conflict (400) and a targeted detection owned by another
-         *     analyst (403; rows are owner-only).
          */
         post: operations["batch_complete_events_api_v1_events_batch_complete_post"];
         delete?: never;
@@ -979,22 +952,6 @@ export interface paths {
         /**
          * List Detections
          * @description The caller's ``detected`` events awaiting a publish, newest first.
-         *
-         *     Owner-scoped to ``current_user`` (never a URL username): the Detections
-         *     queue. Returns full ``EventRead`` so the queue shows evidence and what each
-         *     detection still lacks without a per-row round-trip. Ordered by
-         *     ``created_at DESC, id DESC``.
-         *
-         *     ``readiness`` narrows the queue server-side to detections that clear the
-         *     publish floor (``ready``), those that don't (``incomplete``), or ``all``;
-         *     anything else is a 422. The floor is :func:`detection_ready_predicate`, the
-         *     SQL projection of ``services/events/batch._publish_detection``. Filtering
-         *     here, not over the loaded page, because the queue pages at 10 rows over
-         *     imports of hundreds.
-         *
-         *     ``total`` counts the filtered set; ``ready_total`` and ``incomplete_total``
-         *     always count the whole queue. Offset-paged (``page`` / ``per_page``),
-         *     capped at 100 rows per page.
          */
         get: operations["list_detections_api_v1_events_detections_get"];
         put?: never;
@@ -1111,15 +1068,6 @@ export interface paths {
          * List Points
          * @description Return the map's events inside ``bbox`` as a compact array:
          *     ``[[id, lat, lng, occurred_date, added_date, detected], ...]``.
-         *
-         *     No joins, built for client-side clustering. ``bbox``
-         *     (``south,west,north,east``) is required and bounds the payload by area; a
-         *     missing or malformed value is a 422 (:func:`parse_bbox`). Live
-         *     ``geolocated`` / ``detected`` rows with a subject coordinate only. Dates
-         *     are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
-         *     ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
-         *     status string, to keep the payload small. Cached in memory for 60s per
-         *     snapped bbox + filter combination (:func:`snap_bbox`).
          */
         get: operations["list_points_api_v1_events_points_get"];
         put?: never;
@@ -1175,10 +1123,6 @@ export interface paths {
         /**
          * Create Event Request
          * @description Open a request (a ``requested`` event).
-         *
-         *     The footage the poster has must be on the row from the start: a direct or
-         *     indirect source with its file. Business rules and IO live in
-         *     ``services/events.create_request``.
          */
         post: operations["create_event_request_api_v1_events_requests_post"];
         delete?: never;
@@ -1314,14 +1258,6 @@ export interface paths {
         /**
          * Close Event
          * @description Close an event: withdraw, reject or retract it (owner-only).
-         *
-         *     One terminal verb for all three, in every live state;
-         *     ``before_closed_status`` records the state left and the required
-         *     ``close_reason`` is public. The row stays readable and drops off the map. A
-         *     closed detection stays in the located catalog and re-importable; closing a
-         *     ``geolocated`` row is a public retraction that keeps the page, versions,
-         *     credits and archives and leaves the published set for good. Already closed
-         *     409; soft-deleted 404; not the owner 403.
          */
         post: operations["close_event_api_v1_events__geolocation_id__close_post"];
         delete?: never;
@@ -1340,10 +1276,6 @@ export interface paths {
         /**
          * List Event Collections
          * @description Your collections, each saying whether this event is already on it.
-         *
-         *     The add-to-collection popover's read, for an analyst credited on the event
-         *     (its owner or a co-geolocator). Empty collections are listed. 404 on a
-         *     soft-deleted or withheld event, 403 when you are not credited.
          */
         get: operations["list_event_collections_api_v1_events__geolocation_id__collections_get"];
         put?: never;
@@ -1471,12 +1403,6 @@ export interface paths {
         /**
          * Report Event
          * @description Report an event for moderation.
-         *
-         *     Open to anonymous viewers: the people footage harms rarely hold an account
-         *     here. A signed-in reporter is recorded; an anonymous one leaves
-         *     ``reporter_id`` NULL. The per-IP limit is the abuse floor.
-         *
-         *     An unknown, soft-deleted or already-withheld event answers 404.
          */
         post: operations["report_event_api_v1_events__geolocation_id__report_post"];
         delete?: never;
@@ -1497,15 +1423,6 @@ export interface paths {
         /**
          * Update Event Request
          * @description Correct an open request, overwriting it in place (owner-only).
-         *
-         *     No version is filed: the request stays version 0 until it is published
-         *     through ``POST /events/{id}/versions``. The row keeps its id,
-         *     ``requested_at``, requester and provenance, and moves ``updated_at``.
-         *     Allowed only while ``requested`` (409 otherwise).
-         *
-         *     Every create-form field is editable, the coordinate guess included; the
-         *     publication floor stays unenforced until the publish, but the row must still
-         *     hold a direct or indirect source with its file. Soft-deleted rows read as 404.
          */
         post: operations["update_event_request_api_v1_events__geolocation_id__request_post"];
         delete?: never;
@@ -1530,9 +1447,6 @@ export interface paths {
         /**
          * Link Site
          * @description Link your published event to a site, or change the effect of its link (idempotent).
-         *
-         *     403 ``not_event_owner`` for anyone but the event's owner, 409 ``event_not_linkable`` for an
-         *     event that is not published, 404 ``site_not_found`` for an unknown or withheld site.
          */
         post: operations["link_site_api_v1_events__geolocation_id__site_links_post"];
         delete?: never;
@@ -1592,40 +1506,12 @@ export interface paths {
         /**
          * List Event Versions
          * @description The event's superseded versions, newest first.
-         *
-         *     Public: a corrected record is only auditable if corrections are readable.
-         *     The live row is the current version and is not listed. Visibility as
-         *     ``GET /{id}``.
-         *
-         *     Paged: ``services/versions.HISTORY_PAGE_SIZE`` rows by default, capped at
-         *     100, following the ``Link: rel="next"`` cursor. ``total`` is the whole
-         *     history.
          */
         get: operations["list_event_versions_api_v1_events__geolocation_id__versions_get"];
         put?: never;
         /**
          * Save Event Version
          * @description Publish a request or a detection, or correct a published event, filing a version.
-         *
-         *     The caller posts the whole form (title, coordinates, dates, proof + images, tags,
-         *     conflicts, sources). The pre-edit state is filed as an ``event_versions`` row and the
-         *     event moves to the next ``version_no``, in one transaction under a row lock.
-         *
-         *     On a ``requested`` or ``detected`` event (version 0) this publishes: the event becomes
-         *     ``geolocated`` at version 1 and the caller is credited as a geolocator. A detection is
-         *     owner-only (403 otherwise); a request is answerable by anyone, and the fulfiller becomes
-         *     its owner (``requested_by`` keeps the poster). A publish invites each analyst in
-         *     ``geolocator_invites`` to share the credit, refused as
-         *     ``POST /events/{id}/geolocator-invites`` refuses, and a refusal publishes nothing; a
-         *     ``geolocated`` event takes none (409). On a ``geolocated`` event it is an
-         *     owner-only correction, refused when nothing changed. Other statuses 409, and 409
-         *     ``version_mismatch`` when ``version_no`` names a version the event has moved past.
-         *
-         *     The sources are versioned too: the posted list replaces the stored one and the filed
-         *     version keeps what it supersedes, files included. The publication floor (coordinates, a
-         *     direct or indirect source with its file, a proof image, a conflict) is checked on the
-         *     post-edit state. A save whose only change is a link's archived copy is accepted even at
-         *     the version ceiling. Soft-deleted rows read as 404.
          */
         post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
         delete?: never;
@@ -1644,11 +1530,6 @@ export interface paths {
         /**
          * Get Event Version
          * @description One superseded version of an event, by its number.
-         *
-         *     The direct read behind the ``/vN`` address, visibility-gated like the list.
-         *     The live row's number answers 404 (read it at ``GET /{id}``), as does a
-         *     number the event never carried. A redacted version answers with its
-         *     blanked shape.
          */
         get: operations["get_event_version_api_v1_events__geolocation_id__versions__version_no__get"];
         put?: never;

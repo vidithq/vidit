@@ -1,13 +1,7 @@
-"""Sources: the write an event form's ``sources`` list drives, the publish floor, the
-comparable form the no-change check reads, a source filed outside an event write
-(:func:`file_source`, a site source), and the wire shape of a stored source.
+"""The source list of an event write, the publish floor, and the wire shape of a source.
 
-A write posts the event's whole list (``schemas/source.SourceCreate``). :func:`plan_sources`
-checks it against the stored sources before anything is written, :func:`check_publish_floor`
-holds a publication to its evidence, and :func:`apply_sources` writes it once the event row
-exists. The file of a source is a staged upload (``services/uploads``) or a stored file of the
-same event: the source's own is kept, another source's is copied by row onto the same stored
-object.
+The file of a source is a staged upload (``services/uploads``) or a stored file of the same
+event: the source's own is kept, another source's is copied by row onto the same stored object.
 """
 
 from __future__ import annotations
@@ -95,12 +89,7 @@ class PlannedSource:
 
 
 def _clean_links(links: list[SourceLinkCreate]) -> list[SourceLinkCreate]:
-    """Strip each URL, drop blanks and repeats, check each snapshot; at least one link left.
-
-    Raises :class:`InvalidSourceUrlError` for a URL that is not an ``http(s)`` link,
-    :class:`TooManySourceLinksError` past :data:`MAX_LINKS_PER_SOURCE`,
-    :class:`SourceLinkRequiredError` when none is left, and ``SnapshotRejected``.
-    """
+    """Strip each URL, drop blanks and repeats, check each snapshot; at least one link left."""
     cleaned: list[SourceLinkCreate] = []
     seen: set[str] = set()
     for link in links:
@@ -125,16 +114,8 @@ def _clean_links(links: list[SourceLinkCreate]) -> list[SourceLinkCreate]:
 def plan_sources(
     db: Session, *, geo: Event | None, specs: list[SourceCreate], uploader: User
 ) -> list[PlannedSource]:
-    """Check a posted source list before anything is written.
-
-    ``geo`` is the event the list replaces the sources of (None on a create). Locks the
-    uploads it names (:func:`services.uploads.take_uploads`).
-
-    Raises :class:`TooManySourcesError`, :class:`SourceNotFoundError` (an ``id`` that is not
-    one of ``geo``'s sources, or repeats), :class:`SourceMediaNotFoundError` (a ``media_id``
-    that names no file of ``geo``'s sources), the link errors of :func:`_clean_links`,
-    ``InvalidCoordinatesError``, and the upload errors.
-    """
+    """Check a posted source list before anything is written, ``geo`` being the event whose
+    sources it replaces (None on a create). Locks the uploads it names."""
     if len(specs) > MAX_SOURCES_PER_EVENT:
         raise TooManySourcesError(f"An event holds at most {MAX_SOURCES_PER_EVENT} sources")
     stored_by_id = {source.id: source for source in geo.sources} if geo is not None else {}
@@ -216,8 +197,7 @@ def check_publish_floor(sources: Iterable[tuple[SourceLevel, bool]]) -> None:
     """Hold an event to its evidence: a ``direct`` or ``indirect`` source with a file.
 
     Each item is ``(level, has_file)``. Every source names its kind by construction (the
-    column is required, ``unknown`` included), so the floor has no kind leg. Raises
-    :class:`SourceRequiredError` or :class:`SourceFileRequiredError`.
+    column is required, ``unknown`` included), so the floor has no kind leg.
     """
     evidence = [has_file for level, has_file in sources if level in EVIDENCE_LEVELS]
     if not evidence:
@@ -315,21 +295,21 @@ def _attach_file(
 ) -> None:
     """Give ``source`` its file: a taken upload, whose staged row goes, or a new row on the
     stored object of ``copy_of``."""
+    origin: Upload | Media
     if upload is not None:
-        source.media = Media(
-            storage_url=uploads.storage_url_of(upload),
-            kind=upload.kind,
-            sha256=upload.sha256,
-            original_filename=upload.original_filename,
-        )
-        db.delete(upload)
+        origin, storage_url = upload, uploads.storage_url_of(upload)
     elif copy_of is not None:
-        source.media = Media(
-            storage_url=copy_of.storage_url,
-            kind=copy_of.kind,
-            sha256=copy_of.sha256,
-            original_filename=copy_of.original_filename,
-        )
+        origin, storage_url = copy_of, copy_of.storage_url
+    else:
+        return
+    source.media = Media(
+        storage_url=storage_url,
+        kind=origin.kind,
+        sha256=origin.sha256,
+        original_filename=origin.original_filename,
+    )
+    if upload is not None:
+        db.delete(upload)
 
 
 def file_source(
@@ -342,10 +322,7 @@ def file_source(
     copy_of: Media | None,
 ) -> Source:
     """Stage a new source outside an event write, such as a site source: its links and its file.
-
-    Raises the link errors of :func:`_clean_links` and the upload errors. Staged, not
-    committed.
-    """
+    Not committed."""
     cleaned = _clean_links(links)
     staged = uploads.take_uploads(
         db, uploader=uploader, upload_ids=[upload_id] if upload_id else []
@@ -378,8 +355,11 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
     """
     entries: list[str] = []
     for item in sources:
+        fields: SourceCreate | Source
         if isinstance(item, PlannedSource):
-            spec = item.spec
+            fields = item.spec
+            position = item.spec.capture_position
+            point = [position.lat, position.lng] if position else None
             if item.keeps_media and item.stored is not None and item.stored.media is not None:
                 file: str | None = item.stored.media.storage_url
             elif item.copy_of is not None:
@@ -388,37 +368,25 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
                 file = f"upload:{item.upload.id}"
             else:
                 file = None
-            position = spec.capture_position
-            value = {
-                "title": spec.title,
-                "level": spec.level,
-                "kind": spec.kind,
-                "captured_at": _instant(spec.captured_at),
-                "capture_position": [position.lat, position.lng] if position else None,
-                "is_graphic": item.is_graphic,
-                "links": sorted(
-                    _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)
-                    for link in item.links
-                ),
-                "tags": sorted(str(tag.id) for tag in item.tags),
-                "file": file,
-            }
         else:
-            point = versions.point_shape(item.capture_position)
-            value = {
-                "title": item.title,
-                "level": item.level,
-                "kind": item.kind,
-                "captured_at": _instant(item.captured_at),
-                "capture_position": [point["lat"], point["lng"]] if point else None,
-                "is_graphic": item.is_graphic,
-                "links": sorted(
-                    _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)
-                    for link in item.links
-                ),
-                "tags": sorted(str(tag.id) for tag in item.tags),
-                "file": item.media.storage_url if item.media is not None else None,
-            }
+            fields = item
+            shape = versions.point_shape(item.capture_position)
+            point = [shape["lat"], shape["lng"]] if shape else None
+            file = item.media.storage_url if item.media is not None else None
+        value = {
+            "title": fields.title,
+            "level": fields.level,
+            "kind": fields.kind,
+            "captured_at": _instant(fields.captured_at),
+            "capture_position": point,
+            "is_graphic": item.is_graphic,
+            "links": sorted(
+                _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)
+                for link in item.links
+            ),
+            "tags": sorted(str(tag.id) for tag in item.tags),
+            "file": file,
+        }
         entries.append(json.dumps(value, sort_keys=True, default=str))
     return entries
 

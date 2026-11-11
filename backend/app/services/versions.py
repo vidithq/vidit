@@ -1,30 +1,9 @@
 """Version history of an event: snapshot, read, redact, media floor.
 
-:func:`file_version` is the only way a version comes to be (callers:
-``services/events.save_version``, which publishes or corrects, and the batch
-publish ``services/events.complete_detections``). It files the row's pre-edit
-state as an append-only ``event_versions`` entry and bumps ``version_no``. An
-unpublished request or detection is version 0, so publishing files version 0
-and the published row is version 1. A row created published (``POST /events``)
-starts at version 1 with no version 0.
-
-:func:`referenced_media_urls` keeps a snapshot's proof images renderable.
-Media rows are not versioned, so the shared intake asks here before dropping a
-proof-media row: a row some snapshot displayed stays, object included.
-
-Source files take the other route: a source an edit drops or re-files goes
-with its row. The snapshot carries each source's whole render shape
-(:func:`build_snapshot`), only the stored object is held alive, and
-:func:`referenced_source_media` names those objects for the sweeps.
-
-:func:`redact_version` blanks a filed row's content, keeping its number. A
-redacted snapshot contributes nothing to either floor above.
-
-:func:`matches_current` refuses a version that would equal the live row. It
-reads :data:`COMPARED_FIELDS` off the same snapshot the filing writes; the
-caller builds that snapshot once and hands it to both.
-
-Reads are paginated through ``services/pagination``.
+Media rows are not versioned, so the shared intake asks :func:`referenced_media_urls` before
+dropping a proof-media row: a row some snapshot displayed stays, object included. A source
+file goes with its row; the snapshot carries the source's whole render shape and only the
+stored object is held alive (:func:`referenced_source_media`).
 """
 
 from __future__ import annotations
@@ -76,21 +55,14 @@ COMPARED_FIELDS: tuple[str, ...] = (
 
 
 class VersionLimitError(CodedError):
-    """The event already carries :data:`MAX_VERSIONS_PER_EVENT` versions.
-
-    Raised by :func:`file_version` for an edit, never for a save whose only
-    change is archived copies.
-    """
+    """Never raised for a save whose only change is archived copies."""
 
     code = "version_limit"
     status_code = 409
 
 
 def point_shape(value: Any) -> dict[str, float] | None:
-    """One stored PostGIS point as the snapshot's wire shape, or ``None``.
-
-    Same nesting as ``schemas/event.CoordsRead``.
-    """
+    """Same nesting as ``schemas/event.CoordsRead``."""
     if value is None:
         return None
     point = cast(Point, to_shape(value))
@@ -143,15 +115,9 @@ def source_entry(source: Source) -> dict[str, Any]:
 def build_snapshot(geo: Event) -> dict[str, Any]:
     """The event's current editable state, as the JSON one version stores.
 
-    Exactly the field set :func:`services.events.save_version` writes: every
-    field an edit can change is carried, so snapshots plus the live row are a
-    complete history.
-
-    ``sources`` hold each source with its links, tags and file in the event's
-    order (:func:`source_entry`); a dropped source's object stays (see
-    :func:`referenced_source_media`). ``proof_media`` lists only images THIS
-    version's proof body references, otherwise it would misreport the version
-    and pin images forever.
+    Exactly the field set :func:`services.events.save_version` writes, so snapshots plus the
+    live row are a complete history. ``proof_media`` lists only images THIS version's proof
+    body references, otherwise it would misreport the version and pin images forever.
     """
     displayed = set(extract_image_srcs(geo.proof))
     return {
@@ -175,12 +141,8 @@ def _ids(entries: Any) -> list[str]:
 def matches_current(current: Mapping[str, Any], proposed: Mapping[str, Any]) -> bool:
     """True when every versioned field of ``proposed`` equals the stored one's.
 
-    Both arguments are snapshots from :func:`build_snapshot`. Sources are the
-    caller's own leg (``services/events/sources.comparable``).
-
-    Tags and conflicts compare as sets of ids, so ordering or a rename is not a
-    change. Run it under the caller's lock before anything is staged, so a
-    refused write files nothing.
+    Tags and conflicts compare as sets of ids, so ordering or a rename is not a change. Run it
+    under the caller's lock before anything is staged, so a refused write files nothing.
     """
     for field in COMPARED_FIELDS:
         if field in ("tags", "conflicts"):
@@ -202,21 +164,11 @@ def file_version(
 ) -> EventVersion:
     """File the state the row carries and move it to the next version.
 
-    ``snapshot`` is the pre-edit state a caller already built for
-    :func:`matches_current`; omit it and the row is read here.
+    ``enforce_ceiling=False`` is for a save whose only change is archived copies: otherwise a
+    source that dies at the ceiling would be unarchivable.
 
-    ``enforce_ceiling=False`` is for a save whose only change is archived
-    copies: otherwise a source that dies at the ceiling would be unarchivable.
-    With it on, raises :class:`VersionLimitError` at
-    :data:`MAX_VERSIONS_PER_EVENT` before anything is staged.
-
-    The new version ends every approval of the superseded one
-    (``models/approval.EventApproval`` is current only on the live version), so
-    each analyst whose approval stood is asked to review it again
-    (``re_approve_requested``).
-
-    Staged, not committed: the caller commits it with its write. Call it before
-    mutating any field, since the snapshot reads the live row.
+    Staged, not committed. Call it before mutating any field, since the snapshot reads the
+    live row.
     """
     if enforce_ceiling and geo.version_no >= MAX_VERSIONS_PER_EVENT:
         raise VersionLimitError(
@@ -252,13 +204,18 @@ def _media_entries(fragment: Any) -> list[dict[str, Any]]:
     return [entry for entry in fragment if isinstance(entry, dict)]
 
 
+def _source_files(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [source["media"] for source in sources if isinstance(source.get("media"), dict)]
+
+
+def storage_urls(entries: Iterable[Mapping[str, Any]]) -> set[str]:
+    """The ``storage_url`` of each snapshot media entry that carries one."""
+    return {url for entry in entries if isinstance(url := entry.get("storage_url"), str)}
+
+
 def source_media_of(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The files of one already-read snapshot's sources."""
-    return [
-        source["media"]
-        for source in _media_entries(snapshot.get("sources"))
-        if isinstance(source.get("media"), dict)
-    ]
+    return _source_files(_media_entries(snapshot.get("sources")))
 
 
 def _fragments(db: Session, event_id: uuid.UUID, key: str) -> list[dict[str, Any]]:
@@ -278,16 +235,8 @@ def _fragments(db: Session, event_id: uuid.UUID, key: str) -> list[dict[str, Any
 
 
 def referenced_media_urls(db: Session, event_id: uuid.UUID) -> set[str]:
-    """Every proof-image URL this event's readable snapshots display.
-
-    The proof-media floor: a ``media`` row whose URL is in this set survives its
-    removal from the current proof body.
-    """
-    return {
-        url
-        for entry in _fragments(db, event_id, "proof_media")
-        if isinstance(url := entry.get("storage_url"), str)
-    }
+    """Every proof-image URL this event's readable snapshots display."""
+    return storage_urls(_fragments(db, event_id, "proof_media"))
 
 
 def referenced_source_media(db: Session, event_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -296,11 +245,7 @@ def referenced_source_media(db: Session, event_id: uuid.UUID) -> list[dict[str, 
     Returns entries, not URLs: a dropped source deletes the row, so the storage key
     (derivatives included) resolves from the snapshot alone. Sweeps ask here first.
     """
-    return [
-        source["media"]
-        for source in _fragments(db, event_id, "sources")
-        if isinstance(source.get("media"), dict)
-    ]
+    return _source_files(_fragments(db, event_id, "sources"))
 
 
 def version_zero(db: Session, geo: Event) -> VersionZero | None:
@@ -332,15 +277,10 @@ def list_versions(
     limit: int,
     cursor: int | None = None,
 ) -> list[EventVersion]:
-    """One page of the event's superseded versions, newest first.
+    """One page of the event's superseded versions, newest first, over-fetched by one row.
 
-    Over-fetches by one row so the caller can detect a next page
-    (``services/pagination.paged``).
-
-    Ordered by ``version_no DESC``, the cursor key
-    (``services/pagination.encode_ordinal_cursor``): unique per event and taken
-    under the row lock, so it needs no tiebreaker and avoids ``created_at``
-    clock skew between instances.
+    ``version_no`` is unique per event and taken under the row lock, so the cursor needs no
+    tiebreaker and avoids ``created_at`` clock skew between instances.
     """
     query = (
         db.query(EventVersion)
@@ -353,7 +293,6 @@ def list_versions(
 
 
 def get_version(db: Session, *, event_id: uuid.UUID, version_no: int) -> EventVersion | None:
-    """One version of one event by its number (the ``/vN`` address), or ``None``."""
     return (
         db.query(EventVersion)
         .options(joinedload(EventVersion.edited_by))
@@ -365,11 +304,8 @@ def get_version(db: Session, *, event_id: uuid.UUID, version_no: int) -> EventVe
 def redact_version(db: Session, *, version: EventVersion, actor_id: uuid.UUID) -> bool:
     """Blank one filed version's content, keeping its number and its byline.
 
-    The snapshot and note go; ``version_no``, ``created_at`` and ``edited_by``
-    stay, so ``/vN`` addressing never shifts.
-
-    Staged, not committed: the caller owns the transaction and the sweep of
-    images only this version displayed. Returns ``False`` if already redacted.
+    Staged, not committed: the caller owns the transaction and the sweep of images only this
+    version displayed. Returns ``False`` if already redacted.
     """
     if version.redacted_at is not None:
         return False

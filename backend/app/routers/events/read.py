@@ -1,6 +1,3 @@
-"""Read endpoints: list (located + requested views), the compact ``/points``
-payload, and the filter / bbox / cache-key helpers behind them."""
-
 import hashlib
 from dataclasses import asdict, replace
 
@@ -13,7 +10,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy import ColumnElement, func, not_
+from sqlalchemy import func, not_
 from sqlalchemy.orm import Session, selectinload
 
 from app.cache import points_cache
@@ -93,17 +90,7 @@ def list_points(
     db: Session = Depends(get_db),
 ):
     """Return the map's events inside ``bbox`` as a compact array:
-    ``[[id, lat, lng, occurred_date, added_date, detected], ...]``.
-
-    No joins, built for client-side clustering. ``bbox``
-    (``south,west,north,east``) is required and bounds the payload by area; a
-    missing or malformed value is a 422 (:func:`parse_bbox`). Live
-    ``geolocated`` / ``detected`` rows with a subject coordinate only. Dates
-    are ISO ``YYYY-MM-DD`` (``added_date`` is the ``created_at`` day);
-    ``occurred_date`` is ``null`` when unknown. ``detected`` is a 1/0 flag, not a
-    status string, to keep the payload small. Cached in memory for 60s per
-    snapped bbox + filter combination (:func:`snap_bbox`).
-    """
+    ``[[id, lat, lng, occurred_date, added_date, detected], ...]``."""
     # Parse before any cache work so a malformed box 422s instead of being
     # cached. The snapped box feeds both the key and the predicate.
     bounds = snap_bbox(parse_bbox(bbox))
@@ -111,11 +98,7 @@ def list_points(
 
     cached_bytes = points_cache.get(cache_key)
     if cached_bytes is not None:
-        return Response(
-            content=cached_bytes,
-            media_type="application/json",
-            headers={"Cache-Control": "public, max-age=30", "X-Cache": "HIT"},
-        )
+        return _points_response(cached_bytes, "HIT")
 
     q = db.query(
         Event.id,
@@ -135,7 +118,6 @@ def list_points(
     )
 
     rows = q.all()
-    # Compact 6-tuple; ``detected`` is a 1/0 flag to keep the no-LIMIT payload small.
     result = [
         [
             str(r.id),
@@ -150,11 +132,14 @@ def list_points(
 
     json_bytes = orjson.dumps(result)
     points_cache.set(cache_key, json_bytes)
+    return _points_response(json_bytes, "MISS")
 
+
+def _points_response(content: bytes, cache: str) -> Response:
     return Response(
-        content=json_bytes,
+        content=content,
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=30", "X-Cache": "MISS"},
+        headers={"Cache-Control": "public, max-age=30", "X-Cache": cache},
     )
 
 
@@ -176,19 +161,11 @@ def list_events(
 ):
     """Cards for one lifecycle view, newest or oldest first.
 
-    ``view=located`` (default) is the catalog; ``view=requested`` the open-call
-    queue. Two steps (ids, then full rows) so eager-loads can't inflate the
-    LIMIT count.
-
-    Capped at 100 rows however large ``limit`` is; the ``Link: rel="next"``
-    cursor is present exactly when a next page holds a row. Ordering is
-    ``created_at, id``, descending for ``sort=newest`` and ascending for
-    ``sort=oldest``. Both are total, so a walk can't duplicate or skip rows.
+    Two steps (ids, then full rows) so eager-loads can't inflate the LIMIT count.
     """
     validate_status_filter(status)
     size = page_size(limit)
 
-    # Step 1: ids with the limit (no row-inflating joins)
     id_query = replace(filters, status=status).apply(
         db.query(Event.id, Event.created_at), view=view
     )
@@ -217,7 +194,6 @@ def list_events(
 
     ids = [key.id for key in keys]
 
-    # Step 2: full objects + coordinates in one query
     rows = (
         db.query(
             Event,
@@ -254,24 +230,7 @@ def list_detections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """The caller's ``detected`` events awaiting a publish, newest first.
-
-    Owner-scoped to ``current_user`` (never a URL username): the Detections
-    queue. Returns full ``EventRead`` so the queue shows evidence and what each
-    detection still lacks without a per-row round-trip. Ordered by
-    ``created_at DESC, id DESC``.
-
-    ``readiness`` narrows the queue server-side to detections that clear the
-    publish floor (``ready``), those that don't (``incomplete``), or ``all``;
-    anything else is a 422. The floor is :func:`detection_ready_predicate`, the
-    SQL projection of ``services/events/batch._publish_detection``. Filtering
-    here, not over the loaded page, because the queue pages at 10 rows over
-    imports of hundreds.
-
-    ``total`` counts the filtered set; ``ready_total`` and ``incomplete_total``
-    always count the whole queue. Offset-paged (``page`` / ``per_page``),
-    capped at 100 rows per page.
-    """
+    """The caller's ``detected`` events awaiting a publish, newest first."""
     # Over-large sizes are clamped; below 1 is a 422 at ``Query(ge=1)`` (a
     # non-positive LIMIT / negative OFFSET would be a Postgres 500).
     per_page = page_size(per_page)
@@ -293,17 +252,11 @@ def list_detections(
         .filter(*detected)
         .one()
     )
-    total = {
-        "ready": ready_total,
-        "incomplete": incomplete_total,
-        "all": ready_total + incomplete_total,
+    total, page_filters = {
+        "all": (ready_total + incomplete_total, detected),
+        "ready": (ready_total, (*detected, ready)),
+        "incomplete": (incomplete_total, (*detected, not_(ready))),
     }[readiness]
-
-    page_filters: tuple[ColumnElement[bool], ...] = detected
-    if readiness == "ready":
-        page_filters = (*detected, ready)
-    elif readiness == "incomplete":
-        page_filters = (*detected, not_(ready))
 
     window = (
         db.query(

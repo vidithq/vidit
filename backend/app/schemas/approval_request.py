@@ -30,11 +30,13 @@ class ApprovalRequestRead(BaseModel):
     exactly one of the two is set. ``version_no`` is the live version when it was sent;
     approving any version resolves it."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     event_id: uuid.UUID
     version_no: int
     requester: AuthorRef
-    target: AuthorRef | None
+    target: AuthorRef | None = Field(validation_alias="target_user")
     target_organization: OrganizationRef | None
     status: ApprovalRequestStatus
     created_at: datetime

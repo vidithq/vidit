@@ -37,6 +37,7 @@ from app.services.events import (
     stamp_provenance,
     update_request,
 )
+from app.services.events.form import EventForm
 from app.services.sanitize import extract_image_srcs
 from tests._fixtures import fake_sha256, make_event
 from tests.conftest import login_as
@@ -726,16 +727,20 @@ async def test_edit_request_loses_the_race_to_a_fulfilment(db, author):
             db,
             geo=request,
             current_user=author,
-            title="Raced edit",
-            proof_data=None,
-            tag_ids=[],
-            conflict_ids=[],
-            sources=[
-                SourceCreate.model_validate(
-                    source_spec("https://example.com/raced", kind="unknown")
-                )
-            ],
-            proof_files=[],
+            form=EventForm(
+                title="Raced edit",
+                proof_data=None,
+                occurred_date=None,
+                occurred_time=None,
+                tag_ids=[],
+                conflict_ids=[],
+                sources=[
+                    SourceCreate.model_validate(
+                        source_spec("https://example.com/raced", kind="unknown")
+                    )
+                ],
+                proof_files=[],
+            ),
         )
 
     db.rollback()

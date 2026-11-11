@@ -1,7 +1,4 @@
-"""Approval requests on one event: the open list, the target picker, sending and declining.
-
-Business rules live in ``services/approval_requests``; this module maps its typed errors.
-"""
+"""Approval requests on one event: the open list, the target picker, sending and declining."""
 
 import uuid
 

@@ -1,7 +1,4 @@
-"""Approvals of one event: the per-version read and approving the live version.
-
-Business rules live in ``services/approvals``; this module maps its typed errors.
-"""
+"""Approvals of one event: the per-version read and approving the live version."""
 
 import uuid
 
@@ -41,7 +38,7 @@ def list_approvals(
         version_no = geo.version_no
     rows = approvals.list_approvals(db, geo=geo, version_no=version_no, reviewer=reviewer)
     return ApprovalList(
-        items=[approvals.build_read(row, live_version=geo.version_no) for row in rows],
+        items=[approvals.build_read(row) for row in rows],
         viewer_can_approve=approvals.may_approve(db, geo=geo, user=current_user),
     )
 
@@ -72,4 +69,4 @@ def approve_event(
         version_no=body.version_no,
         organization=organization,
     )
-    return approvals.build_read(row, live_version=geo.version_no)
+    return approvals.build_read(row)
