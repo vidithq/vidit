@@ -771,28 +771,11 @@ def _claim(db: Session) -> BotMention | None:
 
 
 def _mention_from_payload(payload: dict | None) -> Mention | None:
-    if payload is None:
+    """The mention :func:`enqueue_mentions` stored with ``dataclasses.asdict``, or ``None``."""
+    try:
+        return Mention(**(payload or {}))
+    except TypeError:
         return None
-    tweet_id = payload.get("tweet_id")
-    author_id = payload.get("author_id")
-    author_handle = payload.get("author_handle")
-    text = payload.get("text")
-    reply_to = payload.get("in_reply_to_user_id")
-    reply_to_status = payload.get("in_reply_to_status_id")
-    if (
-        not isinstance(tweet_id, str)
-        or not isinstance(author_id, str)
-        or not isinstance(author_handle, str)
-    ):
-        return None
-    return Mention(
-        tweet_id=tweet_id,
-        author_id=author_id,
-        author_handle=author_handle,
-        text=text if isinstance(text, str) else "",
-        in_reply_to_user_id=reply_to if isinstance(reply_to, str) else None,
-        in_reply_to_status_id=reply_to_status if isinstance(reply_to_status, str) else None,
-    )
 
 
 async def drain_mentions(
