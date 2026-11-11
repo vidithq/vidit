@@ -16,6 +16,7 @@ Mirrored by ``frontend/src/lib/auth.ts`` (and an inlined cookie name in ``proxy.
 from __future__ import annotations
 
 import secrets
+from typing import Any
 
 from fastapi import Response
 
@@ -26,56 +27,31 @@ CSRF_COOKIE = "vidit_csrf"
 CSRF_HEADER = "X-CSRF-Token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
+_HTTPONLY = {SESSION_COOKIE: True, CSRF_COOKIE: False}
 
-def issue_session_cookies(response: Response, jwt_token: str) -> str:
-    """Set both cookies on ``response`` and return the new CSRF token.
 
-    Regenerated every login so a previous session's token can't be replayed.
-    """
-    csrf_token = secrets.token_urlsafe(32)
-    max_age = settings.jwt_expire_minutes * 60
-    domain = settings.cookie_domain or None
-    response.set_cookie(
-        key=SESSION_COOKIE,
-        value=jwt_token,
-        max_age=max_age,
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
-        httponly=True,
-        path="/",
-        domain=domain,
-    )
-    response.set_cookie(
-        key=CSRF_COOKIE,
-        value=csrf_token,
-        max_age=max_age,
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
-        httponly=False,
-        path="/",
-        domain=domain,
-    )
-    return csrf_token
+def _attributes(name: str) -> dict[str, Any]:
+    """Issuance and deletion share these: browsers match the deletion ``Set-Cookie`` against
+    them, and ``SameSite=None`` without ``Secure`` drops the header, silently leaving the session
+    cookie alive in prod."""
+    return {
+        "path": "/",
+        "domain": settings.cookie_domain or None,
+        "secure": settings.cookie_secure,
+        "samesite": settings.cookie_samesite,
+        "httponly": _HTTPONLY[name],
+    }
+
+
+def issue_session_cookies(response: Response, jwt_token: str) -> None:
+    # The CSRF token is regenerated every login so a previous session's token can't be replayed.
+    values = {SESSION_COOKIE: jwt_token, CSRF_COOKIE: secrets.token_urlsafe(32)}
+    for name, value in values.items():
+        response.set_cookie(
+            key=name, value=value, max_age=settings.jwt_expire_minutes * 60, **_attributes(name)
+        )
 
 
 def clear_session_cookies(response: Response) -> None:
-    # Mirror the issuance attributes exactly: browsers match the deletion ``Set-Cookie``
-    # against them, and ``SameSite=None`` without ``Secure`` drops the header, silently
-    # leaving the session cookie alive in prod.
-    domain = settings.cookie_domain or None
-    response.delete_cookie(
-        SESSION_COOKIE,
-        path="/",
-        domain=domain,
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
-        httponly=True,
-    )
-    response.delete_cookie(
-        CSRF_COOKIE,
-        path="/",
-        domain=domain,
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
-        httponly=False,
-    )
+    for name in _HTTPONLY:
+        response.delete_cookie(name, **_attributes(name))
