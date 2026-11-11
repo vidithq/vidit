@@ -1,9 +1,8 @@
 import logging
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Request
 
-from app.dependencies import get_db
+from app.dependencies import DB
 from app.models.conflict import Conflict, event_conflicts
 from app.models.event import Event
 from app.ratelimit import authenticated_read_quota, limiter
@@ -19,11 +18,7 @@ router = APIRouter()
 @router.get("", response_model=list[ConflictRead])
 @authenticated_read_quota
 @limiter.limit("60/minute")
-def list_conflicts(
-    request: Request,
-    used: bool = False,
-    db: Session = Depends(get_db),
-):
+def list_conflicts(request: Request, db: DB, used: bool = False):
     """Return the conflicts referential, ongoing first then by name.
 
     The default returns every row: the submit picker needs the whole

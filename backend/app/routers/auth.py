@@ -7,7 +7,6 @@ from urllib.parse import urlencode
 from fastapi import (
     APIRouter,
     BackgroundTasks,
-    Depends,
     HTTPException,
     Request,
     Response,
@@ -16,7 +15,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.dependencies import get_current_user, get_db
+from app.dependencies import DB, CurrentUser
 from app.models.audit_log import (
     ACTION_FAILED_LOGIN,
     ACTION_LOGIN,
@@ -111,10 +110,7 @@ def _set_password(db: Session, user: User, password: str, *, action: str) -> Non
 )
 @limiter.limit("10/hour")
 def register(
-    request: Request,
-    body: RegisterRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    request: Request, body: RegisterRequest, background_tasks: BackgroundTasks, db: DB
 ) -> RegisterResponse:
     """Stage a registration. No ``users`` row is created and no cookie is set."""
     mint = registration.create_pending_registration(
@@ -141,10 +137,7 @@ def register(
 @router.post("/confirm-registration", response_model=UserRead)
 @limiter.limit("30/hour")
 def confirm_registration(
-    request: Request,
-    response: Response,
-    body: ConfirmRegistrationRequest,
-    db: Session = Depends(get_db),
+    request: Request, response: Response, body: ConfirmRegistrationRequest, db: DB
 ) -> User:
     """Consume the confirmation token, create the user, sign them in."""
     user = registration.confirm_pending_registration(db, body.token)
@@ -154,10 +147,7 @@ def confirm_registration(
 @router.post("/resend-confirmation", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("5/hour")
 def resend_confirmation(
-    request: Request,
-    body: ResendConfirmationRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    request: Request, body: ResendConfirmationRequest, background_tasks: BackgroundTasks, db: DB
 ) -> None:
     """Re-mint + re-send the confirmation email for an outstanding pending row.
 
@@ -184,12 +174,7 @@ def resend_confirmation(
 
 @router.post("/login", response_model=UserRead)
 @limiter.limit("5/minute;30/hour")
-def login(
-    request: Request,
-    response: Response,
-    body: LoginRequest,
-    db: Session = Depends(get_db),
-):
+def login(request: Request, response: Response, body: LoginRequest, db: DB):
     user = db.query(User).filter(User.email == body.email).first()
     # Always run bcrypt (dummy hash for unknown or soft-deleted users) so every
     # failure branch takes the same time; otherwise response time is an oracle
@@ -217,11 +202,7 @@ def login(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db),
-) -> None:
+def logout(request: Request, response: Response, db: DB) -> None:
     # Idempotent, with or without a session cookie. Mutating the injected
     # ``response`` is what makes FastAPI send the Set-Cookie clear headers.
     # The cookie is decoded best-effort to attach a user_id to the audit row;
@@ -250,7 +231,7 @@ def logout(
 
 
 @router.get("/me", response_model=UserRead)
-def me(current_user: User = Depends(get_current_user)):
+def me(current_user: CurrentUser):
     return current_user
 
 
@@ -293,10 +274,7 @@ def _process_forgot_password(user_id, email_address: str) -> None:
 @router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("5/hour")
 def forgot_password(
-    request: Request,
-    body: ForgotPasswordRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    request: Request, body: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: DB
 ) -> None:
     """Always 204, and at the same time on every branch.
 
@@ -323,11 +301,7 @@ def forgot_password(
 
 @router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("10/hour")
-def reset_password(
-    request: Request,
-    body: ResetPasswordRequest,
-    db: Session = Depends(get_db),
-) -> None:
+def reset_password(request: Request, body: ResetPasswordRequest, db: DB) -> None:
     row = password_reset_tokens.consume(db, body.token)
     if row is None:
         # One opaque error for every failure mode, so a probe can't tell
@@ -355,8 +329,8 @@ def change_password(
     response: Response,
     body: ChangePasswordRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: DB,
+    current_user: CurrentUser,
 ) -> None:
     """Authenticated password change. Requires the current password.
 

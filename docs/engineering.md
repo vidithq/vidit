@@ -410,7 +410,7 @@ flowchart LR
 | **services/** | Business logic | Accesses the DB through the session, never sees `Request`/`Response`, never raises `HTTPException`. Raises a subclass of [`errors.CodedError`](../backend/app/errors.py) that declares its stable `code` and its HTTP `status_code` next to each other. |
 | **models/** | SQLAlchemy tables | Structure only, no logic |
 | **schemas/** | Pydantic validation | Input and output separated (`Create`, `Read`, `Update`, `List`) |
-| **dependencies.py** | FastAPI injection | `get_db`, `get_current_user` |
+| **dependencies.py** | FastAPI injection | `get_db`, `get_current_user`, and the `Annotated` aliases a handler declares them with: `DB`, `CurrentUser`, `OptionalUser`, `AdminUser` |
 
 ### Eager-load sets
 

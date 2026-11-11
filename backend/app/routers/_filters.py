@@ -4,7 +4,9 @@ one dependency for every read that lists events.
 Mirrored by the surfaces of ``frontend/src/components/filters/model.ts::DIMENSIONS``; change both.
 """
 
-from fastapi import Query
+from typing import Annotated
+
+from fastapi import Depends, Query
 
 from app.services.event_filters import (
     AUTHOR_FILTER_PATTERN,
@@ -64,3 +66,6 @@ def event_filters(
         approved_by_org=approved_by_org,
         has_coords=has_coords,
     )
+
+
+Filters = Annotated[EventFilters, Depends(event_filters)]

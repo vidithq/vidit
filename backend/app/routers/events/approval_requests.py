@@ -2,11 +2,9 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query, Request, status
 
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
+from app.dependencies import DB, CurrentUser
 from app.ratelimit import limiter
 from app.routers.events._common import resolve_live_event
 from app.schemas.approval_request import (
@@ -22,10 +20,7 @@ router = APIRouter()
 @router.get("/{geolocation_id}/approval-requests", response_model=list[ApprovalRequestRead])
 @limiter.limit("120/minute")
 def list_approval_requests(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    request: Request, geolocation_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> list[ApprovalRequestRead]:
     """Open approval requests on this event: all of them for its geolocators, those addressed to
     you or to an organization you manage otherwise."""
@@ -39,11 +34,11 @@ def list_approval_requests(
 def list_approval_request_targets(
     request: Request,
     geolocation_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
     q: str = Query(
         "", max_length=50, description="Narrows by a substring of the username or organization"
     ),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ) -> ApprovalRequestTargetList:
     """Analysts and organizations you can ask to approve this event now (geolocators only)."""
     geo = resolve_live_event(db, geolocation_id)
@@ -60,8 +55,8 @@ def create_approval_request(
     request: Request,
     geolocation_id: uuid.UUID,
     body: ApprovalRequestCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user: CurrentUser,
+    db: DB,
 ) -> ApprovalRequestRead:
     """Ask an analyst or an organization to approve the live version of a published event you
     geolocated."""
@@ -84,8 +79,8 @@ def decline_approval_request(
     request: Request,
     geolocation_id: uuid.UUID,
     request_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user: CurrentUser,
+    db: DB,
 ) -> ApprovalRequestRead:
     """Decline an approval request addressed to you, or to an organization you belong to."""
     geo = resolve_live_event(db, geolocation_id)

@@ -1,9 +1,8 @@
 """``POST /sources/check``: the imagery provider check the form runs while the analyst types."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 
-from app.dependencies import get_current_user
-from app.models.user import User
+from app.dependencies import CurrentUser
 from app.ratelimit import limiter
 from app.schemas.source import (
     ImageryProviderRead,
@@ -19,11 +18,7 @@ router = APIRouter()
 
 @router.post("/check", response_model=SourceCheckRead)
 @limiter.limit("120/minute")
-def check_source(
-    request: Request,
-    body: SourceCheck,
-    current_user: User = Depends(get_current_user),
-) -> SourceCheckRead:
+def check_source(request: Request, body: SourceCheck, current_user: CurrentUser) -> SourceCheckRead:
     """The imagery provider each link opens, and the warnings the source would carry.
 
     Writes nothing. The warnings are the ones ``SourceRead.warnings`` serves once the source is

@@ -9,11 +9,9 @@ from typing import cast
 from fastapi import APIRouter, Depends, Form, Request, status
 from geoalchemy2.shape import to_shape
 from shapely.geometry import Point
-from sqlalchemy.orm import Session
 
-from app.dependencies import get_current_user, get_db
+from app.dependencies import DB, CurrentUser
 from app.models.event import TITLE_MAX_LENGTH
-from app.models.user import User
 from app.ratelimit import limiter
 from app.routers.events._common import (
     GEOLOCATOR_INVITES_FIELD_DESCRIPTION,
@@ -34,12 +32,12 @@ router = APIRouter()
 @limiter.limit("30/minute")
 def create_event(
     request: Request,
+    current_user: CurrentUser,
+    db: DB,
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     lat: float = Form(...),
     lng: float = Form(...),
     geolocator_invites: str | None = Form(None, description=GEOLOCATOR_INVITES_FIELD_DESCRIPTION),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
     fields: EventFormFields = Depends(),
 ):
     """Direct geolocate: create an event born ``geolocated``."""
@@ -61,12 +59,12 @@ def create_event(
 @limiter.limit("30/minute")
 def create_event_request(
     request: Request,
+    current_user: CurrentUser,
+    db: DB,
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
     # An approximate guess is allowed (both halves or neither).
     lat: float | None = Form(None),
     lng: float | None = Form(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
     fields: EventFormFields = Depends(),
 ):
     """Open a request (a ``requested`` event)."""

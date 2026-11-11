@@ -2,11 +2,9 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Request, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Request, status
 
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
+from app.dependencies import DB, CurrentUser
 from app.ratelimit import limiter
 from app.routers.events._common import resolve_live_event
 from app.schemas.event import GeolocatorInviteCreate, GeolocatorInviteRead
@@ -18,10 +16,7 @@ router = APIRouter()
 @router.get("/{geolocation_id}/geolocator-invites", response_model=list[GeolocatorInviteRead])
 @limiter.limit("120/minute")
 def list_geolocator_invites(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    request: Request, geolocation_id: uuid.UUID, current_user: CurrentUser, db: DB
 ):
     """Pending invitations to share this event's credit: all of them for the owner, your own
     otherwise."""
@@ -39,8 +34,8 @@ def invite_geolocator(
     request: Request,
     geolocation_id: uuid.UUID,
     body: GeolocatorInviteCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    current_user: CurrentUser,
+    db: DB,
 ):
     """Invite an analyst to share this published event's credit (owner only)."""
     geo = resolve_live_event(db, geolocation_id)
@@ -53,11 +48,7 @@ def invite_geolocator(
 )
 @limiter.limit("30/hour")
 def withdraw_geolocator_invite(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    username: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    request: Request, geolocation_id: uuid.UUID, username: str, current_user: CurrentUser, db: DB
 ) -> None:
     """Withdraw a pending invitation (owner only)."""
     geo = resolve_live_event(db, geolocation_id)
@@ -67,10 +58,7 @@ def withdraw_geolocator_invite(
 @router.post("/{geolocation_id}/geolocator-invites/accept", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/minute")
 def accept_geolocator_invite(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    request: Request, geolocation_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> None:
     """Accept your invitation: you join this event's geolocators."""
     geo = resolve_live_event(db, geolocation_id)
@@ -80,10 +68,7 @@ def accept_geolocator_invite(
 @router.post("/{geolocation_id}/geolocator-invites/decline", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/minute")
 def decline_geolocator_invite(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    request: Request, geolocation_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> None:
     """Decline your invitation."""
     geo = resolve_live_event(db, geolocation_id)
@@ -96,11 +81,7 @@ def decline_geolocator_invite(
 )
 @limiter.limit("60/minute")
 def remove_geolocator(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    username: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    request: Request, geolocation_id: uuid.UUID, username: str, current_user: CurrentUser, db: DB
 ) -> None:
     """Take a co-geolocator's credit off this event: the owner removes one, or you leave."""
     geo = resolve_live_event(db, geolocation_id)

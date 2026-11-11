@@ -1,8 +1,9 @@
 import logging
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, Query, status
 from psycopg2.errors import LockNotAvailable
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -42,6 +43,9 @@ def get_db() -> Generator[Session]:
         db.close()
 
 
+DB = Annotated[Session, Depends(get_db)]
+
+
 def _touch_last_seen(db: Session, user: User) -> None:
     """Stamp ``users.last_seen_at``, at most once per ``LAST_SEEN_THROTTLE``.
 
@@ -62,7 +66,7 @@ def _touch_last_seen(db: Session, user: User) -> None:
 
 
 def get_current_user(
-    db: Session = Depends(get_db),
+    db: DB,
     session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> User:
     if not session_cookie:
@@ -95,7 +99,7 @@ def get_current_user(
 
 
 def get_current_user_optional(
-    db: Session = Depends(get_db),
+    db: DB,
     session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> User | None:
     """For public reads that personalize, such as ``is_following``."""
@@ -105,8 +109,16 @@ def get_current_user_optional(
         return None
 
 
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
+CurrentUser = Annotated[User, Depends(get_current_user)]
+OptionalUser = Annotated[User | None, Depends(get_current_user_optional)]
+
+
+def require_admin(current_user: CurrentUser) -> User:
     """403, not 404, for non-admins: the route exists."""
     if not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user
+
+
+AdminUser = Annotated[User, Depends(require_admin)]
+Cursor = Annotated[str | None, Query(description="Opaque cursor from a Link: rel=next header")]

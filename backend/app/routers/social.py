@@ -1,16 +1,14 @@
 from dataclasses import replace
 
-from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query, Request, Response
 
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
+from app.dependencies import DB, CurrentUser, Cursor
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers._filters import event_filters
+from app.routers._filters import Filters
 from app.routers.events._common import build_event_list
 from app.schemas.event import DateHistogram, FeedItemRead
 from app.services import social
-from app.services.event_filters import EventFilters, validate_status_filter
+from app.services.event_filters import validate_status_filter
 from app.services.pagination import (
     decode_cursor,
     encode_cursor,
@@ -28,13 +26,13 @@ router = APIRouter()
 def get_feed(
     request: Request,
     response: Response,
+    filters: Filters,
+    db: DB,
+    current_user: CurrentUser,
     scope: FeedScope = Query("following"),
     limit: int = Query(10, ge=1),
-    cursor: str | None = Query(None, description="Opaque cursor from a Link: rel=next header"),
+    cursor: Cursor = None,
     status: list[str] | None = Query(None),
-    filters: EventFilters = Depends(event_filters),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> list[FeedItemRead]:
     """Published geolocations, open requests and machine detections, newest first.
 
@@ -66,11 +64,11 @@ def get_feed(
 @limiter.limit("120/minute")
 def get_feed_dates(
     request: Request,
+    filters: Filters,
+    db: DB,
+    current_user: CurrentUser,
     scope: FeedScope = Query("following"),
     status: list[str] | None = Query(None),
-    filters: EventFilters = Depends(event_filters),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> DateHistogram:
     """The rows ``GET /feed`` walks for the request, counted per day on each date axis.
 
