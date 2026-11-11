@@ -81,5 +81,4 @@ def create_tag(request: Request, body: TagCreate, current_user: CurrentUser, db:
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Tag already exists") from exc
     db.commit()
-    db.refresh(tag)
     return tag

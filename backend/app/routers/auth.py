@@ -87,7 +87,6 @@ def _sign_in(db: Session, response: Response, user: User, *, action: str) -> Use
     user.last_seen_at = datetime.now(UTC)
     audit.log_auth_event(db, action=action, user_id=user.id)
     db.commit()
-    db.refresh(user)
     issue_session_cookies(response, create_access_token(user))
     return user
 

@@ -243,7 +243,6 @@ def mint_invite_code(
         target["x_handle"] = x_handle
     log_admin_event(db, actor_id=actor_id, action=action, target=target)
     db.commit()
-    db.refresh(invite)
     return invite
 
 
@@ -285,7 +284,6 @@ def revoke_invite_code(
         target={"invite_code_id": str(invite.id)},
     )
     db.commit()
-    db.refresh(invite)
     return invite
 
 
@@ -387,7 +385,6 @@ def set_invite_minting(
             target={"user_id": str(user.id)},
         )
         db.commit()
-        db.refresh(user)
     return user
 
 
@@ -409,7 +406,6 @@ def soft_delete_geolocation(
             target={"geolocation_id": str(geo.id), "title": geo.title},
         )
         db.commit()
-        db.refresh(geo)
     return AdminEventDeleteResponse(
         geolocation_id=geo.id, title=geo.title, mode="soft", deleted_at=geo.deleted_at
     )
@@ -461,7 +457,6 @@ def set_takedown[T: (Collection, Site)](
         raise error(message)
     move_takedown(db, row=row, hidden=hidden, actor_id=actor_id)
     db.commit()
-    db.refresh(row)
     return row
 
 
@@ -544,7 +539,6 @@ def redact_version(
         },
     )
     db.commit()
-    db.refresh(row)
 
     context = f"event {event.id} version {version_no} redaction"
     sweep_unreferenced(db, removed_proofs, context=context)
@@ -625,7 +619,6 @@ def soft_delete_user(
         },
     )
     db.commit()
-    db.refresh(user)
     return AdminUserDeleteResponse(
         user_id=user.id,
         username=user.username,

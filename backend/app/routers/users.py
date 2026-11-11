@@ -48,7 +48,6 @@ def update_my_profile(
     """Edit your own profile."""
     users_service.apply_profile_update(current_user, body)
     db.commit()
-    db.refresh(current_user)
     return current_user
 
 

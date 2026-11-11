@@ -103,7 +103,6 @@ def update_organization(
     org = organizations_service.get_managed(db, slug, current_user)
     organizations_service.apply_update(org, body)
     db.commit()
-    db.refresh(org)
     return organizations_service.build_read(db, org, viewer=current_user)
 
 
@@ -162,7 +161,6 @@ def create_organization_invite(
     org = organizations_service.get_by_slug(db, slug)
     row = organizations_service.invite(db, org, inviter=current_user, username=body.username)
     db.commit()
-    db.refresh(row)
     return OrganizationInviteRead.model_validate(row)
 
 

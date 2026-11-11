@@ -329,7 +329,6 @@ def appoint_manager(
         target={"organization_id": str(org.id), "slug": org.slug, "user_id": str(user.id)},
     )
     db.commit()
-    db.refresh(member)
     return OrganizationMemberRead.model_validate(member)
 
 

@@ -101,7 +101,6 @@ def _publish_detection(
         geo.geolocated_at = datetime.now(UTC)
     _credit_geolocator(db, geo, current_user)
     db.commit()
-    db.refresh(geo)
 
 
 def complete_detections(

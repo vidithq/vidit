@@ -801,7 +801,6 @@ def create_site(
     )
     _set_links(db, site_id=site.id, current={}, links=body.event_links)
     db.commit()
-    db.refresh(site)
     return site, overlaps
 
 
@@ -941,7 +940,6 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
     if body.event_links is not None:
         _set_links(db, site_id=site.id, current=current_links, links=body.event_links)
     db.commit()
-    db.refresh(locked)
     return locked
 
 
@@ -1066,7 +1064,6 @@ def link_event(
     else:
         link.effect = effect
     db.commit()
-    db.refresh(link)
     return _link_read(site, link, site_images(db, [site.id]))
 
 

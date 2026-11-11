@@ -404,7 +404,6 @@ def create_collection(
         CollectionEvent(collection_id=collection.id, event_id=event_id) for event_id in event_ids
     )
     db.commit()
-    db.refresh(collection)
     return collection
 
 
@@ -418,7 +417,6 @@ def update_collection_details(
     collection.description = checked.html
     collection.description_text = checked.text
     db.commit()
-    db.refresh(collection)
     return collection
 
 

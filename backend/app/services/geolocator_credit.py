@@ -158,7 +158,6 @@ def invite(db: Session, *, geo: Event, owner: User, username: str) -> EventGeolo
     ensure_owner(geo, owner)
     row = _stage_invite(db, geo=geo, username=username)
     db.commit()
-    db.refresh(row)
     return row
 
 

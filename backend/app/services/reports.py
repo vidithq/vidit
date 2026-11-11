@@ -122,7 +122,6 @@ def _file_report(
     )
     db.add(report)
     db.commit()
-    db.refresh(report)
 
     address = settings.report_notify_email
     if address:
@@ -318,7 +317,6 @@ def resolve_report(
         if erase_if_released(db, collection=collection):
             log_admin_event(db, actor_id=actor_id, action="collection_erased", target=erased)
     db.commit()
-    db.refresh(report)
     return report, hidden_changed
 
 
@@ -348,5 +346,4 @@ def set_event_moderation(
     )
 
     db.commit()
-    db.refresh(event)
     return event, hidden_changed
