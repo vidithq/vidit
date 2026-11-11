@@ -412,32 +412,29 @@ def soft_delete_geolocation(
 
 
 def move_takedown(
-    db: Session, *, row: Collection | Site, hidden: bool, actor_id: uuid.UUID
-) -> None:
-    """Stamp or clear one row's ``hidden_at`` and file the ``<table>_hidden`` or
-    ``<table>_restored`` audit row. No commit. A row already in that state files nothing."""
+    db: Session, *, row: Event | Collection | Site, hidden: bool, actor_id: uuid.UUID
+) -> bool:
+    """Stamp or clear one row's ``hidden_at`` and file the ``<table>_hidden`` audit row, or
+    ``event_unhidden`` / ``<table>_restored``. No commit. A row already in that state files
+    nothing and returns ``False``."""
     if hidden == (row.hidden_at is not None):
-        return
+        return False
     row.hidden_at = datetime.now(UTC) if hidden else None
-    if isinstance(row, Collection):
-        noun, target = "collection", {"collection_id": str(row.id), "title": row.title}
+    target: dict[str, str]
+    if isinstance(row, Event):
+        noun, restored, target = "event", "unhidden", {"event_id": str(row.id)}
+    elif isinstance(row, Collection):
+        noun, restored = "collection", "restored"
+        target = {"collection_id": str(row.id), "title": row.title}
     else:
-        noun, target = "site", {"site_id": str(row.id), "name": row.name}
+        noun, restored, target = "site", "restored", {"site_id": str(row.id), "name": row.name}
     log_admin_event(
         db,
         actor_id=actor_id,
-        action=f"{noun}_hidden" if hidden else f"{noun}_restored",
+        action=f"{noun}_hidden" if hidden else f"{noun}_{restored}",
         target=target,
     )
-
-
-# The two names services/reports imports.
-def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
-    move_takedown(db, row=collection, hidden=True, actor_id=actor_id)
-
-
-def move_site_takedown(db: Session, *, site: Site, hidden: bool, actor_id: uuid.UUID) -> None:
-    move_takedown(db, row=site, hidden=hidden, actor_id=actor_id)
+    return True
 
 
 _TAKEDOWN_NOT_FOUND: dict[type[Collection | Site], tuple[type[AdminError], str]] = {

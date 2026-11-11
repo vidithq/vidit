@@ -28,7 +28,7 @@ from app.models.site import Site
 from app.models.user import User
 from app.schemas.report import ContentReportCreate
 from app.services import email
-from app.services.admin import log_admin_event, move_site_takedown, withhold_collection
+from app.services.admin import log_admin_event, move_takedown
 from app.services.collections import (
     CollectionNotFoundError,
     erase_if_released,
@@ -229,20 +229,6 @@ def _mark_graphic(db: Session, *, event: Event, actor_id: uuid.UUID, graphic: bo
     return True
 
 
-def _set_hidden(db: Session, *, event: Event, actor_id: uuid.UUID, hidden: bool) -> bool:
-    """Withhold the event from public reads, or restore it, and return whether it changed."""
-    if hidden == (event.hidden_at is not None):
-        return False
-    event.hidden_at = datetime.now(UTC) if hidden else None
-    log_admin_event(
-        db,
-        actor_id=actor_id,
-        action="event_hidden" if hidden else "event_unhidden",
-        target={"event_id": str(event.id)},
-    )
-    return True
-
-
 def resolve_report(
     db: Session,
     *,
@@ -282,16 +268,16 @@ def resolve_report(
             if resolution == "marked_graphic":
                 _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
             elif resolution == "hidden":
-                hidden_changed = _set_hidden(db, event=event, actor_id=actor_id, hidden=True)
+                hidden_changed = move_takedown(db, row=event, hidden=True, actor_id=actor_id)
         elif collection is not None or site is not None:
             if resolution == "marked_graphic":
                 raise ReportVerdictNotApplicableError(
                     "Only an event carries footage, so only an event can be marked graphic"
                 )
             if collection is not None:
-                withhold_collection(db, collection=collection, actor_id=actor_id)
+                move_takedown(db, row=collection, hidden=True, actor_id=actor_id)
             elif site is not None:
-                move_site_takedown(db, site=site, hidden=True, actor_id=actor_id)
+                move_takedown(db, row=site, hidden=True, actor_id=actor_id)
         else:
             raise ReportTargetGoneError(
                 "The reported item was deleted, so this report can only be dismissed"
@@ -340,7 +326,7 @@ def set_event_moderation(
     if is_graphic is not None:
         _mark_graphic(db, event=event, actor_id=actor_id, graphic=is_graphic)
     hidden_changed = (
-        _set_hidden(db, event=event, actor_id=actor_id, hidden=hidden)
+        move_takedown(db, row=event, hidden=hidden, actor_id=actor_id)
         if hidden is not None
         else False
     )
