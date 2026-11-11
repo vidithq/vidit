@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, cast
 
 import httpx
 from fastapi import UploadFile
@@ -702,44 +702,30 @@ def _engine_warnings(persisted: list[tuple[uuid.UUID, Detection]]) -> dict[str, 
     return Counter(code for _event_id, detection in persisted for code in detection.warnings)
 
 
-class _WarningSubject(Protocol):
-    """What :func:`_write_warnings` reads off the engine work behind one row."""
-
-    @property
-    def warnings(self) -> list[str]: ...
-
-    @property
-    def source_posted_at(self) -> datetime | None: ...
-
-    @property
-    def source_fetch_failed(self) -> bool: ...
-
-
 def _write_warnings(
-    db: Session, persisted: Sequence[tuple[uuid.UUID, _WarningSubject]]
+    db: Session, persisted: Sequence[tuple[uuid.UUID, Detection]]
 ) -> dict[str, int]:
     """The warnings only the write path can raise, counted per row it wrote.
 
     No footage stored from the declared source (``SOURCE_FETCH_FAILED`` when the upstream would
     not answer, else ``SOURCE_FOOTAGE_MISSING``), source post date unknown, and media already on
     Vidit. The footage and date warnings are dropped on a row whose engine work carries
-    ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``. Both write paths read it; a request row is never
-    footage-less, so the footage legs are reachable only through ``Detection``.
+    ``SOURCE_MISSING`` or ``SOURCE_AMBIGUOUS``.
     """
     counts: Counter[str] = Counter()
     if not persisted:
         return counts
-    ids = [event_id for event_id, _subject in persisted]
+    ids = [event_id for event_id, _detection in persisted]
     footage_less = _rows_without_footage(db, ids)
     duplicated = _rows_with_duplicate_media(db, ids)
-    for event_id, subject in persisted:
+    for event_id, detection in persisted:
         raised: list[str] = []
-        if not set(subject.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
+        if not set(detection.warnings) & {SOURCE_MISSING, SOURCE_AMBIGUOUS}:
             if event_id in footage_less:
                 raised.append(
-                    SOURCE_FETCH_FAILED if subject.source_fetch_failed else SOURCE_FOOTAGE_MISSING
+                    SOURCE_FETCH_FAILED if detection.source_fetch_failed else SOURCE_FOOTAGE_MISSING
                 )
-            if subject.source_posted_at is None:
+            if detection.source_posted_at is None:
                 raised.append(SOURCE_DATE_UNKNOWN)
         if event_id in duplicated:
             raised.append(DUPLICATE_MEDIA)
@@ -893,8 +879,8 @@ async def open_request(
     lands a ``detected`` row beside the open request (:func:`_row_disposition` leaves a
     ``requested`` row alone).
 
-    Warnings come entirely from :func:`_write_warnings`. The engine adds none, and the footage
-    warnings never apply since the slot is filled by construction.
+    The engine drafts no warning; the row raises ``SOURCE_DATE_UNKNOWN`` and ``DUPLICATE_MEDIA``
+    as a detection's does.
 
     ``None`` means nothing was written and there is nothing to name (no candidate fetched, or
     the write raised): the caller degrades to the refusal reply, and a re-tag retries. An intake
@@ -969,8 +955,11 @@ async def open_request(
         logger.exception("The request drafted from %s failed to write", draft.detected_from_url)
         db.rollback()
         return None
-    # The engine drafts a request with no warnings, so the write path is the whole answer.
-    warnings = list(_write_warnings(db, [(row.id, draft)]))
+    # The publish floor ``create_request`` checks holds footage on the row, so only the date and
+    # duplicate warnings can apply.
+    warnings = [SOURCE_DATE_UNKNOWN] if draft.source_posted_at is None else []
+    if _rows_with_duplicate_media(db, [row.id]):
+        warnings.append(DUPLICATE_MEDIA)
     return RequestOutcome(created=row.id, warnings=warnings)
 
 

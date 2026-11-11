@@ -530,14 +530,6 @@ class RequestDraft:
     # ``events.create_request`` requires a file; the write path takes the first
     # that fetches (as ``detection._resolve_media`` does).
     footage_candidates: list[ParsedMedia]
-    # The chase for the source found nothing to take (``not_accessible``; a
-    # ``transient_failure`` drafts nothing, see :func:`_request_draft`). Mirrors
-    # ``Detection.source_fetch_failed``; only lets ``detection._write_warnings``
-    # tell the two warnings apart should the row land footage-less.
-    source_fetch_failed: bool = False
-    # Always empty (a draft settles every field); kept so both exits satisfy
-    # the ``detection._write_warnings`` protocol.
-    warnings: list[str] = field(default_factory=list)
 
 
 def sole_refusal(refusals: dict[str, int]) -> str | None:
@@ -793,10 +785,6 @@ def _request_draft(
         ),
         secondary_sources=resolve_secondary_sources(posts, source_url),
         footage_candidates=candidates,
-        # The chase answered with nothing to take (post gone or restricted).
-        # The row is never footage-less, so this only lets the write path tell
-        # the warning codes apart if one ever lands without footage.
-        source_fetch_failed=any(post.chase_outcome == "not_accessible" for post in posts),
     )
     return draft, None
 

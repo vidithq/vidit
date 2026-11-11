@@ -299,8 +299,7 @@ def test_a_transient_chase_failure_drafts_nothing() -> None:
 
 def test_a_definitive_chase_failure_drafts_a_request_with_footage_and_no_warning() -> None:
     """The source is gone or restricted, so the analyst's copy backs the footage slot.
-    The draft carries no warning; ``detection._write_warnings`` later raises
-    ``source_date_unknown`` because the chase served no date."""
+    The row later raises ``source_date_unknown`` because the chase served no date."""
     draft = _draft(
         [
             _rec(
@@ -313,8 +312,6 @@ def test_a_definitive_chase_failure_drafts_a_request_with_footage_and_no_warning
     )
 
     assert draft is not None
-    assert draft.warnings == []
-    assert draft.source_fetch_failed is True
     assert draft.source_posted_at is None
     assert draft.footage_candidates == [_VIDEO]
 
