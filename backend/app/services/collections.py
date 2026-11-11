@@ -398,17 +398,12 @@ def create_collection(
         description_text=checked.text,
     )
     db.add(collection)
-    try:
-        db.flush()
-        ensure_collectable(db, event_ids=event_ids, user=owner)
-        db.add_all(
-            CollectionEvent(collection_id=collection.id, event_id=event_id)
-            for event_id in event_ids
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
+    db.flush()
+    ensure_collectable(db, event_ids=event_ids, user=owner)
+    db.add_all(
+        CollectionEvent(collection_id=collection.id, event_id=event_id) for event_id in event_ids
+    )
+    db.commit()
     db.refresh(collection)
     return collection
 

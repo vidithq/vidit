@@ -786,25 +786,21 @@ def create_site(
     The overlap check runs first and never blocks the create.
     """
     overlaps = find_overlaps(db, body.contour)
-    try:
-        _lock_own_events(db, user=owner, links=body.event_links)
-        site = Site(owner_id=owner.id, name=body.name, kind=body.kind)
-        db.add(site)
-        db.flush()
-        source = _stage_site_source(db, site_id=site.id, author=owner, body=body.source)
-        db.add(
-            SiteContour(
-                site_id=site.id,
-                source_id=source.id,
-                author_id=owner.id,
-                zone=zone_shape(db, body.contour),
-            )
+    _lock_own_events(db, user=owner, links=body.event_links)
+    site = Site(owner_id=owner.id, name=body.name, kind=body.kind)
+    db.add(site)
+    db.flush()
+    source = _stage_site_source(db, site_id=site.id, author=owner, body=body.source)
+    db.add(
+        SiteContour(
+            site_id=site.id,
+            source_id=source.id,
+            author_id=owner.id,
+            zone=zone_shape(db, body.contour),
         )
-        _set_links(db, site_id=site.id, current={}, links=body.event_links)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
+    )
+    _set_links(db, site_id=site.id, current={}, links=body.event_links)
+    db.commit()
     db.refresh(site)
     return site, overlaps
 
@@ -817,15 +813,11 @@ def file_site_source(
     A source already filed with the same provider and capture day is flagged in
     ``duplicate_source_ids``, never refused.
     """
-    try:
-        locked = lock_row(db, Site, Site.id == site.id).one()
-        _file_version(db, site=locked, editor=author)
-        source = _stage_site_source(db, site_id=site.id, author=author, body=body)
-        duplicates = _duplicates(db, source)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
+    locked = lock_row(db, Site, Site.id == site.id).one()
+    _file_version(db, site=locked, editor=author)
+    source = _stage_site_source(db, site_id=site.id, author=author, body=body)
+    duplicates = _duplicates(db, source)
+    db.commit()
     (read,) = _sources(db, Source.id == source.id)
     return SiteSourceFiledRead(**read.model_dump(), duplicate_source_ids=duplicates)
 
@@ -855,24 +847,18 @@ def remove_site_source(db: Session, *, site: Site, user: User, source_id: uuid.U
     Refusals in order: not a live source of the site (404), not the caller's (403), it carries a
     contour (409), the version ceiling (409).
     """
-    try:
-        locked = lock_row(db, Site, Site.id == site.id).one()
-        sources = _live_sources_by_id(db, site.id)
-        source = _live_source(sources, source_id)
-        _require_source_author(source, user)
-        carries = db.query(SiteContour.id).filter(
-            SiteContour.source_id == source.id, live_contours()
+    locked = lock_row(db, Site, Site.id == site.id).one()
+    sources = _live_sources_by_id(db, site.id)
+    source = _live_source(sources, source_id)
+    _require_source_author(source, user)
+    carries = db.query(SiteContour.id).filter(SiteContour.source_id == source.id, live_contours())
+    if carries.first() is not None:
+        raise SourceCarriesContourError(
+            "This source carries a contour: the site's owner redraws it on another source first"
         )
-        if carries.first() is not None:
-            raise SourceCarriesContourError(
-                "This source carries a contour: the site's owner redraws it on another source first"
-            )
-        _file_version(db, site=locked, editor=user)
-        source.removed_at = datetime.now(UTC)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
+    _file_version(db, site=locked, editor=user)
+    source.removed_at = datetime.now(UTC)
+    db.commit()
 
 
 def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate) -> Site:
@@ -886,81 +872,75 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
     links' refusals, nothing changed (409), the version ceiling (409), then the source intake's.
     """
     _require_site_owner(site, user)
-    try:
-        locked = lock_row(db, Site, Site.id == site.id).one()
-        if body.version_no != locked.version_no:
-            raise VersionMismatchError(
-                f"This site is at version {locked.version_no}; reload it before saving"
+    locked = lock_row(db, Site, Site.id == site.id).one()
+    if body.version_no != locked.version_no:
+        raise VersionMismatchError(
+            f"This site is at version {locked.version_no}; reload it before saving"
+        )
+    sources = _live_sources_by_id(db, site.id)
+    contours = {
+        row.source_id: row
+        for row in db.query(SiteContour).filter(SiteContour.site_id == site.id, live_contours())
+    }
+    removed = [_live_source(sources, source_id) for source_id in body.removed_source_ids]
+    for source in removed:
+        _require_source_author(source, user)
+    changes = {change.target: change for change in body.contours}
+    for change in body.contours:
+        if change.source_id is not None:
+            _live_source(sources, change.source_id)
+    for source in removed:
+        pending = changes.get(source.id)
+        if (source.id in contours and pending is None) or (
+            pending is not None and pending.zone is not None
+        ):
+            raise SourceCarriesContourError(
+                "A source is removed once it carries no contour: redraw it on another one first"
             )
-        sources = _live_sources_by_id(db, site.id)
-        contours = {
-            row.source_id: row
-            for row in db.query(SiteContour).filter(SiteContour.site_id == site.id, live_contours())
-        }
-        removed = [_live_source(sources, source_id) for source_id in body.removed_source_ids]
-        for source in removed:
-            _require_source_author(source, user)
-        changes = {change.target: change for change in body.contours}
-        for change in body.contours:
-            if change.source_id is not None:
-                _live_source(sources, change.source_id)
-        for source in removed:
-            pending = changes.get(source.id)
-            if (source.id in contours and pending is None) or (
-                pending is not None and pending.zone is not None
-            ):
-                raise SourceCarriesContourError(
-                    "A source is removed once it carries no contour: redraw it on another one first"
-                )
-        kept = {source_id for source_id in contours if source_id not in changes}
-        drawn = [key for key, change in changes.items() if change.zone is not None]
-        if not kept and not drawn:
-            raise SiteContourRequiredError("A site keeps at least one source with a contour")
-        shapes = {
-            key: zone_shape(db, change.zone)
-            for key, change in changes.items()
-            if change.zone is not None
-        }
-        effective = [
-            key for key, change in changes.items() if change.zone is not None or key in contours
-        ]
+    kept = {source_id for source_id in contours if source_id not in changes}
+    drawn = [key for key, change in changes.items() if change.zone is not None]
+    if not kept and not drawn:
+        raise SiteContourRequiredError("A site keeps at least one source with a contour")
+    shapes = {
+        key: zone_shape(db, change.zone)
+        for key, change in changes.items()
+        if change.zone is not None
+    }
+    effective = [
+        key for key, change in changes.items() if change.zone is not None or key in contours
+    ]
 
-        current_links: dict[uuid.UUID, EventSiteLink] = {}
-        if body.event_links is not None:
-            _lock_own_events(db, user=user, links=body.event_links)
-            current_links = _own_links(db, site_id=site.id, user=user)
-        links_move = body.event_links is not None and _links_change(current_links, body.event_links)
-        record_moves = (body.name, body.kind) != (locked.name, locked.kind)
-        state_moves = record_moves or bool(removed or effective or body.added_sources)
-        if not state_moves and not links_move:
-            raise NothingChangedError(f"Nothing changed since version {locked.version_no}.")
+    current_links: dict[uuid.UUID, EventSiteLink] = {}
+    if body.event_links is not None:
+        _lock_own_events(db, user=user, links=body.event_links)
+        current_links = _own_links(db, site_id=site.id, user=user)
+    links_move = body.event_links is not None and _links_change(current_links, body.event_links)
+    record_moves = (body.name, body.kind) != (locked.name, locked.kind)
+    state_moves = record_moves or bool(removed or effective or body.added_sources)
+    if not state_moves and not links_move:
+        raise NothingChangedError(f"Nothing changed since version {locked.version_no}.")
 
-        if state_moves:
-            _file_version(db, site=locked, editor=user, note=body.note)
-        locked.name, locked.kind = body.name, body.kind
-        added = [
-            _stage_site_source(db, site_id=site.id, author=user, body=source)
-            for source in body.added_sources
-        ]
-        now = datetime.now(UTC)
-        for source in removed:
-            source.removed_at = now
-        for key in effective:
-            source_id = key if isinstance(key, uuid.UUID) else added[key].id
-            if source_id in contours:
-                contours[source_id].superseded_at = now
-        db.flush()
-        for key, geometry in shapes.items():
-            source_id = key if isinstance(key, uuid.UUID) else added[key].id
-            db.add(
-                SiteContour(site_id=site.id, source_id=source_id, author_id=user.id, zone=geometry)
-            )
-        if body.event_links is not None:
-            _set_links(db, site_id=site.id, current=current_links, links=body.event_links)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
+    if state_moves:
+        _file_version(db, site=locked, editor=user, note=body.note)
+    locked.name, locked.kind = body.name, body.kind
+    added = [
+        _stage_site_source(db, site_id=site.id, author=user, body=source)
+        for source in body.added_sources
+    ]
+    now = datetime.now(UTC)
+    for source in removed:
+        source.removed_at = now
+    for key in effective:
+        source_id = key if isinstance(key, uuid.UUID) else added[key].id
+        if source_id in contours:
+            contours[source_id].superseded_at = now
+    db.flush()
+    for key, geometry in shapes.items():
+        source_id = key if isinstance(key, uuid.UUID) else added[key].id
+        db.add(SiteContour(site_id=site.id, source_id=source_id, author_id=user.id, zone=geometry))
+    if body.event_links is not None:
+        _set_links(db, site_id=site.id, current=current_links, links=body.event_links)
+    db.commit()
     db.refresh(locked)
     return locked
 
