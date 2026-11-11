@@ -18,7 +18,7 @@ import httpx
 
 from .errors import MediaTooLarge, TweetImportError, TweetNotAccessible
 from .extract import is_retweet
-from .records import ParsedMedia, QuotedTweet, TweetRecord
+from .records import ParsedMedia, SourcePost, TweetRecord
 from .retry import retrying_async
 from .syndication import extract_source_links, media_entry, raise_if_busy, upstream_unreachable
 from .urls import is_trusted_media_url
@@ -85,7 +85,7 @@ def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
 
 def _archive_quoted(
     quoted_id: str | None, by_id: dict[str, dict[str, Any]], *, handle: str
-) -> QuotedTweet | None:
+) -> SourcePost | None:
     """The quoted post ``quoted_id`` names, joined inside the export (no fetch).
 
     A quote the export lacks stays unresolved (``TweetRecord.quoted_status_id``,
@@ -95,11 +95,11 @@ def _archive_quoted(
     if quoted_id is None or src is None:
         return None
     created_at = src.get("created_at")
-    return QuotedTweet(
-        tweet_id=quoted_id,
-        handle=handle,  # an in-archive quote is the owner's own tweet
+    return SourcePost.x_status(
+        quoted_id,
+        handle,  # an in-archive quote is the owner's own tweet
         text=_tweet_text(src),
-        created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
+        posted_at=_to_iso(created_at) if isinstance(created_at, str) else None,
         media=_archive_media(src, quoted_id),
         external_sources=extract_source_links(src),
     )

@@ -15,7 +15,7 @@ from app.services.tweet_ingest import (
     SOURCE_MISSING,
     Detection,
 )
-from app.services.tweet_ingest.records import QuotedTweet, SourceLink, TweetRecord
+from app.services.tweet_ingest.records import SourceLink, SourcePost, TweetRecord
 from app.services.tweet_ingest.resolve import (
     LinkSource,
     Resolution,
@@ -55,7 +55,9 @@ def _coords(thread: list[TweetRecord]):
 
 def test_coords_come_from_the_analysts_own_text():
     # Both posts carry one: the quoted author's is theirs, never the analyst's.
-    quoted = QuotedTweet(tweet_id="2", handle="src", text="50.000000, 30.000000", created_at="")
+    quoted = SourcePost.x_status(
+        status_id="2", author="src", text="50.000000, 30.000000", posted_at=""
+    )
     coords = _coords([_rec(text="strike 48.012345, 37.802411", quoted=quoted)])
     assert round(coords[0].lat, 3) == 48.012
 
@@ -102,7 +104,9 @@ def test_a_goo_gl_link_outside_maps_stays_a_candidate():
 
 def test_two_records_quoting_one_post_are_one_candidate():
     # Quoting the same footage twice names one post.
-    quoted = QuotedTweet(tweet_id="222", handle="src", text="", created_at="2024-12-31T09:00:00Z")
+    quoted = SourcePost.x_status(
+        status_id="222", author="src", text="", posted_at="2024-12-31T09:00:00Z"
+    )
     url, posted = resolve_source(
         [_rec(tweet_id="1", quoted=quoted), _rec(tweet_id="2", quoted=quoted)]
     )
@@ -130,7 +134,7 @@ def test_split_media_promotes_only_the_first_own_video_to_source():
 
 def test_split_media_quote_keeps_precedence_over_an_own_video():
     # A quote is the source even without media, so the own video stays annotation.
-    quoted = QuotedTweet(tweet_id="2", handle="src", text="", created_at="")
+    quoted = SourcePost.x_status(status_id="2", author="src", text="", posted_at="")
     source, proof = split_media([_rec(media=[_media("video", "op")], quoted=quoted)])
     assert source == []
     assert [m.kind for m in proof] == ["video"]

@@ -32,7 +32,7 @@ from .errors import (
     TweetUpstreamBusy,
     TweetUpstreamUnreachable,
 )
-from .records import MediaKind, ParsedMedia, SourceLink
+from .records import MediaKind, ParsedMedia, SourceLink, SourcePost
 from .retry import parse_retry_after, retrying
 from .urls import T_CO_HOST_RE, hostname, is_trusted_media_url
 
@@ -341,3 +341,22 @@ def extract_source_links(syndication: dict[str, Any]) -> list[SourceLink]:
             )
         )
     return out
+
+
+def source_post(body: dict[str, Any], status_id: str) -> SourcePost | None:
+    """The X post ``body`` carries as a source, ``None`` without an author (an authorless
+    post cannot be attributed). Its media is fetched as source footage (``origin="quote"``).
+    """
+    user = body.get("user")
+    author = user.get("screen_name") if isinstance(user, dict) else None
+    if not isinstance(author, str) or not author:
+        return None
+    text = body.get("text")
+    created_at = body.get("created_at")
+    return SourcePost.x_status(
+        status_id,
+        author,
+        text=text if isinstance(text, str) else "",
+        posted_at=created_at if isinstance(created_at, str) and created_at else None,
+        media=extract_media(body, origin="quote"),
+    )

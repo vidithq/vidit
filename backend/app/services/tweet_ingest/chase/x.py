@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import httpx
 
-from ..records import ChasedPost, ChaseResult
-from ..syndication import extract_media, fetch_syndication
-from ..urls import canonical_tweet_url, x_status_id
+from ..records import ChaseResult
+from ..syndication import fetch_syndication, source_post
+from ..urls import x_status_id
 
 
 def chase(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
@@ -24,21 +24,7 @@ def chase(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
     status_id = target if target.isascii() and target.isdigit() else x_status_id(target)
     if status_id is None:
         return ChaseResult(outcome="no_target")
-    body = fetch_syndication(status_id, client=client)
-    user = body.get("user")
-    handle = user.get("screen_name") if isinstance(user, dict) else None
-    if not isinstance(handle, str) or not handle:
+    post = source_post(fetch_syndication(status_id, client=client), status_id)
+    if post is None:
         return ChaseResult(outcome="not_accessible")
-    text = body.get("text")
-    created_at = body.get("created_at")
-    return ChaseResult(
-        outcome="chased",
-        post=ChasedPost(
-            url=canonical_tweet_url(status_id, handle),
-            posted_at=created_at if isinstance(created_at, str) and created_at else None,
-            media=list(extract_media(body, origin="quote")),
-            author=handle,
-            text=text if isinstance(text, str) else "",
-            status_id=status_id,
-        ),
-    )
+    return ChaseResult(outcome="chased", post=post)

@@ -13,6 +13,7 @@ coordinate search is flagged (:attr:`AcquiredThread.truncated`).
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,9 +22,9 @@ import httpx
 from .chase import chase_thread
 from .errors import TweetFetchFailed, TweetNotAccessible
 from .extract import is_mentions_only, scan_coords
-from .records import QuotedTweet, TweetRecord, expand_shortlinks
+from .records import SourcePost, TweetRecord, expand_shortlinks
 from .resolve import COORDS_MISSING, THREAD_TRUNCATED, Resolution, resolve_threads
-from .syndication import extract_media, extract_source_links, fetch_syndication
+from .syndication import extract_media, extract_source_links, fetch_syndication, source_post
 from .urls import normalise_tweet_url
 
 
@@ -34,28 +35,16 @@ def _quoted_status_id(body: dict[str, Any]) -> str | None:
     return tweet_id if isinstance(tweet_id, str) and tweet_id else None
 
 
-def _quoted_record(body: dict[str, Any]) -> QuotedTweet | None:
-    """The inline quoted tweet as a sub-record (the body embeds it, no extra fetch)."""
+def _quoted_record(body: dict[str, Any]) -> SourcePost | None:
+    """The inline quoted post (the body embeds it, no extra fetch)."""
     qt = body.get("quoted_tweet")
     tweet_id = _quoted_status_id(body)
     if not isinstance(qt, dict) or tweet_id is None:
         return None
-    user = qt.get("user")
-    if not isinstance(user, dict):
+    post = source_post(qt, tweet_id)
+    if post is None:
         return None
-    handle = user.get("screen_name")
-    if not isinstance(handle, str) or not handle:
-        return None
-    raw_text = qt.get("text")
-    raw_created = qt.get("created_at")
-    return QuotedTweet(
-        tweet_id=tweet_id,
-        handle=handle,
-        text=raw_text if isinstance(raw_text, str) else "",
-        created_at=raw_created if isinstance(raw_created, str) else "",
-        media=list(extract_media(qt, origin="quote")),
-        external_sources=extract_source_links(qt),
-    )
+    return dataclasses.replace(post, external_sources=extract_source_links(qt))
 
 
 def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = None) -> TweetRecord:

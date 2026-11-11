@@ -6,7 +6,7 @@ exposes ``chase(target, *, client) -> ChaseResult`` and answers ``no_target``
 for hosts it does not serve.
 
 :func:`chase_thread` is the one chase step every entry runs once its records
-are built; :func:`apply_chase` places the result.
+are built.
 
 Every chase is fail-soft: a failure reads as "no footage", never fails the
 import. The failure class still travels (``records.ChaseOutcome``) on the
@@ -21,14 +21,14 @@ import logging
 import httpx
 
 from ..errors import TweetImportError
-from ..records import ChasedPost, ChaseResult, QuotedTweet, TelegramFootage, TweetRecord
+from ..records import ChaseResult, TweetRecord
 from ..resolve import sole_candidate
 from ..retry import is_transient
 from . import telegram, tiktok, x
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["apply_chase", "chase_post", "chase_thread"]
+__all__ = ["chase_post", "chase_thread"]
 
 
 def chase_post(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
@@ -53,28 +53,6 @@ def chase_post(target: str, *, client: httpx.Client | None = None) -> ChaseResul
         if chased.outcome != "no_target":
             return chased
     return ChaseResult(outcome="no_target")
-
-
-def apply_chase(record: TweetRecord, chased: ChasedPost) -> TweetRecord:
-    """``record`` with ``chased`` in the slot its shape fits: a post with a
-    status id goes in the quoted slot, anything else in the off-platform slot.
-    An existing quote is never overwritten (it outranks a followed link).
-    """
-    if chased.status_id is not None:
-        quoted = QuotedTweet(
-            tweet_id=chased.status_id,
-            handle=chased.author or "",
-            text=chased.text,
-            created_at=chased.posted_at or "",
-            media=list(chased.media),
-        )
-        return dataclasses.replace(record, quoted=record.quoted or quoted)
-    return dataclasses.replace(
-        record,
-        telegram=TelegramFootage(
-            url=chased.url, posted_at=chased.posted_at, media=list(chased.media)
-        ),
-    )
 
 
 def _declares(record: TweetRecord, target: str) -> bool:
@@ -124,6 +102,15 @@ def chase_thread(
         # ``i/web/status`` form) is a cross-reference. A quote is exempt: quoting
         # one's own post declares it as the source.
         return records
+    # A status goes in the quote slot (no record carries a quote here), any other post in
+    # the linked slot.
     return [
-        apply_chase(record, chased) if _declares(record, target) else record for record in records
+        (
+            dataclasses.replace(record, quoted=chased)
+            if chased.status_id is not None
+            else dataclasses.replace(record, linked=chased)
+        )
+        if _declares(record, target)
+        else record
+        for record in records
     ]

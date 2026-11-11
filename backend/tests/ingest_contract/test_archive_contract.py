@@ -289,9 +289,9 @@ async def _run_telegram_chase(db, owner: User, tmp_path, monkeypatch, *, embed: 
 
 async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, monkeypatch):
     """A chased t.me link: the embed's date fills the link's post time and its video becomes the source's file; OP photos stay proof."""
-    from app.services.tweet_ingest.records import ChasedPost
+    from app.services.tweet_ingest.records import SourcePost
 
-    embed = ChasedPost(
+    embed = SourcePost(
         url="https://t.me/somechannel/12345",
         posted_at="2026-03-04T09:00:00+00:00",
         media=[
@@ -312,9 +312,9 @@ async def test_telegram_chase_fills_date_and_source_media(db, owner, tmp_path, m
 
 async def test_telegram_chase_sensitive_degrades_to_date_only(db, owner, tmp_path, monkeypatch):
     """A sensitive t.me post: the date fills, the source has no file, the backfill does not fail."""
-    from app.services.tweet_ingest.records import ChasedPost
+    from app.services.tweet_ingest.records import SourcePost
 
-    embed = ChasedPost(url="https://t.me/somechannel/12345", posted_at="2026-03-04T09:00:00+00:00")
+    embed = SourcePost(url="https://t.me/somechannel/12345", posted_at="2026-03-04T09:00:00+00:00")
     row = await _run_telegram_chase(db, owner, tmp_path, monkeypatch, embed=embed)
 
     assert _source_links(row) == [[(_TG_URL, _TG_POSTED_AT)]]
@@ -328,7 +328,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
     """A re-import with the chase on fills the source, its post time and its file on the same row a chase-less pass left bare."""
     import app.services.tweet_ingest.archive as archive_mod
     import app.services.tweet_ingest.chase.telegram as telegram_mod
-    from app.services.tweet_ingest.records import ChasedPost, ChaseResult
+    from app.services.tweet_ingest.records import ChaseResult, SourcePost
 
     handle = owner.x_handle
     tweet_id = "8400000000000000042"
@@ -339,7 +339,7 @@ async def test_reimport_fills_a_detection_an_earlier_run_left_bare(
         assert target == "https://t.me/somechannel/12345"
         return ChaseResult(
             outcome="chased",
-            post=ChasedPost(
+            post=SourcePost(
                 url=target,
                 posted_at="2026-03-04T09:00:00+00:00",
                 media=[

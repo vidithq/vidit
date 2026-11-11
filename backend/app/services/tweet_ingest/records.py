@@ -1,7 +1,7 @@
 """Normalized acquire units: one tweet and one chased footage post.
 
 ``TweetRecord`` is what every acquire adapter produces and ``stitch`` consumes.
-``ChasedPost`` is the footage post a chase resolved, and ``ChaseResult`` is a
+``SourcePost`` is a post a thread names as its source, and ``ChaseResult`` is a
 chaser's answer, which says why when nothing resolved.
 """
 
@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
+
+from .urls import canonical_tweet_url
 
 MediaKind = Literal["image", "video"]
 
@@ -45,38 +47,6 @@ class ParsedMedia:
 
 
 @dataclass(frozen=True)
-class QuotedTweet:
-    """The tweet quoted by the OP, resolved to a full sub-record.
-
-    Analysts quote-tweet the footage, so this is usually the real source: its
-    media is the footage and its ``created_at`` the source post time.
-    """
-
-    tweet_id: str
-    handle: str
-    text: str
-    created_at: str  # ISO 8601 UTC
-    media: list[ParsedMedia] = field(default_factory=list)
-    # Read only by the request branch's coordinate scan (raw text holds opaque
-    # ``t.co`` wrappers). Never a source candidate (:func:`resolve.thread_candidates`).
-    external_sources: list[SourceLink] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class TelegramFootage:
-    """An off-platform footage source (a Telegram or TikTok post), chased from its public embed.
-
-    Not a ``QuotedTweet``: such a post has only a date and, when served, media.
-    ``url`` must equal the resolved ``SourceLink.url`` for the resolution to
-    pick this footage up.
-    """
-
-    url: str
-    posted_at: str | None  # ISO 8601 UTC, None when the embed omitted the date
-    media: list[ParsedMedia] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
 class SourceLink:
     """A URL the post links (``entities.urls``).
 
@@ -101,6 +71,35 @@ def expand_shortlinks(text: str, links: Iterable[SourceLink]) -> str:
 
 
 @dataclass(frozen=True)
+class SourcePost:
+    """A post a thread names as its source: a quoted X post, or the post one chase resolved.
+
+    ``url`` is the canonical permalink for an X post (:meth:`x_status`) and the
+    target as written for any other host, so the resolution matches it back to
+    the declared link. ``status_id`` and ``author`` are set only for X.
+    """
+
+    url: str
+    posted_at: str | None = None  # ISO 8601 UTC, None when the post serves none
+    media: list[ParsedMedia] = field(default_factory=list)
+    status_id: str | None = None
+    author: str | None = None
+    text: str = ""
+    # Read only by the request branch's coordinate scan (raw text holds opaque
+    # ``t.co`` wrappers). Never a source candidate (:func:`resolve.thread_candidates`).
+    external_sources: list[SourceLink] = field(default_factory=list)
+
+    @classmethod
+    def x_status(cls, status_id: str, author: str, **fields: Any) -> SourcePost:
+        return cls(
+            url=canonical_tweet_url(status_id, author),
+            status_id=status_id,
+            author=author,
+            **fields,
+        )
+
+
+@dataclass(frozen=True)
 class TweetRecord:
     tweet_id: str
     # Lowercase, no leading ``@``. The detection is owned by this handle's user.
@@ -112,12 +111,12 @@ class TweetRecord:
     # the parent pointer. ``stitch`` unions on it.
     in_reply_to_status_id: str | None = None
     # Resolved inline (syndication) or joined in the export (archive).
-    quoted: QuotedTweet | None = None
+    quoted: SourcePost | None = None
     # The quoted post's id, when declared. Differs from ``quoted`` only where
     # resolving it takes a fetch (``chase.chase_thread`` reads it).
     quoted_status_id: str | None = None
-    # Filled by ``chase.chase_thread`` when the sole footage link is a t.me post.
-    telegram: TelegramFootage | None = None
+    # Filled by ``chase.chase_thread`` when the sole footage link is off X.
+    linked: SourcePost | None = None
     # The URLs the post links in its text (``entities.urls``).
     external_sources: list[SourceLink] = field(default_factory=list)
     # Why the chase found no footage, stamped by ``chase.chase_thread``; ``None``
@@ -141,24 +140,6 @@ ChaseOutcome = Literal["chased", "not_accessible", "transient_failure", "no_targ
 
 
 @dataclass(frozen=True)
-class ChasedPost:
-    """The footage post one chase resolved, whichever chaser served it.
-
-    ``url`` is the target as written for Telegram, and the canonical status URL
-    for X (``urls.canonical_tweet_url``). ``author``, ``text`` and ``status_id``
-    are set only for X; ``chase.apply_chase`` reads ``status_id`` to pick the
-    record slot.
-    """
-
-    url: str
-    posted_at: str | None = None  # ISO 8601 UTC, None when the post serves none
-    media: list[ParsedMedia] = field(default_factory=list)
-    author: str | None = None
-    text: str = ""
-    status_id: str | None = None
-
-
-@dataclass(frozen=True)
 class ChaseResult:
     """The footage a chaser found, or why it found none.
 
@@ -166,4 +147,4 @@ class ChaseResult:
     """
 
     outcome: ChaseOutcome
-    post: ChasedPost | None = None
+    post: SourcePost | None = None

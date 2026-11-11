@@ -16,7 +16,7 @@ from app.services.tweet_ingest import (
     acquire_thread,
     resolve_threads,
 )
-from app.services.tweet_ingest.records import ChasedPost, ChaseResult, SourceLink
+from app.services.tweet_ingest.records import ChaseResult, SourceLink, SourcePost
 from app.services.tweet_ingest.syndication import (
     extract_source_links,
 )
@@ -439,7 +439,7 @@ def test_the_sole_x_status_candidate_is_chased_into_the_quote_slot():
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
     assert record.quoted is not None
-    assert record.quoted.tweet_id == _CHASED_ID
+    assert record.quoted.status_id == _CHASED_ID
     assert [m.kind for m in record.quoted.media] == ["video"]
 
 
@@ -449,7 +449,7 @@ def test_a_chase_that_404s_degrades_to_link_only():
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
     assert record.quoted is None
-    assert record.telegram is None
+    assert record.linked is None
 
 
 def test_a_chased_status_that_turns_out_to_be_the_analysts_own_is_dropped():
@@ -468,15 +468,15 @@ def test_the_sole_telegram_candidate_is_chased_into_the_telegram_slot(monkeypatc
         assert target == _TG_URL
         return ChaseResult(
             outcome="chased",
-            post=ChasedPost(url=target, posted_at="2026-03-04T09:00:00+00:00"),
+            post=SourcePost(url=target, posted_at="2026-03-04T09:00:00+00:00"),
         )
 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)
     with _client({_POST_ID: _linking_body(_TG_URL)}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
-    assert record.telegram is not None
-    assert record.telegram.posted_at == "2026-03-04T09:00:00+00:00"
+    assert record.linked is not None
+    assert record.linked.posted_at == "2026-03-04T09:00:00+00:00"
 
 
 @pytest.mark.parametrize(
@@ -494,7 +494,7 @@ def test_a_chase_that_found_nothing_reports_its_class_to_the_resolution(
     with _client({_POST_ID: _linking_body(_TG_URL)}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     [record] = acquired.records
-    assert record.telegram is None
+    assert record.linked is None
     assert (record.chase_outcome == "transient_failure") is expected
 
     [detection] = resolve_threads([acquired.records]).detections
@@ -513,7 +513,7 @@ def test_nothing_is_chased_when_the_candidates_are_ambiguous(monkeypatch):
     )
     with _client({_POST_ID: body}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records[0].telegram is None
+    assert acquired.records[0].linked is None
 
 
 def test_an_off_vocabulary_candidate_is_not_chased():
@@ -523,13 +523,13 @@ def test_an_off_vocabulary_candidate_is_not_chased():
     with _client(bodies, seen) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     assert acquired.records[0].quoted is None
-    assert acquired.records[0].telegram is None
+    assert acquired.records[0].linked is None
     assert seen == [_POST_ID]
 
 
 def test_the_sole_tiktok_candidate_is_chased_into_the_off_platform_slot(monkeypatch):
     tiktok = "https://www.tiktok.com/@war/video/7"
-    footage = ChasedPost(url=tiktok, posted_at="2026-03-04T13:20:00+00:00")
+    footage = SourcePost(url=tiktok, posted_at="2026-03-04T13:20:00+00:00")
     monkeypatch.setattr(
         tiktok_mod,
         "chase",
@@ -537,5 +537,5 @@ def test_the_sole_tiktok_candidate_is_chased_into_the_off_platform_slot(monkeypa
     )
     with _client({_POST_ID: _linking_body(tiktok)}) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records[0].telegram is not None
-    assert acquired.records[0].telegram.url == tiktok
+    assert acquired.records[0].linked is not None
+    assert acquired.records[0].linked.url == tiktok

@@ -38,8 +38,7 @@ from .extract import (
 )
 from .records import (
     ParsedMedia,
-    QuotedTweet,
-    TelegramFootage,
+    SourcePost,
     TweetRecord,
     expand_shortlinks,
 )
@@ -227,21 +226,21 @@ def context_links(urls: Iterable[str]) -> list[str]:
     return links
 
 
-def quoted_posts(thread: list[TweetRecord]) -> list[QuotedTweet]:
+def quoted_posts(thread: list[TweetRecord]) -> list[SourcePost]:
     """The distinct posts ``thread`` quotes, in order, deduped on post id (several
     is the ambiguity :func:`sole_quote` refuses to pick between)."""
-    posts: list[QuotedTweet] = []
-    seen: set[str] = set()
+    posts: list[SourcePost] = []
+    seen: set[str | None] = set()
     for record in thread:
         quoted = record.quoted
-        if quoted is None or quoted.tweet_id in seen:
+        if quoted is None or quoted.status_id in seen:
             continue
-        seen.add(quoted.tweet_id)
+        seen.add(quoted.status_id)
         posts.append(quoted)
     return posts
 
 
-def sole_quote(thread: list[TweetRecord]) -> QuotedTweet | None:
+def sole_quote(thread: list[TweetRecord]) -> SourcePost | None:
     """The one post ``thread`` quotes, ``None`` for none or several.
 
     Shared by :func:`resolve_source` and :func:`split_media`, so a detection
@@ -253,7 +252,7 @@ def sole_quote(thread: list[TweetRecord]) -> QuotedTweet | None:
 
 def _thread_links(thread: list[TweetRecord]) -> list[str]:
     """Every link the thread names: its quoted posts' permalinks, then its links."""
-    quoted = [canonical_tweet_url(post.tweet_id, post.handle) for post in quoted_posts(thread)]
+    quoted = [post.url for post in quoted_posts(thread)]
     return quoted + [link.url for record in thread for link in record.external_sources]
 
 
@@ -334,7 +333,7 @@ def footage_candidates(sources: list[LinkSource]) -> list[LinkSource]:
     return [source for source in sources if source.level == "direct"]
 
 
-def _chased_footage(thread: list[TweetRecord], link: str) -> TelegramFootage | None:
+def _chased_footage(thread: list[TweetRecord], link: str) -> SourcePost | None:
     """The off-platform footage chased for the resolved source ``link``.
 
     Only when a record carries a chase filed under that exact URL (hence a
@@ -343,9 +342,9 @@ def _chased_footage(thread: list[TweetRecord], link: str) -> TelegramFootage | N
     """
     return next(
         (
-            record.telegram
+            record.linked
             for record in thread
-            if record.telegram is not None and record.telegram.url == link
+            if record.linked is not None and record.linked.url == link
         ),
         None,
     )
@@ -368,8 +367,7 @@ def resolve_source(thread: list[TweetRecord]) -> tuple[str | None, datetime | No
     """
     quote = sole_quote(thread)
     if quote is not None:
-        url = canonical_tweet_url(quote.tweet_id, quote.handle)
-        return url, _source_posted_at(url, quote.created_at)
+        return quote.url, _source_posted_at(quote.url, quote.posted_at)
     if quoted_posts(thread):
         return None, None
     link = sole_candidate(thread)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from ..records import ChasedPost, ChaseResult, ParsedMedia
+from ..records import ChaseResult, ParsedMedia, SourcePost
 from ..retry import retrying
 from ..syndication import USER_AGENT, http_get
 
@@ -33,5 +33,5 @@ def embed_result(target: str, posted_at: str | None, media: list[ParsedMedia]) -
     if posted_at is None and not media:
         return ChaseResult(outcome="not_accessible")
     return ChaseResult(
-        outcome="chased", post=ChasedPost(url=target, posted_at=posted_at, media=media)
+        outcome="chased", post=SourcePost(url=target, posted_at=posted_at, media=media)
     )

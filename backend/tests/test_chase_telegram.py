@@ -12,7 +12,7 @@ import pytest
 
 from app.services.tweet_ingest import retry
 from app.services.tweet_ingest.chase import chase_post
-from app.services.tweet_ingest.records import ChasedPost, ChaseResult
+from app.services.tweet_ingest.records import ChaseResult, SourcePost
 from app.services.tweet_ingest.urls import telegram_post_url
 
 # ── SSRF URL guard ────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ def _raising_client(exc: httpx.HTTPError) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _fetch(html_text: str, *, status: int = 200) -> ChasedPost | None:
+def _fetch(html_text: str, *, status: int = 200) -> SourcePost | None:
     """The post one chase of a canned embed yields, or ``None``."""
     return _chase(html_text, status=status).post
 
