@@ -591,13 +591,16 @@ def find_overlaps(db: Session, zone: ZonePolygon) -> list[SiteOverlapRead]:
     overlap_area = func.ST_Area(intersection)
     new_area = func.ST_Area(cast(geometry, Geography))
     existing_area = func.ST_Area(cast(current.c.zone, Geography))
+    share_of_new = overlap_area / new_area
     rows = (
-        db.query(Site, overlap_area / new_area, overlap_area / existing_area)
+        db.query(Site, share_of_new, overlap_area / existing_area)
         .join(current, current.c.site_id == Site.id)
-        .filter(*visible_sites(), func.ST_Intersects(current.c.zone, geometry))
+        .filter(*visible_sites(), func.ST_Intersects(current.c.zone, geometry), share_of_new > 0)
+        .order_by(func.least(share_of_new, 1.0).desc())
+        .limit(OVERLAPS_LIMIT)
         .all()
     )
-    overlaps = [
+    return [
         SiteOverlapRead(
             id=site.id,
             name=site.name,
@@ -606,10 +609,7 @@ def find_overlaps(db: Session, zone: ZonePolygon) -> list[SiteOverlapRead]:
             share_of_existing_zone=min(float(of_existing), 1.0),
         )
         for site, of_new, of_existing in rows
-        if of_new > 0
     ]
-    overlaps.sort(key=lambda row: row.share_of_new_zone, reverse=True)
-    return overlaps[:OVERLAPS_LIMIT]
 
 
 def _require_site_owner(site: Site, user: User) -> None:
@@ -855,6 +855,12 @@ def file_site_source(
     return SiteSourceFiledRead(**read.model_dump(), duplicate_source_ids=duplicates)
 
 
+def _live_sources_by_id(db: Session, site_id: uuid.UUID) -> dict[uuid.UUID, Source]:
+    return {
+        row.id: row for row in db.query(Source).filter(Source.site_id == site_id, *live_sources())
+    }
+
+
 def _live_source(sources: dict[uuid.UUID, Source], source_id: uuid.UUID) -> Source:
     source = sources.get(source_id)
     if source is None:
@@ -876,10 +882,7 @@ def remove_site_source(db: Session, *, site: Site, user: User, source_id: uuid.U
     """
     try:
         locked = lock_row(db, Site, Site.id == site.id).one()
-        sources = {
-            row.id: row
-            for row in db.query(Source).filter(Source.site_id == site.id, *live_sources())
-        }
+        sources = _live_sources_by_id(db, site.id)
         source = _live_source(sources, source_id)
         _require_source_author(source, user)
         carries = db.query(SiteContour.id).filter(
@@ -914,10 +917,7 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
             raise VersionMismatchError(
                 f"This site is at version {locked.version_no}; reload it before saving"
             )
-        sources = {
-            row.id: row
-            for row in db.query(Source).filter(Source.site_id == site.id, *live_sources())
-        }
+        sources = _live_sources_by_id(db, site.id)
         contours = {
             row.source_id: row
             for row in db.query(SiteContour).filter(SiteContour.site_id == site.id, live_contours())
