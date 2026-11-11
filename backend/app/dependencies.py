@@ -98,8 +98,7 @@ def get_current_user_optional(
     db: Session = Depends(get_db),
     session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> User | None:
-    """Like get_current_user but returns None instead of raising when
-    unauthenticated, for public reads that personalize (e.g. `is_following`)."""
+    """For public reads that personalize, such as ``is_following``."""
     try:
         return get_current_user(db, session_cookie)
     except HTTPException:
@@ -107,12 +106,7 @@ def get_current_user_optional(
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Authorize admin-only routes.
-
-    Built on ``get_current_user``, so a deactivated admin loses access at once.
-    Returns 403 (not 404) for non-admins: the route exists. The frontend learns
-    the role via ``GET /admin/me``, which answers every analyst.
-    """
+    """403, not 404, for non-admins: the route exists."""
     if not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return current_user

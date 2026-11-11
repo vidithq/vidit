@@ -43,8 +43,6 @@ CONFIRMATION_TOKEN_MINUTES = 60 * 24
 
 
 class RegistrationError(CodedError):
-    """Friendly error; ``code`` lets the router map to an HTTP status."""
-
     code: str = "registration_error"
     status_code = 400
 
@@ -76,8 +74,6 @@ class UsernameAlreadyTakenError(RegistrationError):
 
 
 class EmailPendingError(RegistrationError):
-    """A live pending registration exists for this email."""
-
     code = "email_pending_confirmation"
     status_code = 409
 
@@ -94,14 +90,12 @@ class InvalidOrExpiredTokenError(RegistrationError):
 
 @dataclass(frozen=True)
 class PendingMint:
-    """What the router needs to send the confirmation email."""
-
     email: str
     raw_token: str
 
 
 def _delete_expired(db: Session) -> int:
-    """Drop expired pending rows so they don't pin an address. Returns the count."""
+    """Drop expired pending rows so they don't pin an address."""
     now = datetime.now(UTC)
     return (
         db.query(PendingRegistration)
@@ -179,14 +173,11 @@ def create_pending_registration(
     """Stage a registration. Returns the raw token to email.
 
     The invite is checked before any uniqueness check so a probe with an
-    unknown invite can't enumerate emails or usernames.
+    unknown invite can't enumerate emails or usernames. The SELECT checks only
+    give friendly errors; the UNIQUE constraints are the race protection.
 
-    The SELECT checks only give friendly errors; the UNIQUE constraints are
-    the race protection (the loser of two concurrent registers hits the
-    ``IntegrityError`` branch).
-
-    Caller commits, so the email send and the row insert stay together. The
-    expired-row sweep is committed here so the INSERT doesn't see a stale row.
+    Caller commits. The expired-row sweep is committed here so the INSERT
+    doesn't see a stale row.
 
     The "invalid invite" branch returns measurably faster than the others
     (timing oracle), accepted while invites gate registration.
@@ -241,12 +232,8 @@ def resend_pending_registration(
     *,
     email: str,
 ) -> PendingMint | None:
-    """Mint a new token for an outstanding pending row.
-
-    Returns ``None`` if none is live; the router answers 204 either way so
-    responses don't enumerate addresses. Re-minting invalidates the first
-    email's link.
-    """
+    """Re-mint the token of the live pending row, which voids the first email's link. None when
+    no row is live; the router answers 204 either way so responses don't enumerate addresses."""
     _delete_expired(db)
     db.commit()
 
@@ -264,17 +251,10 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
 
     The pending row is claimed with ``DELETE ... RETURNING``: concurrent
     confirms can both pass a "row exists?" check under READ COMMITTED, so
-    only the DELETE enforces single use (the loser sees zero rows). Mirrors
-    ``password_reset_tokens.consume``.
+    only the DELETE enforces single use (the loser sees zero rows).
 
     User uniqueness is re-checked by SELECT (friendly error) with the UNIQUE
-    constraint as backstop; the ``IntegrityError`` branch maps a collision to
-    a 409 instead of a 500.
-
-    Invite consumption is atomic (``consume_invite_code``); a concurrent
-    redemption returns False and the user insert is rolled back.
-
-    Caller commits.
+    constraint as backstop. Caller commits.
     """
     if not raw_token:
         raise InvalidOrExpiredTokenError("Invalid or expired confirmation link.")
@@ -386,7 +366,6 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
 
 
 def reap_pending_registrations(db: Session) -> dict[str, int]:
-    """Bulk-drop expired pending rows. Exposed via `POST /admin/maintenance/reap-pending-registrations`."""
     deleted = _delete_expired(db)
     db.commit()
     return {"pending_registrations_deleted": deleted}

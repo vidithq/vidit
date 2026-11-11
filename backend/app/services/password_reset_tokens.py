@@ -1,12 +1,7 @@
 """Single-use, expiring tokens for password reset.
 
-1. ``mint`` generates a high-entropy URL-safe secret, persists ``sha256(secret)`` plus
-   user and expiry, and returns the plaintext. Only the plaintext goes on the wire (the
-   email link); only the hash sits in the DB, so a read-only DB leak hands over no live token.
-2. ``consume`` re-hashes and runs one atomic UPDATE that flips ``consumed_at`` only if the row
-   is unconsumed and unexpired. Zero rows means an invalid token. Two
-   parallel requests can both pass an ORM-level check under READ COMMITTED, but only one wins
-   the row-lock race inside the UPDATE.
+Only the plaintext goes on the wire (the email link); only its hash sits in the DB, so a
+read-only DB leak hands over no live token.
 """
 
 import uuid
@@ -37,16 +32,13 @@ def mint(
 
 
 def consume(db: Session, raw_token: str) -> PasswordResetToken | None:
-    """Validate and single-use-consume the token. Returns the row, or None.
+    """Single-use-consume the token; None for any failure (unknown, expired, consumed, lost the
+    race), which callers answer with one opaque "invalid token".
 
-    One atomic UPDATE ... WHERE consumed_at IS NULL ... RETURNING. A SELECT-then-mutate would
-    let two concurrent requests both redeem the token under READ COMMITTED (for password reset,
-    an attacker holding a live link could race the legitimate user).
-
-    Returns None for any failure (unknown, expired, consumed, lost the race).
-    Callers must answer them all with the same opaque "invalid token".
+    One atomic UPDATE ... RETURNING: a SELECT-then-mutate would let two concurrent requests
+    both redeem the token under READ COMMITTED, so an attacker holding a live link could race
+    the legitimate user.
     """
-
     now = datetime.now(UTC)
     stmt = (
         update(PasswordResetToken)

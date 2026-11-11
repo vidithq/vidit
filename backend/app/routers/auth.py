@@ -65,11 +65,7 @@ router = APIRouter()
 
 
 def _session_or_ip_key(request: Request) -> str:
-    """Rate-limit key for cookie-authenticated endpoints.
-
-    Keys on the hashed session (never the raw JWT) so analysts behind one NAT
-    don't collide; falls back to :func:`rate_limit_key` without a cookie.
-    """
+    """Keys on the hashed session (never the raw JWT) so analysts behind one NAT don't collide."""
     cookie = request.cookies.get(SESSION_COOKIE)
     if cookie:
         return f"session:{hashlib.sha256(cookie.encode('utf-8')).hexdigest()[:16]}"
@@ -120,10 +116,7 @@ def register(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> RegisterResponse:
-    """Stage a registration. No ``users`` row is created and no cookie is set.
-
-    The account is created at ``POST /auth/confirm-registration``.
-    """
+    """Stage a registration. No ``users`` row is created and no cookie is set."""
     mint = registration.create_pending_registration(
         db,
         email=body.email,
@@ -132,10 +125,7 @@ def register(
         invite_code=body.invite_code,
     )
 
-    audit.log_auth_event(
-        db,
-        action=ACTION_REGISTER_PENDING,
-    )
+    audit.log_auth_event(db, action=ACTION_REGISTER_PENDING)
     db.commit()
 
     # Sent off-thread like /forgot-password: an inline Resend round-trip would
@@ -156,11 +146,7 @@ def confirm_registration(
     body: ConfirmRegistrationRequest,
     db: Session = Depends(get_db),
 ) -> User:
-    """Consume the confirmation token, create the user, sign them in.
-
-    Re-validates the invite and uniqueness in the same transaction as the user
-    insert (the pending row held the address until now).
-    """
+    """Consume the confirmation token, create the user, sign them in."""
     user = registration.confirm_pending_registration(db, body.token)
     return _sign_in(db, response, user, action=ACTION_REGISTER_CONFIRMED)
 
@@ -181,11 +167,7 @@ def resend_confirmation(
 
     # Audit on both branches like ``/forgot-password``. ``user_id`` stays NULL
     # so the row leaks nothing about which addresses have a pending row.
-    audit.log_auth_event(
-        db,
-        action=ACTION_REGISTER_RESENT,
-        user_id=None,
-    )
+    audit.log_auth_event(db, action=ACTION_REGISTER_RESENT, user_id=None)
     db.commit()
     if mint is None:
         return
@@ -262,11 +244,7 @@ def logout(
         if user is not None and user.deleted_at is None:
             bump_token_version(user)
 
-    audit.log_auth_event(
-        db,
-        action=ACTION_LOGOUT,
-        user_id=user_id,
-    )
+    audit.log_auth_event(db, action=ACTION_LOGOUT, user_id=user_id)
     db.commit()
     clear_session_cookies(response)
 
@@ -384,10 +362,6 @@ def change_password(
 
     Cookie-only auth means a stolen session can act as the user, so
     re-asserting the current password keeps a thief from locking the owner out.
-    Same hash + audit shape as ``/auth/reset-password`` so the flows are
-    indistinguishable.
-
-    The heads-up email is a best-effort background task after the commit.
     """
     if not verify_password(body.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
