@@ -254,15 +254,10 @@ def owner_username_matches(author: str) -> ColumnElement[bool]:
     Callers gate ``author`` through :data:`AUTHOR_FILTER_PATTERN`.
 
     A predicate rather than a query leg because the event groups match it on every credited
-    analyst (:func:`apply_author_filter`), and search matches it on the owner of a collection or
+    analyst (:meth:`EventFilters.apply`), and search matches it on the owner of a collection or
     a site (``services/search``); one home keeps them matching alike.
     """
     return func.lower(User.username) == author.lower()
-
-
-def apply_author_filter(query: SAQuery, author: str) -> SAQuery:
-    """Keep the events credited to the analyst the username names (:func:`credited_to`)."""
-    return query.filter(credited_to(select(User.id).where(owner_username_matches(author))))
 
 
 def view_predicate(view: str):
@@ -290,35 +285,24 @@ def view_predicate(view: str):
     )
 
 
-def validate_media_types(media: list[str] | None) -> None:
-    """422 on a ``media`` value outside the ``Media.kind`` domain."""
-    if media and not set(media) <= MEDIA_TYPES:
+def _check_domain(field: str, values: list[str] | None, domain: frozenset[str]) -> None:
+    if values and not set(values) <= domain:
         raise HTTPException(
-            status_code=422,
-            detail=f"media must be one of: {', '.join(sorted(MEDIA_TYPES))}",
+            status_code=422, detail=f"{field} must be one of: {', '.join(sorted(domain))}"
         )
+
+
+def validate_media_types(media: list[str] | None) -> None:
+    _check_domain("media", media, MEDIA_TYPES)
 
 
 def validate_source_filters(source_kind: list[str] | None, level: list[str] | None) -> None:
-    """422 on a ``source_kind`` or ``level`` value outside its domain."""
-    for field, values, domain in (
-        ("source_kind", source_kind, SOURCE_KIND_VALUES),
-        ("level", level, LEVEL_VALUES),
-    ):
-        if values and not set(values) <= domain:
-            raise HTTPException(
-                status_code=422,
-                detail=f"{field} must be one of: {', '.join(sorted(domain))}",
-            )
+    _check_domain("source_kind", source_kind, SOURCE_KIND_VALUES)
+    _check_domain("level", level, LEVEL_VALUES)
 
 
 def validate_status_filter(status: list[str] | None) -> None:
-    """422 on a ``status`` value outside the ``Event.status`` domain."""
-    if status and not set(status) <= STATUSES:
-        raise HTTPException(
-            status_code=422,
-            detail=f"status must be one of: {', '.join(sorted(STATUSES))}",
-        )
+    _check_domain("status", status, STATUSES)
 
 
 def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
@@ -331,14 +315,9 @@ def parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     boxes (west > east) are rejected; a client straddling it widens to the full longitude range.
     Hand-kept FE mirror: ``frontend/src/lib/viewport.ts``.
     """
-    parts = bbox.split(",")
-    if len(parts) != 4:
-        raise HTTPException(
-            status_code=422,
-            detail="bbox must be four comma-separated numbers: south,west,north,east",
-        )
     try:
-        south, west, north, east = (float(p) for p in parts)
+        # A count other than four fails the unpacking with the same ``ValueError``.
+        south, west, north, east = (float(p) for p in bbox.split(","))
     except ValueError as exc:
         raise HTTPException(
             status_code=422,
@@ -411,7 +390,7 @@ def taxonomy_predicates(
     Any-match (OR) within a list, all-match (AND) across lists. ``conflict`` matches the
     ``conflicts`` referential (its own join, so a same-named free tag can't poison it);
     ``source_kind`` and ``level`` keep an event with a source of that kind or level; ``tag``
-    matches a tag on the event or on one of its sources. :func:`apply_filters` reads them, and
+    matches a tag on the event or on one of its sources. :meth:`EventFilters.apply` reads them, and
     search reads ``tag`` for the collections. Callers gate ``source_kind`` and ``level`` through
     :func:`validate_source_filters`.
     """
@@ -459,7 +438,7 @@ def approval_predicates(
     ``approved_by_org`` one the organization the slug names approved. Each leg pins
     ``organization_id`` so the lookup stays on the partial unique index of its kind
     (``uq_event_approvals_analyst``, ``uq_event_approvals_organization``). Callers gate the two
-    names through :data:`AUTHOR_FILTER_PATTERN`. :func:`apply_filters` reads them.
+    names through :data:`AUTHOR_FILTER_PATTERN`. :meth:`EventFilters.apply` reads them.
     """
     analyst = EventApproval.organization_id.is_(None)
     organization = EventApproval.organization_id.is_not(None)
@@ -488,98 +467,6 @@ def approval_predicates(
     return predicates
 
 
-def apply_filters(
-    query: SAQuery,
-    *,
-    view: str | None = "located",
-    status: list[str] | None = None,
-    conflict: list[str] | None = None,
-    source_kind: list[str] | None = None,
-    level: list[str] | None = None,
-    tag: list[str] | None = None,
-    occurred_date_from: str | None = None,
-    occurred_date_to: str | None = None,
-    submitted_from: str | None = None,
-    submitted_to: str | None = None,
-    author: str | None = None,
-    media: list[str] | None = None,
-    approved: bool = False,
-    approved_by: str | None = None,
-    approved_by_org: str | None = None,
-    has_coords: bool | None = None,
-) -> SAQuery:
-    """Apply the standard event filter set to a query.
-
-    The visibility filters live here, so every public read excludes soft-deleted and withheld
-    rows; the admin path bypasses this helper.
-
-    ``view`` scopes to one of the two views (see ``EventView``), or to none when the caller scopes
-    the statuses itself (``services/search``); ``status`` narrows within it (any-match). Status-scoping rather than a coordinate predicate, since a ``requested`` event
-    may carry an approximate guess and must not leak into the located catalog. Callers gate
-    values through :func:`validate_status_filter`.
-
-    ``conflict``, ``source_kind``, ``level`` and ``tag`` take lists of values (see
-    :func:`taxonomy_predicates`).
-
-    ``approved``, ``approved_by`` and ``approved_by_org`` keep approved events (see
-    :func:`approval_predicates`).
-
-    ``has_coords`` splits on ``coords``: ``True`` keeps rows with a point (a request's
-    location guess), ``False`` the blind ones, ``None`` both.
-    """
-    query = query.filter(*visible_events())
-    if view is not None:
-        query = query.filter(view_predicate(view))
-
-    if status:
-        query = query.filter(Event.status.in_(status))
-
-    query = query.filter(
-        *taxonomy_predicates(conflict=conflict, source_kind=source_kind, level=level, tag=tag)
-    )
-
-    # Parse dates up front so a typo is a 422, not a Postgres ``InvalidDatetimeFormat`` 500.
-    parsed_event_from = parse_optional_iso_date(occurred_date_from, field="occurred_date_from")
-    parsed_event_to = parse_optional_iso_date(occurred_date_to, field="occurred_date_to")
-    parsed_submitted_from = parse_optional_iso_date(submitted_from, field="submitted_from")
-    parsed_submitted_to = parse_optional_iso_date(submitted_to, field="submitted_to")
-
-    if parsed_event_from:
-        query = query.filter(Event.occurred_date >= parsed_event_from)
-    if parsed_event_to:
-        query = query.filter(Event.occurred_date <= parsed_event_to)
-
-    if parsed_submitted_from:
-        query = query.filter(Event.created_at >= parsed_submitted_from)
-    if parsed_submitted_to:
-        # End-of-day inclusive: ``< date + 1 day`` avoids midnight strings drifting around DST.
-        query = query.filter(Event.created_at < parsed_submitted_to + timedelta(days=1))
-
-    if author:
-        query = apply_author_filter(query, author)
-
-    if media:
-        # EXISTS, so an event with several files isn't row-multiplied: a source's file or a
-        # proof image.
-        query = query.filter(
-            or_(
-                Event.sources.any(Source.media.has(Media.kind.in_(media))),
-                Event.media.any(Media.kind.in_(media)),
-            )
-        )
-
-    query = query.filter(
-        *approval_predicates(
-            approved=approved, approved_by=approved_by, approved_by_org=approved_by_org
-        )
-    )
-
-    if has_coords is not None:
-        query = query.filter(Event.coords.isnot(None) if has_coords else Event.coords.is_(None))
-
-    return query
-
-
 @dataclass(frozen=True)
 class EventFilters:
     """The filter set as one value, threaded through layers (search router, service, event groups).
@@ -604,11 +491,62 @@ class EventFilters:
     has_coords: bool | None = None
 
     def apply(self, query: SAQuery, *, view: str | None) -> SAQuery:
-        return apply_filters(
-            query,
-            view=view,
-            **{f.name: getattr(self, f.name) for f in fields(self)},
+        """Narrow ``query`` to visible events in ``view`` that pass every filter.
+
+        ``view=None`` leaves the statuses to the caller (``services/search``). Scoping by status,
+        not by coordinates, keeps a request's location guess out of the located catalog.
+        """
+        query = query.filter(*visible_events())
+        if view is not None:
+            query = query.filter(view_predicate(view))
+        if self.status:
+            query = query.filter(Event.status.in_(self.status))
+        query = query.filter(
+            *taxonomy_predicates(
+                conflict=self.conflict, source_kind=self.source_kind, level=self.level, tag=self.tag
+            )
         )
+
+        # Parse dates up front so a typo is a 422, not a Postgres ``InvalidDatetimeFormat`` 500.
+        event_from = parse_optional_iso_date(self.occurred_date_from, field="occurred_date_from")
+        event_to = parse_optional_iso_date(self.occurred_date_to, field="occurred_date_to")
+        submitted_from = parse_optional_iso_date(self.submitted_from, field="submitted_from")
+        submitted_to = parse_optional_iso_date(self.submitted_to, field="submitted_to")
+        if event_from:
+            query = query.filter(Event.occurred_date >= event_from)
+        if event_to:
+            query = query.filter(Event.occurred_date <= event_to)
+        if submitted_from:
+            query = query.filter(Event.created_at >= submitted_from)
+        if submitted_to:
+            # End-of-day inclusive: ``< date + 1 day`` avoids midnight strings drifting around DST.
+            query = query.filter(Event.created_at < submitted_to + timedelta(days=1))
+
+        if self.author:
+            query = query.filter(
+                credited_to(select(User.id).where(owner_username_matches(self.author)))
+            )
+        if self.media:
+            # EXISTS, so an event with several files isn't row-multiplied: a source's file or a
+            # proof image.
+            query = query.filter(
+                or_(
+                    Event.sources.any(Source.media.has(Media.kind.in_(self.media))),
+                    Event.media.any(Media.kind.in_(self.media)),
+                )
+            )
+        query = query.filter(
+            *approval_predicates(
+                approved=self.approved,
+                approved_by=self.approved_by,
+                approved_by_org=self.approved_by_org,
+            )
+        )
+        if self.has_coords is not None:
+            query = query.filter(
+                Event.coords.isnot(None) if self.has_coords else Event.coords.is_(None)
+            )
+        return query
 
     def is_set(self, name: str) -> bool:
         """Whether the filter ``name`` narrows the view. ``has_coords=False`` does: it keeps the
@@ -625,7 +563,7 @@ class EventFilters:
 
         For a filter set that arrives as a JSON body (``schemas/collection.SearchMatch``), where no
         ``Query(pattern=...)`` guards the three names. Dates are parsed later, in
-        :func:`apply_filters`, which refuses a malformed one the same way.
+        :meth:`apply`, which refuses a malformed one the same way.
         """
         validate_media_types(self.media)
         validate_status_filter(self.status)
