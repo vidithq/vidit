@@ -8,8 +8,10 @@ import { FORM_INVALID_LABEL, LABEL_TEXT } from "./form-styles";
 /**
  * The label row over a form control: the label, then its `?`, then `trailing` (a counter, a
  * locked hint). The `?` sits outside the `<label>`, so the field's accessible name is the label's
- * words alone. With `htmlFor` the words are a `<label>`; without, a `<span>` (a control that
- * names itself: a segmented control, a switch, a file slot). `invalid` turns the row red.
+ * words alone. With `htmlFor` the words are a `<label>`, and the whole row is that `<label>` when
+ * it holds nothing else, so a click anywhere on the row focuses the field; without, a `<span>`
+ * (a control that names itself: a segmented control, a switch, a file slot). `invalid` turns the
+ * row red.
  */
 export function FieldLabel({
   label,
@@ -26,9 +28,22 @@ export function FieldLabel({
   trailing?: ReactNode;
   className?: string;
 }) {
+  const rowClass = cn(
+    "flex items-center gap-1",
+    LABEL_TEXT,
+    invalid && FORM_INVALID_LABEL,
+    className,
+  );
+  if (htmlFor && !concept && !trailing) {
+    return (
+      <label htmlFor={htmlFor} className={rowClass}>
+        {label}
+      </label>
+    );
+  }
   const Words = htmlFor ? "label" : "span";
   return (
-    <span className={cn("flex items-center gap-1", LABEL_TEXT, invalid && FORM_INVALID_LABEL, className)}>
+    <span className={rowClass}>
       <Words htmlFor={htmlFor}>{label}</Words>
       {concept && <FieldHelp concept={concept} />}
       {trailing}
