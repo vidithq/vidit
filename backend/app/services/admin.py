@@ -37,6 +37,8 @@ from app.schemas.admin import (
 from app.schemas.user import AuthorRef
 from app.services import geolocator_credit, organizations, versions
 from app.services.auth import bump_token_version, generate_invite_code, invite_code_status
+from app.services.collections import CollectionNotFoundError
+from app.services.events.errors import EventNotFoundError
 from app.services.evidence_intake import (
     StoredObject,
     event_objects,
@@ -46,7 +48,7 @@ from app.services.evidence_intake import (
     sweep_unreferenced,
 )
 from app.services.pagination import keyset_before
-from app.services.sites import owned_site_objects
+from app.services.sites import SiteNotFoundError, owned_site_objects
 from app.services.storage import avatar_key_of, sweep_keys
 from app.services.uploads import upload_object
 from app.services.users import UserNotFoundError, XHandleConflictError, x_handle_holder
@@ -55,11 +57,6 @@ from app.services.users import UserNotFoundError, XHandleConflictError, x_handle
 class AdminError(CodedError):
     code: str = "admin_error"
     status_code = 400
-
-
-class EventNotFoundError(AdminError):
-    code = "event_not_found"
-    status_code = 404
 
 
 class VersionNotFoundError(AdminError):
@@ -72,16 +69,6 @@ class InviteCodeUsedError(AdminError):
 
     code = "invite_code_used"
     status_code = 409
-
-
-class CollectionNotFoundError(AdminError):
-    code = "collection_not_found"
-    status_code = 404
-
-
-class SiteNotFoundError(AdminError):
-    code = "site_not_found"
-    status_code = 404
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
@@ -437,7 +424,7 @@ def move_takedown(
     return True
 
 
-_TAKEDOWN_NOT_FOUND: dict[type[Collection | Site], tuple[type[AdminError], str]] = {
+_TAKEDOWN_NOT_FOUND: dict[type[Collection | Site], tuple[type[CodedError], str]] = {
     Collection: (CollectionNotFoundError, "Collection not found"),
     Site: (SiteNotFoundError, "Site not found"),
 }
