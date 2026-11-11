@@ -105,41 +105,25 @@ class PresignedUpload(NamedTuple):
     fields: dict[str, str]
 
 
-def _megabytes(size: int) -> int:
-    return round(size / 2**20)
-
-
-def _too_large_message(media_type: str, max_size: int) -> str:
-    """The refusal of a file over its cap, in the unit a reader thinks in."""
-    noun = "a video" if media_type == "video" else "an image"
-    return f"{_megabytes(max_size)} MB at most for {noun}."
-
-
-def _media_type_and_max_size(content_type: str | None) -> tuple[str, int]:
-    """Resolve an allowed MIME to ``(media_type, max byte size)``.
-
-    Shared by :func:`validate_file` and :func:`validate_bytes`. Raises
-    ``ValueError`` on a disallowed type.
-    """
-    if content_type in ALLOWED_IMAGE_TYPES:
-        return "image", settings.max_image_size
-    if content_type in ALLOWED_VIDEO_TYPES:
-        return "video", settings.max_video_size
-    raise ValueError("Images and videos only.")
+def _checked_media_type(content_type: str | None, size: int, *, gif: bool = False) -> str:
+    """``image`` or ``video`` for an allowed type within its size cap; raises ``ValueError``."""
+    if content_type in ALLOWED_IMAGE_TYPES or (gif and content_type == GIF_CONTENT_TYPE):
+        media_type, max_size, noun = "image", settings.max_image_size, "an image"
+    elif content_type in ALLOWED_VIDEO_TYPES:
+        media_type, max_size, noun = "video", settings.max_video_size, "a video"
+    else:
+        raise ValueError("Images and videos only.")
+    if size > max_size:
+        raise ValueError(f"{round(max_size / 2**20)} MB at most for {noun}.")
+    return media_type
 
 
 def validate_file(file: UploadFile) -> str:
     """Validate type + size; return media_type ('image' or 'video'). A GIF is an image."""
-    if file.content_type == GIF_CONTENT_TYPE:
-        media_type, max_size = "image", settings.max_image_size
-    else:
-        media_type, max_size = _media_type_and_max_size(file.content_type)
     file.file.seek(0, 2)
     size = file.file.tell()
     file.file.seek(0)
-    if size > max_size:
-        raise ValueError(_too_large_message(media_type, max_size))
-    return media_type
+    return _checked_media_type(file.content_type, size, gif=True)
 
 
 class Storage(Protocol):
@@ -435,10 +419,7 @@ def validate_bytes(data: bytes, content_type: str) -> str:
     it an unbounded image would be buffered and re-encoded on the single worker.
     Raises ``ValueError``.
     """
-    media_type, max_size = _media_type_and_max_size(content_type)
-    if len(data) > max_size:
-        raise ValueError(_too_large_message(media_type, max_size))
-    return media_type
+    return _checked_media_type(content_type, len(data))
 
 
 class PreparedMedia(NamedTuple):
@@ -515,6 +496,7 @@ async def upload_bytes_with_optional_strip(
     key: str,
     *,
     produce_derivatives: bool = True,
+    strip: bool = True,
 ) -> UploadResult:
     """Validate, strip and upload media held as bytes (fetched tweet images, archive files).
 
@@ -524,7 +506,7 @@ async def upload_bytes_with_optional_strip(
     """
     validate_bytes(data, content_type)
     prepared = await asyncio.to_thread(
-        prepare_media, data, content_type, produce_derivatives=produce_derivatives
+        prepare_media, data, content_type, produce_derivatives=produce_derivatives, strip=strip
     )
     return await upload_prepared_media(prepared, key)
 
@@ -678,9 +660,9 @@ async def upload_source_copy(data: bytes, content_type: str) -> UploadResult:
     bucket's Object Lock retention. The bytes land as they are, already stripped at intake, so
     the copy keeps the proof's sha256, and gain the hero and thumbnail a source image has.
     """
-    validate_bytes(data, content_type)
-    prepared = await asyncio.to_thread(prepare_media, data, content_type, strip=False)
-    return await upload_prepared_media(prepared, _source_file_key(content_type))
+    return await upload_bytes_with_optional_strip(
+        data, content_type, _source_file_key(content_type), strip=False
+    )
 
 
 def read_stored_bytes(key: str) -> bytes:
@@ -733,33 +715,8 @@ def avatar_key_of(url: str | None) -> str | None:
 
 
 def avatar_key(owner_id: UUID) -> str:
-    """Storage key for the next profile picture of an analyst or an organization, always ``.jpg`` (see :func:`render_avatar_jpeg`)."""
+    """Storage key for the next profile picture of an analyst or an organization, always ``.jpg``."""
     return f"{AVATAR_KEY_PREFIX}{owner_id}/{uuid4()}.jpg"
-
-
-def render_avatar_jpeg(data: bytes, content_type: str) -> bytes:
-    """Turn image bytes into the single JPEG an avatar is stored as.
-
-    Metadata stripped, longer edge fit to ``THUMBNAIL_MAX_DIM``, re-encoded as
-    JPEG. One object only: avatars render at 44 px or smaller, so siblings
-    would be unfetched objects locked for the bucket's Object Lock retention.
-
-    ``content_type`` must be in :data:`ALLOWED_IMAGE_TYPES` (the caller
-    checks; anything else passes through the transforms unchanged).
-
-    Sync and CPU-bound. Raises ``EvidenceProcessingError`` for an unreadable
-    image or one over ``MAX_AVATAR_DECODED_PIXELS``.
-    """
-    # Local import, as in ``prepare_media``.
-    from app.services.evidence_processing import (
-        MAX_AVATAR_DECODED_PIXELS,
-        THUMBNAIL_MAX_DIM,
-        make_jpeg_derivative,
-        strip_metadata,
-    )
-
-    cleaned = strip_metadata(data, content_type, max_pixels=MAX_AVATAR_DECODED_PIXELS)
-    return make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
 
 
 async def upload_avatar_image(file: UploadFile, owner_id: UUID) -> UploadResult:
@@ -771,10 +728,20 @@ async def upload_avatar_image(file: UploadFile, owner_id: UUID) -> UploadResult:
     if content_type not in ALLOWED_IMAGE_TYPES:
         raise ValueError("Images only.")
     validate_file(file)
+    from app.services.evidence_processing import (
+        MAX_AVATAR_DECODED_PIXELS,
+        THUMBNAIL_MAX_DIM,
+        make_jpeg_derivative,
+        strip_metadata,
+    )
 
+    # One stripped JPEG fit to ``THUMBNAIL_MAX_DIM``, no siblings: avatars render at 44 px or
+    # smaller, so derivatives would be unfetched objects locked for the Object Lock retention.
     def _render() -> bytes:
-        file.file.seek(0)
-        return render_avatar_jpeg(file.file.read(), content_type)
+        cleaned = strip_metadata(
+            _read_upload(file), content_type, max_pixels=MAX_AVATAR_DECODED_PIXELS
+        )
+        return make_jpeg_derivative(cleaned, content_type, THUMBNAIL_MAX_DIM)
 
     data = await asyncio.to_thread(_render)
     return await store(get_storage(), data, avatar_key(owner_id), "image/jpeg")
