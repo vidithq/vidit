@@ -27,8 +27,12 @@ from app.models.upload import Upload
 from app.models.user import User
 from app.schemas.admin import (
     AdminDetectionStatsRead,
+    AdminEventDeleteResponse,
     AdminInviteCodeRead,
     AdminInviteRedeemerRead,
+    AdminPurgeDetectedResponse,
+    AdminUserDeleteResponse,
+    AdminUserRestoreResponse,
 )
 from app.schemas.user import AuthorRef
 from app.services import geolocator_credit, organizations, versions
@@ -432,7 +436,7 @@ def soft_delete_geolocation(
     *,
     actor_id: uuid.UUID,
     geolocation_id: uuid.UUID,
-) -> Event:
+) -> AdminEventDeleteResponse:
     """Mark a geolocation as removed-from-public-view.
 
     Idempotent: an already soft-deleted row keeps its timestamp and files no audit row. S3
@@ -441,35 +445,33 @@ def soft_delete_geolocation(
     geo = db.query(Event).filter(Event.id == geolocation_id).first()
     if geo is None:
         raise EventNotFoundError("Event not found")
-    if geo.deleted_at is not None:
-        return geo
-
-    geo.deleted_at = datetime.now(UTC)
-    log_admin_event(
-        db,
-        actor_id=actor_id,
-        action="geolocation_soft_deleted",
-        target={"geolocation_id": str(geo.id), "title": geo.title},
+    if geo.deleted_at is None:
+        geo.deleted_at = datetime.now(UTC)
+        log_admin_event(
+            db,
+            actor_id=actor_id,
+            action="geolocation_soft_deleted",
+            target={"geolocation_id": str(geo.id), "title": geo.title},
+        )
+        db.commit()
+        db.refresh(geo)
+    return AdminEventDeleteResponse(
+        geolocation_id=geo.id, title=geo.title, mode="soft", deleted_at=geo.deleted_at
     )
-    db.commit()
-    db.refresh(geo)
-    return geo
 
 
-def _move_takedown(
-    db: Session,
-    *,
-    row: Collection | Site,
-    hidden: bool,
-    actor_id: uuid.UUID,
-    target: dict[str, str],
+def move_takedown(
+    db: Session, *, row: Collection | Site, hidden: bool, actor_id: uuid.UUID
 ) -> None:
     """Stamp or clear one row's ``hidden_at`` and file the ``<table>_hidden`` or
     ``<table>_restored`` audit row. No commit. A row already in that state files nothing."""
     if hidden == (row.hidden_at is not None):
         return
     row.hidden_at = datetime.now(UTC) if hidden else None
-    noun = "collection" if isinstance(row, Collection) else "site"
+    if isinstance(row, Collection):
+        noun, target = "collection", {"collection_id": str(row.id), "title": row.title}
+    else:
+        noun, target = "site", {"site_id": str(row.id), "name": row.name}
     log_admin_event(
         db,
         actor_id=actor_id,
@@ -479,121 +481,32 @@ def _move_takedown(
 
 
 def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
-    """Stamp one collection's takedown and file the audit row. No commit.
-
-    Shared by :func:`hide_collection` and :func:`services.reports.resolve_report`, so both doors
-    write the same thing. It lives here because ``services/reports`` imports this module for
-    :func:`log_admin_event`.
-
-    Idempotent: an already withheld collection keeps its timestamp and files no second audit row.
-    """
-    _move_takedown(
-        db,
-        row=collection,
-        hidden=True,
-        actor_id=actor_id,
-        target={"collection_id": str(collection.id), "title": collection.title},
-    )
-
-
-def restore_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
-    """Clear one collection's takedown and file the audit row. No commit.
-
-    The reverse of :func:`withhold_collection`. The collection's events are untouched: each
-    carries its own moderation state.
-
-    Idempotent: a collection that is not withheld files no audit row.
-    """
-    _move_takedown(
-        db,
-        row=collection,
-        hidden=False,
-        actor_id=actor_id,
-        target={"collection_id": str(collection.id), "title": collection.title},
-    )
+    move_takedown(db, row=collection, hidden=True, actor_id=actor_id)
 
 
 def move_site_takedown(db: Session, *, site: Site, hidden: bool, actor_id: uuid.UUID) -> None:
-    """Withhold one site from every read but an admin's, or restore it, and file the audit row
-    (``site_hidden`` or ``site_restored``). No commit; idempotent.
-
-    Shared by :func:`set_site_moderation` and :func:`services.reports.resolve_report`. The
-    events linked to the site are untouched.
-    """
-    _move_takedown(
-        db,
-        row=site,
-        hidden=hidden,
-        actor_id=actor_id,
-        target={"site_id": str(site.id), "name": site.name},
-    )
+    move_takedown(db, row=site, hidden=hidden, actor_id=actor_id)
 
 
-def set_site_moderation(
-    db: Session, *, actor_id: uuid.UUID, site_id: uuid.UUID, hidden: bool
-) -> Site:
-    """Move one site's takedown either way, by id, under the site row lock.
+_TAKEDOWN_NOT_FOUND: dict[type[Collection | Site], tuple[type[AdminError], str]] = {
+    Collection: (CollectionNotFoundError, "Collection not found"),
+    Site: (SiteNotFoundError, "Site not found"),
+}
 
-    The site-shaped counterpart of :func:`set_collection_moderation`. Raises
-    :class:`SiteNotFoundError` (404) for an unknown id.
-    """
-    site = db.query(Site).filter(Site.id == site_id).populate_existing().with_for_update().first()
-    if site is None:
-        raise SiteNotFoundError("Site not found")
-    move_site_takedown(db, site=site, hidden=hidden, actor_id=actor_id)
+
+def set_takedown[T: (Collection, Site)](
+    db: Session, model: type[T], row_id: uuid.UUID, *, hidden: bool, actor_id: uuid.UUID
+) -> T:
+    """Move one row's takedown either way, by id. Locked like the event a report verdict
+    mutates, so this door and the report queue serialize on the row."""
+    row = db.query(model).filter(model.id == row_id).populate_existing().with_for_update().first()
+    if row is None:
+        error, message = _TAKEDOWN_NOT_FOUND[model]
+        raise error(message)
+    move_takedown(db, row=row, hidden=hidden, actor_id=actor_id)
     db.commit()
-    db.refresh(site)
-    return site
-
-
-def set_collection_moderation(
-    db: Session,
-    *,
-    actor_id: uuid.UUID,
-    collection_id: uuid.UUID,
-    hidden: bool,
-) -> Collection:
-    """Move one collection's takedown either way, by id.
-
-    The collection-shaped counterpart of ``services/reports.set_event_moderation``, on the same
-    reversible ``hidden_at`` axis. ``hidden=True`` writes the stamp :func:`withhold_collection`
-    writes.
-
-    Locked like the event a report verdict mutates, so this door and the report queue serialize
-    on the row. Raises :class:`CollectionNotFoundError` (404) for an unknown id.
-    """
-    collection = (
-        db.query(Collection)
-        .filter(Collection.id == collection_id)
-        .populate_existing()
-        .with_for_update()
-        .first()
-    )
-    if collection is None:
-        raise CollectionNotFoundError("Collection not found")
-    if hidden:
-        withhold_collection(db, collection=collection, actor_id=actor_id)
-    else:
-        restore_collection(db, collection=collection, actor_id=actor_id)
-    db.commit()
-    db.refresh(collection)
-    return collection
-
-
-def hide_collection(
-    db: Session,
-    *,
-    actor_id: uuid.UUID,
-    collection_id: uuid.UUID,
-) -> Collection:
-    """Withhold one collection from every read but an admin's, by id.
-
-    The takedown half of :func:`set_collection_moderation`, kept for the
-    ``DELETE /admin/collections/{id}`` alias. Idempotent, and 404 on an unknown collection.
-    """
-    return set_collection_moderation(
-        db, actor_id=actor_id, collection_id=collection_id, hidden=True
-    )
+    db.refresh(row)
+    return row
 
 
 def hard_delete_geolocation(
@@ -601,7 +514,7 @@ def hard_delete_geolocation(
     *,
     actor_id: uuid.UUID,
     geolocation_id: uuid.UUID,
-) -> dict[str, Any]:
+) -> AdminEventDeleteResponse:
     """GDPR-grade erasure: drop the row, the media rows, and the stored objects.
 
     Commit-then-sweep, see :func:`services.evidence_intake.sweep_unreferenced`: an object a
@@ -616,6 +529,9 @@ def hard_delete_geolocation(
     # correction dropped, which outlive their rows.
     objects = event_objects(db, geo)
 
+    result = AdminEventDeleteResponse(
+        geolocation_id=geo.id, title=geo.title, mode="hard", media_count=len(objects)
+    )
     target = {
         "geolocation_id": str(geo.id),
         "title": geo.title,
@@ -626,8 +542,7 @@ def hard_delete_geolocation(
     db.commit()
 
     sweep_unreferenced(db, objects, context=f"geolocation {geolocation_id} hard-delete")
-
-    return target
+    return result
 
 
 def redact_version(
@@ -695,38 +610,46 @@ def redact_version(
     return row
 
 
+def _hand_over_on_departure(
+    db: Session, user: User, *, live_only: bool
+) -> tuple[list[Event], set[uuid.UUID]]:
+    """Lock the events ``user`` owns, pass each one another live analyst is credited on to the
+    earliest of them, and pass the org manager roles ``user`` was the last live holder of.
+    Returns the locked events and the ids handed over."""
+    # The lock serializes with an invitation being accepted on the same event. Taken before
+    # ``deleted_at`` is set, so the hand-over sees these as live.
+    query = db.query(Event).filter(Event.owner_id == user.id)
+    if live_only:
+        query = query.filter(Event.deleted_at.is_(None))
+    owned = query.with_for_update().all()
+    handed_over = geolocator_credit.hand_over_owned_events(db, owner=user, events=owned)
+    # The new owners must reach Postgres before the user row goes, or deleting it would null
+    # ``owner_id`` on the rows it no longer owns.
+    db.flush()
+    organizations.hand_over_manager_roles(db, leaving_user_id=user.id)
+    return owned, handed_over
+
+
 def soft_delete_user(
     db: Session,
     *,
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> tuple[User, int, int]:
+) -> AdminUserDeleteResponse:
     """Mark a user as removed-from-public-view + cascade to their submissions.
 
-    An owned event another live analyst is credited on passes to the earliest of them first
-    (:func:`services.geolocator_credit.hand_over_owned_events`), as on erasure, so shared work
-    stays published. Returns ``(user, cascaded_geolocations, transferred_events)``: the live
-    (``deleted_at IS NULL``) events flipped and the events handed over in this call. Idempotent
-    on an already-deleted user (same timestamp, no audit row, counts zero).
-
-    Requests and geolocations are one table, so a single cascade covers both.
+    ``cascaded_geolocations`` counts the live events flipped in this call. Idempotent on an
+    already-deleted user (same timestamp, no audit row, counts zero).
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
     if user.deleted_at is not None:
-        return user, 0, 0
+        return AdminUserDeleteResponse(
+            user_id=user.id, username=user.username, mode="soft", deleted_at=user.deleted_at
+        )
 
-    # The lock serializes with an invitation being accepted on the same event. Taken before
-    # ``deleted_at`` is set, so the hand-over sees these as live.
-    owned = (
-        db.query(Event)
-        .filter(Event.owner_id == user.id, Event.deleted_at.is_(None))
-        .with_for_update()
-        .all()
-    )
-    handed_over = geolocator_credit.hand_over_owned_events(db, owner=user, events=owned)
-    db.flush()
+    _, handed_over = _hand_over_on_departure(db, user, live_only=True)
 
     now = datetime.now(UTC)
     user.deleted_at = now
@@ -739,7 +662,6 @@ def soft_delete_user(
     # target records the freed value.
     freed_x_handle = user.x_handle
     user.x_handle = None
-    organizations.hand_over_manager_roles(db, leaving_user_id=user.id)
 
     # Cascade to every live event (located and requested). ``deleted_at IS NULL`` leaves earlier
     # timestamps untouched, so the count reflects only what this call flipped.
@@ -766,22 +688,29 @@ def soft_delete_user(
     )
     db.commit()
     db.refresh(user)
-    return user, cascaded_geolocations, len(handed_over)
+    return AdminUserDeleteResponse(
+        user_id=user.id,
+        username=user.username,
+        mode="soft",
+        deleted_at=user.deleted_at,
+        cascaded_geolocations=cascaded_geolocations,
+        transferred_events=len(handed_over),
+    )
 
 
-def restore_user(db: Session, *, actor_id: uuid.UUID, user_id: uuid.UUID) -> tuple[User, int]:
+def restore_user(
+    db: Session, *, actor_id: uuid.UUID, user_id: uuid.UUID
+) -> AdminUserRestoreResponse:
     """Undo a soft delete: clear ``users.deleted_at`` and restore the events it hid.
 
     An event the soft delete hid carries the user's own ``deleted_at``; an event soft-deleted
-    on its own carries another stamp and stays deleted. The X handle, the handed-over events
-    and the org manager roles the soft delete moved stay where they went. Returns
-    ``(user, restored_events)``. Idempotent on a live user (counts zero, no audit row).
+    on its own carries another stamp and stays deleted.
     """
     user = db.query(User).filter(User.id == user_id).with_for_update().first()
     if user is None:
         raise UserNotFoundError("User not found")
     if user.deleted_at is None:
-        return user, 0
+        return AdminUserRestoreResponse(user_id=user.id, username=user.username, restored_events=0)
 
     restored_events = (
         db.query(Event)
@@ -789,19 +718,14 @@ def restore_user(db: Session, *, actor_id: uuid.UUID, user_id: uuid.UUID) -> tup
         .update({Event.deleted_at: None}, synchronize_session=False)
     )
     user.deleted_at = None
+    result = AdminUserRestoreResponse(
+        user_id=user.id, username=user.username, restored_events=restored_events
+    )
     log_admin_event(
-        db,
-        actor_id=actor_id,
-        action="user_restored",
-        target={
-            "user_id": str(user.id),
-            "username": user.username,
-            "restored_events": restored_events,
-        },
+        db, actor_id=actor_id, action="user_restored", target=result.model_dump(mode="json")
     )
     db.commit()
-    db.refresh(user)
-    return user, restored_events
+    return result
 
 
 def hard_delete_user(
@@ -809,45 +733,35 @@ def hard_delete_user(
     *,
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> dict[str, Any]:
+) -> AdminUserDeleteResponse:
     """GDPR-grade erasure: drop the user, the events only they are credited on, and every S3
     object referenced by the cascade.
 
     Order matters:
 
-    1. Lock the owned events and hand each one another live analyst is credited on to the
-       earliest of them (:func:`services.geolocator_credit.hand_over_owned_events`), with an
-       ``ownership_transferred`` notification. A handed-over event keeps its media, versions
-       and files, the erased user's uploads included.
+    1. Hand the shared events and the last org manager roles over
+       (:func:`_hand_over_on_departure`). A handed-over event keeps its media, versions and
+       files, the erased user's uploads included.
     2. Capture S3 keys of the events left (media of all roles), of the source files of the
        account's sites, plus the account's avatar: the cascade would drop those rows before we
        could read them.
     3. Delete each event left manually: ``owner_id`` carries no ``ON DELETE CASCADE``. Each
        ``db.delete`` cascades to that row's media, contributor rows and tags.
-    4. Hand the org manager role of each organization they were the last live org manager of
-       to its earliest-joined live member
-       (:func:`services.organizations.hand_over_manager_roles`), in the same transaction as
-       step 1. Delete the analyst's own approvals; those they placed for an organization stay
-       the organization's, with ``reviewer_id`` set to NULL. Delete the user.
+    4. Delete the analyst's own approvals; those they placed for an organization stay the
+       organization's, with ``reviewer_id`` set to NULL. Delete the user.
        ``password_reset_tokens``, their collections (and memberships), their sites (with their
        sources, contours and links), their invitations and their contributor rows on other
-       people's events cascade-drop;
-       ``audit_log.actor_id`` and ``invite_codes.used_by_id`` flip to NULL (migration
-       f1a3b5c7d9e0), as does ``invite_codes.created_by_id``, so invite-code rows outlive the
-       user as audit trail.
+       people's events cascade-drop; ``audit_log.actor_id``, ``invite_codes.used_by_id`` and
+       ``invite_codes.created_by_id`` flip to NULL, so invite-code rows outlive the user as
+       audit trail.
     5. Commit, then sweep S3 (see :func:`services.storage.sweep_keys`).
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
 
-    # 1. The lock serializes with an invitation being accepted on the same event.
-    owned = db.query(Event).filter(Event.owner_id == user.id).with_for_update().all()
-    handed_over = geolocator_credit.hand_over_owned_events(db, owner=user, events=owned)
+    owned, handed_over = _hand_over_on_departure(db, user, live_only=False)
     geolocations = [geo for geo in owned if geo.id not in handed_over]
-    # The new owners must reach Postgres before the user row goes, or deleting it would
-    # null ``owner_id`` on the rows it no longer owns.
-    db.flush()
 
     # 2. Capture every file the deleted events name, the account's staged uploads, the source
     # files of its sites (the owner cascade drops their rows), and its profile picture (personal
@@ -861,6 +775,14 @@ def hard_delete_user(
     objects.extend(owned_site_objects(db, user.id))
     avatar_key = avatar_key_of(user.avatar_url)
 
+    result = AdminUserDeleteResponse(
+        user_id=user.id,
+        username=user.username,
+        mode="hard",
+        cascaded_geolocations=len(geolocations),
+        transferred_events=len(handed_over),
+        media_count=len(objects),
+    )
     target = {
         "user_id": str(user.id),
         "username": user.username,
@@ -873,9 +795,7 @@ def hard_delete_user(
     for geo in geolocations:
         db.delete(geo)
 
-    # 4. Hand any last org manager role to the earliest member, drop the analyst's own
-    # approvals, then the user row; the approvals they placed for an organization stay.
-    organizations.hand_over_manager_roles(db, leaving_user_id=user.id)
+    # 4. The approvals they placed for an organization stay.
     db.execute(
         delete(EventApproval).where(
             EventApproval.reviewer_id == user.id, EventApproval.organization_id.is_(None)
@@ -890,8 +810,7 @@ def hard_delete_user(
     # event still names stays.
     sweep_unreferenced(db, objects, context=f"user {user_id} hard-delete")
     sweep_keys([avatar_key] if avatar_key else [], context=f"user {user_id} avatar")
-
-    return target
+    return result
 
 
 def purge_detected_events(
@@ -899,7 +818,7 @@ def purge_detected_events(
     *,
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
-) -> dict[str, Any]:
+) -> AdminPurgeDetectedResponse:
     """Hard-delete every detection a user owns, keeping the account.
 
     The broken-archive repair: rows and stored objects (via :func:`event_objects`, soft-deleted
@@ -921,20 +840,24 @@ def purge_detected_events(
     for detection in detections:
         objects.extend(event_objects(db, detection))
 
-    target = {
-        "user_id": str(user.id),
-        "username": user.username,
-        "deleted_events": len(detections),
-        "media_count": len(objects),
-    }
+    result = AdminPurgeDetectedResponse(
+        user_id=user.id,
+        username=user.username,
+        deleted_events=len(detections),
+        media_count=len(objects),
+    )
     for detection in detections:
         db.delete(detection)
-    log_admin_event(db, actor_id=actor_id, action="detected_events_purged", target=target)
+    log_admin_event(
+        db,
+        actor_id=actor_id,
+        action="detected_events_purged",
+        target=result.model_dump(mode="json"),
+    )
     db.commit()
 
     sweep_unreferenced(db, objects, context=f"user {user_id} detected purge")
-
-    return target
+    return result
 
 
 def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
