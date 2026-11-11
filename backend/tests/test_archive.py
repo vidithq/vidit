@@ -230,7 +230,7 @@ def test_several_third_party_status_links_are_ambiguous_no_chase(tmp_path, monke
     assert ambiguous.quoted is None
     deduped = next(r for r in records if r.tweet_id == "2")
     assert deduped.quoted is not None
-    assert deduped.quoted.tweet_id == "888"
+    assert deduped.quoted.status_id == "888"
     assert seen_ids == ["888"]  # only the deduped sole candidate was chased
 
 
@@ -298,7 +298,7 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
     """The photo's ``t.co`` wrapper binds to no entity, so it is not a candidate
     and the chase runs on the one real link."""
     import app.services.tweet_ingest.chase.telegram as telegram_mod
-    from app.services.tweet_ingest.records import ChasedPost, ChaseResult
+    from app.services.tweet_ingest.records import ChaseResult, SourcePost
 
     archive = tmp_path / "arc"
     _one_tweet_archive(
@@ -314,7 +314,7 @@ def test_a_sole_telegram_link_is_chased_beside_the_posts_own_media(tmp_path, mon
         chased.append(target)
         return ChaseResult(
             outcome="chased",
-            post=ChasedPost(url=target, posted_at="2025-11-11T08:00:00+00:00"),
+            post=SourcePost(url=target, posted_at="2025-11-11T08:00:00+00:00"),
         )
 
     monkeypatch.setattr(telegram_mod, "chase", fake_chase)

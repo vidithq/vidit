@@ -1,17 +1,7 @@
 """Pure text core: coordinates, retweet rule, title, proof body. No I/O.
 
-One vocabulary for every entry (bot, paste, archive backfill).
-
-Four extractors run over the full text, de-duped:
-
-1. Decimal pairs (``48.012345, 37.802411``; degree-marked too)
-2. Decimal degrees plus hemisphere (``33.1°N 35.5°E``, ``N48.0123 E37.8024``)
-3. DMS (``48°00'45"N 37°48'08"E``)
-4. Google Maps ``@lat,lng,zoom`` links
-
-Every coordinate found makes a detection; the 6-decimal dedup is the only guard.
-Decimal pairs need 3+ decimals to skip dates and versions (`1.2.3`,
-`2025-11-12`); the hemisphere and DMS forms use the letters as discriminator.
+Decimal pairs need 3+ decimals to skip dates and versions (``1.2.3``, ``2025-11-12``); the
+hemisphere and DMS forms use the letters as discriminator.
 """
 
 from __future__ import annotations
@@ -93,22 +83,12 @@ def _coord_in_bounds(lat: float, lng: float) -> bool:
     return LAT_MIN <= lat <= LAT_MAX and LNG_MIN <= lng <= LNG_MAX
 
 
-def _dms_to_decimal(deg: str, mnt: str, sec: str | None, hemi: str) -> float:
-    d = int(deg)
-    m = int(mnt)
-    s = float(sec) if sec else 0.0
-    decimal = d + m / 60.0 + s / 3600.0
-    if hemi.upper() in ("S", "W"):
-        decimal = -decimal
-    return decimal
+def _signed(degrees: float, hemi: str) -> float:
+    return -degrees if hemi.upper() in ("S", "W") else degrees
 
 
-def _hemi_decimal(value: str, hemi: str) -> float:
-    """Signed decimal degree from a bare number plus hemisphere letter."""
-    decimal = float(value)
-    if hemi.upper() in ("S", "W"):
-        decimal = -decimal
-    return decimal
+def _dms(deg: str, mnt: str, sec: str | None) -> float:
+    return int(deg) + int(mnt) / 60.0 + (float(sec) if sec else 0.0) / 3600.0
 
 
 @dataclass(frozen=True)
@@ -144,38 +124,23 @@ def scan_coords(text: str) -> CoordScan:
         seen.add(key)
         coords.append(ParsedCoord(lat=lat, lng=lng))
 
+    # Every group is ``\d``-only, and ``int``/``float`` read every Unicode digit ``\d``
+    # matches (``test_every_regex_digit_parses``), so no conversion below raises.
     for m in _DECIMAL_PAIR_RE.finditer(text):
-        try:
-            _push(float(m.group(1)), float(m.group(2)))
-        except ValueError:
-            continue
-
+        _push(float(m.group(1)), float(m.group(2)))
     for m in _DECIMAL_HEMI_SUFFIX_RE.finditer(text):
-        _push(_hemi_decimal(m.group(1), m.group(2)), _hemi_decimal(m.group(3), m.group(4)))
-
+        _push(_signed(float(m.group(1)), m.group(2)), _signed(float(m.group(3)), m.group(4)))
     for m in _DECIMAL_HEMI_PREFIX_RE.finditer(text):
-        _push(_hemi_decimal(m.group(2), m.group(1)), _hemi_decimal(m.group(4), m.group(3)))
-
+        _push(_signed(float(m.group(2)), m.group(1)), _signed(float(m.group(4)), m.group(3)))
     for m in _DMS_RE.finditer(text):
-        try:
-            lat = _dms_to_decimal(m.group(1), m.group(2), m.group(3), m.group(4))
-            lng = _dms_to_decimal(m.group(5), m.group(6), m.group(7), m.group(8))
-        except ValueError:
-            continue
-        _push(lat, lng)
-
+        _push(
+            _signed(_dms(m.group(1), m.group(2), m.group(3)), m.group(4)),
+            _signed(_dms(m.group(5), m.group(6), m.group(7)), m.group(8)),
+        )
     for m in _GMAPS_RE.finditer(text):
-        try:
-            _push(float(m.group(1)), float(m.group(2)))
-        except ValueError:
-            continue
+        _push(float(m.group(1)), float(m.group(2)))
 
     return CoordScan(coords=coords, out_of_bounds=out_of_bounds)
-
-
-def extract_coords(text: str) -> list[ParsedCoord]:
-    """The usable coordinates in ``text`` (:func:`scan_coords` minus the signal)."""
-    return scan_coords(text).coords
 
 
 # The X handle grammar: 1 to 15 word characters.

@@ -1,14 +1,4 @@
-"""The URL vocabulary of ingestion: what a link names, which hosts are trusted.
-
-Pure string work, no I/O:
-
-* :func:`normalise_tweet_url` (the one parse, at the router) and
-  :func:`canonical_tweet_url` (the one build, at the engine's exit);
-* the host predicates the source rule and the chase ask;
-* :func:`x_status_posted_at`, an X post's time read off its status id;
-* :data:`CONTEXT_HOSTS`, the closed list of hosts that never carry the filmed act;
-* the media-host allowlist every remote fetch checks (:func:`is_trusted_media_url`).
-"""
+"""The URL vocabulary of ingestion: what a link names, which hosts are trusted. No I/O."""
 
 from __future__ import annotations
 
@@ -23,8 +13,6 @@ from app.services.imagery import PROVIDERS
 from .errors import InvalidTweetUrl
 
 # ── Hosts ─────────────────────────────────────────────────────────────────
-
-_TWITTER_HOSTS = frozenset({"x.com", "www.x.com", "twitter.com", "www.twitter.com"})
 
 TWITTER_URL_HOST_RE = re.compile(r"^(?:www\.)?(?:x|twitter)\.com$", re.IGNORECASE)
 T_CO_HOST_RE = re.compile(r"^t\.co$", re.IGNORECASE)
@@ -223,6 +211,27 @@ class NormalisedTweetUrl:
     handle: str
 
 
+def _status_path(path: str) -> tuple[str | None, str] | None:
+    """``(handle, id)`` a status path names, the handle ``None`` for ``/i/web/status/<id>``."""
+    parts = [p for p in path.split("/") if p]
+    if len(parts) >= 3 and parts[1] == "status":
+        return parts[0], parts[2]
+    if len(parts) >= 4 and parts[:3] == ["i", "web", "status"]:
+        return None, parts[3]
+    return None
+
+
+def x_status_handle(url: str) -> str | None:
+    """The handle of an X status link, ``None`` for a non-status or ``i/web/status`` URL."""
+    if x_status_id(url) is None:
+        return None
+    try:
+        status = _status_path(urlparse(url).path)
+    except ValueError:
+        return None
+    return status[0] if status is not None else None
+
+
 def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
     """Validate a tweet URL and return the post it names.
 
@@ -233,25 +242,13 @@ def normalise_tweet_url(raw: str) -> NormalisedTweetUrl:
     parsed = urlparse(raw.strip())
     if parsed.scheme not in ("http", "https"):
         raise InvalidTweetUrl("Not a tweet URL")
-    if (parsed.hostname or "").lower() not in _TWITTER_HOSTS:
+    if TWITTER_URL_HOST_RE.fullmatch((parsed.hostname or "").lower()) is None:
         raise InvalidTweetUrl("Not a tweet URL")
-
-    # ``/<handle>/status/<id>``, or ``/i/web/status/<id>`` from some clients.
-    parts = [p for p in parsed.path.split("/") if p]
-    tweet_id: str | None = None
-    handle: str | None = None
-    if len(parts) >= 3 and parts[1] == "status":
-        handle = parts[0]
-        tweet_id = parts[2]
-    elif len(parts) >= 4 and parts[0] == "i" and parts[1] == "web" and parts[2] == "status":
-        handle = NO_HANDLE
-        tweet_id = parts[3]
-    if tweet_id is None or handle is None:
+    status = _status_path(parsed.path)
+    if status is None or not _TWEET_ID_PATTERN.match(status[1]):
         raise InvalidTweetUrl("Not a tweet URL")
-    if not _TWEET_ID_PATTERN.match(tweet_id):
-        raise InvalidTweetUrl("Not a tweet URL")
-
-    return NormalisedTweetUrl(tweet_id=tweet_id, handle=handle)
+    handle, tweet_id = status
+    return NormalisedTweetUrl(tweet_id=tweet_id, handle=handle if handle is not None else NO_HANDLE)
 
 
 # ── Writing a post URL ────────────────────────────────────────────────────

@@ -93,27 +93,6 @@ def _json_request(
     return body
 
 
-def _get(
-    url: str,
-    *,
-    params: dict[str, str],
-    bearer_token: str,
-    client: httpx.Client | None,
-) -> dict[str, object]:
-    """GET under the app-only bearer token (the billed read side)."""
-    return _json_request(
-        "GET",
-        url,
-        headers={
-            "Authorization": f"Bearer {bearer_token}",
-            "User-Agent": _USER_AGENT,
-        },
-        params=params,
-        ok_statuses=(200,),
-        client=client,
-    )
-
-
 def _replied_to_id(tweet: dict[str, object]) -> str | None:
     """The id of the post ``tweet`` replies to, or ``None``.
 
@@ -159,7 +138,14 @@ def fetch_mentions(
             params["since_id"] = since_id
         if pagination_token is not None:
             params["pagination_token"] = pagination_token
-        body = _get(url, params=params, bearer_token=bearer_token, client=client)
+        body = _json_request(
+            "GET",
+            url,
+            headers={"Authorization": f"Bearer {bearer_token}", "User-Agent": _USER_AGENT},
+            params=params,
+            ok_statuses=(200,),
+            client=client,
+        )
 
         data = body.get("data")
         includes = body.get("includes")
@@ -289,27 +275,6 @@ def _oauth1_header(method: str, url: str, credentials: OAuth1Credentials) -> str
     return f"OAuth {header_params}"
 
 
-def _post_user_context(
-    url: str,
-    payload: dict[str, object],
-    *,
-    credentials: OAuth1Credentials,
-    client: httpx.Client | None,
-) -> dict[str, object]:
-    """POST ``payload`` as JSON under OAuth 1.0a user context (RFC 5849: body unsigned)."""
-    return _json_request(
-        "POST",
-        url,
-        headers={
-            "Authorization": _oauth1_header("POST", url, credentials),
-            "User-Agent": _USER_AGENT,
-        },
-        json_body=payload,
-        ok_statuses=(200, 201),
-        client=client,
-    )
-
-
 def post_reply(
     *,
     text: str,
@@ -321,10 +286,17 @@ def post_reply(
 
     The caller owns the linkless-text invariant (see module docstring).
     """
-    body = _post_user_context(
-        f"{_API_BASE}/tweets",
-        {"text": text, "reply": {"in_reply_to_tweet_id": in_reply_to_tweet_id}},
-        credentials=credentials,
+    url = f"{_API_BASE}/tweets"
+    # RFC 5849: a JSON body is not signed.
+    body = _json_request(
+        "POST",
+        url,
+        headers={
+            "Authorization": _oauth1_header("POST", url, credentials),
+            "User-Agent": _USER_AGENT,
+        },
+        json_body={"text": text, "reply": {"in_reply_to_tweet_id": in_reply_to_tweet_id}},
+        ok_statuses=(200, 201),
         client=client,
     )
     data = body.get("data")

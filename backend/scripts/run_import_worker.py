@@ -1,23 +1,4 @@
-"""The import worker: drain the job queues, forever.
-
-The always-on worker role behind ``POST /events/import-archive`` and the X
-bot: claims ``archive_import_jobs`` rows (``FOR UPDATE SKIP LOCKED``, so a
-second worker is safe), runs the backfill off the API process and emails the
-owner the outcome (``services/archive_jobs``). Each pass also drains the
-``queued`` ``bot_mentions`` rows through the shared mention pipeline
-(``services/bot``). At start and then every hour it deletes the staged uploads
-past their expiry (``services/uploads``). At start, every hour and when the
-clock passes ``bot.CATCH_UP_SLOT``, it pulls the bot's mentions timeline to
-queue what the webhook missed, if no pull has run since the latest slot. Each pass first sends the queued notification emails
-(``services/notification_delivery``). A queue that raises is captured and
-skipped for the pass, so it never holds back the others. Each pass opens a
-fresh session shared across its jobs (per-job isolation is the rollback inside
-``process``), and a pass that dies outside job processing is captured and
-retried with a backoff. Before its first pass it
-waits for the schema to reach the alembic head (``app/schema_gate``).
-``IMPORT_WORKER_ONCE`` runs one pass with a forced mentions pull and exits
-(useful by hand).
-"""
+"""The import worker: drain the job queues, forever (``docs/engineering.md``, Scheduler services)."""
 
 import asyncio
 import logging
@@ -53,19 +34,11 @@ async def _drain_both(db) -> int:
     mentions = await bot.drain_mentions(db)
     if mentions.mentions_processed:
         logger.info(
-            "Bot drain: %d mentions, %d events created, %d detections updated, "
-            "%d requests opened, %d replies posted, %d without detection, %d inheriting the "
-            "tag, %d without a linked account, %d deduped, %d failed",
+            "Bot drain: %d mentions, %d events created, %d replies posted, outcomes %s",
             mentions.mentions_processed,
             mentions.created_event_count,
-            mentions.events_updated,
-            mentions.requests_opened,
             mentions.replies_posted,
-            mentions.no_detection,
-            mentions.inherited,
-            mentions.no_account,
-            mentions.skipped,
-            mentions.failed,
+            dict(mentions.outcomes),
         )
     return handled + mentions.mentions_processed
 

@@ -1,65 +1,49 @@
 """Chase the footage a post points at: one module per technology, one dispatcher.
 
-A chase is the single fetch spent on a post's declared source, turning a link
-into its date, media and (for X) author and text. Each technology module
-exposes ``chase(target, *, client) -> ChaseResult`` and answers ``no_target``
-for hosts it does not serve.
-
-:func:`chase_thread` is the one chase step every entry runs once its records
-are built; :func:`apply_chase` places the result.
-
-Every chase is fail-soft: a failure reads as "no footage", never fails the
-import. The failure class still travels (``records.ChaseOutcome``) on the
-declaring record, since "could not read it now" differs from "no footage".
+Each technology module exposes ``chase(target, *, client) -> ChaseResult`` and answers
+``no_target`` for hosts it does not serve.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import logging
 
 import httpx
 
-from ..records import ChasedPost, ChaseResult, QuotedTweet, TelegramFootage, TweetRecord
+from ..errors import TweetImportError
+from ..records import ChaseResult, TweetRecord
 from ..resolve import sole_candidate
+from ..retry import is_transient
 from . import telegram, tiktok, x
 
-__all__ = ["apply_chase", "chase_post", "chase_thread"]
+logger = logging.getLogger(__name__)
+
+__all__ = ["chase_post", "chase_thread"]
 
 
 def chase_post(target: str, *, client: httpx.Client | None = None) -> ChaseResult:
     """The footage post ``target`` names, chased by the module serving its host.
 
     ``target`` is a linked URL or a bare X status id (all an export holds for a
-    quote). ``no_target`` hands it to the next chaser; the last answer stands.
-    ``client`` is for tests (a ``MockTransport``).
+    quote). ``no_target`` hands it to the next chaser. Never raises: a chase
+    must never fail the ingestion, and a throttled or unanswered upstream reads
+    ``transient_failure``. ``client`` is for tests (a ``MockTransport``).
     """
-    for chaser in (x.chase, telegram.chase):
-        chased = chaser(target, client=client)
+    # Looked up per call, so a test can patch one chaser.
+    for chaser in (x.chase, telegram.chase, tiktok.chase):
+        try:
+            chased = chaser(target, client=client)
+        except TweetImportError as exc:
+            return ChaseResult(
+                outcome="transient_failure" if is_transient(exc) else "not_accessible"
+            )
+        except Exception:
+            logger.debug("Chase of %s failed", target, exc_info=True)
+            return ChaseResult(outcome="not_accessible")
         if chased.outcome != "no_target":
             return chased
-    return tiktok.chase(target, client=client)
-
-
-def apply_chase(record: TweetRecord, chased: ChasedPost) -> TweetRecord:
-    """``record`` with ``chased`` in the slot its shape fits: a post with a
-    status id goes in the quoted slot, anything else in the off-platform slot.
-    An existing quote is never overwritten (it outranks a followed link).
-    """
-    if chased.status_id is not None:
-        quoted = QuotedTweet(
-            tweet_id=chased.status_id,
-            handle=chased.author or "",
-            text=chased.text,
-            created_at=chased.posted_at or "",
-            media=list(chased.media),
-        )
-        return dataclasses.replace(record, quoted=record.quoted or quoted)
-    return dataclasses.replace(
-        record,
-        telegram=TelegramFootage(
-            url=chased.url, posted_at=chased.posted_at, media=list(chased.media)
-        ),
-    )
+    return ChaseResult(outcome="no_target")
 
 
 def _declares(record: TweetRecord, target: str) -> bool:
@@ -74,16 +58,9 @@ def chase_thread(
 ) -> list[TweetRecord]:
     """``records`` with the thread's one chase target resolved onto it.
 
-    At most one fetch per thread. The target is a quoted post id the records do
-    not already carry (an export holds only the id for a post outside it), else
-    the thread's sole source candidate URL (``resolve.sole_candidate``, so the
-    chase never fetches a link the resolution will not store). A chase authored
-    by the thread's own author is a self-reference, not footage.
-
-    A thread that already carries a quote chases nothing (a quote outranks every
-    link), nor does an ambiguous thread. Fail-soft: a failed chase leaves the
-    records as they were, bar ``TweetRecord.chase_outcome`` on the declaring
-    record.
+    The target is a quoted post id the records do not already carry (an export holds only
+    the id for a post outside it), else the thread's sole source candidate. A failed chase
+    leaves the records as they were, bar ``TweetRecord.chase_outcome`` on the declaring one.
     """
     if any(record.quoted is not None for record in records):
         return records
@@ -109,6 +86,15 @@ def chase_thread(
         # ``i/web/status`` form) is a cross-reference. A quote is exempt: quoting
         # one's own post declares it as the source.
         return records
+    # A status goes in the quote slot (no record carries a quote here), any other post in
+    # the linked slot.
     return [
-        apply_chase(record, chased) if _declares(record, target) else record for record in records
+        (
+            dataclasses.replace(record, quoted=chased)
+            if chased.status_id is not None
+            else dataclasses.replace(record, linked=chased)
+        )
+        if _declares(record, target)
+        else record
+        for record in records
     ]

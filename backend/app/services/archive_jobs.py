@@ -1,20 +1,7 @@
-"""The durable archive-import queue: enqueue at upload, drain in the worker.
+"""The durable archive-import queue (``docs/ingestion.md``, Archive import worker).
 
 A backfill never runs inside the request: unzip and parse take minutes and would freeze the
-single-process event loop. The browser uploads the zip straight to storage under a presigned
-POST (``/import-archive/presign`` mints the key), ``POST /events/import-archive`` verifies the
-staged object and inserts an ``archive_import_jobs`` row, and the worker
-(``scripts/run_import_worker.py``) claims rows with ``FOR UPDATE SKIP LOCKED``, runs the
-backfill, stamps the counts, deletes the staged object and emails the owner. Postgres is the
-queue: no broker, jobs survive restarts, and two workers can't double-run a job.
-
-A worker killed mid-job leaves the row ``running``; a later pass reclaims it once
-``started_at`` is older than ``STALE_RUNNING_AFTER``. A dedicated thread re-stamps
-``started_at`` every ``HEARTBEAT_INTERVAL`` while the job runs (a thread, so beats land during
-long synchronous stretches), so a long import never crosses the stale window while alive and a
-reclaim never races a live run (e.g. overlapping workers in a rolling deploy). ``MAX_ATTEMPTS``
-bounds the reclaim loop: a job that keeps dying lands ``failed``. The backfill is idempotent,
-so a reclaimed half-applied run never duplicates rows.
+single-process event loop.
 """
 
 from __future__ import annotations
@@ -171,8 +158,7 @@ def claim_next(db: Session) -> ArchiveImportJob | None:
         if job.attempt_count >= MAX_ATTEMPTS:
             # Bury the poison row and keep looking (a loop, so a big backlog can't deepen the
             # stack).
-            _finish(db, job, status="failed", error="attempt budget spent")
-            _notify_failure_best_effort(db, job)
+            _fail(db, job, "attempt budget spent")
             continue
         job.status = "running"
         job.attempt_count += 1
@@ -222,8 +208,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     # exclusion are written from it. No fallback onto the username, which would fabricate links
     # to an account that may be someone else's.
     if owner.x_handle is None:
-        _finish(db, job, status="failed", error="owner has no linked X handle")
-        _notify_failure_best_effort(db, job)
+        _fail(db, job, "owner has no linked X handle")
         return
 
     # Re-check the enqueue's HEAD gate: the presign window stays open ~15 min after enqueue, so
@@ -231,12 +216,10 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
     # object.
     size = get_storage().head_size(job.zip_key)
     if size is None:
-        _finish(db, job, status="failed", error="staged object missing")
-        _notify_failure_best_effort(db, job)
+        _fail(db, job, "staged object missing")
         return
     if size > archive_zip.MAX_UPLOAD_BYTES:
-        _finish(db, job, status="failed", error="staged object oversized")
-        _notify_failure_best_effort(db, job)
+        _fail(db, job, "staged object oversized")
         return
 
     stop_heartbeat = threading.Event()
@@ -272,8 +255,7 @@ async def process(db: Session, job: ArchiveImportJob) -> None:
         try:
             fs_job = fs.get(ArchiveImportJob, job.id)
             if fs_job is not None:
-                _finish(fs, fs_job, status="failed", error=type(exc).__name__)
-                _notify_failure_best_effort(fs, fs_job)
+                _fail(fs, fs_job, type(exc).__name__)
         finally:
             fs.close()
         raise
@@ -323,7 +305,9 @@ def _delete_staged_best_effort(key: str) -> None:
         logger.warning("could not delete staged archive %s", key)
 
 
-def _notify_failure_best_effort(db: Session, job: ArchiveImportJob) -> None:
+def _fail(db: Session, job: ArchiveImportJob, error: str) -> None:
+    """Land ``job`` failed and tell its owner, when the account still exists."""
+    _finish(db, job, status="failed", error=error)
     owner = db.get(User, job.owner_id)
     if owner is None or owner.deleted_at is not None:
         return

@@ -31,11 +31,6 @@ from app.services.tweet_ingest import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Wording for a refusal the copy table lacks (unreachable while the code test
-# passes); here so the page needn't keep a second table.
-_UNNAMED_REFUSAL = "That post produced no detection."
-
-
 TweetImportRefusalCode = Literal[
     "invalid_tweet_url", "post_unreadable", "upstream_busy", "upstream_unreadable"
 ]
@@ -68,12 +63,9 @@ def import_from_tweet(
 ):
     """Import the caller's own X post as detections.
 
-    Runs the same engine and write path as the bot and the archive backfill
-    (``detection.import_pasted_post``): one detection per coordinate, owned by
-    the caller, and a repeat paste overwrites the open detection.
-
-    Auth-only, own posts only (the author must be the handle linked to the
-    caller). Per-IP 30/minute bounds the shared syndication budget.
+    One detection per coordinate, owned by the caller; a repeat paste overwrites the open
+    detection. Own posts only: the author must be the handle linked to the caller. Per-IP
+    30/minute bounds the shared syndication budget.
     """
     try:
         outcome = asyncio.run(import_pasted_post(db, owner=current_user, url=body.url))
@@ -111,10 +103,7 @@ def import_from_tweet(
         reason=(
             None
             if outcome.reason is None
-            else ImportNote(
-                code=outcome.reason,
-                message=REFUSAL_MESSAGES.get(outcome.reason, _UNNAMED_REFUSAL),
-            )
+            else ImportNote(code=outcome.reason, message=REFUSAL_MESSAGES[outcome.reason])
         ),
         failed=outcome.failed,
     )

@@ -1,37 +1,37 @@
-"""The one page GET the embed chasers share: redirects never followed, failures typed."""
+"""The page reads and the answer the embed chasers share."""
 
 from __future__ import annotations
 
 import httpx
 
-from ..errors import TweetUpstreamBusy, TweetUpstreamUnreachable
-from ..retry import parse_retry_after
-
-HTTP_TIMEOUT_S = 5.0
-USER_AGENT = "vidit-tweet-import/1.0"
+from ..records import ChaseResult, ParsedMedia, SourcePost
+from ..retry import retrying
+from ..syndication import USER_AGENT, http_get
 
 
 def get_page(url: str, *, client: httpx.Client | None) -> httpx.Response:
-    """One GET of ``url``, any status but a transient one.
+    """One GET of ``url`` under the retry schedule, any status but a transient one.
 
     Redirects are not followed: each chaser's URL gate vets only the first hop,
-    so a 3xx comes back for the caller to read or refuse. A throttled upstream
-    raises :class:`TweetUpstreamBusy` and an unanswered one
-    :class:`TweetUpstreamUnreachable`, which the retry schedule retries.
-    ``client`` is for tests (a ``MockTransport``).
+    so a 3xx comes back for the caller to read or refuse.
     """
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html"}
-    try:
-        if client is None:
-            with httpx.Client(timeout=HTTP_TIMEOUT_S, follow_redirects=False) as own_client:
-                resp = own_client.get(url, headers=headers)
-        else:
-            resp = client.get(url, headers=headers)
-    except httpx.HTTPError as exc:
-        raise TweetUpstreamUnreachable(f"transport error: {exc}") from exc
-    if resp.status_code == 429 or resp.status_code >= 500:
-        raise TweetUpstreamBusy(
-            f"upstream returned {resp.status_code}",
-            retry_after=parse_retry_after(resp.headers.get("Retry-After")),
-        )
-    return resp
+    return retrying(lambda: http_get(url, headers=headers, client=client), what=url)
+
+
+def read_page(url: str, *, client: httpx.Client | None) -> str | None:
+    """The page at ``url``, ``None`` unless it answered 200 (a 3xx reads as unavailable)."""
+    resp = get_page(url, client=client)
+    return resp.text if resp.status_code == 200 else None
+
+
+def embed_result(target: str, posted_at: str | None, media: list[ParsedMedia]) -> ChaseResult:
+    """``chased`` with at least a date or media, else ``not_accessible``.
+
+    ``url`` is the target as written: the resolution matches it back to the declared link.
+    """
+    if posted_at is None and not media:
+        return ChaseResult(outcome="not_accessible")
+    return ChaseResult(
+        outcome="chased", post=SourcePost(url=target, posted_at=posted_at, media=media)
+    )

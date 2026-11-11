@@ -18,7 +18,7 @@ from app.services.tweet_ingest import (
     REQUEST_NOT_POSSIBLE,
     RequestDraft,
 )
-from app.services.tweet_ingest.records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
+from app.services.tweet_ingest.records import ParsedMedia, SourceLink, SourcePost, TweetRecord
 from app.services.tweet_ingest.resolve import resolve_threads
 from tests._fixtures import tweet_record
 
@@ -187,11 +187,11 @@ def test_two_candidate_links_draft_nothing() -> None:
 
 def test_a_quoted_status_carrying_footage_drafts_a_request() -> None:
     """A quoted X status opens a request like a linked one: its footage and its date."""
-    quote = QuotedTweet(
-        tweet_id="9200000000000000002",
-        handle="front_owl",
+    quote = SourcePost.x_status(
+        status_id="9200000000000000002",
+        author="front_owl",
         text="Column moving at first light",
-        created_at="2026-03-11T18:40:00.000Z",
+        posted_at="2026-03-11T18:40:00.000Z",
         media=[
             ParsedMedia(kind="video", remote_url="https://video.twimg.com/q.mp4", origin="quote")
         ],
@@ -227,11 +227,11 @@ def test_a_coordinate_in_the_quoted_post_drafts_nothing() -> None:
 
     A request over it would ask the board to geolocate footage already geolocated.
     """
-    quote = QuotedTweet(
-        tweet_id="9200000000000000002",
-        handle="raw_feed",
+    quote = SourcePost.x_status(
+        status_id="9200000000000000002",
+        author="raw_feed",
         text="Vehicles burning at 48.123456, 37.654321",
-        created_at="2026-03-11T18:40:00.000Z",
+        posted_at="2026-03-11T18:40:00.000Z",
         media=[
             ParsedMedia(kind="video", remote_url="https://video.twimg.com/q.mp4", origin="quote")
         ],
@@ -299,8 +299,7 @@ def test_a_transient_chase_failure_drafts_nothing() -> None:
 
 def test_a_definitive_chase_failure_drafts_a_request_with_footage_and_no_warning() -> None:
     """The source is gone or restricted, so the analyst's copy backs the footage slot.
-    The draft carries no warning; ``detection._write_warnings`` later raises
-    ``source_date_unknown`` because the chase served no date."""
+    The row later raises ``source_date_unknown`` because the chase served no date."""
     draft = _draft(
         [
             _rec(
@@ -313,19 +312,17 @@ def test_a_definitive_chase_failure_drafts_a_request_with_footage_and_no_warning
     )
 
     assert draft is not None
-    assert draft.warnings == []
-    assert draft.source_fetch_failed is True
     assert draft.source_posted_at is None
     assert draft.footage_candidates == [_VIDEO]
 
 
 def test_a_coordinate_behind_a_shortlink_in_a_quoted_post_drafts_nothing() -> None:
     """The coordinate guard expands ``t.co`` wrappers in quoted text first: a maps link there is a geolocation."""
-    quote = QuotedTweet(
-        tweet_id="9200000000000000002",
-        handle="raw_feed",
+    quote = SourcePost.x_status(
+        status_id="9200000000000000002",
+        author="raw_feed",
         text="Vehicles burning here https://t.co/fakeMAP",
-        created_at="2026-03-11T18:40:00.000Z",
+        posted_at="2026-03-11T18:40:00.000Z",
         media=[
             ParsedMedia(kind="video", remote_url="https://video.twimg.com/q.mp4", origin="quote")
         ],
@@ -341,11 +338,11 @@ def test_a_coordinate_behind_a_shortlink_in_a_quoted_post_drafts_nothing() -> No
 
 def test_the_own_video_rides_behind_the_sources_footage_as_a_fallback() -> None:
     """The write path takes the first candidate that fetches: the source's footage, then the analyst's copy."""
-    quote = QuotedTweet(
-        tweet_id="9200000000000000002",
-        handle="front_owl",
+    quote = SourcePost.x_status(
+        status_id="9200000000000000002",
+        author="front_owl",
         text="Column moving at first light",
-        created_at="2026-03-11T18:40:00.000Z",
+        posted_at="2026-03-11T18:40:00.000Z",
         media=[
             ParsedMedia(kind="video", remote_url="https://video.twimg.com/q.mp4", origin="quote")
         ],
@@ -408,11 +405,11 @@ def test_a_transient_chase_failure_keeps_the_plain_refusal() -> None:
 
 def test_a_coordinate_in_the_quoted_post_keeps_the_plain_refusal() -> None:
     """Source and footage exist; the coordinate one post down is what stops the request."""
-    quote = QuotedTweet(
-        tweet_id="9200000000000000002",
-        handle="raw_feed",
+    quote = SourcePost.x_status(
+        status_id="9200000000000000002",
+        author="raw_feed",
         text="Vehicles burning at 48.123456, 37.654321",
-        created_at="2026-03-11T18:40:00.000Z",
+        posted_at="2026-03-11T18:40:00.000Z",
         media=[
             ParsedMedia(kind="video", remote_url="https://video.twimg.com/q.mp4", origin="quote")
         ],

@@ -231,7 +231,7 @@ The host decides what gets *fetched*, never what gets *stored*: one module per t
 
 [`POST /uploads/from-link`](api.md#post-uploadsfrom-link) runs the same dispatcher and CDN fetch on one link an analyst names.
 
-Every chase is fail-soft: a refusing upstream reads as "no footage", never as a failed import. Each chaser answers `chased`, `not_accessible`, `transient_failure` or `no_target`, and only the transient one changes what the analyst is told: `source_fetch_failed` instead of `source_footage_missing`.
+Every chase is fail-soft: a refusing upstream reads as "no footage", never as a failed import. The dispatcher answers `chased`, `not_accessible`, `transient_failure` or `no_target`, and only the transient one changes what the analyst is told: `source_fetch_failed` instead of `source_footage_missing`.
 
 **Retries.** Every outgoing fetch shares one schedule ([`retry.py`](../backend/app/services/tweet_ingest/retry.py)): three attempts, pausing 1 s then 3 s, never sleeping more than 6 s in total, honouring a longer `Retry-After` within that budget. Only a throttled or unreachable upstream earns a retry; a post that is gone, a restricted one and a payload that will not parse come back on the first attempt.
 
@@ -281,7 +281,7 @@ Review answers an empty source slot from the edit form: the source's post link i
 
 The footage and date warnings are dropped on a detection already carrying `source_ambiguous` or `source_missing`, since an empty source slot already says why there is neither footage nor date. Only created and updated rows count, so a pass that wrote nothing reports no warnings.
 
-A request the bot opened carries two of these codes, both raised by the same `_write_warnings` pass the detections run: `source_date_unknown`, when the chase for the source served no date, and `duplicate_media`, over the footage the request stored. The remaining codes cannot apply, since a request is born with a source and the footage that fills its source slot: even when the chase answered with nothing to take, the analyst's own copy backs the slot instead, so `source_fetch_failed` and `source_footage_missing` never reach the row. Each reads the same sentence from the same table, in the bot's ✅ reply.
+A request the bot opened carries two of these codes, which [`detection.open_request`](../backend/app/services/detection.py) raises on the same rules the detections follow: `source_date_unknown`, when the chase for the source served no date, and `duplicate_media`, over the footage the request stored. The remaining codes cannot apply, since a request is born with a source and the footage that fills its source slot: even when the chase answered with nothing to take, the analyst's own copy backs the slot instead, so `source_fetch_failed` and `source_footage_missing` never reach the row. Each reads the same sentence from the same table, in the bot's ✅ reply.
 
 The bot names a refusal back in its [reply](#the-bot), and so does the paste in its response ([`api.md`](api.md#post-eventsimport-from-tweet)); the archive reports counts in its [outcome email](#archive-import-worker), since an export refusing several threads for different reasons would be picking a winner. Every code has exactly one wording, in `resolve.WARNING_MESSAGES` and `REFUSAL_MESSAGES`, and every surface reads it; a code added without a sentence fails `test_engine_copy`. Branch on the code, which is stable, not on the sentence.
 
@@ -386,7 +386,7 @@ flowchart LR
   one row per mention, ON CONFLICT DO NOTHING; the queue and, once done, the ledger: a mention is processed, billed and answered at most once`")]:::store
   drain["`**drain_mentions**
   the import worker claims queued rows, oldest first`"]:::core
-  one["`**linked_owner, acquire_tagged_thread, the engine**`"]:::core
+  one["`**linked_owner, acquire_thread, the engine**`"]:::core
   engine["`**resolve_threads, persist_detections**`"]:::shared
   request["`**open_request**
   events.create_request, a requested row over the thread's footage`"]:::spec
