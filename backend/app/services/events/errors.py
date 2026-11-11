@@ -1,7 +1,4 @@
-"""The typed failures of the event lifecycle, each with a stable ``code``.
-
-Leaf module: imports no sibling. The form sentence of each source code is mirrored by ``frontend/src/lib/sources.ts::SOURCE_ERROR_MESSAGES``; change both.
-"""
+"""Leaf module: imports no sibling. The form sentence of each source code is mirrored by ``frontend/src/lib/sources.ts::SOURCE_ERROR_MESSAGES``; change both."""
 
 from __future__ import annotations
 
@@ -9,15 +6,10 @@ from app.services.evidence_intake import EvidenceIntakeError
 
 
 class EventError(EvidenceIntakeError):
-    """Base for event errors; the router catches one base for these and intake failures."""
-
     code: str = "event_error"
 
 
 class InvalidCoordinatesError(EventError):
-    """Coordinates fall outside the valid ranges (absent ones raise
-    :class:`CoordinatesRequiredError`)."""
-
     code = "invalid_coordinates"
 
 
@@ -33,8 +25,6 @@ class InvalidProofError(EventError):
 
 
 class ConflictRequiredError(EventError):
-    """A publication names no conflict."""
-
     code = "conflict_required"
 
 
@@ -50,14 +40,10 @@ class SourceRequiredError(EventError):
 
 
 class SourceFileRequiredError(EventError):
-    """No ``direct`` or ``indirect`` source carries a file."""
-
     code = "source_file_required"
 
 
 class SourceLinkRequiredError(EventError):
-    """A source carries no URL."""
-
     code = "source_link_required"
 
 
@@ -68,8 +54,6 @@ class InvalidSourceUrlError(EventError):
 
 
 class TooManySourcesError(EventError):
-    """More than ``models/source.MAX_SOURCES_PER_EVENT`` sources."""
-
     code = "too_many_sources"
 
 
@@ -87,8 +71,6 @@ class SourceNotFoundError(EventError):
 
 
 class SourceMediaNotFoundError(EventError):
-    """A source's ``media_id`` names no file of a readable source."""
-
     code = "source_media_not_found"
 
 
@@ -104,27 +86,17 @@ class EventNotFoundError(EventError):
 
 
 class EventStateError(EventError):
-    """The event's state forbids the transition: :func:`save_version` on a
-    ``closed`` row, close on a ``closed`` row, :func:`update_request` on a row
-    that is no longer ``requested``, a batch publish of a row that is no longer
-    ``detected``.
-    """
-
     code = "invalid_state"
     status_code = 409
 
 
 class VersionMismatchError(EventError):
-    """The write names the version its form was loaded at, and the row has moved past it (a
-    racing publish or edit landed first)."""
-
     code = "version_mismatch"
     status_code = 409
 
 
 class NothingChangedError(EventError):
-    """The edit moves no versioned field, so it would file a version identical to
-    the live row. A note alone does not lift this."""
+    """A note alone does not lift this."""
 
     code = "nothing_changed"
     status_code = 409

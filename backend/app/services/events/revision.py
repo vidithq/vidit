@@ -42,52 +42,10 @@ async def save_version(
 ) -> Event:
     """Write the posted form onto the event and file the state it supersedes as a version.
 
-    The pre-edit state is snapshotted into ``event_versions`` at the current ``version_no``,
-    the edit is applied, and the row takes the next number, in one transaction under the row
-    lock :func:`close` and :func:`update_request` take, so two racing writes serialize.
-
-    **Publishing is this write on version 0.** A ``requested`` or ``detected`` row is version
-    0; the write files it as version 0 (what the import or the requester left) and the row
-    becomes version 1, ``geolocated``, stamped ``geolocated_at``, with the caller credited in
-    ``event_geolocators``. A detection is owner-only. A request is answerable by anyone:
-    ``owner_id`` transfers to the caller, ``requested_by_id`` keeps the poster, and the
-    requester is notified. A publish always moves something (the status), so the no-change
-    check below does not apply to it. Each of ``geolocator_invites`` is invited to share the
-    credit right after the row is published, in the same transaction
-    (``geolocator_credit.invite_on_publish``); a refused one rolls back the whole publish. A
-    ``geolocated`` row takes none (409 ``invalid_state``): its owner invites through
-    ``geolocator_credit.invite``.
-
-    A ``geolocated`` row is owner-only. Any other state raises :class:`EventStateError` (409),
-    so a racing close gives the loser a 409. ``expected_version`` is the version the caller's
-    form was loaded at: a row that moved past it raises :class:`VersionMismatchError` (409)
-    before the ownership check, so the loser of a racing publish or edit reads a conflict, not
-    a 403 on a row that changed hands.
-
-    **The sources are editable and versioned.** The posted list replaces the stored one
-    (``sources.apply_sources``) and the snapshot keeps each source as it stood, its file
-    included (``services/versions.build_snapshot``), so ``/vN`` shows what the claim rested
-    on then. A dropped source's stored object stays while a readable version renders it; it
-    goes with the event's deletion or the redaction of the last version naming it. A source's
-    ``is_graphic`` ratchets: a posted false leaves a flagged source flagged.
-
-    The floor is checked against the post-edit state before any upload: coordinates, a
-    ``direct`` or ``indirect`` source with its file, a proof image in the final proof body, and
-    a conflict. An image the new body drops is deleted only if no readable version displays it
-    (``services/versions.referenced_media_urls``).
-
-    **An edit has to change something.** Incoming state is compared with the live row on
-    ``services/versions.COMPARED_FIELDS`` and on the sources (``sources.comparable``); an edit
-    that moves none raises :class:`NothingChangedError` before the version is filed or any
-    upload runs. A new upload counts as a change by construction.
-
-    **A save that only archives is exempt from the version ceiling**
-    (``MAX_VERSIONS_PER_EVENT``): when the only change is a link's archived copy, a source
-    that dies at the ceiling can still be archived.
-
-    Raises :class:`EventStateError` (409), :class:`VersionMismatchError` (409), the 403 of
-    ``ensure_owner``, :class:`NothingChangedError` (409), ``services/versions.VersionLimitError`` (409) at the
-    ceiling, and the errors of ``create_with_evidence``, ``GeolocatorCreditError`` included.
+    Publishing is this write on version 0. Locked like :func:`close` and :func:`update_request`,
+    so racing writes serialize. ``expected_version`` is checked before the ownership check, so
+    the loser of a racing publish or edit reads a conflict, not a 403 on a row that changed
+    hands. A dropped source's stored object stays while a readable version renders it.
     """
     geo = lock_event(db, geo.id)
     if geo.status not in _WRITABLE:

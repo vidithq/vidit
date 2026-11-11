@@ -37,11 +37,8 @@ class ImportProvenance:
 
 
 def stamp_provenance(row: Event, provenance: ImportProvenance) -> None:
-    """Attach the ``event_detections`` row to a machine-written ``row``.
-
-    Shared by ``detection._persist_one`` and :func:`create_request`. Written
-    once at creation and never moved (``detection._apply_import_fields``).
-    """
+    """Attach the ``event_detections`` row to a machine-written ``row``: written once at
+    creation and never moved (``detection._apply_import_fields``)."""
     row.detection = EventDetection(
         via=provenance.via,
         from_url=provenance.url,
@@ -94,17 +91,9 @@ async def submit_request(
 ) -> Event:
     """Create a ``requested`` event with its sources (an open call).
 
-    ``owner_id`` and ``requested_by_id`` are both ``current_user``: the poster
-    keeps edit rights until a fulfiller takes over and stays credited as
-    requester.
-
-    Coordinates (a guess) are optional, both-or-neither. Tags and conflicts are optional
-    (:func:`save_version` enforces the publication floor at the publish), but the footage must
-    be on the row from the start: a ``direct`` or ``indirect`` source with its file. The proof
-    body may carry images but has no image floor.
-
-    ``provenance`` is set only by a machine writer (``detection.open_request``) and attaches the
-    ``event_detections`` row, so a re-import recognises the row.
+    The poster is owner and requester: they keep edit rights until a fulfiller takes over. Only
+    the source floor applies; :func:`save_version` enforces the rest at the publish.
+    ``provenance``, set by a machine writer, lets a re-import recognise the row.
     """
     guess_point = _optional_point(lat, lng, field="coords")
     prepared = prepare_form(db, form, geo=None, uploader=current_user, publication=False)
@@ -134,12 +123,8 @@ async def update_request(
     lat: float | None = None,
     lng: float | None = None,
 ) -> Event:
-    """Correct an open request in place (owner-only, only while ``requested``).
-
-    **No version is filed**: the request stays version 0 until it is published, when
-    :func:`save_version` files it. ``updated_at`` moves; id, ``requested_at``, requester and
-    provenance stay. Fields and floor follow :func:`submit_request`. A file nothing names any
-    more is swept after the commit (no version renders it).
+    """Correct an open request in place (owner-only, only while ``requested``); no version is
+    filed.
 
     The row is locked and the status re-checked, as in :func:`save_version` and
     :func:`close`, so a racing publish or withdrawal gives the loser a 409.

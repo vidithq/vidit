@@ -61,20 +61,10 @@ def _publish_detection(
     conflicts: list[Conflict],
 ) -> None:
     """Promote one detection to ``geolocated`` with the conflicts and source kind the batch
-    supplies.
+    supplies, on the floor :func:`save_version` runs on a publish. Commits on success.
 
-    No other field edits, uploads or proof rewrite: the import already put the rest on the
-    row. ``kind`` goes onto every source that carries a file. The floor is the one
-    :func:`save_version` runs on a publish, so a batch is no looser a door to ``geolocated``.
-    Like that publish, it files the detection as version 0 and the row becomes version 1.
-
-    Locked like :func:`save_version`, so a race with a publish from the form serializes.
-    Commits on success. The floor is projected into SQL by
-    :func:`detection_ready_predicate`: change a leg in both.
-
-    Raises the typed floor errors, :class:`EventStateError` off ``detected``,
-    :class:`EventNotFoundError` when the row is gone, and the 403 of
-    :func:`ensure_owner`. The caller rolls back and records the code.
+    Locked like :func:`save_version`, so a race with a publish from the form serializes. The
+    floor is projected into SQL by :func:`detection_ready_predicate`: change a leg in both.
     """
     geo = (
         db.query(Event)
@@ -121,17 +111,7 @@ def complete_detections(
     conflict_ids: list[uuid.UUID],
     rows: list[tuple[uuid.UUID, SourceKind]],
 ) -> list[BatchCompletionRowRead]:
-    """Publish a selection of detections, one transaction per row.
-
-    ``conflict_ids`` applies to the whole selection; ``rows`` are ordered
-    ``(event_id, kind)`` pairs. A row that fails the floor
-    rolls back alone and stays a detection. Results mirror ``rows`` order.
-
-    Two conditions fail the whole call before anything commits: an empty or
-    unresolvable ``conflict_ids`` (:class:`ConflictRequiredError`) and a row
-    owned by someone else (403). After the first commit, a database error on
-    one row is reported as :data:`ROW_INTERNAL_ERROR_CODE` against that row.
-    """
+    """Publish a selection of detections, one transaction per row, verdicts in ``rows`` order."""
     conflicts = _resolve_conflicts(db, conflict_ids)
     _require_conflict(conflicts)
     _assert_owns_all(db, event_ids=[event_id for event_id, _ in rows], current_user=current_user)

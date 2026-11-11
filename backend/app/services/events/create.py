@@ -28,22 +28,9 @@ async def create_with_evidence(
     lng: float,
     geolocator_invites: Sequence[str] = (),
 ) -> Event:
-    """Create a ``geolocated`` event with its evidence (a direct geolocate).
-
-    The creator is stamped ``geolocated_at`` and credited in ``event_geolocators``. Each of
-    ``geolocator_invites`` is invited to share the credit in the same transaction
-    (``geolocator_credit.invite_on_publish``).
-
-    The full floor applies: subject coordinates, a ``direct`` or ``indirect`` source with its
-    file (``sources.check_publish_floor``), a proof image (a ``placeholder://`` src resolved
-    from ``proof_files``, see ``evidence_intake``), and a conflict.
-
-    Raises :class:`EvidenceIntakeError` subclasses: bad coordinates, an unmet floor, invalid or
-    image-less proof, a source list past its caps or naming an unknown upload or file, or a
-    proof intake failure; ``SnapshotRejected`` for a pasted copy that is not a snapshot;
-    ``GeolocatorCreditError`` for a refused invitation. Every check runs before the first
-    upload; any later failure rolls back and sweeps what landed.
-    """
+    """Create a ``geolocated`` event with its evidence (a direct geolocate) under the full
+    floor. Every check runs before the first upload; a later failure rolls back and sweeps what
+    landed."""
     validate_coordinates(lat, lng)
     prepared = prepare_form(db, form, geo=None, uploader=current_user, publication=True)
 
