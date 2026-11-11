@@ -89,7 +89,6 @@ def test_acquire_thread_joins_the_same_authors_parent():
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
     # Parent first: the head anchors provenance and the event date.
     assert [r.tweet_id for r in acquired.records] == [_PARENT_ID, _POST_ID]
-    assert acquired.post.tweet_id == _POST_ID
 
 
 def test_acquire_thread_joins_the_parent_whatever_case_the_caller_spelled():
@@ -122,7 +121,7 @@ def test_acquire_thread_fetches_nothing_for_a_non_reply():
     seen: list[str] = []
     with _client(bodies, seen) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_POST_ID]
     assert seen == [_POST_ID]
 
 
@@ -134,7 +133,7 @@ def test_acquire_thread_drops_another_authors_parent():
     }
     with _client(bodies) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_POST_ID]
 
 
 def test_acquire_thread_unreadable_parent_degrades_to_the_post_alone():
@@ -142,7 +141,7 @@ def test_acquire_thread_unreadable_parent_degrades_to_the_post_alone():
     bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text="reply", reply_to=_PARENT_ID)}
     with _client(bodies) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_POST_ID]
     # Gone is an end of the thread, not a cut: the refusal stays ``coords_missing``.
     assert acquired.truncated is False
     assert acquired.resolve().reason == COORDS_MISSING
@@ -152,7 +151,7 @@ def test_a_parent_x_will_not_serve_truncates_the_one_hop_read():
     bodies = {_POST_ID: _body(_POST_ID, handle="analyst", text="reply", reply_to=_PARENT_ID)}
     with _client(bodies, down=frozenset({_PARENT_ID})) as client:
         acquired = acquire_thread(_POST_ID, handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_POST_ID]
     assert acquired.truncated is True
     assert acquired.resolve().reason == THREAD_TRUNCATED
 
@@ -363,7 +362,7 @@ def test_a_bare_tag_under_another_authors_post_acquires_the_tag_alone():
     bodies[_CLIMB_IDS[1]]["user"]["screen_name"] = "someone_else"
     with _client(bodies) as client:
         acquired = acquire_thread(_CLIMB_IDS[0], handle="analyst", client=client)
-    assert acquired.records == [acquired.post]
+    assert [r.tweet_id for r in acquired.records] == [_CLIMB_IDS[0]]
 
 
 @pytest.mark.parametrize(

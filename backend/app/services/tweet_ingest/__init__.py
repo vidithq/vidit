@@ -23,7 +23,6 @@ from __future__ import annotations
 from .acquire import (
     AcquiredThread,
     acquire_from_post,
-    acquire_pasted_thread,
     acquire_thread,
     read_pasted_post,
     record_by_id,
@@ -42,7 +41,6 @@ from .extract import (
     ParsedCoord,
     clean_proof_text,
     derive_title,
-    extract_coords,
     tags_bot,
 )
 from .records import ParsedMedia, TweetRecord
@@ -101,7 +99,6 @@ __all__ = [
     "TweetRecord",
     "TweetUpstreamBusy",
     "acquire_from_post",
-    "acquire_pasted_thread",
     "acquire_thread",
     "archive_media_fetcher",
     "chase_post",
@@ -109,7 +106,6 @@ __all__ = [
     "clean_proof_text",
     "derive_title",
     "download_cdn_media",
-    "extract_coords",
     "fetch_cdn_media",
     "is_importable_link",
     "is_trusted_media_url",

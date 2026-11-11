@@ -153,11 +153,6 @@ def scan_coords(text: str) -> CoordScan:
     return CoordScan(coords=coords, out_of_bounds=out_of_bounds)
 
 
-def extract_coords(text: str) -> list[ParsedCoord]:
-    """The usable coordinates in ``text`` (:func:`scan_coords` minus the signal)."""
-    return scan_coords(text).coords
-
-
 # The X handle grammar: 1 to 15 word characters.
 _HANDLE = r"[A-Za-z0-9_]{1,15}"
 

@@ -99,7 +99,7 @@ MediaFetcher = Callable[[ParsedMedia], Awaitable[tuple[bytes, str] | None]]
 # a multi-coordinate thread prepares identical media once.
 _MediaCache = dict[tuple[str, bool], PreparedMedia | None]
 
-# Coordinate-equality tolerance, matching the dedup rounding in ``extract_coords``.
+# Coordinate-equality tolerance, matching the dedup rounding in ``scan_coords``.
 _COORD_PLACES = 6
 
 

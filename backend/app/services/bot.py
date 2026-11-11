@@ -76,7 +76,6 @@ from app.services.tweet_ingest import (
     POST_UNREADABLE,
     REFUSAL_MESSAGES,
     WARNING_MESSAGES,
-    AcquiredThread,
     TweetImportError,
     TweetNotAccessible,
     acquire_thread,
@@ -220,25 +219,6 @@ class BotRunOutcome:
     created_event_count: int = 0
     replies_posted: int = 0
     outcomes: Counter[BotMentionOutcome] = dataclasses.field(default_factory=Counter)
-
-
-def acquire_tagged_thread(
-    tweet_id: str, author_handle: str, *, client: httpx.Client | None = None
-) -> AcquiredThread:
-    """The thread behind one mention, through :func:`tweet_ingest.acquire_thread`.
-
-    A parent by another author never joins the thread and ends the climb, so a
-    tag under someone else's post (or a courtesy reply to the bot) reads only
-    itself.
-
-    Raises ``TweetNotAccessible`` when X serves nothing for the tagged post.
-
-    The handle is case-folded: it is the record's fallback screen name, feeds
-    every provenance permalink and the own-status exclusion, so the payload's
-    spelling must not leak through. Idempotency anchors on the post id
-    (``event_detections.from_post_id``).
-    """
-    return acquire_thread(tweet_id, handle=author_handle.lower(), client=client)
 
 
 def _parent_carries_tag(parent_id: str, handle: str, *, client: httpx.Client | None) -> bool:
@@ -427,9 +407,9 @@ async def _process_mention(
     try:
         # Blocking I/O; offloaded to keep the event loop serving siblings.
         acquired = await asyncio.to_thread(
-            acquire_tagged_thread,
+            acquire_thread,
             mention.tweet_id,
-            mention.author_handle,
+            handle=mention.author_handle,
             client=syndication_client,
         )
     except TweetNotAccessible:

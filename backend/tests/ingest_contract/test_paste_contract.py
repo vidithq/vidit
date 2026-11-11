@@ -1,6 +1,6 @@
 """Paste entry contract: every typology through the pasted-post import.
 
-Runs ``tweet_ingest.acquire_pasted_thread`` then ``resolve_threads`` (what
+Runs ``tweet_ingest.read_pasted_post``, ``acquire_from_post`` then ``resolve_threads`` (what
 ``detection.import_pasted_post`` runs before writing) offline (``MockTransport``, no DB)
 against the shared typology fixtures. Expected values are ``expected.json``'s top level;
 a ``paths.paste`` block holds only a ``skip``.
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.tweet_ingest import acquire_pasted_thread, resolve_threads
+from app.services.tweet_ingest import acquire_from_post, read_pasted_post, resolve_threads
 
 from . import loader
 
@@ -25,6 +25,7 @@ def test_typology_matches_the_paste_contract(typology: str) -> None:
     body = loader.load_body(typology)
 
     with loader.syndication_client(typology) as client:
-        acquired = acquire_pasted_thread(loader.owner_url(body), client=client)
+        post = read_pasted_post(loader.owner_url(body), client=client)
+        acquired = acquire_from_post(post, client=client)
 
     loader.assert_resolution_matches(typology, _PATH, resolve_threads([acquired.records]))

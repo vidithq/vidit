@@ -96,8 +96,7 @@ class AcquiredThread:
     """What one acquisition yields.
 
     ``records`` is the thread ``resolve_threads`` reads, parents first (the head
-    carries the provenance). ``post`` is the record for the id the caller
-    named, whose author the paste checks against the caller's linked handle.
+    carries the provenance).
 
     ``truncated`` says the search for the coordinate stopped before the thread
     ended: a same-author parent fetch failed (``TweetFetchFailed``, retries
@@ -106,7 +105,6 @@ class AcquiredThread:
     """
 
     records: list[TweetRecord]
-    post: TweetRecord
     truncated: bool = False
 
     def resolve(self, *, with_requests: bool = False) -> Resolution:
@@ -242,7 +240,7 @@ def acquire_from_post(post: TweetRecord, *, client: httpx.Client | None = None) 
             parent, truncated = None, True
         above = [parent] if parent is not None else []
     records = chase_thread([*above, post], client=client)
-    return AcquiredThread(records=records, post=post, truncated=truncated)
+    return AcquiredThread(records=records, truncated=truncated)
 
 
 def acquire_thread(
@@ -266,12 +264,3 @@ def read_pasted_post(url: str, *, client: httpx.Client | None = None) -> TweetRe
     """
     normalised = normalise_tweet_url(url)
     return record_by_id(normalised.tweet_id, handle=normalised.handle, client=client)
-
-
-def acquire_pasted_thread(url: str, *, client: httpx.Client | None = None) -> AcquiredThread:
-    """The thread behind a pasted post URL.
-
-    ``detection.import_pasted_post`` runs the two halves itself with the
-    own-post check between; this composition is read by the paste's contract test.
-    """
-    return acquire_from_post(read_pasted_post(url, client=client), client=client)

@@ -20,11 +20,11 @@ from app.services.tweet_ingest import (
     TweetUpstreamBusy,
     clean_proof_text,
     derive_title,
-    extract_coords,
     is_trusted_media_url,
     normalise_tweet_url,
     syndication,
 )
+from app.services.tweet_ingest.extract import scan_coords
 from app.services.tweet_ingest.urls import canonical_tweet_url
 
 
@@ -140,8 +140,8 @@ _DMS_12 = (12 + 30 / 60 + 30 / 3600, 98 + 15 / 60 + 15 / 3600)
         ),
     ],
 )
-def test_extract_coords_reads_one_pair(text, lat, lng):
-    [coords] = extract_coords(text)
+def test_scan_coords_reads_one_pair(text, lat, lng):
+    [coords] = scan_coords(text).coords
     assert coords.lat == pytest.approx(lat)
     assert coords.lng == pytest.approx(lng)
 
@@ -167,8 +167,8 @@ def test_extract_coords_reads_one_pair(text, lat, lng):
         pytest.param("12°30′30″N\n98°15′15″E", id="dms-across-lines"),
     ],
 )
-def test_extract_coords_reads_no_pair(text):
-    assert extract_coords(text) == []
+def test_scan_coords_reads_no_pair(text):
+    assert scan_coords(text).coords == []
 
 
 def test_every_regex_digit_parses():
@@ -181,7 +181,7 @@ def test_every_regex_digit_parses():
 
 
 def test_unicode_digits_read_as_a_coordinate():
-    pair, dms = extract_coords("٤٨.٠١٢٣٤٥, ٣٧.٨٠٢٤١١ and ٤٨°٠٠'٤٥\"N ٣٧°٤٨'٠٨\"W")
+    pair, dms = scan_coords("٤٨.٠١٢٣٤٥, ٣٧.٨٠٢٤١١ and ٤٨°٠٠'٤٥\"N ٣٧°٤٨'٠٨\"W").coords
     assert (pair.lat, pair.lng) == pytest.approx((48.012345, 37.802411))
     assert (dms.lat, dms.lng) == pytest.approx((48.0125, -(37 + 48 / 60 + 8 / 3600)))
 
@@ -195,7 +195,7 @@ def test_golden_fixture_still_parses(fixture: dict) -> None:
     text = fixture["op_text"] + (
         "\n" + fixture["quoted_text"] if fixture.get("quoted_text") else ""
     )
-    coords = extract_coords(text)
+    coords = scan_coords(text).coords
     expected = fixture.get("expected_coord")
     if expected is None:
         assert coords == [], f"expected no coordinate, parser invented {coords}"
