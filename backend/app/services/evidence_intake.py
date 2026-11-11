@@ -72,19 +72,16 @@ class TooManyFilesError(EvidenceIntakeError):
 
 class InvalidFileError(EvidenceIntakeError):
     code = "invalid_file"
-    status_code = 400
 
 
 class EvidenceProcessingFailedError(EvidenceIntakeError):
     code = "evidence_processing_failed"
-    status_code = 400
 
 
 class ProofFilesMismatchError(EvidenceIntakeError):
     """A ``placeholder://`` src with no matching upload, or vice versa."""
 
     code = "proof_files_mismatch"
-    status_code = 400
 
 
 class StoredObject(NamedTuple):

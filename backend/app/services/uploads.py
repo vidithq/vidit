@@ -63,14 +63,12 @@ class UploadNotFoundError(EvidenceIntakeError):
     """A source names an upload that does not exist or belongs to someone else."""
 
     code = "upload_not_found"
-    status_code = 400
 
 
 class UploadExpiredError(EvidenceIntakeError):
     """A source names an upload past its ``expires_at``: upload the file again."""
 
     code = "upload_expired"
-    status_code = 400
 
 
 class TooManyUploadsError(EvidenceIntakeError):
