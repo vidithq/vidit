@@ -23,7 +23,7 @@ from app.dependencies import (
     OptionalUser,
 )
 from app.models.content_report import ContentReport
-from app.models.event import TITLE_MAX_LENGTH, Event
+from app.models.event import TITLE_MAX_LENGTH, Event, EventVersion
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import (
     DETAIL_LOADS,
@@ -208,6 +208,7 @@ def list_event_versions(
     size = page_size(limit)
     window = versions_service.list_versions(
         db,
+        EventVersion,
         geo.id,
         limit=size,
         cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
@@ -215,7 +216,7 @@ def list_event_versions(
     rows = paged(request, response, window, size, lambda r: encode_ordinal_cursor(r.version_no))
     return EventVersionList(
         items=[build_version_read(row) for row in rows],
-        total=versions_service.count_versions(db, geo.id),
+        total=versions_service.count_versions(db, EventVersion, geo.id),
     )
 
 
@@ -227,7 +228,7 @@ def get_event_version(
 ):
     """One superseded version of an event, by its number."""
     geo = resolve_readable_event(db, geolocation_id, current_user)
-    row = versions_service.get_version(db, event_id=geo.id, version_no=version_no)
+    row = versions_service.get_version(db, EventVersion, geo.id, version_no)
     if row is None:
         raise HTTPException(status_code=404, detail="Version not found")
     return build_version_read(row)

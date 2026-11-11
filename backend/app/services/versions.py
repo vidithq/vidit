@@ -23,6 +23,7 @@ from app.errors import CodedError
 from app.models.conflict import Conflict
 from app.models.event import Event, EventVersion, VersionZero
 from app.models.media import Media
+from app.models.site import SiteVersion
 from app.models.source import Source
 from app.models.tag import Tag
 from app.models.user import User
@@ -265,38 +266,43 @@ def version_zero(db: Session, geo: Event) -> VersionZero | None:
     return "request" if geo.requested_at is not None else "detection"
 
 
-def count_versions(db: Session, event_id: uuid.UUID) -> int:
-    """How many superseded versions the event carries, redacted rows included."""
-    return db.query(EventVersion).filter(EventVersion.event_id == event_id).count()
+def _parent_column(model: type[EventVersion | SiteVersion]) -> Any:
+    return EventVersion.event_id if model is EventVersion else SiteVersion.site_id
 
 
-def list_versions(
-    db: Session,
-    event_id: uuid.UUID,
-    *,
-    limit: int,
-    cursor: int | None = None,
-) -> list[EventVersion]:
-    """One page of the event's superseded versions, newest first, over-fetched by one row.
+def count_versions(
+    db: Session, model: type[EventVersion | SiteVersion], parent_id: uuid.UUID
+) -> int:
+    """How many superseded versions the event or site carries, redacted rows included."""
+    return db.query(model).filter(_parent_column(model) == parent_id).count()
 
-    ``version_no`` is unique per event and taken under the row lock, so the cursor needs no
+
+def list_versions[V: (EventVersion, SiteVersion)](
+    db: Session, model: type[V], parent_id: uuid.UUID, *, limit: int, cursor: int | None = None
+) -> list[V]:
+    """One page of the event's or site's superseded versions, newest first, over-fetched by one
+    row.
+
+    ``version_no`` is unique per parent and taken under the row lock, so the cursor needs no
     tiebreaker and avoids ``created_at`` clock skew between instances.
     """
     query = (
-        db.query(EventVersion)
-        .options(joinedload(EventVersion.edited_by))
-        .filter(EventVersion.event_id == event_id)
+        db.query(model)
+        .options(joinedload(model.edited_by))
+        .filter(_parent_column(model) == parent_id)
     )
     if cursor is not None:
-        query = query.filter(EventVersion.version_no < cursor)
-    return query.order_by(EventVersion.version_no.desc()).limit(limit + 1).all()
+        query = query.filter(model.version_no < cursor)
+    return query.order_by(model.version_no.desc()).limit(limit + 1).all()
 
 
-def get_version(db: Session, *, event_id: uuid.UUID, version_no: int) -> EventVersion | None:
+def get_version[V: (EventVersion, SiteVersion)](
+    db: Session, model: type[V], parent_id: uuid.UUID, version_no: int
+) -> V | None:
     return (
-        db.query(EventVersion)
-        .options(joinedload(EventVersion.edited_by))
-        .filter(EventVersion.event_id == event_id, EventVersion.version_no == version_no)
+        db.query(model)
+        .options(joinedload(model.edited_by))
+        .filter(_parent_column(model) == parent_id, model.version_no == version_no)
         .first()
     )
 

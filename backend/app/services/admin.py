@@ -515,7 +515,7 @@ def redact_version(
     )
     if event is None:
         raise EventNotFoundError("Event not found")
-    row = versions.get_version(db, event_id=event.id, version_no=version_no)
+    row = versions.get_version(db, EventVersion, event.id, version_no)
     if row is None:
         raise VersionNotFoundError("Version not found")
     # Read what this version rendered before it is blanked; the flush puts the redaction ahead

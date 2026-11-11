@@ -17,6 +17,7 @@ from app.dependencies import (
     OptionalUser,
 )
 from app.models.content_report import ContentReport
+from app.models.site import SiteVersion
 from app.ratelimit import authenticated_read_quota, limiter
 from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.schemas.site import (
@@ -35,6 +36,7 @@ from app.schemas.site import (
 )
 from app.services import reports as reports_service
 from app.services import sites as sites_service
+from app.services import versions as versions_service
 from app.services.event_filters import parse_bbox, parse_optional_iso_date
 from app.services.pagination import (
     decode_ordinal_cursor,
@@ -160,8 +162,9 @@ def list_site_versions(
     """The site's superseded versions, newest first."""
     site = sites_service.resolve_site(db, site_id=site_id, viewer=current_user)
     size = page_size(limit)
-    window = sites_service.list_versions(
+    window = versions_service.list_versions(
         db,
+        SiteVersion,
         site.id,
         limit=size,
         cursor=decode_ordinal_cursor(cursor) if cursor is not None else None,
@@ -169,7 +172,7 @@ def list_site_versions(
     rows = paged(request, response, window, size, lambda r: encode_ordinal_cursor(r.version_no))
     return SiteVersionList(
         items=sites_service.build_version_reads(db, rows),
-        total=sites_service.count_versions(db, site.id),
+        total=versions_service.count_versions(db, SiteVersion, site.id),
     )
 
 

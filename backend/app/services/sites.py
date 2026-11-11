@@ -79,6 +79,7 @@ from app.schemas.site import (
 )
 from app.schemas.source import ImageryProviderRead, ImageryProviderRef
 from app.schemas.user import AuthorRef
+from app.services import versions
 from app.services.event_filters import lock_event, site_linkable_events
 from app.services.events import InvalidCoordinatesError, validate_coordinates
 from app.services.events.errors import (
@@ -1077,33 +1078,9 @@ def unlink_event(db: Session, *, event: Event, user: User, site_id: uuid.UUID) -
     db.commit()
 
 
-def count_versions(db: Session, site_id: uuid.UUID) -> int:
-    return db.query(SiteVersion).filter(SiteVersion.site_id == site_id).count()
-
-
-def list_versions(
-    db: Session, site_id: uuid.UUID, *, limit: int, cursor: int | None = None
-) -> list[SiteVersion]:
-    """One page of the site's superseded versions, newest first, over-fetched by one row
-    (``services/pagination.paged``)."""
-    query = (
-        db.query(SiteVersion)
-        .options(joinedload(SiteVersion.edited_by))
-        .filter(SiteVersion.site_id == site_id)
-    )
-    if cursor is not None:
-        query = query.filter(SiteVersion.version_no < cursor)
-    return query.order_by(SiteVersion.version_no.desc()).limit(limit + 1).all()
-
-
 def get_version(db: Session, *, site_id: uuid.UUID, version_no: int) -> SiteVersion:
     """One superseded version by its number; the live number is not one."""
-    row = (
-        db.query(SiteVersion)
-        .options(joinedload(SiteVersion.edited_by))
-        .filter(SiteVersion.site_id == site_id, SiteVersion.version_no == version_no)
-        .first()
-    )
+    row = versions.get_version(db, SiteVersion, site_id, version_no)
     if row is None:
         raise SiteVersionNotFoundError("Version not found")
     return row
