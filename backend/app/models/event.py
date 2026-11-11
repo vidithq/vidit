@@ -109,7 +109,6 @@ class EventGeolocator(Base):
     # The first departure; a later one leaves it as it is.
     departed_at: Mapped[datetime | None]
 
-    event = relationship("Event", viewonly=True)
     user = relationship("User")
 
     __table_args__ = (
@@ -174,7 +173,6 @@ class EventVersion(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
 
-    event = relationship("Event", back_populates="versions")
     # Only the editor is a relationship: the redacting admin is audited in
     # ``audit_log`` and never rendered.
     edited_by = relationship("User", foreign_keys=[edited_by_id])
@@ -345,13 +343,6 @@ class Event(Base):
     # Where a machine-written row came from; None for a human submit.
     detection = relationship(
         "EventDetection", uselist=False, back_populates="event", cascade="all, delete-orphan"
-    )
-    # Superseded versions, oldest first (``EventVersion``).
-    versions = relationship(
-        "EventVersion",
-        back_populates="event",
-        cascade="all, delete-orphan",
-        order_by="EventVersion.version_no",
     )
 
     __table_args__ = (
