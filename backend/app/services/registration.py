@@ -13,7 +13,6 @@ risk is bounded.
 from __future__ import annotations
 
 import logging
-import secrets
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -33,14 +32,14 @@ from app.services.auth import (
     hash_token,
     invite_code_status,
     maybe_promote_admin,
+    mint_token,
     validate_invite_code,
 )
 from app.services.users import x_handle_holder
 
 logger = logging.getLogger(__name__)
 
-CONFIRMATION_TOKEN_MINUTES = 60 * 24  # 24h
-_TOKEN_BYTES = 32
+CONFIRMATION_TOKEN_MINUTES = 60 * 24
 
 
 class RegistrationError(CodedError):
@@ -150,6 +149,25 @@ def _is_username_constraint(name: str | None) -> bool:
     return name in (_PENDING_USERNAME_CONSTRAINT, _USERS_USERNAME_CONSTRAINT)
 
 
+def _clash(
+    exc: IntegrityError, *, username: RegistrationError, email: RegistrationError
+) -> RegistrationError:
+    """The error for the UNIQUE constraint ``exc`` violated. Email or unknown default to
+    ``email``, rather than invent a username clash."""
+    return username if _is_username_constraint(_integrity_error_constraint(exc)) else email
+
+
+_EMAIL_TAKEN = "An account with this email already exists. Sign in or reset your password."
+_USERNAME_TAKEN = "That username is taken."
+_EMAIL_PENDING = (
+    "A confirmation is already in flight for this address. Check your inbox, or request a new link."
+)
+_USERNAME_PENDING = (
+    "That username is being claimed in another registration. "
+    "Pick a different one, or wait for the other request to expire."
+)
+
+
 def create_pending_registration(
     db: Session,
     *,
@@ -182,52 +200,37 @@ def create_pending_registration(
 
     # Covers soft-deleted users too: only hard-delete releases an address.
     if db.query(User).filter(User.email == email).first() is not None:
-        raise EmailAlreadyRegisteredError(
-            "An account with this email already exists. Sign in or reset your password."
-        )
+        raise EmailAlreadyRegisteredError(_EMAIL_TAKEN)
     if db.query(User).filter(User.username == username).first() is not None:
-        raise UsernameAlreadyTakenError("That username is taken.")
+        raise UsernameAlreadyTakenError(_USERNAME_TAKEN)
 
     if db.query(PendingRegistration).filter(PendingRegistration.email == email).first() is not None:
-        raise EmailPendingError(
-            "A confirmation is already in flight for this address. "
-            "Check your inbox, or request a new link."
-        )
+        raise EmailPendingError(_EMAIL_PENDING)
     if (
         db.query(PendingRegistration).filter(PendingRegistration.username == username).first()
         is not None
     ):
-        raise UsernamePendingError(
-            "That username is being claimed in another registration. "
-            "Pick a different one, or wait for the other request to expire."
-        )
+        raise UsernamePendingError(_USERNAME_PENDING)
 
-    raw_token = secrets.token_urlsafe(_TOKEN_BYTES)
-    now = datetime.now(UTC)
+    raw_token, token_hash = mint_token()
     row = PendingRegistration(
         email=email,
         username=username,
         password_hash=hash_password(password),
         invite_code_id=invite.id,
-        token_hash=hash_token(raw_token),
-        expires_at=now + timedelta(minutes=CONFIRMATION_TOKEN_MINUTES),
+        token_hash=token_hash,
+        expires_at=datetime.now(UTC) + timedelta(minutes=CONFIRMATION_TOKEN_MINUTES),
     )
     db.add(row)
     try:
         db.flush()
     except IntegrityError as exc:
-        # Concurrent register: map the failing constraint to the matching
-        # error so a username clash isn't reported as an email one.
+        # Concurrent register: the UNIQUE constraint caught what the checks above raced.
         db.rollback()
-        if _is_username_constraint(_integrity_error_constraint(exc)):
-            raise UsernamePendingError(
-                "That username is being claimed in another registration. "
-                "Pick a different one, or wait for the other request to expire."
-            ) from exc
-        # Email or unknown: default to email rather than invent a username clash.
-        raise EmailPendingError(
-            "A confirmation is already in flight for this address. "
-            "Check your inbox, or request a new link."
+        raise _clash(
+            exc,
+            username=UsernamePendingError(_USERNAME_PENDING),
+            email=EmailPendingError(_EMAIL_PENDING),
         ) from exc
 
     return PendingMint(email=email, raw_token=raw_token)
@@ -251,8 +254,7 @@ def resend_pending_registration(
     if row is None:
         return None
 
-    raw_token = secrets.token_urlsafe(_TOKEN_BYTES)
-    row.token_hash = hash_token(raw_token)
+    raw_token, row.token_hash = mint_token()
     row.expires_at = datetime.now(UTC) + timedelta(minutes=CONFIRMATION_TOKEN_MINUTES)
     return PendingMint(email=row.email, raw_token=raw_token)
 
@@ -307,12 +309,10 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
     # Another path may have created a colliding user since create-pending.
     if db.query(User).filter(User.email == claimed_email).first() is not None:
         db.commit()  # persist the DELETE so the dead pending row stops failing.
-        raise EmailAlreadyRegisteredError(
-            "An account with this email already exists. Sign in or reset your password."
-        )
+        raise EmailAlreadyRegisteredError(_EMAIL_TAKEN)
     if db.query(User).filter(User.username == claimed_username).first() is not None:
         db.commit()
-        raise UsernameAlreadyTakenError("That username is taken.")
+        raise UsernameAlreadyTakenError(_USERNAME_TAKEN)
 
     # The invite may have been revoked or consumed since create. Each
     # rejection commits the DELETE so the address is released at once.
@@ -339,11 +339,10 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
         # Rollback restores the pending row; a retry hits the same error and
         # the row ages out via the reaper.
         db.rollback()
-        if _is_username_constraint(_integrity_error_constraint(exc)):
-            raise UsernameAlreadyTakenError("That username is taken.") from exc
-        # Email or unknown: default to email rather than invent a username clash.
-        raise EmailAlreadyRegisteredError(
-            "An account with this email already exists. Sign in or reset your password."
+        raise _clash(
+            exc,
+            username=UsernameAlreadyTakenError(_USERNAME_TAKEN),
+            email=EmailAlreadyRegisteredError(_EMAIL_TAKEN),
         ) from exc
 
     if invite.x_handle is not None:

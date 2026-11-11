@@ -9,18 +9,14 @@
    the row-lock race inside the UPDATE.
 """
 
-import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import CursorResult, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.models.password_reset_token import PasswordResetToken
-from app.services.auth import hash_token
-
-# 32 bytes = 256 bits of entropy, well above the 128-bit guess-resistance floor.
-_TOKEN_BYTES = 32
+from app.services.auth import hash_token, mint_token
 
 
 def mint(
@@ -28,18 +24,15 @@ def mint(
     user_id: uuid.UUID,
     ttl_minutes: int,
 ) -> str:
-    """Mint and persist a fresh token. Returns the plaintext secret.
-
-    Doesn't commit, so the caller can keep the email send and the DB write in one atomic unit
-    (an email failure leaves no orphan token row). Caller commits.
-    """
-    raw = secrets.token_urlsafe(_TOKEN_BYTES)
-    row = PasswordResetToken(
-        user_id=user_id,
-        token_hash=hash_token(raw),
-        expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
+    """Persist a fresh token and return its plaintext. Caller commits."""
+    raw, digest = mint_token()
+    db.add(
+        PasswordResetToken(
+            user_id=user_id,
+            token_hash=digest,
+            expires_at=datetime.now(UTC) + timedelta(minutes=ttl_minutes),
+        )
     )
-    db.add(row)
     return raw
 
 
@@ -69,15 +62,14 @@ def consume(db: Session, raw_token: str) -> PasswordResetToken | None:
     return row
 
 
-def revoke_all_live_for_user(db: Session, user_id: uuid.UUID) -> int:
-    """Mark every outstanding token of ``user_id`` as consumed; returns the count.
+def revoke_all_live_for_user(db: Session, user_id: uuid.UUID) -> None:
+    """Mark every outstanding token of ``user_id`` as consumed.
 
     Atomic UPDATE, so two concurrent ``forgot-password`` calls can't both leave a live token.
     Called when minting a fresh token, so a stolen older email can't be redeemed.
     """
-
     now = datetime.now(UTC)
-    stmt = (
+    db.execute(
         update(PasswordResetToken)
         .where(
             PasswordResetToken.user_id == user_id,
@@ -86,6 +78,3 @@ def revoke_all_live_for_user(db: Session, user_id: uuid.UUID) -> int:
         )
         .values(consumed_at=now)
     )
-    # ``db.execute`` returns a generic Result without ``rowcount``; the cast satisfies mypy.
-    result: CursorResult = db.execute(stmt)  # type: ignore[assignment]
-    return result.rowcount or 0

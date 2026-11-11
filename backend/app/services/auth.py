@@ -39,6 +39,12 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def mint_token() -> tuple[str, str]:
+    """A fresh single-use token and its digest for storage. 32 bytes is 256 bits of entropy."""
+    raw = secrets.token_urlsafe(32)
+    return raw, hash_token(raw)
+
+
 # Pre-computed at import so /login pays one bcrypt even when the email matched no live user;
 # otherwise those branches return faster than a wrong password and leak account state via
 # timing. Bumping ``gensalt()`` cost needs a re-hash-on-login migration, since legacy hashes
