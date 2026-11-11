@@ -14,18 +14,22 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import NamedTuple
 
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models.collection import Collection, CollectionEvent
+from app.models.collection import Collection
 from app.models.event import Event
 from app.models.user import User
 from app.schemas.collection import MAX_CREATE_EVENTS, SearchMatch
-from app.services.collections import TooManyEventsError, ensure_owned_live, split_collectable
+from app.services.collections import (
+    TooManyEventsError,
+    ensure_owned_live,
+    insert_memberships,
+    split_collectable,
+)
 from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_before
 from app.services.search import collectable_matches
@@ -107,9 +111,8 @@ def add_events(
     refuses it beside ids) leaves those events out of the match before the cap
     counts it, and is itself capped like ``event_ids``.
 
-    ``ON CONFLICT DO NOTHING`` on the membership key is the idempotency, so a row
-    already present, or one a concurrent add writes first, counts as
-    ``already_in_collection``.
+    A row already present, or one a concurrent add writes first, counts as
+    ``already_in_collection`` (:func:`services.collections.insert_memberships`).
     """
     ensure_owned_live(collection, user)
     if match is not None:
@@ -129,21 +132,7 @@ def add_events(
             raise _too_many()
         ids, not_collectable = split_collectable(db, event_ids=requested, user=user)
 
-    added = 0
-    if ids:
-        now = datetime.now(UTC)
-        inserted = db.execute(
-            insert(CollectionEvent)
-            .values(
-                [
-                    {"collection_id": collection.id, "event_id": event_id, "added_at": now}
-                    for event_id in ids
-                ]
-            )
-            .on_conflict_do_nothing(index_elements=["collection_id", "event_id"])
-            .returning(CollectionEvent.event_id)
-        ).all()
-        added = len(inserted)
+    added = insert_memberships(db, collection_id=collection.id, event_ids=ids)
     db.commit()
     return BulkAddOutcome(
         added=added,

@@ -33,7 +33,7 @@ from typing import Any, NamedTuple
 
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import ColumnElement, func, select, union
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.errors import CodedError
@@ -106,9 +106,6 @@ NO_TIME = time(23, 59, 59, 999999)
 # Rows the add-to-collection popover lists, unpaged. Past the cap the older
 # collections are absent from it silently.
 MAX_POPOVER_COLLECTIONS = 100
-
-# SQLSTATE 23505 (unique violation), read as ``exc.orig.pgcode``.
-_UNIQUE_VIOLATION = "23505"
 
 
 # Mirrored by frontend EventPicker.tsx (its date and id keys only); change both.
@@ -629,25 +626,39 @@ def add_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user:
     The collection must be the caller's (403), then :func:`ensure_collectable`
     applies: unknown event 404, foreign event 403, non-collectable state 409.
 
-    The composite primary key is the idempotency: the INSERT runs in a
-    SAVEPOINT, so an existing or racing row rolls back only its own statement.
-    Like ``services/social.follow_user`` without the pre-SELECT.
-
-    Only :data:`_UNIQUE_VIOLATION` is swallowed. A foreign-key violation means
-    the collection or event vanished, and answering 204 would claim a shelving
-    that did not happen, so it is re-raised (500).
+    A foreign-key violation means the collection or event vanished, and answering 204 would
+    claim a shelving that did not happen, so it raises (500).
     """
     ensure_owned_live(collection, user)
     ensure_collectable(db, event_ids=[event_id], user=user)
-
-    try:
-        with db.begin_nested():
-            db.add(CollectionEvent(collection_id=collection.id, event_id=event_id))
-    except IntegrityError as exc:
-        if getattr(exc.orig, "pgcode", None) != _UNIQUE_VIOLATION:
-            raise
-        return
+    insert_memberships(db, collection_id=collection.id, event_ids=[event_id])
     db.commit()
+
+
+def insert_memberships(
+    db: Session, *, collection_id: uuid.UUID, event_ids: Sequence[uuid.UUID]
+) -> int:
+    """Stage the memberships of ``event_ids`` the collection lacks and return how many it wrote.
+
+    ``ON CONFLICT DO NOTHING`` on the membership key is the idempotency: a row already present,
+    or one a concurrent add writes first, is skipped. Any other violation, such as a foreign key
+    to a vanished row, raises.
+    """
+    if not event_ids:
+        return 0
+    now = datetime.now(UTC)
+    inserted = db.execute(
+        insert(CollectionEvent)
+        .values(
+            [
+                {"collection_id": collection_id, "event_id": event_id, "added_at": now}
+                for event_id in event_ids
+            ]
+        )
+        .on_conflict_do_nothing(index_elements=["collection_id", "event_id"])
+        .returning(CollectionEvent.event_id)
+    ).all()
+    return len(inserted)
 
 
 def remove_event(db: Session, *, collection: Collection, event_id: uuid.UUID, user: User) -> None:
