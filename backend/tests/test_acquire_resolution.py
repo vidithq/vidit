@@ -16,7 +16,7 @@ from app.services.tweet_ingest import (
     acquire_thread,
     resolve_threads,
 )
-from app.services.tweet_ingest.records import ChasedPost, ChaseResult
+from app.services.tweet_ingest.records import ChasedPost, ChaseResult, SourceLink
 from app.services.tweet_ingest.syndication import (
     extract_source_links,
 )
@@ -35,9 +35,9 @@ def test_extract_source_links_expands_dedupes_skips_tco():
         }
     }
     assert extract_source_links(body) == [
-        ("https://t.me/foo/123", "https://t.co/aaa"),
-        ("https://x.com/bar/status/456", "https://t.co/bbb"),
-        ("https://youtu.be/xyz", None),
+        SourceLink("https://t.me/foo/123", "https://t.co/aaa"),
+        SourceLink("https://x.com/bar/status/456", "https://t.co/bbb"),
+        SourceLink("https://youtu.be/xyz", None),
     ]
 
 

@@ -21,7 +21,7 @@ import httpx
 from .chase import chase_thread
 from .errors import TweetFetchFailed, TweetNotAccessible
 from .extract import is_mentions_only, scan_coords
-from .records import QuotedTweet, SourceLink, TweetRecord, expand_shortlinks
+from .records import QuotedTweet, TweetRecord, expand_shortlinks
 from .resolve import COORDS_MISSING, THREAD_TRUNCATED, Resolution, resolve_threads
 from .syndication import extract_media, extract_source_links, fetch_syndication
 from .urls import normalise_tweet_url
@@ -54,7 +54,7 @@ def _quoted_record(body: dict[str, Any]) -> QuotedTweet | None:
         text=raw_text if isinstance(raw_text, str) else "",
         created_at=raw_created if isinstance(raw_created, str) else "",
         media=list(extract_media(qt, origin="quote")),
-        external_sources=[SourceLink(url=u, shortlink=t) for u, t in extract_source_links(qt)],
+        external_sources=extract_source_links(qt),
     )
 
 
@@ -87,7 +87,7 @@ def record_by_id(tweet_id: str, *, handle: str, client: httpx.Client | None = No
         in_reply_to_status_id=(in_reply_to_status if isinstance(in_reply_to_status, str) else None),
         quoted=_quoted_record(body),
         quoted_status_id=_quoted_status_id(body),
-        external_sources=[SourceLink(url=u, shortlink=t) for u, t in extract_source_links(body)],
+        external_sources=extract_source_links(body),
     )
 
 

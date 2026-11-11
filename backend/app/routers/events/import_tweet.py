@@ -31,11 +31,6 @@ from app.services.tweet_ingest import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Wording for a refusal the copy table lacks (unreachable while the code test
-# passes); here so the page needn't keep a second table.
-_UNNAMED_REFUSAL = "That post produced no detection."
-
-
 TweetImportRefusalCode = Literal[
     "invalid_tweet_url", "post_unreadable", "upstream_busy", "upstream_unreadable"
 ]
@@ -111,10 +106,7 @@ def import_from_tweet(
         reason=(
             None
             if outcome.reason is None
-            else ImportNote(
-                code=outcome.reason,
-                message=REFUSAL_MESSAGES.get(outcome.reason, _UNNAMED_REFUSAL),
-            )
+            else ImportNote(code=outcome.reason, message=REFUSAL_MESSAGES[outcome.reason])
         ),
         failed=outcome.failed,
     )

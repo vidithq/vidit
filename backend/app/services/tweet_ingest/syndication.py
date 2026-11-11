@@ -32,7 +32,7 @@ from .errors import (
     TweetUpstreamBusy,
     TweetUpstreamUnreachable,
 )
-from .records import MediaKind, ParsedMedia
+from .records import MediaKind, ParsedMedia, SourceLink
 from .retry import parse_retry_after, retrying
 from .urls import T_CO_HOST_RE, hostname, is_trusted_media_url
 
@@ -285,11 +285,6 @@ def media_entry(entry: Any) -> tuple[MediaKind, str] | None:
     return ("video", mp4) if mp4 is not None else None
 
 
-def _cdn_media(kind: MediaKind, url: str, origin: Literal["op", "quote"]) -> ParsedMedia:
-    """One media fetched straight from the X CDN."""
-    return ParsedMedia(kind=kind, remote_url=url, origin=origin)
-
-
 def extract_media(
     syndication: dict[str, Any],
     *,
@@ -302,7 +297,7 @@ def extract_media(
     """
     details = syndication.get("mediaDetails")
     media = [
-        _cdn_media(*read, origin)
+        ParsedMedia(kind=read[0], remote_url=read[1], origin=origin)
         for entry in (details if isinstance(details, list) else [])
         if (read := media_entry(entry)) is not None and is_trusted_media_url(read[1])
     ]
@@ -310,7 +305,7 @@ def extract_media(
         return media
     photos = syndication.get("photos")
     return [
-        _cdn_media("image", url, origin)
+        ParsedMedia(kind="image", remote_url=url, origin=origin)
         for entry in (photos if isinstance(photos, list) else [])
         if isinstance(entry, dict)
         and isinstance(url := entry.get("url"), str)
@@ -318,18 +313,17 @@ def extract_media(
     ]
 
 
-def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str | None]]:
-    """Every URL the post links (``entities.urls``) as ``(expanded_url, shortlink)``.
+def extract_source_links(syndication: dict[str, Any]) -> list[SourceLink]:
+    """Every URL the post links (``entities.urls``), in order and de-duplicated.
 
-    Host-blind (the resolution decides what can be a source). Uses
-    ``expanded_url``, never a bare ``t.co``, and de-dupes in order.
-    ``shortlink`` is the ``t.co`` token in the raw text, ``None`` when absent.
+    Host-blind (the resolution decides what can be a source). Reads
+    ``expanded_url``, never a bare ``t.co``.
     """
     entities = syndication.get("entities")
     urls = entities.get("urls") if isinstance(entities, dict) else None
     if not isinstance(urls, list):
         return []
-    out: list[tuple[str, str | None]] = []
+    out: list[SourceLink] = []
     seen: set[str] = set()
     for entry in urls:
         if not isinstance(entry, dict):
@@ -341,5 +335,9 @@ def extract_source_links(syndication: dict[str, Any]) -> list[tuple[str, str | N
             continue
         seen.add(expanded)
         wrapper = entry.get("url")
-        out.append((expanded, wrapper if isinstance(wrapper, str) and wrapper else None))
+        out.append(
+            SourceLink(
+                url=expanded, shortlink=wrapper if isinstance(wrapper, str) and wrapper else None
+            )
+        )
     return out

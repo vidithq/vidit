@@ -18,7 +18,7 @@ import httpx
 
 from .errors import MediaTooLarge, TweetImportError, TweetNotAccessible
 from .extract import is_retweet
-from .records import ParsedMedia, QuotedTweet, SourceLink, TweetRecord
+from .records import ParsedMedia, QuotedTweet, TweetRecord
 from .retry import retrying_async
 from .syndication import extract_source_links, media_entry, raise_if_busy, upstream_unreachable
 from .urls import is_trusted_media_url
@@ -48,10 +48,6 @@ def _str_or_none(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _strip_ytd_prefix(text: str) -> Any:
-    return json.loads(_YTD_PREFIX_RE.sub("", text, count=1))
-
-
 def _tweet_text(tweet: dict[str, Any]) -> str:
     """An export entry's ``full_text``, else ``text``; the first ``str`` wins, else ``""``."""
     for key in ("full_text", "text"):
@@ -59,14 +55,6 @@ def _tweet_text(tweet: dict[str, Any]) -> str:
         if isinstance(value, str):
             return value
     return ""
-
-
-def _is_retweet(tweet: dict[str, Any]) -> bool:
-    """Whether the entry is a retweet (``extract.is_retweet``, as for live entries).
-
-    Importing one would attribute a stranger's geolocation to the analyst.
-    """
-    return is_retweet(_tweet_text(tweet))
 
 
 def _archive_media(tweet: dict[str, Any], tweet_id: str) -> list[ParsedMedia]:
@@ -113,7 +101,7 @@ def _archive_quoted(
         text=_tweet_text(src),
         created_at=_to_iso(created_at) if isinstance(created_at, str) else "",
         media=_archive_media(src, quoted_id),
-        external_sources=[SourceLink(url=u, shortlink=t) for u, t in extract_source_links(src)],
+        external_sources=extract_source_links(src),
     )
 
 
@@ -125,7 +113,7 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
     downstream attributes another account's post to ``handle``.
     """
     raw = (archive_dir / "tweets.js").read_text(encoding="utf-8")
-    entries = _strip_ytd_prefix(raw)
+    entries = json.loads(_YTD_PREFIX_RE.sub("", raw, count=1))
     if not isinstance(entries, list):
         return []
 
@@ -134,7 +122,7 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
         for entry in entries
         if isinstance(entry, dict)
         and isinstance(entry.get("tweet"), dict)
-        and not _is_retweet(entry["tweet"])
+        and not is_retweet(_tweet_text(entry["tweet"]))
     ]
     # For the in-archive quote join.
     by_id = {t["id_str"]: t for t in tweets if isinstance(t.get("id_str"), str)}
@@ -158,9 +146,7 @@ def read_tweets(archive_dir: Path, *, handle: str) -> list[TweetRecord]:
                 in_reply_to_status_id=_str_or_none(tweet.get("in_reply_to_status_id_str")),
                 quoted=_archive_quoted(quoted_id, by_id, handle=handle),
                 quoted_status_id=quoted_id,
-                external_sources=[
-                    SourceLink(url=u, shortlink=t) for u, t in extract_source_links(tweet)
-                ],
+                external_sources=extract_source_links(tweet),
             )
         )
     return records

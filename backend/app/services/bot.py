@@ -395,6 +395,18 @@ def _post_reply_failsoft(mention: Mention, text: str, *, client: httpx.Client | 
         return None
 
 
+def _reply_within_budget(
+    mention: Mention, text: str, *, allowed: bool, written: str, client: httpx.Client | None
+) -> str | None:
+    """Post the success reply when the budget allows it, else log what landed unanswered."""
+    if allowed:
+        return _post_reply_failsoft(mention, text, client=client)
+    logger.warning(
+        "Reply budget reached; %s without reply for mention %s", written, mention.tweet_id
+    )
+    return None
+
+
 async def _process_mention(
     db: Session,
     mention: Mention,
@@ -442,20 +454,15 @@ async def _process_mention(
             fetch_media=fetch_cdn_media,
         )
         if opened is not None and opened.created is not None:
-            request_reply_id: str | None = None
-            if reply_allowed:
-                # Same budget as a detection's reply; a second allowance would
-                # exceed the cap the ledger reads back.
-                request_reply_id = _post_reply_failsoft(
-                    mention,
-                    compose_request_reply(str(opened.created), warnings=opened.warnings),
-                    client=x_write_client,
-                )
-            else:
-                logger.warning(
-                    "Reply budget reached; request opened without reply for mention %s",
-                    mention.tweet_id,
-                )
+            # Same budget as a detection's reply; a second allowance would
+            # exceed the cap the ledger reads back.
+            request_reply_id = _reply_within_budget(
+                mention,
+                compose_request_reply(str(opened.created), warnings=opened.warnings),
+                allowed=reply_allowed,
+                written="request opened",
+                client=x_write_client,
+            )
             return "requested", 0, request_reply_id, None
         if opened is not None and opened.existing is not None:
             # The analyst already holds a row for it; silent like other dedups.
@@ -474,14 +481,13 @@ async def _process_mention(
         # ``skipped`` is dedup; a persist that raised on every detection is
         # ``failed``, which stays on the operator's retry path (delete the row).
         return ("failed" if assembled.failed else "skipped"), 0, None, None
-    reply_id: str | None = None
-    if reply_allowed:
-        reply_id = _post_reply_failsoft(mention, _success_reply(assembled), client=x_write_client)
-    else:
-        logger.warning(
-            "Reply budget reached; detection written without reply for mention %s",
-            mention.tweet_id,
-        )
+    reply_id = _reply_within_budget(
+        mention,
+        _success_reply(assembled),
+        allowed=reply_allowed,
+        written="detection written",
+        client=x_write_client,
+    )
     if assembled.created:
         return "created", len(assembled.created), reply_id, None
     # An edited, already-imported post: the newer parse landed on the open
