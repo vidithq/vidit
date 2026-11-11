@@ -84,6 +84,17 @@ def decode_session_token(token: str) -> dict[str, Any] | None:
     return payload
 
 
+def session_subject(payload: dict[str, Any]) -> uuid.UUID | None:
+    """The account id in a decoded session's ``sub``, or None when it is not one."""
+    sub = payload.get("sub")
+    if not isinstance(sub, str):
+        return None
+    try:
+        return uuid.UUID(sub)
+    except ValueError:
+        return None
+
+
 def bump_token_version(user: User) -> None:
     """Invalidate every outstanding session for ``user``.
 

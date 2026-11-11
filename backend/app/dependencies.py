@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.errors import CodedError
 from app.models.user import User
-from app.services.auth import decode_session_token
+from app.services.auth import decode_session_token, session_subject
 from app.services.auth_cookies import SESSION_COOKIE
 
 logger = logging.getLogger(__name__)
@@ -75,9 +75,9 @@ def get_current_user(
     payload = decode_session_token(session_cookie)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    user_id = payload.get("sub")
+    user_id = session_subject(payload)
     token_version = payload.get("tv")
-    if not isinstance(user_id, str) or not isinstance(token_version, int):
+    if user_id is None or not isinstance(token_version, int):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     user = db.query(User).filter(User.id == user_id).first()
