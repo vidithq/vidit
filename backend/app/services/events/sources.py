@@ -315,21 +315,21 @@ def _attach_file(
 ) -> None:
     """Give ``source`` its file: a taken upload, whose staged row goes, or a new row on the
     stored object of ``copy_of``."""
+    origin: Upload | Media
     if upload is not None:
-        source.media = Media(
-            storage_url=uploads.storage_url_of(upload),
-            kind=upload.kind,
-            sha256=upload.sha256,
-            original_filename=upload.original_filename,
-        )
-        db.delete(upload)
+        origin, storage_url = upload, uploads.storage_url_of(upload)
     elif copy_of is not None:
-        source.media = Media(
-            storage_url=copy_of.storage_url,
-            kind=copy_of.kind,
-            sha256=copy_of.sha256,
-            original_filename=copy_of.original_filename,
-        )
+        origin, storage_url = copy_of, copy_of.storage_url
+    else:
+        return
+    source.media = Media(
+        storage_url=storage_url,
+        kind=origin.kind,
+        sha256=origin.sha256,
+        original_filename=origin.original_filename,
+    )
+    if upload is not None:
+        db.delete(upload)
 
 
 def file_source(
@@ -378,8 +378,11 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
     """
     entries: list[str] = []
     for item in sources:
+        fields: SourceCreate | Source
         if isinstance(item, PlannedSource):
-            spec = item.spec
+            fields = item.spec
+            position = item.spec.capture_position
+            point = [position.lat, position.lng] if position else None
             if item.keeps_media and item.stored is not None and item.stored.media is not None:
                 file: str | None = item.stored.media.storage_url
             elif item.copy_of is not None:
@@ -388,37 +391,25 @@ def comparable(sources: Iterable[Source] | Iterable[PlannedSource], *, archives:
                 file = f"upload:{item.upload.id}"
             else:
                 file = None
-            position = spec.capture_position
-            value = {
-                "title": spec.title,
-                "level": spec.level,
-                "kind": spec.kind,
-                "captured_at": _instant(spec.captured_at),
-                "capture_position": [position.lat, position.lng] if position else None,
-                "is_graphic": item.is_graphic,
-                "links": sorted(
-                    _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)
-                    for link in item.links
-                ),
-                "tags": sorted(str(tag.id) for tag in item.tags),
-                "file": file,
-            }
         else:
-            point = versions.point_shape(item.capture_position)
-            value = {
-                "title": item.title,
-                "level": item.level,
-                "kind": item.kind,
-                "captured_at": _instant(item.captured_at),
-                "capture_position": [point["lat"], point["lng"]] if point else None,
-                "is_graphic": item.is_graphic,
-                "links": sorted(
-                    _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)
-                    for link in item.links
-                ),
-                "tags": sorted(str(tag.id) for tag in item.tags),
-                "file": item.media.storage_url if item.media is not None else None,
-            }
+            fields = item
+            shape = versions.point_shape(item.capture_position)
+            point = [shape["lat"], shape["lng"]] if shape else None
+            file = item.media.storage_url if item.media is not None else None
+        value = {
+            "title": fields.title,
+            "level": fields.level,
+            "kind": fields.kind,
+            "captured_at": _instant(fields.captured_at),
+            "capture_position": point,
+            "is_graphic": item.is_graphic,
+            "links": sorted(
+                _comparable_link(link.url, link.posted_at, link.snapshot_url, archives=archives)
+                for link in item.links
+            ),
+            "tags": sorted(str(tag.id) for tag in item.tags),
+            "file": file,
+        }
         entries.append(json.dumps(value, sort_keys=True, default=str))
     return entries
 
