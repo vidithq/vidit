@@ -221,23 +221,39 @@ def create_invite_code(
     """
     if x_handle is not None:
         _assert_x_handle_free(db, x_handle)
-    expires_at = datetime.now(UTC) + timedelta(days=expires_in_days) if expires_in_days else None
+    return mint_invite_code(
+        db,
+        actor_id=actor_id,
+        action="invite_created",
+        x_handle=x_handle,
+        expires_at=(
+            datetime.now(UTC) + timedelta(days=expires_in_days) if expires_in_days else None
+        ),
+    )
+
+
+def mint_invite_code(
+    db: Session,
+    *,
+    actor_id: uuid.UUID,
+    action: str,
+    x_handle: str | None,
+    expires_at: datetime | None = None,
+    created_by_id: uuid.UUID | None = None,
+) -> InviteCode:
+    """Add a single-use code with its audit row, and commit."""
     invite = InviteCode(
         code=generate_invite_code(),
         expires_at=expires_at,
         x_handle=x_handle,
+        created_by_id=created_by_id,
     )
     db.add(invite)
     db.flush()
-    target: dict[str, Any] = {"invite_code_id": str(invite.id)}
+    target = {"invite_code_id": str(invite.id)}
     if x_handle is not None:
         target["x_handle"] = x_handle
-    log_admin_event(
-        db,
-        actor_id=actor_id,
-        action="invite_created",
-        target=target,
-    )
+    log_admin_event(db, actor_id=actor_id, action=action, target=target)
     db.commit()
     db.refresh(invite)
     return invite
