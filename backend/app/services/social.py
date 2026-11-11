@@ -39,12 +39,7 @@ def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> 
     SAVEPOINT so the loser's ``IntegrityError`` rolls back without poisoning
     the outer transaction (same pattern as ``routers/tags``).
     """
-    existing = (
-        db.query(Follow)
-        .filter(and_(Follow.follower_id == follower_id, Follow.followed_id == followed_user.id))
-        .first()
-    )
-    if existing is not None:
+    if is_following(db, follower_id=follower_id, followed_id=followed_user.id):
         return False
     try:
         with db.begin_nested():
@@ -57,11 +52,7 @@ def follow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> 
 
 def unfollow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -> bool:
     """Delete a follow row. Idempotent: returns ``False`` if no edge exists."""
-    follow = (
-        db.query(Follow)
-        .filter(and_(Follow.follower_id == follower_id, Follow.followed_id == followed_user.id))
-        .first()
-    )
+    follow = db.get(Follow, (follower_id, followed_user.id))
     if follow is None:
         return False
     db.delete(follow)
@@ -69,12 +60,7 @@ def unfollow_user(db: Session, *, follower_id: uuid.UUID, followed_user: User) -
 
 
 def is_following(db: Session, *, follower_id: uuid.UUID, followed_id: uuid.UUID) -> bool:
-    return (
-        db.query(Follow)
-        .filter(and_(Follow.follower_id == follower_id, Follow.followed_id == followed_id))
-        .first()
-        is not None
-    )
+    return db.get(Follow, (follower_id, followed_id)) is not None
 
 
 def is_mutual_follow(db: Session, *, a_id: uuid.UUID, b_id: uuid.UUID) -> bool:
