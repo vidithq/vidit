@@ -85,12 +85,7 @@ class SiteNotFoundError(AdminError):
 
 
 def _redeemer_reads(db: Session, users: list[User]) -> dict[uuid.UUID, AdminInviteRedeemerRead]:
-    """Batch the onboarding counters for every redeemer in one pass per source.
-
-    Grouped aggregates over ``archive_import_jobs``, ``bot_mentions`` (by lowercased handle),
-    ``events`` and ``audit_log``, so the invite list stays O(1) queries. ``last_seen_at``
-    falls back to the newest ``login`` audit row for rows predating ``users.last_seen_at``.
-    """
+    """One grouped aggregate per source, so the invite list stays O(1) queries."""
     if not users:
         return {}
     ids = [u.id for u in users]
@@ -185,7 +180,6 @@ def serialize_invite_code(db: Session, invite: InviteCode) -> AdminInviteCodeRea
 def _assert_x_handle_free(
     db: Session, x_handle: str, *, exclude_user_id: uuid.UUID | None = None
 ) -> None:
-    """Raise the typed conflict when :func:`services.users.x_handle_holder` names a holder."""
     holder = x_handle_holder(db, x_handle, exclude_user_id=exclude_user_id)
     if holder == "analyst":
         raise XHandleConflictError("x_handle is already linked to another account")
@@ -200,7 +194,7 @@ def log_admin_event(
     action: str,
     target: dict[str, Any] | None = None,
 ) -> AuditLog:
-    """Append a row to ``audit_log``. No commit: the caller owns the transaction."""
+    """No commit: the caller owns the transaction."""
     row = AuditLog(actor_id=actor_id, action=action, target=target)
     db.add(row)
     return row
@@ -213,12 +207,6 @@ def create_invite_code(
     expires_in_days: int | None,
     x_handle: str | None = None,
 ) -> InviteCode:
-    """Mint a single-use invite code, optionally bound to an X handle.
-
-    A bound ``x_handle`` (already normalized by the schema) is copied onto the account at
-    redemption; minting against a handle a user already carries raises the same conflict as the
-    direct link endpoint.
-    """
     if x_handle is not None:
         _assert_x_handle_free(db, x_handle)
     return mint_invite_code(
@@ -265,13 +253,8 @@ def list_invite_codes(
     limit: int,
     cursor: tuple[datetime, uuid.UUID] | None = None,
 ) -> list[InviteCode]:
-    """One window of invite codes, newest first, over-fetched by one row for
-    ``pagination.paged``.
-
-    No status filtering: an admin needs revoked and expired rows to remember what was issued.
-    Paged on the ``created_at DESC, id DESC`` keyset, since only an unused code's row ever
-    leaves the table.
-    """
+    """One window, over-fetched by one row for ``pagination.paged``. Keyset-paged, since only
+    an unused code's row ever leaves the table."""
     query = (
         db.query(InviteCode)
         .options(joinedload(InviteCode.used_by_user), joinedload(InviteCode.created_by_user))
@@ -312,13 +295,7 @@ def delete_invite_code(
     actor_id: uuid.UUID,
     invite_id: uuid.UUID,
 ) -> bool:
-    """Drop an unredeemed invite code row. Returns False when the id is unknown.
-
-    Revocation keeps the row; deletion cleans up a code no account was created from. A row
-    naming a redeemer is refused: it is the account's origin record. The audit row keeps the
-    code value. An unconfirmed registration started from the code goes with it
-    (``ON DELETE CASCADE``), the same outcome as revoking the code under that signup.
-    """
+    """False when the id is unknown. A redeemed code is the account's origin record."""
     invite = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
     if invite is None:
         return False
@@ -336,10 +313,8 @@ def delete_invite_code(
 
 
 def search_users(db: Session, *, query: str, limit: int = 20) -> list[User]:
-    """Case-insensitive substring match on username or email.
-
-    ``ILIKE`` is fine at low-hundreds-of-users scale; past ~10k users, switch to pg_trgm + GIN.
-    """
+    """``ILIKE`` is fine at low-hundreds-of-users scale; past ~10k users, switch to pg_trgm +
+    GIN."""
     cleaned = query.strip()
     if not cleaned:
         return []
@@ -366,11 +341,6 @@ def set_user_x_handle(
     user_id: uuid.UUID,
     x_handle: str | None,
 ) -> User:
-    """Link or clear the X handle the bot attributes mentions to, with audit.
-
-    The schema validator already normalized the value. A handle held by any other user raises
-    the conflict error.
-    """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or user.deleted_at is not None:
         # A link on a tombstoned account would resurrect with the row.
@@ -405,10 +375,6 @@ def set_invite_minting(
     user_id: uuid.UUID,
     enabled: bool,
 ) -> User:
-    """Turn minting invite codes from Settings on or off for one analyst, with audit.
-
-    Codes already minted stay valid; revoke them one by one.
-    """
     user = db.query(User).filter(User.id == user_id).with_for_update().first()
     if user is None or user.deleted_at is not None:
         raise UserNotFoundError("User not found")
@@ -431,11 +397,6 @@ def soft_delete_geolocation(
     actor_id: uuid.UUID,
     geolocation_id: uuid.UUID,
 ) -> AdminEventDeleteResponse:
-    """Mark a geolocation as removed-from-public-view.
-
-    Idempotent: an already soft-deleted row keeps its timestamp and files no audit row. S3
-    objects and media rows stay put (evidence is preserved, just hidden).
-    """
     geo = db.query(Event).filter(Event.id == geolocation_id).first()
     if geo is None:
         raise EventNotFoundError("Event not found")
@@ -474,6 +435,7 @@ def move_takedown(
     )
 
 
+# The two names services/reports imports.
 def withhold_collection(db: Session, *, collection: Collection, actor_id: uuid.UUID) -> None:
     move_takedown(db, row=collection, hidden=True, actor_id=actor_id)
 
@@ -509,12 +471,7 @@ def hard_delete_geolocation(
     actor_id: uuid.UUID,
     geolocation_id: uuid.UUID,
 ) -> AdminEventDeleteResponse:
-    """GDPR-grade erasure: drop the row, the media rows, and the stored objects.
-
-    Commit-then-sweep, see :func:`services.evidence_intake.sweep_unreferenced`: an object a
-    copy on another event still names stays. Reachable on soft-deleted rows (soft now, hard
-    later) and on live rows (admin override).
-    """
+    """Commit-then-sweep (:func:`services.evidence_intake.sweep_unreferenced`)."""
     geo = db.query(Event).filter(Event.id == geolocation_id).first()
     if geo is None:
         raise EventNotFoundError("Event not found")
@@ -546,20 +503,11 @@ def redact_version(
     geolocation_id: uuid.UUID,
     version_no: int,
 ) -> EventVersion:
-    """Blank one filed version of an event, keeping the row and its number.
+    """Blank one filed version of an event in place, keeping its row and number.
 
-    The moderation exit for a version whose content the record must stop serving.
-    ``event_versions`` is append-only, so the snapshot and the note are blanked in place and the
-    row is stamped ``redacted_at`` / ``redacted_by_id``. ``version_no`` and ``created_at`` stay,
-    so ``/vN`` addressing never shifts.
-
-    This is also the one write outside an edit that can free evidence: a proof image no readable
-    version and no current proof body points at is deleted (row and object), and so is the S3
-    object of a superseded source media this version alone named. Both run commit-then-sweep.
-
-    Idempotent: a second call changes nothing and writes no audit row, like
-    ``services/reports.set_event_moderation``. Raises :class:`EventNotFoundError` (404) for an
-    unknown or soft-deleted event and :class:`VersionNotFoundError` (404) for a missing version.
+    The one write outside an edit that can free evidence: a proof image no readable version and
+    no current proof body points at, and a superseded source file this version alone named.
+    Both run commit-then-sweep.
     """
     # Locked like a moderation verdict: the prune below reads this event's media and history,
     # so a concurrent edit must not interleave its own proof diff.
@@ -630,11 +578,7 @@ def soft_delete_user(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> AdminUserDeleteResponse:
-    """Mark a user as removed-from-public-view + cascade to their submissions.
-
-    ``cascaded_geolocations`` counts the live events flipped in this call. Idempotent on an
-    already-deleted user (same timestamp, no audit row, counts zero).
-    """
+    """Idempotent on an already-deleted user: same timestamp, no audit row, counts zero."""
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
@@ -813,13 +757,7 @@ def purge_detected_events(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> AdminPurgeDetectedResponse:
-    """Hard-delete every detection a user owns, keeping the account.
-
-    The broken-archive repair: rows and stored objects (via :func:`event_objects`, soft-deleted
-    detections included), leaving the account, geolocations and requests.
-    ``closed`` rows that were once detected stay (the owner acted on them). Same
-    commit-then-sweep ordering as :func:`hard_delete_user`.
-    """
+    """``closed`` rows that were once detected stay: the owner acted on them."""
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise UserNotFoundError("User not found")
@@ -855,20 +793,7 @@ def purge_detected_events(
 
 
 def detection_quality_stats(db: Session) -> AdminDetectionStatsRead:
-    """Machine-extraction quality signal for the admin panel (read-only).
-
-    See :class:`AdminDetectionStatsRead` for the exact definitions. Two grouped aggregate
-    queries:
-
-    1. Reject-rate over every machine detection (``Event.is_machine_detection``): dismissed
-       detections over the total. A detection dismissed before publication counts as a reject
-       through either door: an owner close off ``detected``, or an admin soft-delete that never
-       left ``detected``. A soft-deleted ``geolocated`` row is not a reject (it was vouched).
-       :func:`app.services.detection._row_disposition` refuses to re-import both shapes.
-    2. The live ``detected`` queue (``deleted_at IS NULL``, human rows excluded), counting
-       detections missing a source file (on a direct or indirect source), a proof image or a
-       source URL, which the publish floor demands.
-    """
+    """Two grouped aggregates; :class:`AdminDetectionStatsRead` defines each count."""
     # A bot-opened request carries an ``event_detections`` row too, so the cohort is the
     # model's own predicate rather than a second spelling of it.
     machine = Event.is_machine_detection

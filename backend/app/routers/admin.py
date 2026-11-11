@@ -69,9 +69,7 @@ def detection_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminDetectionStatsRead:
-    """Machine-extraction quality signal: reject-rate over machine detections
-    plus missing-piece counts on the pending queue. Read-only, no audit row.
-    See ``AdminDetectionStatsRead``."""
+    """Machine-extraction quality: reject-rate and missing-piece counts on the pending queue."""
     return admin_service.detection_quality_stats(db)
 
 
@@ -230,8 +228,7 @@ def search_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> list[User]:
-    """Case-insensitive substring match on username or email. Empty query
-    returns [] so the search box doesn't preload the user table."""
+    """Case-insensitive substring match on username or email."""
     return admin_service.search_users(db, query=q)
 
 
@@ -244,8 +241,7 @@ def set_user_x_handle(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> User:
-    """Link or clear the X handle the bot attributes mentions to. The only
-    write path for ``users.x_handle``."""
+    """Link or clear the X handle the bot attributes mentions to."""
     return admin_service.set_user_x_handle(
         db,
         actor_id=current_user.id,
@@ -362,10 +358,7 @@ def hide_collection_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminCollectionHideResponse:
-    """Withhold a collection from every read but an admin's.
-
-    Alias of ``PATCH /admin/collections/{id}/moderation`` with ``{"hidden": true}``.
-    """
+    """Withhold a collection from every read but an admin's."""
     return _collection_takedown(db, collection_id, hidden=True, actor=current_user)
 
 
@@ -408,12 +401,7 @@ def list_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ContentReportList:
-    """The moderation queue: open reports first, newest first within each group.
-
-    Resolved rows stay (a report is never deleted), so the queue is also the
-    record of decisions. Offset-paged (``ContentReportList``), capped at 100
-    rows per page.
-    """
+    """The moderation queue: open reports first, newest first within each group."""
     per_page = page_size(per_page)
     rows, total = reports_service.list_reports(db, page=page, per_page=per_page)
     return ContentReportList(
@@ -433,14 +421,7 @@ def resolve_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> ContentReportRead:
-    """Close one report with a verdict, applying it to what the report names.
-
-    One route for event and collection reports: the service applies the
-    verdicts the target kind takes. 404 on an unknown report, 409 on one that
-    already has a verdict (never reopened) or a verdict the target cannot
-    take. The service owns the mutation and audit trail; the points cache is
-    dropped here, only when an event actually left the map.
-    """
+    """Close one report with a verdict, applying it to what the report names."""
     report, hidden_changed = reports_service.resolve_report(
         db,
         report_id=report_id,
@@ -461,12 +442,7 @@ def set_event_moderation(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminEventModerationRead:
-    """Set an event's moderation state directly, with no report behind it.
-
-    Both fields are optional and independent; an omitted or unchanged field
-    writes no audit row. The one verb that also UNDOES a takedown. 404 for an
-    unknown or soft-deleted event.
-    """
+    """Set an event's moderation state directly, with no report behind it."""
     event, hidden_changed = reports_service.set_event_moderation(
         db,
         geolocation_id=geolocation_id,
@@ -491,17 +467,7 @@ def redact_event_version(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> EventVersionRead:
-    """Blank one filed version of an event's history.
-
-    ``event_versions`` is append-only and version numbers are public
-    addresses, so a version the record must stop serving is blanked, not
-    removed: the snapshot and note go, while the row, ``version_no`` and
-    ``created_at`` stay and the version is listed as ``redacted``. A proof
-    image only it pointed at is deleted with it.
-
-    Idempotent: an already-redacted version writes no audit row. 404 for an
-    unknown or soft-deleted event, or a version the event does not carry.
-    """
+    """Blank one filed version of an event's history."""
     row = admin_service.redact_version(
         db,
         actor_id=current_user.id,
@@ -538,8 +504,7 @@ def maintenance_reap_pending_registrations(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Drop expired ``pending_registrations`` rows. The create path sweeps
-    inline, so this mostly clears abandoned signups."""
+    """Drop expired ``pending_registrations`` rows."""
     result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
@@ -556,12 +521,7 @@ def maintenance_send_completion_digests(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ) -> AdminMaintenanceResponse:
-    """Email every analyst holding unpublished detections.
-
-    One message per analyst: how many wait, and the link to their Detections
-    queue. One provider round-trip per analyst, capped at
-    ``maintenance.COMPLETION_DIGEST_LIMIT`` addresses; a provider failure on
-    one is counted, not raised."""
+    """Email every analyst holding unpublished detections."""
     result = maintenance_service.run_logged(
         db,
         actor_id=current_user.id,
