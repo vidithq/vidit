@@ -42,7 +42,7 @@ from app.models.event import (
     EventVersion,
 )
 from app.models.media import Media, MediaRole
-from app.models.source import EVIDENCE_LEVELS, Source, SourceLink
+from app.models.source import EVIDENCE_LEVELS, Source, SourceKind, SourceLevel, SourceLink
 from app.models.user import User
 from app.schemas.source import SourceCreate, SourceLinkCreate
 from app.services import uploads
@@ -385,43 +385,46 @@ async def _store_media(
     return source_media, proof_image_urls
 
 
-def _import_sources(detection: Detection, source_media: Media | None) -> list[Source]:
-    """The sources a detection declares, in its order.
+# What an import owns of one source: its level, kind, title and ``(url, posted_at)`` links.
+_SourceShape = tuple[SourceLevel, SourceKind, str, list[tuple[str, datetime | None]]]
 
-    The declared source (its URL and post time, and the footage) when there is one, ``direct``
-    and ``unknown`` (a review names the kind); then one source per mirror or context link, with
+
+def _declared_shape(work: Detection | RequestDraft, has_footage: bool) -> list[_SourceShape]:
+    """The sources the engine's work declares, in order.
+
+    The declared source, ``direct`` and ``unknown`` (a review names the kind), with its URL and
+    post time, when there is a URL or footage; then one source per mirror or context link, with
     the level, kind, title and post time the resolution gave it.
     """
-    sources: list[Source] = []
-    if detection.source_url is not None or source_media is not None:
-        sources.append(
-            Source(
-                level="direct",
-                kind="unknown",
-                links=(
-                    [SourceLink(url=detection.source_url, posted_at=detection.source_posted_at)]
-                    if detection.source_url is not None
-                    else []
-                ),
-                media=source_media,
-            )
+    shape: list[_SourceShape] = []
+    if work.source_url is not None:
+        shape.append(("direct", "unknown", "", [(work.source_url, work.source_posted_at)]))
+    elif has_footage:
+        shape.append(("direct", "unknown", "", []))
+    shape += [
+        (extra.level, extra.kind, extra.title, [(extra.url, extra.posted_at)])
+        for extra in work.secondary_sources
+    ]
+    return shape
+
+
+def _import_sources(detection: Detection, source_media: Media | None) -> list[Source]:
+    """The sources a detection declares, the footage on the declared one."""
+    sources = [
+        Source(
+            level=level,
+            kind=kind,
+            title=title,
+            position=position,
+            links=[SourceLink(url=url, posted_at=posted_at) for url, posted_at in links],
         )
-    for extra in detection.secondary_sources:
-        sources.append(
-            Source(
-                level=extra.level,
-                kind=extra.kind,
-                title=extra.title,
-                links=[SourceLink(url=extra.url, posted_at=extra.posted_at)],
-            )
+        for position, (level, kind, title, links) in enumerate(
+            _declared_shape(detection, source_media is not None)
         )
-    for position, source in enumerate(sources):
-        source.position = position
+    ]
+    if source_media is not None:
+        sources[0].media = source_media
     return sources
-
-
-# What an import owns of one source: its level, kind, title and ``(url, posted_at)`` links.
-_SourceShape = tuple[str, str, str, list[tuple[str, datetime | None]]]
 
 
 def _import_shape(sources: Sequence[Source]) -> list[_SourceShape]:
@@ -435,21 +438,6 @@ def _import_shape(sources: Sequence[Source]) -> list[_SourceShape]:
         )
         for source in sources
     ]
-
-
-def _declared_shape(detection: Detection, has_footage: bool) -> list[_SourceShape]:
-    shape: list[_SourceShape] = []
-    if detection.source_url is not None:
-        shape.append(
-            ("direct", "unknown", "", [(detection.source_url, detection.source_posted_at)])
-        )
-    elif has_footage:
-        shape.append(("direct", "unknown", "", []))
-    shape += [
-        (extra.level, extra.kind, extra.title, [(extra.url, extra.posted_at)])
-        for extra in detection.secondary_sources
-    ]
-    return shape
 
 
 async def _persist_one(
@@ -947,22 +935,15 @@ async def open_request(
             conflict_ids=[],
             sources=[
                 SourceCreate(
-                    level="direct",
-                    kind="unknown",
-                    links=[
-                        SourceLinkCreate(url=draft.source_url, posted_at=draft.source_posted_at)
-                    ],
-                    upload_id=staged.id,
-                ),
-                *(
-                    SourceCreate(
-                        level=extra.level,
-                        kind=extra.kind,
-                        title=extra.title,
-                        links=[SourceLinkCreate(url=extra.url, posted_at=extra.posted_at)],
-                    )
-                    for extra in draft.secondary_sources
-                ),
+                    level=level,
+                    kind=kind,
+                    title=title,
+                    links=[SourceLinkCreate(url=url, posted_at=at) for url, at in links],
+                    upload_id=staged.id if position == 0 else None,
+                )
+                for position, (level, kind, title, links) in enumerate(
+                    _declared_shape(draft, has_footage=True)
+                )
             ],
             proof_files=[],
             provenance=ImportProvenance(
