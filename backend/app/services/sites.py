@@ -85,6 +85,7 @@ from app.services.events.errors import SourceMediaNotFoundError
 from app.services.events.sources import build_source_read, file_source
 from app.services.evidence_intake import StoredObject, media_objects
 from app.services.imagery import LinkCheck, can_reopen, image_provider
+from app.services.row_locks import lock_row
 from app.services.thumbnails import thumbnail_loads, thumbnail_media
 from app.services.versions import MAX_VERSIONS_PER_EVENT, VersionLimitError
 
@@ -632,11 +633,6 @@ def _require_site_owner(site: Site, user: User) -> None:
         raise NotSiteOwnerError("Only the site's owner can make this change")
 
 
-def _lock_site(db: Session, site: Site) -> Site:
-    """The site row under its lock, which serializes the writes that take a version number."""
-    return db.query(Site).filter(Site.id == site.id).populate_existing().with_for_update().one()
-
-
 def _snapshot(db: Session, site: Site) -> SiteSnapshot:
     """The live state of ``site``: its record and its live sources, each with its live contour."""
     rows = (
@@ -863,7 +859,7 @@ def file_site_source(
     ``duplicate_source_ids``, never refused.
     """
     try:
-        locked = _lock_site(db, site)
+        locked = lock_row(db, Site, Site.id == site.id).one()
         _file_version(db, site=locked, editor=author)
         source = _stage_site_source(db, site_id=site.id, author=author, body=body)
         duplicates = _duplicates(db, source)
@@ -895,7 +891,7 @@ def remove_site_source(db: Session, *, site: Site, user: User, source_id: uuid.U
     contour (409), the version ceiling (409).
     """
     try:
-        locked = _lock_site(db, site)
+        locked = lock_row(db, Site, Site.id == site.id).one()
         sources = {
             row.id: row
             for row in db.query(Source).filter(Source.site_id == site.id, *live_sources())
@@ -929,7 +925,7 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
     """
     _require_site_owner(site, user)
     try:
-        locked = _lock_site(db, site)
+        locked = lock_row(db, Site, Site.id == site.id).one()
         if body.version_no != locked.version_no:
             raise SiteVersionMismatchError(
                 f"This site is at version {locked.version_no}; reload it before saving"

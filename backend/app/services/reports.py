@@ -39,6 +39,7 @@ from app.services import email
 from app.services.admin import log_admin_event, move_site_takedown, withhold_collection
 from app.services.collections import erase_if_released, visible_collections
 from app.services.event_filters import visible_events
+from app.services.row_locks import lock_row
 from app.services.sites import visible_sites
 
 logger = logging.getLogger(__name__)
@@ -429,15 +430,7 @@ def resolve_report(
     the points cache and is only set by an event takedown. Raises
     :class:`ReportNotFoundError` (404) on an unknown id.
     """
-    # ``populate_existing()`` keeps the locked SELECT from returning a stale
-    # identity-map object.
-    report = (
-        db.query(ContentReport)
-        .filter(ContentReport.id == report_id)
-        .populate_existing()
-        .with_for_update()
-        .first()
-    )
+    report = lock_row(db, ContentReport, ContentReport.id == report_id).first()
     if report is None:
         raise ReportNotFoundError("Report not found")
     if report.resolved_at is not None:
@@ -449,35 +442,17 @@ def resolve_report(
         # Locked whatever the verdict, serializing with ``DELETE /admin/collections/{id}`` and
         # with the owner's delete, which reads the open reports under the same lock. Withheld
         # and owner-deleted collections stay reachable (the stamp is idempotent).
-        collection = (
-            db.query(Collection)
-            .filter(Collection.id == report.collection_id)
-            .populate_existing()
-            .with_for_update()
-            .one()
-        )
+        collection = lock_row(db, Collection, Collection.id == report.collection_id).one()
     site: Site | None = None
     if report.site_id is not None and resolution != "dismissed":
-        site = (
-            db.query(Site)
-            .filter(Site.id == report.site_id)
-            .populate_existing()
-            .with_for_update()
-            .one()
-        )
+        site = lock_row(db, Site, Site.id == report.site_id).one()
     # ``dismissed`` touches no target, so it skips the event fetch and lock.
     if resolution != "dismissed":
         if report.event_id is not None:
             # Locked so a resolve racing the direct moderation endpoint
             # serializes. Soft-deleted and hidden events stay reachable: a
             # report filed before the removal still deserves a verdict.
-            event = (
-                db.query(Event)
-                .filter(Event.id == report.event_id)
-                .populate_existing()
-                .with_for_update()
-                .one()
-            )
+            event = lock_row(db, Event, Event.id == report.event_id).one()
             if resolution == "marked_graphic":
                 _mark_graphic(db, event=event, actor_id=actor_id, graphic=True)
             elif resolution == "hidden":
@@ -505,12 +480,15 @@ def resolve_report(
         action="report_resolved",
         target={
             "report_id": str(report.id),
-            # Both keys always present so one shape reads the trail.
-            "event_id": str(report.event_id) if report.event_id is not None else None,
-            "collection_id": (
-                str(report.collection_id) if report.collection_id is not None else None
-            ),
-            "site_id": str(report.site_id) if report.site_id is not None else None,
+            # Every key always present so one shape reads the trail.
+            **{
+                key: str(value) if value is not None else None
+                for key, value in (
+                    ("event_id", report.event_id),
+                    ("collection_id", report.collection_id),
+                    ("site_id", report.site_id),
+                )
+            },
             "resolution": resolution,
         },
     )
@@ -543,13 +521,7 @@ def set_event_moderation(
     Returns ``(event, hidden_changed)``. Raises :class:`EventNotFoundError`
     (404) for an unknown or soft-deleted event.
     """
-    event = (
-        db.query(Event)
-        .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
-        .populate_existing()
-        .with_for_update()
-        .first()
-    )
+    event = lock_row(db, Event, Event.id == geolocation_id, Event.deleted_at.is_(None)).first()
     if event is None:
         raise EventNotFoundError("Event not found")
 

@@ -55,6 +55,7 @@ from app.services.event_filters import collectable_events, credited_to
 from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import keyset_after
 from app.services.permissions import ensure_owner
+from app.services.row_locks import lock_row
 from app.services.sanitize import html_text, sanitize_html
 from app.services.thumbnails import has_thumbnail, thumbnail_candidates, thumbnail_loads
 
@@ -614,13 +615,7 @@ def delete_collection(db: Session, *, collection: Collection, user: User) -> Non
     # Locked like ``services/reports.resolve_report`` locks it, and both decide on the open
     # reports after the lock, so whichever runs second sees the other's write: a delete racing
     # the last verdict either erases at once or is erased by the verdict.
-    locked = (
-        db.query(Collection)
-        .filter(Collection.id == collection.id)
-        .populate_existing()
-        .with_for_update()
-        .first()
-    )
+    locked = lock_row(db, Collection, Collection.id == collection.id).first()
     if locked is None:
         return
     if _has_open_report(db, collection.id):
