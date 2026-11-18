@@ -16,6 +16,8 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - An event's tags and a source's tags read in alphabetical order on every page and in the API, instead of the order they were added ([#836](https://github.com/vidithq/vidit/pull/836)).
 - The bot reads its mentions once a day at 12:00 UTC from where its last read stopped, so each mention is read once and a worker restart reads none; the bot's own posts, and replies under them that only inherit the tag, no longer enter the queue ([#830](https://github.com/vidithq/vidit/pull/830)).
 
+- The Discord links in the sidebar, the beta banner and the About page open the new invite ([#846](https://github.com/vidithq/vidit/pull/846)).
+
 ### Removed
 
 - `/profile` and `/geolocations/new` no longer resolve: open your profile from the sidebar, and submit from `/submit` ([#835](https://github.com/vidithq/vidit/pull/835)).

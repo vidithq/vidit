@@ -14,7 +14,7 @@ const displayVersion = /^\d/.test(BUILD_VERSION)
   ? `v${BUILD_VERSION}`
   : BUILD_VERSION;
 
-const REPORT_URL = "https://discord.gg/9wPtsrrKyJ";
+const REPORT_URL = "https://discord.gg/T5syUscsqr";
 
 // The corner pill would sit over a phone's content, so it hides below `sm` and the nav drawer
 // renders this component `inline`. The two visibility halves never overlap, so exactly one copy is live.
