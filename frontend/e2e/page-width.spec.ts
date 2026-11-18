@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { EVENT_ID } from "./support/fixtures";
+import { EVENT_ID, ORGANIZATION_SLUG, SIGNED_IN_USER } from "./support/fixtures";
 import { grantSession, mockApi } from "./support/mockApi";
 import { runAtOneWidth } from "./support/wideViewport";
 
@@ -9,12 +9,14 @@ import { runAtOneWidth } from "./support/wideViewport";
  * every page, and from `lg` up a `max-w-6xl` column sits centred on the screen,
  * the nav rail counted in the left margin. A page without a rail keeps the 53rem reading width;
  * a page with a rail gives the main column the same width beside a 17.5rem
- * rail once the screen holds both.
+ * rail once the screen holds both. The profile and the organization page take the whole column
+ * without a rail.
  */
 test.beforeEach(runAtOneWidth);
 
 const READING_PX = 848;
 const RAIL_PX = 280;
+const WIDE_PX = 1152;
 
 async function titleX(page: Page, path: string): Promise<number> {
   await page.goto(path);
@@ -70,6 +72,34 @@ test.describe("page width", () => {
     );
     expect((await rail.boundingBox())!.width).toBe(RAIL_PX);
     expect(mainWidth).toBe(READING_PX);
+  });
+
+  test("gives the profile and the organization page the whole column", async ({ page }) => {
+    await page.goto(`/profile/${SIGNED_IN_USER.username}`);
+    const insights = page.getByRole("heading", { name: "Insights" }).locator("xpath=ancestor::section");
+    await expect(insights).toBeVisible();
+    expect((await insights.boundingBox())!.width).toBe(WIDE_PX);
+    // No rail takes part of the column.
+    await expect(page.getByRole("complementary")).toHaveCount(1);
+
+    const origin = (await page.getByRole("heading", { name: "Source origin" }).boundingBox())!;
+    const dates = (await page.getByRole("heading", { name: "Event dates" }).boundingBox())!;
+    expect(dates.y).toBe(origin.y);
+    expect(dates.x).toBeGreaterThan(origin.x);
+
+    await page.goto(`/organizations/${ORGANIZATION_SLUG}`);
+    const members = page.getByRole("heading", { name: "Members" }).locator("xpath=ancestor::section");
+    await expect(members).toBeVisible();
+    expect((await members.boundingBox())!.width).toBe(WIDE_PX);
+
+    // Below `lg` the charts stack, in reading order.
+    await page.goto(`/profile/${SIGNED_IN_USER.username}`);
+    await expect(insights).toBeVisible();
+    await page.setViewportSize({ width: 900, height: 900 });
+    const originNarrow = (await page.getByRole("heading", { name: "Source origin" }).boundingBox())!;
+    const datesNarrow = (await page.getByRole("heading", { name: "Event dates" }).boundingBox())!;
+    expect(datesNarrow.x).toBe(originNarrow.x);
+    expect(datesNarrow.y).toBeGreaterThan(originNarrow.y);
   });
 });
 
