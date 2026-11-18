@@ -103,9 +103,11 @@ export default function ProfilePage() {
   // the coverage map, Insights, collections, recent submissions, open requests.
   // The detections entry is the exception: pending work, so it stays above the fold on the owner's profile.
   // Editing collapses the page to the form alone, with Cancel and Save pinned in the sticky actions.
+  // `wide` without a rail: the map, the charts and the lists fill the column the rail pages take.
   return (
     <PageShell
       back
+      column="wide"
       title={<ProfileTitle name={profile.username} edit={edit} />}
       subtitle={edit.editing ? undefined : <ProfileIdentity profile={shownProfile} organizations={organizations} />}
       actions={

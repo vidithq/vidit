@@ -80,22 +80,26 @@ export function ProfileInsights({ username }: { username: string }) {
         />
       </StatGrid>
 
-      {/* Where the footage came from: the beat an analyst works reads off the hosts. The `?` is the
-          source links definition, not to be confused with the source kind above. */}
-      <div>
-        <SectionEyebrow title="Source origin" concept="source_links" as="h3" margin="sm" />
-        <SourceHostBar
-          hosts={stats.source_hosts}
-          otherCount={stats.other_hosts_count}
-          noSourceCount={stats.no_source_count}
-        />
-      </div>
+      {/* From `lg` up the two charts share a row, so the month cells, which are square, stay small
+          on the wide column. */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
+        {/* Where the footage came from: the beat an analyst works reads off the hosts. The `?` is the
+            source links definition, not to be confused with the source kind above. */}
+        <div>
+          <SectionEyebrow title="Source origin" concept="source_links" as="h3" margin="sm" />
+          <SourceHostBar
+            hosts={stats.source_hosts}
+            otherCount={stats.other_hosts_count}
+            noSourceCount={stats.no_source_count}
+          />
+        </div>
 
-      {/* The axis is the date the event happened, not when it was posted or imported. The heading is
-          the name the field carries on the submit and edit forms; its `?` settles the ambiguity. */}
-      <div>
-        <SectionEyebrow title="Event dates" concept="occurred_date" as="h3" margin="sm" />
-        <ActivityHeatmap buckets={stats.activity} />
+        {/* The axis is the date the event happened, not when it was posted or imported. The heading is
+            the name the field carries on the submit and edit forms; its `?` settles the ambiguity. */}
+        <div>
+          <SectionEyebrow title="Event dates" concept="occurred_date" as="h3" margin="sm" />
+          <ActivityHeatmap buckets={stats.activity} />
+        </div>
       </div>
     </Card>
   );
