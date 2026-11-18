@@ -77,6 +77,8 @@ export default function OrganizationPage() {
   return (
     <PageShell
       back
+      // The analyst profile's column, so both pages read at one width.
+      column="wide"
       title={<ProfileTitle name={org.name} edit={edit} />}
       subtitle={edit.editing ? undefined : <IdentityLines bio={org.bio} segments={segments} />}
       actions={
