@@ -19,7 +19,7 @@ import { accountKey, analystAccount } from "@/lib/accounts";
 import { cn } from "@/lib/cn";
 import { countLabel } from "@/lib/format";
 import { accountItem } from "@/lib/items";
-import { AUTHOR_FILTER_RE, suggestApprovers, suggestAuthors } from "@/lib/search";
+import { USERNAME_RE, suggestApprovers, suggestAuthors } from "@/lib/search";
 import { TimelineScrubber } from "./TimelineScrubber";
 import { useOpenGroups, usePanelOpen } from "@/hooks/useFilterPanelState";
 import {
@@ -144,7 +144,7 @@ function DimensionLine({
   // The server's author filters are exact, so a typed fragment becomes a name through the list;
   // a draft the gate refuses is not committed, instead of a 422.
   const commit = (typed: string) => {
-    if (!AUTHOR_FILTER_RE.test(typed)) return;
+    if (!USERNAME_RE.test(typed)) return;
     if (author) onPatch({ author: typed });
     else onPatch({ approvedBy: analystAccount({ username: typed }) });
   };

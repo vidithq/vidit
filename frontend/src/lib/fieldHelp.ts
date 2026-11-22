@@ -176,6 +176,10 @@ export const FIELD_HELP = {
     text: "The last org manager cannot leave, be removed or become a member. Make another member org manager first.",
     label: "Why can the last org manager not leave?",
   },
+  username: {
+    text: "Your public name on Vidit, in your profile link and on everything you publish. Up to 50 characters: letters A to Z, digits, underscores and hyphens.",
+    label: "What makes a valid username?",
+  },
   x_handle: {
     text: "The Vidit bot and the archive import credit posts from this handle to your account. An admin links it.",
     label: "What is the X handle for?",

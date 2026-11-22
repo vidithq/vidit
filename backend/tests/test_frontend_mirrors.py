@@ -23,6 +23,7 @@ from app.models.source import (
     SOURCE_URL_MAX_LENGTH,
 )
 from app.models.tag import NAME_MAX_LENGTH as TAG_NAME_MAX_LENGTH
+from app.schemas import USERNAME_PATTERN
 from app.schemas.auth import PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH
 from app.schemas.collection import DESCRIPTION_MAX_LENGTH, MAX_CREATE_EVENTS
 from app.schemas.event import CLOSE_REASON_MAX_LENGTH, VERSION_NOTE_MAX_LENGTH
@@ -31,7 +32,7 @@ from app.schemas.site import MAX_ZONE_AREA_KM2, SITE_SOURCE_NOTE_MAX_LENGTH
 from app.schemas.user import BIO_MAX_LEN
 from app.services.auth_cookies import CSRF_COOKIE, CSRF_HEADER
 from app.services.collections import COVER_TILES
-from app.services.event_filters import AUTHOR_FILTER_PATTERN, STATUSES
+from app.services.event_filters import STATUSES
 from app.services.events import InvalidCoordinatesError, validate_coordinates
 from app.services.geolocator_credit import MAX_EVENT_GEOLOCATORS
 from app.services.pagination import MAX_PAGE_SIZE
@@ -128,10 +129,10 @@ def test_strings_match(path: str, name: str, backend: str) -> None:
     assert _string(path, name) == backend
 
 
-def test_author_filter_pattern_matches() -> None:
-    match = re.search(r"\bconst AUTHOR_FILTER_RE = /(.+)/;", _source("lib/search.ts"))
+def test_username_pattern_matches() -> None:
+    match = re.search(r"\bconst USERNAME_RE = /(.+)/;", _source("lib/search.ts"))
     assert match
-    assert match.group(1) == AUTHOR_FILTER_PATTERN
+    assert match.group(1) == USERNAME_PATTERN
 
 
 def test_proof_text_tags_match() -> None:

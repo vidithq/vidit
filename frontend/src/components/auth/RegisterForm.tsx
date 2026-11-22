@@ -7,6 +7,7 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { ApiError } from "@/lib/api";
 import { PASSWORD_MAX_BYTES, validateNewPassword } from "@/lib/auth";
+import { USERNAME_RE } from "@/lib/search";
 import { register } from "@/lib/users";
 import { Button } from "@/components/ui/Button";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
@@ -15,6 +16,9 @@ import { FORM_LABEL_COMPACT } from "@/components/ui/form-styles";
 import { Input } from "@/components/ui/Input";
 import { blankFields, useIncompleteForm } from "@/hooks/useIncompleteForm";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+
+const USERNAME_RULE =
+  "Username must be 1 to 50 characters: letters A to Z, digits, underscores or hyphens.";
 
 interface Props {
   /** Called once the backend accepts the payload (202), with the email the confirmation link goes to. */
@@ -75,6 +79,10 @@ export default function RegisterForm({
       return;
     }
     incomplete.clearIncomplete();
+    if (!USERNAME_RE.test(username)) {
+      setError(USERNAME_RULE);
+      return;
+    }
     const validationError = validateNewPassword(password);
     if (validationError) {
       setError(validationError);
@@ -133,6 +141,7 @@ export default function RegisterForm({
           <FieldLabel
             htmlFor="username"
             label="Username"
+            concept="username"
             invalid={invalidKeys.has("username")}
             className={FORM_LABEL_COMPACT}
           />

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import type { MapPoint } from "@/types";
 import { useApiResource } from "@/hooks/useApiResource";
-import { AUTHOR_FILTER_RE } from "@/lib/search";
+import { USERNAME_RE } from "@/lib/search";
 import { hasFiniteCoords, pointsBounds } from "@/components/map/bounds";
 import { Card } from "@/components/ui/Card";
 import { SectionEyebrow } from "@/components/ui/SectionEyebrow";
@@ -35,7 +35,7 @@ export function ProfileMap({ username }: { username: string }) {
   const router = useRouter();
   // The charset gate the map page applies before committing an author value (an ineligible one
   // 422s). A null path skips the fetch (`useApiResource`).
-  const path = AUTHOR_FILTER_RE.test(username)
+  const path = USERNAME_RE.test(username)
     ? `/events/points?author=${encodeURIComponent(username)}` +
       `&bbox=${toBboxParam(WORLD_BOUNDS)}`
     : null;
