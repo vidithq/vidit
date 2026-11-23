@@ -146,7 +146,7 @@ export function OgDefaultBody() {
           flexDirection: "column",
         }}
       >
-        <div>The home for</div>
+        <div>An open archive of</div>
         <div>conflict geolocations.</div>
       </div>
       {/* Subhead: smaller and neutral so it reads as subordinate despite the shared 700 weight. */}
@@ -156,12 +156,12 @@ export function OgDefaultBody() {
           fontSize: "28px",
           color: OG_COLOR.muted,
           lineHeight: 1.4,
-          maxWidth: "900px",
+          maxWidth: "1060px",
           display: "flex",
         }}
       >
-        An open platform for OSINT/GEOINT analysts to archive, reference, and
-        visualise armed-conflict events.
+        The open source platform where OSINT/GEOINT analysts publish, archive
+        and share geolocated events from armed conflicts.
       </div>
     </div>
   );

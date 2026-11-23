@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const size = OG_SIZE;
 export const contentType = OG_CONTENT_TYPE;
 export const alt =
-  "Vidit, an open platform for OSINT/GEOINT analysts to archive, reference, and visualise geolocations of armed-conflict events.";
+  "Vidit, an open archive of conflict geolocations: the open source platform where OSINT/GEOINT analysts publish, archive and share geolocated events from armed conflicts.";
 
 export default function OpenGraphImage() {
   return ogImageResponse(

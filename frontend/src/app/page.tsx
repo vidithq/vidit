@@ -114,7 +114,7 @@ export default function LandingPage() {
       <PageFrame>
         <section className="pt-16 pb-12 text-center">
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1]">
-            The home for conflict geolocations
+            An open archive of conflict geolocations
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-neutral-400 leading-relaxed">
             Vidit is the{" "}
