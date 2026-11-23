@@ -60,4 +60,32 @@ describe("RegisterForm", () => {
     expect(screen.getByText(/at least 8 characters/)).toBeInTheDocument();
     expect(register).not.toHaveBeenCalled();
   });
+
+  it.each(["ana b", "ana.b", "café", "a".repeat(51)])(
+    "refuses the username %j before submit and states the rule",
+    (username) => {
+      render(<RegisterForm onSuccess={vi.fn()} initialInviteCode="code" />);
+      fill();
+      fireEvent.change(screen.getByLabelText("Username"), { target: { value: username } });
+
+      fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+      expect(
+        screen.getByText(/letters A to Z, digits, underscores or hyphens/),
+      ).toBeInTheDocument();
+      expect(register).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["Ana_B-2", "a".repeat(50)])("submits the username %j", async (username) => {
+    render(<RegisterForm onSuccess={vi.fn()} initialInviteCode="code" />);
+    fill();
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: username } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() =>
+      expect(register).toHaveBeenCalledWith(expect.objectContaining({ username })),
+    );
+  });
 });

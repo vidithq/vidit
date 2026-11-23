@@ -10,6 +10,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- A new username holds only ASCII letters, digits, underscores and hyphens, so the author filter reaches every new account; the registration form states the rule and refuses another character before it submits ([#858](https://github.com/vidithq/vidit/pull/858)).
 - The admin event routes answer an unknown event with the error code `event_not_found`, the code every other route uses, instead of `geolocation_not_found` ([#835](https://github.com/vidithq/vidit/pull/835)).
 - A request body over the size cap answers 413 with the typed body, code `upload_too_large` and the same message, instead of a plain string `detail` ([#835](https://github.com/vidithq/vidit/pull/835)).
 - The OpenAPI spec lists the values of `view` on `GET /events` and `readiness` on `GET /events/detections`; an unknown value still answers 422, now with the standard validation body that names the parameter ([#835](https://github.com/vidithq/vidit/pull/835)).

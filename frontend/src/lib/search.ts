@@ -111,7 +111,7 @@ const APPROVED_BY_ORG = "approved_by_org";
 /** The filter set under its wire names (`DIMENSIONS`), the one mapping the query string and a
  *  JSON body (`SearchMatch.filters`, `lib/collections.ts`) both read. A list is any-match within
  *  itself and AND across lists. Show sends its statuses alone, since the other kinds it picks
- *  are not event filters. An author the `AUTHOR_FILTER_RE` gate refuses is dropped rather than
+ *  are not event filters. An author the `USERNAME_RE` gate refuses is dropped rather than
  *  sent to a 422. */
 export function eventFilterFields(
   f: EventFilterParams,
@@ -122,7 +122,7 @@ export function eventFilterFields(
     if (values.length) fields[param] = values;
   }
   const author = f.author?.trim();
-  if (author && AUTHOR_FILTER_RE.test(author)) fields[DIMENSIONS.author.param] = author;
+  if (author && USERNAME_RE.test(author)) fields[DIMENSIONS.author.param] = author;
   const hasCoords = hasCoordsFilter(f.locationGuess ?? []);
   if (hasCoords !== undefined) fields[DIMENSIONS.locationGuess.param] = hasCoords;
   if (f.approved) fields[DIMENSIONS.approved.param] = true;
@@ -144,7 +144,7 @@ export function appendEventFilterParams(params: URLSearchParams, f: EventFilterP
   }
 }
 
-/** The filter values a URL names, `show` holding its statuses. A name the `AUTHOR_FILTER_RE`
+/** The filter values a URL names, `show` holding its statuses. A name the `USERNAME_RE`
  *  gate refuses is dropped, so a crafted URL cannot 422 every fetch, and an organization read
  *  from a slug carries the slug as its name. */
 export function readEventFilterParams(params: {
@@ -155,8 +155,8 @@ export function readEventFilterParams(params: {
   const username = params.get(DIMENSIONS.approvedBy.param) ?? "";
   const slug = params.get(APPROVED_BY_ORG) ?? "";
   let approvedBy: Account | null = null;
-  if (AUTHOR_FILTER_RE.test(username)) approvedBy = { kind: "analyst", username };
-  else if (AUTHOR_FILTER_RE.test(slug)) approvedBy = { kind: "organization", slug, name: slug };
+  if (USERNAME_RE.test(username)) approvedBy = { kind: "analyst", username };
+  else if (USERNAME_RE.test(slug)) approvedBy = { kind: "organization", slug, name: slug };
   const date = (name: string) => params.get(name) ?? "";
   const lists = Object.fromEntries(
     LIST_DIMENSIONS.map(({ field, param }) => [field, params.getAll(param)]),
@@ -164,7 +164,7 @@ export function readEventFilterParams(params: {
   return {
     ...lists,
     locationGuess: locationGuessOf(params.get(DIMENSIONS.locationGuess.param)),
-    author: AUTHOR_FILTER_RE.test(author) ? author : "",
+    author: USERNAME_RE.test(author) ? author : "",
     approved: params.get(DIMENSIONS.approved.param) === "true",
     approvedBy,
     eventFrom: date(DATE_DIMENSIONS.eventDate.params[0]),
@@ -224,16 +224,16 @@ export function profileSearchHref(
   return `/search?${searchPageParams("", { ...filters, author: username, show })}`;
 }
 
-/** Mirrors `AUTHOR_FILTER_PATTERN` (`services/event_filters.py`); change both. Anything else
- *  would 422. */
-export const AUTHOR_FILTER_RE = /^[A-Za-z0-9_-]{1,50}$/;
+/** Mirrors `USERNAME_PATTERN` (`schemas/__init__.py`); change both. The username charset, and
+ *  the `?author=` gate: anything else would 422. */
+export const USERNAME_RE = /^[A-Za-z0-9_-]{1,50}$/;
 
 /** Username typeahead for the exact-match author filter and the co-geolocator invite:
  *  `GET /search/authors` (prefix matches first). A query the `?author=` gate refuses suggests
  *  nothing instead of a 422. */
 export async function suggestAuthors(q: string): Promise<Account[]> {
   const trimmed = q.trim();
-  if (!AUTHOR_FILTER_RE.test(trimmed)) return [];
+  if (!USERNAME_RE.test(trimmed)) return [];
   const params = new URLSearchParams({ q: trimmed });
   const res = await apiFetch<components["schemas"]["AuthorSuggestions"]>(`/search/authors?${params.toString()}`);
   return res.authors.map((username) => ({ kind: "analyst", username }));

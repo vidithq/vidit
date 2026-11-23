@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, BaseModel, Field
 from pydantic_core import PydanticCustomError
 
-from app.schemas import NormalizedEmail
+from app.schemas import NormalizedEmail, Username
 
 # Mirrored by ``frontend/src/lib/auth.ts`` (``PASSWORD_MIN_LENGTH``).
 PASSWORD_MIN_LENGTH = 8
@@ -34,7 +34,7 @@ NewPassword = Annotated[
 
 
 class RegisterRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=50)
+    username: Username
     email: NormalizedEmail
     password: NewPassword
     invite_code: str = Field(min_length=1, max_length=64)

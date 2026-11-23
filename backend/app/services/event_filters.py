@@ -50,6 +50,7 @@ from app.models.organization import Organization
 from app.models.source import SOURCE_KINDS, Source, SourceLevel
 from app.models.tag import Tag
 from app.models.user import User
+from app.schemas import USERNAME_PATTERN
 
 
 def lock_event(db: Session, event_id: uuid.UUID) -> Event:
@@ -185,11 +186,6 @@ def parse_optional_iso_date(raw: str | None, *, field: str) -> date | None:
         ) from exc
 
 
-# Restrict ``?author=`` (and the suggestion query) to real username characters, keeping ``%`` /
-# ``\`` LIKE vectors out before any SQL builder. Used as a ``Query(pattern=...)`` guard.
-# Hand-kept FE mirror: ``lib/search.ts::AUTHOR_FILTER_RE``.
-AUTHOR_FILTER_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
-
 # Accepted ``media`` filter values (the ``Media.kind`` domain); a typo returns 422.
 MEDIA_TYPES = frozenset({"image", "video"})
 
@@ -213,7 +209,7 @@ def owner_username_matches(author: str) -> ColumnElement[bool]:
     """The ``?author=`` predicate on a joined :class:`User` row.
 
     Exact, not substring: ``?author=ana`` must not sweep in every handle containing "ana".
-    Callers gate ``author`` through :data:`AUTHOR_FILTER_PATTERN`.
+    Callers gate ``author`` through :data:`USERNAME_PATTERN`.
 
     A predicate rather than a query leg because the event groups match it on every credited
     analyst (:meth:`EventFilters.apply`), and search matches it on the owner of a collection or
@@ -395,7 +391,7 @@ def approval_predicates(
     ``approved_by_org`` one the organization the slug names approved. Each leg pins
     ``organization_id`` so the lookup stays on the partial unique index of its kind
     (``uq_event_approvals_analyst``, ``uq_event_approvals_organization``). Callers gate the two
-    names through :data:`AUTHOR_FILTER_PATTERN`. :meth:`EventFilters.apply` reads them.
+    names through :data:`USERNAME_PATTERN`. :meth:`EventFilters.apply` reads them.
     """
     analyst = EventApproval.organization_id.is_(None)
     organization = EventApproval.organization_id.is_not(None)
@@ -527,9 +523,9 @@ class EventFilters:
         validate_source_filters(self.source_kind, self.level)
         for field in ("author", "approved_by", "approved_by_org"):
             value = getattr(self, field)
-            if value is not None and not re.fullmatch(AUTHOR_FILTER_PATTERN, value):
+            if value is not None and not re.fullmatch(USERNAME_PATTERN, value):
                 raise HTTPException(
-                    status_code=422, detail=f"{field} must match {AUTHOR_FILTER_PATTERN}"
+                    status_code=422, detail=f"{field} must match {USERNAME_PATTERN}"
                 )
 
     def active_beyond(self, *kept: str) -> bool:

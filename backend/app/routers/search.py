@@ -17,11 +17,11 @@ from sqlalchemy.orm import Session
 from app.dependencies import DB
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers._filters import event_filters
+from app.schemas import USERNAME_PATTERN
 from app.schemas.event import DateHistogram
 from app.schemas.search import AuthorSuggestions, SearchResponse, SearchSections
 from app.services import search as search_service
 from app.services.event_filters import (
-    AUTHOR_FILTER_PATTERN,
     EventFilters,
     validate_status_filter,
 )
@@ -142,7 +142,7 @@ def suggest_authors(
     q: str = Query(
         "",
         description="Username fragment; same charset gate as ?author=",
-        pattern=r"^$|" + AUTHOR_FILTER_PATTERN,
+        pattern=r"^$|" + USERNAME_PATTERN,
     ),
 ) -> AuthorSuggestions:
     """Usernames for the author-filter typeahead."""

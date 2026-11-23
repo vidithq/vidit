@@ -8,8 +8,8 @@ from typing import Annotated
 
 from fastapi import Depends, Query
 
+from app.schemas import USERNAME_PATTERN
 from app.services.event_filters import (
-    AUTHOR_FILTER_PATTERN,
     EventFilters,
     validate_media_types,
     validate_source_filters,
@@ -28,7 +28,7 @@ def event_filters(
     submitted_to: str | None = None,
     author: str | None = Query(
         None,
-        pattern=AUTHOR_FILTER_PATTERN,
+        pattern=USERNAME_PATTERN,
         description="Keep the events credited to this username (exact, case-insensitive); on"
         " search, also the sites and collections it owns",
     ),
@@ -36,12 +36,12 @@ def event_filters(
     approved: bool = Query(False, description="Keep events approved on their live version"),
     approved_by: str | None = Query(
         None,
-        pattern=AUTHOR_FILTER_PATTERN,
+        pattern=USERNAME_PATTERN,
         description="Keep events this analyst approved on their live version (username)",
     ),
     approved_by_org: str | None = Query(
         None,
-        pattern=AUTHOR_FILTER_PATTERN,
+        pattern=USERNAME_PATTERN,
         description="Keep events this organization approved on their live version (slug)",
     ),
     has_coords: bool | None = Query(None, description="true: with a location; false: without"),

@@ -355,6 +355,12 @@ A password you set through `POST /auth/register`, `POST /auth/reset-password`, o
 
 A password you sign in with, or send as `current_password`, is never refused for being too long. One longer than 72 bytes matches no account, so it gets the same response as a wrong password. An empty `current_password` gets a 422.
 
+### Username rules
+
+A username you register through `POST /auth/register` holds 1 to 50 characters from `[A-Za-z0-9_-]`: ASCII letters, digits, underscores and hyphens. It is the charset the [`author` filter of `GET /events`](#get-events) accepts, so the filter reaches every account registered under this rule. A username outside these bounds gets a 422, and the `detail` entry's `msg` states the rule.
+
+No endpoint changes a username. A route that names an existing account by username, such as a profile read or an invitation, matches the stored value exactly. An account whose stored username is outside the charset signs in, reads its profile and edits its other profile fields, but the `author` and `approved_by` filters do not reach it.
+
 ### `POST /auth/register`
 
 Stage a registration. Anonymous. **This call creates no `users` row.** The submission lives in `pending_registrations` until the user clicks the link in the confirmation email. The pending row references the invite code but does not consume it, so an abandoned signup does not burn the invite.
@@ -385,7 +391,7 @@ The response sets no session cookie. A background task sends the confirmation em
 | 400 | `invalid_invite`: invite code invalid, expired, revoked, or exhausted |
 | 409 | `email_already_registered` / `username_already_taken`: taken by a live or soft-deleted user |
 | 409 | `email_pending_confirmation` / `username_pending_confirmation`: a live pending confirmation holds it |
-| 422 | `password` outside the [password rules](#password-rules) |
+| 422 | `username` outside the [username rules](#username-rules), or `password` outside the [password rules](#password-rules) |
 
 ---
 
@@ -884,7 +890,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `bbox` | string | `south,west,north,east` (four comma-separated floats). 422 on malformed input; latitudes in [-90, 90], longitudes in [-180, 180], south ≤ north, west ≤ east. |
 | `occurred_date_from` / `occurred_date_to` | date (YYYY-MM-DD) | Inclusive event-date range. Malformed values return 422. |
 | `submitted_from` / `submitted_to` | date (YYYY-MM-DD) | Inclusive submission-date range. Malformed values return 422. |
-| `author` | string | Exact, case-insensitive match on the username of any analyst the event credits: its owner or one of its [geolocators](#shared-credit) (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
+| `author` | string | Exact, case-insensitive match on the username of any analyst the event credits: its owner or one of its [geolocators](#shared-credit) (pick real handles via [`GET /search/authors`](#get-searchauthors)). Restricted to the [username charset](#username-rules), `[A-Za-z0-9_-]{1,50}`; any other character returns 422. |
 | `approved` | bool | `true` keeps a `geolocated` event whose live version holds an approval, an analyst's or an organization's. An approval of an earlier version does not count. See [Approvals](#approvals). |
 | `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
 | `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version. Same character rule. |

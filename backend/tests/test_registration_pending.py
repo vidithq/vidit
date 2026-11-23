@@ -131,6 +131,30 @@ def test_register_caps_the_password_at_72_bytes(client, invite_code, sent_emails
     )
 
 
+# Each prefix takes an 8-character unique suffix; the last one reaches the 50-character cap.
+@pytest.mark.parametrize("prefix", ["a", "Ana_B-", "a" * 42])
+def test_register_accepts_a_username_in_the_charset(client, invite_code, sent_emails, prefix):
+    payload = {**_unique_payload(invite_code), "username": f"{prefix}{uuid.uuid4().hex[:8]}"}
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 202
+
+
+@pytest.mark.parametrize("username", ["", "ana b", "ana.b", "ana@b", "café", "a" * 51])
+def test_register_refuses_a_username_outside_the_charset(
+    client, invite_code, sent_emails, db, username
+):
+    payload = {**_unique_payload(invite_code), "username": username}
+    response = client.post("/api/v1/auth/register", json=payload)
+
+    assert response.status_code == 422
+    (error,) = response.json()["detail"]
+    assert error["loc"] == ["body", "username"]
+    assert "letters A to Z, digits, underscores or hyphens" in error["msg"]
+    assert (
+        db.query(PendingRegistration).filter(PendingRegistration.email == payload["email"]).first()
+        is None
+    )
+
+
 def test_register_rejects_when_email_is_pending(client, invite_code, sent_emails, db):
     payload = _unique_payload(invite_code)
     assert client.post("/api/v1/auth/register", json=payload).status_code == 202

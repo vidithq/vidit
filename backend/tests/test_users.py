@@ -39,7 +39,7 @@ from app.services.evidence_processing import (
 )
 from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 from tests._fixtures import TINY_JPEG, client, gif_bytes, make_event, storage_key, stored_path
-from tests.conftest import login_as
+from tests.conftest import DEFAULT_PASSWORD, login_as
 
 # ── GET /users/{username} — profile ───────────────────────────────────────
 
@@ -195,6 +195,27 @@ def test_patch_me_sets_bio(live_user, db):
     db.expire_all()
     refreshed = db.query(User).filter(User.id == live_user.id).first()
     assert refreshed.bio == "OSINT analyst, Eastern Ukraine armoured movement."
+
+
+def test_account_outside_the_username_charset_logs_in_and_edits_its_bio(make_user, db):
+    """The charset rule binds a new username only: a stored one outside it keeps working."""
+    user = make_user(username=f"ana b {uuid.uuid4().hex[:8]}")
+
+    login = client.post(
+        "/api/v1/auth/login", json={"email": user.email, "password": DEFAULT_PASSWORD}
+    )
+    assert login.status_code == 200
+    assert login.json()["username"] == user.username
+
+    assert client.get(f"/api/v1/users/{user.username}").status_code == 200
+
+    response = client.patch(
+        "/api/v1/users/me", json={"bio": "Edited."}, headers=login_as(client, user)
+    )
+    assert response.status_code == 200
+    db.expire_all()
+    refreshed = db.query(User).filter(User.id == user.id).one()
+    assert (refreshed.username, refreshed.bio) == (user.username, "Edited.")
 
 
 def test_patch_me_replaces_external_links_wholesale(live_user, db):
