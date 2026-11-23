@@ -10,6 +10,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Changed
 
+- The landing headline and the default link preview read "An open archive of conflict geolocations", and the preview subhead matches the landing paragraph ([#862](https://github.com/vidithq/vidit/pull/862)).
 - A new username holds only ASCII letters, digits, underscores and hyphens, so the author filter reaches every new account; the registration form states the rule and refuses another character before it submits ([#858](https://github.com/vidithq/vidit/pull/858)).
 - The admin event routes answer an unknown event with the error code `event_not_found`, the code every other route uses, instead of `geolocation_not_found` ([#835](https://github.com/vidithq/vidit/pull/835)).
 - A request body over the size cap answers 413 with the typed body, code `upload_too_large` and the same message, instead of a plain string `detail` ([#835](https://github.com/vidithq/vidit/pull/835)).
