@@ -1226,7 +1226,7 @@ Only the owner edits; any signed-in analyst files a source. A linked event's eff
 
 ### Search
 
-[`/search`](../frontend/src/app/search/page.tsx) finds events, sites, collections, analysts and organizations. With no kind picked, it lists the top hits of each kind under the kind's name, from [`GET /search/sections`](api.md#get-searchsections). With one kind picked, it lists every hit of that kind in rank order, from [`GET /search`](api.md#get-search). It takes the standard page shell: the search field in the title's place (`PageShell titleField`, the `Search` title kept as the visually hidden `h1`), the results in the main column and the filter panel in the [right rail](#right-rail).
+[`/search`](../frontend/src/app/search/page.tsx) takes the standard page shell, with the search field in the title's place and the filter panel in the [right rail](#right-rail).
 
 ```mermaid
 flowchart LR
@@ -1270,227 +1270,58 @@ flowchart LR
   datesApi -->|"timelines"| panel
 ```
 
-**The URL holds the view.** The query, the Show pick and the filters live in the URL in the vocabulary of `GET /search` (`searchPageParams` in [`lib/search.ts`](../frontend/src/lib/search.ts)), so a shared link opens the same view and a profile link such as `/search?type=collection&author=ana` opens with **Collections** selected. The page writes the URL 300 ms after the last keystroke or change, through `usePageUrl` (see [Filter panel](#filter-panel)). A new Show pick adds a history entry, so **Back** returns to the previous kind; a new query or filter replaces the current entry. When the URL moves (**Back**, **Forward** or **See all**), the page takes the view it names at once.
-
-**The Show line.** The panel's **Show** line offers **Requested**, **Detected**, **Geolocated**, then **Sites**, **Collections**, **Analysts** and **Organizations** (`SHOW_KINDS` in [`model.ts`](../frontend/src/components/filters/model.ts), named by the plural of `ITEM_KINDS`). The line follows the [Show rule](#filter-panel): with nothing selected the page lists every kind, and once something is selected it lists only what the selection names. A status names the events in that status. `searchTypes` turns the pick into the `type` and `status` values the API reads. A link whose `type=event` names no status selects every status, and the page writes a pick of every status that way.
-
-**The dimensions follow the pick.** While the pick lists events, the panel offers every dimension but Following, the timelines included, which count the events the query and the filters match ([`GET /search/dates`](api.md#get-searchdates)). Once it lists no event, the panel offers only Show and the lines the picked kinds answer (`KIND_DIMENSIONS`, the mirror of the API's rule): **Tags** and **Author** for collections, **Author** for sites, none for analysts and organizations. A pick that drops the events also drops the values of the lines it no longer offers, so no hidden filter keeps narrowing the list.
-
-**Sections.** A pick of no kind, or of several, lists one section per kind that has a hit, in a fixed order: Events, Sites, Collections, Analysts, Organizations. A request is an event and sits in the Events section with its *Requested* badge. Each section is a `SectionEyebrow` with the kind's name, then the kind's top 5 hits as list [`<Item>`](#items) rows through `searchHitItem` ([`lib/items.tsx`](../frontend/src/lib/items.tsx)). A section whose kind holds more ends its heading row on **See all**, which opens the page on that kind alone: the events keep the statuses the pick names, or take every status, and another kind keeps the filters it answers. A kind with no hit has no section, and no section prints a count.
-
-**The list of one kind.** A pick of one kind lists every hit of that kind in rank order, and ends on a `<LoadMoreRow>` that follows the response's `cursor` with the query, kind and filters of the page that minted it. On the events, each row the reader may shelve takes a checkbox (`SelectableHit`), with **Select all** (`SelectAllRow`) over the list and **Add to collection** in the page's actions.
-
-In both views, each title marks the words the query matched, and an analyst's or an organization's detail line ends with the bio excerpt when the bio matched. An event opens the event page or the request page, and every other hit opens its own page.
-
-**Typing.** The page searches 300 ms after the last keystroke, and a response that lands after a newer request started is dropped. The results on screen stay until the next ones land, so typing never blanks the page.
-
-**States.** The search field takes the focus when the page opens. An empty field with no filter shows the search icon alone. A search that finds nothing says *No matches.* on one line and, when the API offers one, *Did you mean* with the respelling as a link that searches it at once.
-
-**The coordinate row.** Under the search field, a query that reads as a coordinate pair shows one arrow `LinkRow` that opens the map there. An analyst or an organization the query names exactly (`exactProfile` in [`lib/search.ts`](../frontend/src/lib/search.ts)) shows once, first in its section or its list.
-
-**Phone.** Below `lg` the rail leaves the page and the panel's phone bar sits above the results, as on the feed and the Requests board.
+The URL holds the view, so a shared link opens the same view. A pick with no kind, or several, lists one section per kind with a hit, in a fixed order: Events, Sites, Collections, Analysts, Organizations. No section prints a count. A pick that drops the events also drops the filters it no longer offers, so no hidden filter narrows the list. An analyst or organization the query names exactly shows first.
 
 ### Share cards
 
-A pasted link is how most readers meet the platform, so the four pages an analyst shares generate their own preview image. Every card is a [`next/og`](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image) (Satori) composition on one frame, [`_og/card.tsx`](../frontend/src/app/_og/card.tsx): a 1200×630 canvas, the bundled Montserrat 700 cut, the accent-`V` wordmark, the `vidit.app` footer, and the hex palette. Satori accepts no class names, which is why the cards compose that frame instead of the `components/ui/` primitives (see *Sanctioned one-offs*). The palette in `card.tsx` restates the same neutral / orange scale the classes resolve to, and is the one place a card reads colour from.
+A pasted link is how most readers meet the platform, so the profile, organization, event and collection pages generate their own preview image. Every card composes one frame (see [Sanctioned one-offs](#sanctioned-one-offs)). The event card's locator makes no map request: at card size a reader uses only the region.
 
-| Card | Content |
-|---|---|
-| Site default, [`app/opengraph-image.tsx`](../frontend/src/app/opengraph-image.tsx) | Headline ("An open archive of conflict geolocations") and subhead, the same sentence as the landing hero paragraph. Inherited by every route that generates none of its own. |
-| Profile, [`profile/[username]/opengraph-image.tsx`](../frontend/src/app/profile/[username]/opengraph-image.tsx) | Avatar (or the handle monogram), handle, bio, and four counts under the page's own labels: geolocated, detected, followers, media. `ogProfileCounts` in [`lib/og.ts`](../frontend/src/lib/og.ts) reads geolocated and detected off the Insights payload, co-geolocated events included, and followers off the header's; the link description lists the same three. A failed stats read keeps geolocated on `geolocations_count`, the same figure, and drops detected and media. Top conflicts sit in the footer. |
-| Organization, [`organizations/[slug]/opengraph-image.tsx`](../frontend/src/app/organizations/[slug]/opengraph-image.tsx) | The profile card's layout ([`_og/portfolio.tsx`](../frontend/src/app/_og/portfolio.tsx), shared by both) with an `Organization` badge: picture or name monogram, name, bio, the member count, and the X handle in the footer. |
-| Event, [`events/[id]/opengraph-image.tsx`](../frontend/src/app/events/[id]/opengraph-image.tsx) | Title, coordinates, the analyst's handle and the event date, the lifecycle badge, and the locator panel. |
-| Collection, [`collections/[id]/opengraph-image.tsx`](../frontend/src/app/collections/[id]/opengraph-image.tsx) | Title, the meta line's count and span, the owner's handle, a `Collection` badge, and the mosaic panel. |
-
-The **locator panel** ([`_og/MiniMap.tsx`](../frontend/src/app/_og/MiniMap.tsx)) is a plate-carrée graticule with the event's point marked on it, drawn from positioned rectangles: no tiles, no basemap request, no static-map service, and no mapping library on the server. What a reader can use at card size is the hemisphere and the rough region, and the real `<Map>` is one click away on the page. The projection is [`lib/og.ts`](../frontend/src/lib/og.ts)'s `projectEquirectangular`, which clamps rather than escapes the frame.
-
-Under the graticule sits a **world outline**, one inline SVG path of Natural Earth 110m land ([`_og/landmass.ts`](../frontend/src/app/_og/landmass.ts), public domain, Antarctica and small islands dropped, aggressively simplified to a few kB), which is what makes a marker read as a place rather than as a point on a grid. It is committed path data in the projection's own 360×180 frame, so it needs no reprojection to line up with the marker and the card still loads nothing at request time. Regenerate it with [`scripts/build-og-landmass.mjs`](../frontend/scripts/build-og-landmass.mjs); the source dataset is not committed.
-
-The event card takes its lifecycle word and emphasis from `EVENT_STATUS_META` in [`StatusBadge.tsx`](../frontend/src/components/event/StatusBadge.tsx), the same map the page's badge renders from, so a row cannot be called one thing on the page and another in the image of the page.
-
-The **mosaic panel** on the collection card is the picture the profile card wears, at card scale. `ogMosaicBoxes` in [`lib/og.ts`](../frontend/src/lib/og.ts) places each tile in the arrangement and gap of the [`<Item>`](#items) mosaic, as absolute boxes since Satori lays out flex and not grid, and clamps a longer cover to four boxes. A tile's picture is read at the derivative its own size wants through [`displayUrlsFor`](../frontend/src/lib/mediaUrls.ts), the wide `_hero` for a lone tile and the 400px `_thumb` for one sharing the panel, and all of them are fetched at once. A tile off a proof image is fetched at its original, since that upload writes no derivative. A clip carries no poster derivative, so its tile draws the panel colour under a play triangle instead of a frame the server does not have; a picture whose fetch was refused draws the same tile without the triangle. A collection with nothing showable draws the panel under `no media`.
-
-Each dynamic card reads the same anonymous public payloads its page renders from (`GET /users/{username}` plus `GET /users/{username}/stats`, `GET /organizations/{slug}`, `GET /events/{id}`, or `GET /collections/{id}`), issued together rather than chained, so a card can only ever show what a signed-out visitor already sees and an unfurl costs one round of requests. Soft-deleted rows 404 upstream.
-
-An upstream read answers one of three ways, and the difference is visible because a crawler caches what it is served:
-
-| Read | Card | Tags |
-|---|---|---|
-| Answered | The data card | Title, description, `og:*`, `twitter:*` from the payload |
-| Permanent miss (`404`, or the `422` a path parameter that names no row draws) | The branded *No analyst here* / *No organization here* / *No event here* / *No collection here* card | The matching not-found title and description, in the same tag shape as a hit |
-| Failed (`429`, `5xx`, timeout, undecodable body) | The site-default composition | None: the page inherits the site-wide metadata |
-
-The failed path says nothing about the link because nothing is known about it, and its image response carries `Cache-Control: no-store` so the CDN and any crawler that honours it ask again rather than keep a card built from a bad second. A crawler that caches on its own policy regardless cannot be reached from here, which is the other half of why that path emits no not-found copy: whatever it keeps, it keeps a neutral preview.
-
-Card reads carry a 15 min revalidate. That window is also the rate-limit headroom: every card request egresses from the deployment's shared IP against the per-IP limit on `/users/{username}`, `/organizations/{slug}`, `/events/{id}` and `/collections/{id}`, so a link going wide is one cached read per window rather than one backend round trip per unfurl. A link wide enough to still trip the limit degrades to the site-default card, never to a broken image.
-
-All four pages are client components, so their `generateMetadata` lives on the segment layout (the profile and the organization build theirs through `portfolioMetadata` in [`_og/metadata.ts`](../frontend/src/app/_og/metadata.ts)): title, description, the `og:*` set, and `twitter:card: summary_large_image`, which is what makes X and Discord render the image full-width instead of as a square thumbnail. `twitter-image.tsx` re-exports the Open Graph composition so the two stay byte-identical.
-
-The renderer publishes what it fetches as a public image, so every picture a card draws goes through one guarded read, `ogImageDataUri` in [`_og/data.ts`](../frontend/src/app/_og/data.ts) (guards also in [`lib/og.ts`](../frontend/src/lib/og.ts)), which inlines the body as a data URI rather than handing Satori a remote `<img src>`. The read accepts only an https dotted hostname, refuses address literals and local suffixes, and refuses a host whose DNS answer holds any private, loopback, link-local, or multicast address, judged in the connector so the socket uses the address the guard checked. It follows no redirect, holds a 3 s budget and an 8 MB ceiling, and accepts PNG, JPEG, GIF, WebP, and AVIF. The rasteriser behind `next/og` draws only PNG and JPEG and leaves a blank for anything else, so the read inlines a PNG or JPEG of 2 MB or less as fetched and re-encodes every other picture through `sharp` as a PNG at most 1200 px on its long edge (the first frame of an animated GIF). A refused read falls back to the drawing without a picture (the handle monogram, a blank mosaic tile) and logs one `og image skipped:` warning naming the reason and the picture's host and path. `users.avatar_url` and cover tile URLs are server-minted, never typed by an analyst, so the guard is defense in depth. The API's own origin skips the host guards: it serves the local storage backend's pictures in development (`http://localhost:8000/local-storage/...`), and the card trusts it as it trusts the payload reads.
+A crawler caches what it is served. A missing row gets the not-found card. A failed read (`429`, `5xx`, timeout) gets the uncached site-default card and no tags, since nothing is known about the link. Card reads are cached for 15 minutes, which is also the rate-limit headroom: every card request leaves from the deployment's shared IP against the per-IP limit on the public reads. A link wide enough to trip the limit gets the site-default card, never a broken image.
 
 ### Email
 
-Every email shares one layout, [`services/email_layout.py`](../backend/app/services/email_layout.py), the second surface after the share cards that renders outside the app. Mail clients read no class names from the site and strip most CSS, so the layout carries its own inline styles: a table-based single column 600px wide, a system font stack, and the hex values below. The mechanism and the queue are in [`engineering.md`](engineering.md#email).
-
-| Part | Light (default) | Dark (`prefers-color-scheme: dark`) |
-|---|---|---|
-| Page | `#f4f2ef`, the light theme's warm canvas | `#0a0a0a`, `neutral-950` |
-| Card | `#ffffff` | `#171717`, `neutral-900` |
-| Text | `#232323`, the light theme's `neutral-100` | `#f5f5f5` |
-| Inline link | `#c2410c`, `orange-700` | `#fb923c`, `orange-400` |
-| Action button | `#c2410c` fill, white label | unchanged |
-
-- **Light by default.** A client that ignores the dark media query, such as Gmail, gets the light layout and applies its own dark inversion to it. Apple Mail applies the dark values.
-- **The header** is the accent `V` mark, a PNG served by the frontend at `/icon/android-192` with a transparent background, beside the word Vidit in text. The word carries the brand when a client blocks images.
-- **The action button** is a solid `orange-700` fill, the one place the accent fills a control. A mail client cannot render the tinted-on-dark recipe reliably, and `orange-700` keeps a white label above the 4.5:1 contrast ratio. Under the button, the same URL is printed as a link for a client that drops the button.
-- **The footer** links to Settings and the legal notice.
-- **The completion digest** gives the count of detections to review and points at **Start reviewing** on the detections queue, which opens the one-by-one review pass.
-- **A notification email** names the switch that sent it and links to Settings, and its `List-Unsubscribe` header turns that kind off by email.
-- **The registration confirmation email** links the [Getting started page](#getting-started-page) in its last paragraph, under the confirm action's explanation.
+Every email shares one layout, [`email_layout.py`](../backend/app/services/email_layout.py), with inline styles, since mail clients strip most CSS ([`engineering.md`](engineering.md#email)). It is light by default, so a client that ignores the dark query applies its own inversion. The word Vidit is text beside the mark, so the brand survives blocked images. The action button is a solid `orange-700` fill, the one place the accent fills a control, since mail clients cannot render the tinted recipe.
 
 ### Buttons
 
-There is one primitive: [`<Button>`](../frontend/src/components/ui/Button.tsx), shape and colour in a single unit at one size (no size scale). It has five variants on two axes: tone (accent or danger) and emphasis (filled, outline, text):
-
-- `primary`: accent, filled. The one main action of a view.
-- `secondary`: accent, outline. A secondary action (edit, search, pagination).
-- `ghost`: accent, text only. The quiet tier: cancel, dismiss, dense row actions, and (with `icon`) icon-only buttons.
-- `danger`: red, outline. A destructive action (delete), quiet on purpose.
-- `dangerGhost`: red, text only. A red control at ghost weight, so it sits in an icon row without outweighing its accent neighbours (the report flag).
+[`<Button>`](../frontend/src/components/ui/Button.tsx) is the one button primitive. Every clickable is accent; red is for destructive or alerting actions; grey means inert. The filled red shows once, on the armed second click of a confirm.
 
 **Destructive actions** take one of two controls; see [Destructive actions](#destructive-actions).
 
-Every clickable is accent, and red is only for destructive or alerting actions. There is no grey button: grey lives in `<Pill>` neutral, and in the disabled state, which drops the variant's tone for grey text on a neutral border rather than fading it, so a button that refuses the click reads like every other inert control. The one loud filled red is `DANGER_CONFIRM`, which `<ConfirmButton>` puts on its armed second click, so the strongest red shows once, at the point of no return. A confirm that is not destructive takes `ARMED_RING` the same way (the share row's detection link, the detection form's Submit): a ring and a neutral plate over the button's own variant, so an armed control reads as changed without moving. `fullWidth` stretches it (auth submits). `icon` makes a square icon-only button. A `<Link>` that should look like a button takes `buttonClasses(variant)`.
+**Action icons.** A text button leads with the icon of its action; see [Action icons](#action-icons).
 
-**Action icons.** A button with a text label leads it with the icon of the action it names, at every width, and one action always takes the same icon (see [Action icons](#action-icons)).
-
-**Tap size.** Both shapes stand taller on a phone (`min-h-9` on the text shape, `size-9` on the icon square), dropping to the desktop 28px / 32px from `sm` up. Only the tappable height moves. The type scale and the horizontal padding are the same at every width. The `?` grows its own target the same way; see *Field help* below.
+**Tap size.** Buttons stand taller on a phone; type and padding stay.
 
 #### Destructive actions
 
-A destructive action takes one of two variants, each one shared primitive. The weight of the action picks the variant, never the surface.
+The weight of the action picks the control, never the surface:
 
-| Variant | Primitive | Looks like | Confirms |
-|---|---|---|---|
-| Minor or easily undone | [`<RemoveButton>`](../frontend/src/components/ui/RemoveButton.tsx), or a labelled `<Button>` | a red cross (`remove`, lucide `X`), or the label and its action icon | No: the click acts |
-| Important or hard to undo | [`<ConfirmButton>`](../frontend/src/components/ui/ConfirmButton.tsx) | a red icon (a trash, `delete`, for a removal, a revocation or a deletion), or the labelled `danger` button with its action icon | In place: the first click arms it, filled red and named *Confirm …*; a second click within 3 seconds acts; Escape, a click or focus elsewhere, or the timeout disarms it |
+- A minor removal takes `ACTION_ICONS.remove`, a red cross that acts at once (`<RemoveButton>`, `<Pill onRemove>`, or a labelled button).
+- An important deletion or revocation takes `ACTION_ICONS.delete`, a red trash behind [`<ConfirmButton>`](../frontend/src/components/ui/ConfirmButton.tsx)'s in-place confirm.
 
-A removal, a revocation or a deletion draws one of these two icons and no other: the cross for a minor one, the trash for an important one. Both come from `ACTION_ICONS`, and the `no-restricted-imports` rule in [`eslint.config.mjs`](../frontend/eslint.config.mjs) fails any other file that imports a cross, a trash or a look-alike (`Ban`, `CircleX`, `Eraser`) from `lucide-react`. The rule lists the files whose cross closes or marks a state and removes nothing.
-
-An important action never confirms in a modal dialog. A [`<ConfirmDialog>`](../frontend/src/components/ui/ConfirmDialog.tsx) stays only where the step needs input, or where an `<ActionMenu>` that closes on the pick leaves no control to arm. A refusal prints in an `<ErrorNotice>` next to the control.
-
-Every destructive action in the app:
-
-| Surface | Action | Variant | Control |
-|---|---|---|---|
-| Notifications | Dismiss a notification | Minor | `RemoveButton` cross |
-| Event edit form, published byline | Remove a co-geolocator | Important | `ConfirmButton` trash on the picture |
-| Event edit form, published byline | Withdraw a pending invitation | Minor | `RemoveButton` cross on the picture |
-| Event and submit forms, draft byline | Take back a draft co-geolocator pick | Minor | `RemoveButton` cross on the picture |
-| Event and submit forms | Remove a source editor | Important | `ConfirmButton` trash |
-| Event and submit forms | Remove a link row, a file | Minor | `RemoveButton` cross |
-| Event edit form | Close an event | Important | `RemoveButton confirms` trash that opens `CloseEventDialog`, which needs a reason |
-| Event page, Geolocators panel | Leave the credit | Important | `ConfirmButton` **Leave** |
-| Event page | Decline a geolocator invitation, decline approval requests | Minor | **Decline** button with the cross |
-| Event page and version page | Delete an approval (site admin) | Important | `ConfirmButton` trash on the stamp |
-| Site page | Remove a source | Important | `ConfirmButton` trash |
-| Site page | Withhold the site (site admin) | Important | `ConfirmButton` `EyeOff` |
-| Site edit form | Mark a source for removal, discard the new source | Minor | `RemoveButton` cross; **Keep** restores a marked source |
-| Collection page | Drop the collection | Important | `ConfirmButton` trash |
-| Collection forms | Remove an event from the collection | Minor | `RemoveButton` cross |
-| Add to collection panel | Take the event out of a collection | Minor | the collection's toggle |
-| Organization page | Leave the organization | Important | `ConfirmButton` **Leave** |
-| Organization page | Remove a member | Important | `ConfirmButton` **Remove** |
-| Organization page | Withdraw a pending invite | Minor | **Withdraw** button with the cross |
-| Organization page | Decline an approval request | Minor | **Decline** button with the cross |
-| Profile | Unfollow | Minor | **Following** toggle |
-| Settings | Revoke an invite code | Important | `ConfirmButton` trash |
-| Admin, Manage an event | Hide, soft delete, hard delete | Important | `ConfirmButton` **Hide**, **Soft delete**, **Hard delete** |
-| Admin, Reports | Hide the reported item | Important | `ConfirmButton` **Hide the …** |
-| Admin, Reports | Dismiss a report | Minor | **Dismiss** button |
-| Admin, Analysts | Clear the linked X handle | Minor | **Clear link** button with the cross |
-| Admin, Analysts | Purge detections, soft delete, hard delete | Important | `ConfirmDialog` from a trash item of the card's `ActionMenu` |
-| Admin, Onboarding | Revoke, delete an invite code | Important | `ConfirmDialog` from a trash item of the row's `ActionMenu` |
-| Admin, Organizations | Delete an organization | Important | `ConfirmDialog` with the typed slug |
+No other icon marks a removal, and [`eslint.config.mjs`](../frontend/eslint.config.mjs) enforces it. An important action never confirms in a modal: `<ConfirmDialog>` stays only where the step needs input, or where a closing `<ActionMenu>` leaves no control to arm.
 
 #### Action icons
 
-`ACTION_ICONS` in [`Button.tsx`](../frontend/src/components/ui/Button.tsx) holds one lucide icon per action, and no two actions share an icon. A text `<Button>` names its action with `action`, and the icon leads the label. A `<Link>` styled by `buttonClasses` puts `<ActionIcon action>` before its text. [`ConfirmDialog`](../frontend/src/components/ui/ConfirmDialog.tsx) takes `confirmAction` for its confirm button, and [`ActionMenu`](../frontend/src/components/ui/ActionMenu.tsx) takes `action` for a text trigger (**Approve** with several identities). `Button.test.tsx` fails on a text button or button-styled link that names no action. The [palette](../frontend/src/app/palette/actions.tsx) shows every action with a label.
+`ACTION_ICONS` holds one icon per action, and `Button.test.tsx` fails on a text button or button-styled link that names none. An action covers every label that names it; these labels take an action whose name differs:
 
-| Action (`action`) | Labels | Icon (lucide) |
-|---|---|---|
-| Accept (`accept`) | Accept (an invitation), Done (filters), Close (a contour) | `Check` |
-| Show all activity (`activity`) | Show all activity | `Activity` |
-| Add (`add`) | Add a source, Add a link, Create organization | `Plus` |
-| Approve (`approve`) | Approve, Approve as *organization* | `Stamp` |
-| Archived copy (`archive`) | An archived copy's link (*Wayback Machine*, *archive.today*) | `Archive` |
-| Ask for approval (`askApproval`) | Ask for approval, Ask *account* | `ClipboardCheck` |
-| Cancel (`cancel`) | Cancel | `CornerUpLeft` |
-| Add to collection (`collect`) | Add to collection | `Layers` |
-| Continue (`continue`) | Continue | `ArrowRight` |
-| Copy (`copy`) | An invite code's copy (admin) | `Copy` |
-| Delete (`delete`) | Delete, Delete organization, Delete approval, Revoke, Soft delete, Hard delete, Purge detected, Remove, Close this geolocation, Close this request, Close this detection | `Trash2` |
-| Dismiss (`dismiss`) | Dismiss (a report) | `ShieldCheck` |
-| Draw (`draw`) | Draw a contour on this source | `PenTool` |
-| File a source (`fileSource`) | File the source | `ImagePlus` |
-| Filters (`filter`) | Filters | `SlidersHorizontal` |
-| Follow (`follow`) | Follow | `UserPlus` |
-| Following (`following`) | Following | `UserCheck` |
-| Geolocate (`geolocate`) | Geolocate, Publish, Publish geolocation | `MapPin` |
-| Go to coordinates (`go`) | Go | `LocateFixed` |
-| Graphic (`graphic`) | Mark graphic, Unmark graphic | `TriangleAlert` |
-| Guide (`guide`) | Read Getting started | `BookOpen` |
-| Hide (`hide`) | Hide, Hide the event, Hide the collection, Hide the site, Withhold | `EyeOff` |
-| Import (`import`) | Import archive, Import your X archive, Choose a different file, Create the detection | `Upload` |
-| Invite (`invite`) | Invite | `MailPlus` |
-| Leave (`leave`) | Leave | `LogOut` |
-| Show less (`less`) | Manage, while open | `ChevronUp` |
-| Link (`link`) | Link, Confirm link | `Link2` |
-| Map (`map`) | Explore the map, Back to map | `Globe` |
-| Mint (`mint`) | Mint code, Mint invite code | `Ticket` |
-| Show more (`more`) | Show more, Manage, while closed | `ChevronDown` |
-| New collection (`newCollection`) | New collection, Create collection, Create and add | `FolderPlus` |
-| New site (`newSite`) | Create the site | `MapPinPlus` |
-| Next (`next`) | Next | `ChevronRight` |
-| Password (`password`) | Set new password, Update password | `KeyRound` |
-| Previous (`previous`) | Previous | `ChevronLeft` |
-| Remove (`remove`) | Clear (filters), Start over (a contour), Remove corner, Decline, Withdraw (an invitation), Clear link | `X` |
-| Report (`report`) | Send report | `Flag` |
-| Request (`request`) | Post request, Publish request, Save request | `Megaphone` |
-| Retry (`retry`) | Retry, Reload | `RotateCw` |
-| Revert (`revert`) | Back to the current contour | `RotateCcw` |
-| Review detections (`review`) | Start reviewing, Open the detections queue, Review your detections, Review the detection | `Bot` |
-| Role (`role`) | Name org manager, Make org manager, Make member | `UserCog` |
-| Save (`save`) | Save, Save version *N*, Save collection | `Save` |
-| Search (`search`) | Your geolocations | `Search` |
-| See all (`seeAll`) | See all | `ChevronsRight` |
-| Send (`send`) | Send reset link, Send a fresh link, Resend confirmation link | `Send` |
-| Show (`show`) | Restore, I am 18 or older, show it, the graphic content cover | `Eye` |
-| Sign in (`signIn`) | Sign in | `LogIn` |
-| Site (`site`) | Open the site page | `MapPinned` |
-| Skip (`skip`) | Skip | `SkipForward` |
-| Undo (`undo`) | Undo | `Undo2` |
-| Unsubscribe (`unsubscribe`) | Turn off | `BellOff` |
-| Use a proof image (`useProof`) | Use a proof image | `ImageUp` |
+| Action | Labels |
+|---|---|
+| `accept` | Done (filters), Close (a contour) |
+| `delete` | Revoke, Purge detected, Remove, Close this geolocation, request or detection |
+| `geolocate` | Publish, Publish geolocation |
+| `hide` | Withhold |
+| `import` | Choose a different file, Create the detection |
+| `less`, `more` | Manage, open and closed |
+| `remove` | Clear, Start over, Decline, Withdraw, Clear link |
+| `review` | Start reviewing, Open the detections queue |
+| `search` | Your geolocations |
+| `show` | Restore, the graphic content cover, Open the request, Open the event |
+| `unsubscribe` | Turn off |
 
 ### Forms
 
-**One submit page, content-gated.** [`/submit`](../frontend/src/app/submit/page.tsx) is a single form: you fill in what you have, and two actions publish from the content, "Publish geolocation" (born `geolocated`) or "Publish request" (born `requested`). Each is gated on a live requirements tick-list that escalates from the request floor to the full geolocation floor. `/submit` opens on a chooser, [`SubmitChooser`](../frontend/src/components/geolocations/SubmitChooser.tsx): six [`<IconTile>`](../frontend/src/components/ui/IconTile.tsx) links, each with a `preview` of its result drawn from the product's status badges, a title, one line on when to pick it, and its `needs`. The page takes `PageShell`'s `wide` column, so from `lg` up the tiles fill it as a 3x2 grid of equal tiles. From `sm` up they take two columns, and below `sm` each tile is a row with the preview as a thumbnail.
-
-| Tile | When to pick it | Needs | Opens |
-|---|---|---|---|
-| **Geolocation** | You found where it happened. | Source, Coordinates, Proof image, Conflict | The form (`single`) |
-| **Request** | You have the footage, not the place. | Source | The form (`single`) |
-| **From an X post** | You already posted it on X. | Post link, Linked X account | `xpost` |
-| **Bulk import** | Your past posts, all at once. | X archive, Linked X account | `bulk` |
-| **Site** | You watch a place change over time. | Name, Dated capture, Contour | [`/sites/new`](#sites) |
-| **Collection** | You want to share a set of events. | Title, Description | [`/collections/new`](#collections) |
-
-Geolocation and Request open the same form, since its publish actions unlock from the content. A path tile opens its path in place of the chooser and names it in the `mode` query (`single`, `xpost` or `bulk`, built by `submitHref` in [`lib/routes.ts`](../frontend/src/lib/routes.ts)), so a reload keeps the path and the browser's Back returns to the chooser. Each path writes from the page's pinned actions: the two publishes on the form, **Create the detection** on **From an X post** (off until a URL is pasted, *Reading…* while the post is read; Enter in the field submits too), **Import archive** on **Bulk import** (off until a file is picked, *Importing…* while it runs). The result of an import, with its next step, reads in the page body. A pasted post whose every detection already exists reads *Already imported*, with a link to the existing row where its state reads: **Review the detection** while it is a detection, **Open the request** for a request, and **Open the event** once it is published or closed. A row that no longer opens leaves the line without a link. **Bulk import** stages only a zip: a picked or dropped file of another kind is refused at once with one `FieldError` under the drop zone, and nothing starts. On a path the page header carries the `PageShell` back arrow, which returns to the chooser: a step back through the history when the chooser opened the path, and a navigation to `/submit` otherwise (`onBack`). The draft lives in the page, above the form, so it survives a trip through the chooser: the fields reseed from it when the path opens again. It also survives a reload: [`useStoredDraft`](../frontend/src/hooks/useStoredDraft.ts) stores every field, the co-geolocator picks included, in the browser's IndexedDB under the signed-in analyst ([`lib/drafts.ts`](../frontend/src/lib/drafts.ts)), 250 ms after each change. IndexedDB keeps a proof image and a picked file as files, which `localStorage` cannot. The page opens on the stored draft, and the form renders once it is read, since the proof editor reads its seed once. A source file that was still uploading or importing when the page reloaded, or whose staged upload expired, prints why under its slot and asks for a new pick. A publish drops the stored draft. A browser without IndexedDB opens the form empty and stores nothing. `?import=1`, the target of the onboarding card and the `/import` guide, opens **Bulk import**. A link that asks for the form opens it directly (`?mode=single`): **Post request** on the Requests board, the empty profile's first-submission link, and the guide's submit tile. `/requests/new` redirects to the form. A request is answered from its own [edit form](#the-owner-edit-form), not from here.
-
-**Submit actions.** The submit form renders the edit form's shell, `EventFormShell`, and its writes are the page's sticky actions, in the *Actions* landmark at the top right of the header, pinned while the fields scroll. It is the edit form's [`PublishActions`](../frontend/src/components/geolocations/PublishActions.tsx): **Publish geolocation** (primary) and **Publish request** on one right-aligned line, which wraps **Publish request** under the first on a 320px phone, then the `?` (`action_submit`) from `sm` up, then the `ErrorNotice`, `role="alert"`. Each button carries a [`<CountBadge>`](#build-on-shared-primitives) of the conditions it still misses, and dims while short: **Publish request** counts the request floor, and **Publish geolocation** counts the request floor plus the proof, the coordinates and the conflict. The list shows on hover, on keyboard focus, or on a tap on the count. Both publish: the first click arms the button in place (*Confirm*, `ARMED_RING`, its sentence in a live region), and the second writes. Each button leads with its action's icon at every width. The hidden `IncompleteFormAnnouncer` sits in `actions.below`. The import entries render the chooser's `PageShell` instead, without the form, and pin their own submit button.
-
-**One write flow.** The submit form and the edit form write through the same controller, so the two forms check, word and post a write the same way.
+[`/submit`](../frontend/src/app/submit/page.tsx) opens on a chooser. Geolocation and Request open one form, whose two publish buttons unlock from its content and count what they still miss. A pasted post already imported reads *Already imported*, linked to the row where its state reads (the review, the request or the event). The draft survives the chooser and a reload. The submit and edit forms write through one controller:
 
 ```mermaid
 flowchart TB
@@ -1536,30 +1367,13 @@ flowchart TB
   write --> gate --> arm --> success
 ```
 
-- **The form state.** [`useEventForm`](../frontend/src/components/geolocations/EventFormFields.tsx) computes both floors live: `requestMissing`, and `publishMissing`, which is the request floor followed by the rest in page order (title, the sources' file, URL and kind, the proof or its image, the coordinates, the conflict). It also builds both bodies: `publishInput` posts the subject point as required, and `requestInput` posts it as an optional guess, both halves or neither. A form adds only what its endpoint takes on top, `version_no` and the version note.
-- **The controller.** [`useEventWrite`](../frontend/src/components/geolocations/useEventWrite.ts) is one write per button: its mutation, its gate and its arming (`usePublishAction`). `writeGroup` reads a form's writes together: the one `ErrorNotice`, whether any write runs, and the reset each click starts with.
-- **The gate.** Every click runs it in the order of the diagram. The conflict options come before the floor, because before they load a missing conflict cannot be told from one still loading. The floor comes before the sources' hold, because a running upload clears itself and must not hide a field you have to fill. The form's own refusal comes last: the edit form refuses a version that changes nothing. A refusal other than a missing field prints in the banner.
-- **The wording.** [`PublishActions`](../frontend/src/components/geolocations/PublishActions.tsx) exports what both forms show: the armed sentence of each publish (`PUBLISH_CONFIRM`, `REQUEST_CONFIRM`), the busy labels (`PUBLISHING_LABEL`, `SAVING_LABEL`), and the two button presets, `publishGeolocationButton` (primary, map pin) and `requestWriteButton` (secondary, megaphone). `WRITE_FALLBACK` holds one fallback sentence per write kind. Where a write lands on success stays with each form.
+**Required by default.** No field carries a required marker: the button's count names what is missing, and a click turns every missing field red at once. Every publish arms in place before it writes, because a publish makes the event public. The account forms follow the same rule.
 
-Section placement follows [Event layout](#event-layout): Title, **Sources** and **Proof** in the main column; **Location** and **Details** (event date and time, the provenance link of an imported row, conflict and tags) in the side column. Each section reads like the event page's: its [`<SectionEyebrow>`](../frontend/src/components/ui/SectionEyebrow.tsx), with the section `?`, sits on the page above the section's card. **Proof** carries the *Methodology guide* link beside its eyebrow, and a publish attempt that flags the proof turns the eyebrow red and outlines the card. **Sources** has no card of its own: each source editor is a card. Fields use the [`<Input>`](../frontend/src/components/ui/Input.tsx) primitive. **Sources** is the row of source editors that [Source blocks](#source-blocks) describes, reused by submit, request, detection review and the published-row edit so they can't drift; each editor's file slot sits on the generic [`FileManager`](../frontend/src/components/ui/FileManager.tsx). **From an X post** is [`ImportPostPanel`](../frontend/src/components/geolocations/ImportPostPanel.tsx): a URL field and one action. The post becomes detections server-side, and the panel opens the first one in the detections queue; a run with something to say (warnings, a refusal, a post already imported) stays on the panel and says it, with the review one click away. **Bulk import** is [`ImportArchivePanel`](../frontend/src/components/geolocations/ImportArchivePanel.tsx), whose export walkthrough is a `boxed` [`NumberedSteps`](../frontend/src/components/ui/NumberedSteps.tsx).
-
-**Coordinates travel as a pair.** Every pair (the subject point and each source's capture position) is the shared [`CoordinateInputs`](../frontend/src/components/geolocations/CoordinateInputs.tsx). A paste that reads as a pair fills both fields whichever one received it: a decimal `lat, lng` (comma or space separated, degree signs tolerated), or a Google Maps URL (`@lat,lng`, `q=`, `query=`) when the paste is itself a URL. Anything else pastes as ordinary text, prose quoting `@48.5,37.8` included. [`<CoordinateActions>`](../frontend/src/components/event/CoordinateActions.tsx) follows the two fields on their line, so a coordinate can be checked against satellite imagery and carried away while it is being typed. It is two outlined icon buttons everywhere it appears, each its own box. The map link (new tab) is named *View on Maps* by its `aria-label` and its tooltip, and the copy composes the same primitive over `useCopyToClipboard`. While the pair is empty, half-typed, malformed or out of bounds both controls stay in place, disabled and grey, rather than disappearing, so the line holds one width and a grey control says the point is not usable yet; the map link becomes a disabled button there, since there is nothing to navigate to, and its name and tooltip give the reason (*No map link. Latitude must be between -90 and 90.*). A typed value that is not a number in decimal degrees, or falls out of bounds, turns its own field red at once with the same reason in a `<FieldError>` under the line. A blank half of the subject pair waits for the publish, which flags the missing coordinates; the reasons have one home, `pairProblem` in [`lib/coordinates.ts`](../frontend/src/lib/coordinates.ts), whose bound sentences are the API's. The event detail page's coordinates row renders the same component, right-aligned on the coordinates line, so the two surfaces can't drift; the pair and its actions hold one line there, and on a narrow phone row the **Coordinates** label wraps first, then the line drops under it. On a form, the **Location** block ([`LocationPicker`](../frontend/src/components/geolocations/fields/LocationPicker.tsx)) is the event page's Location module, `EventLocation`, with the pair under the map, where every form that picks a location puts its field (`field`): it labels the pair **Coordinates**, with the same `?` as the page's row, and the map over it is the page's own `<PointMap>` with its pin. A click on the map moves the pin there and writes the point into the fields at 6 decimals, and the pin drags, writing at each step. A pair typed or pasted in the fields moves the pin and centres the map on it at zoom 14 at least, while a click or a drag leaves the camera where the reader holds it. While the pair is empty or refused the map shows no pin. The form's pin is no stored event, so a hover opens no card (`pinPreview`). The parser, the bounds, the rendering (6 decimals, 4 in a compact row) and the map-link builder have one home, [`lib/coordinates.ts`](../frontend/src/lib/coordinates.ts).
-
-**A locked URL is the link.** One field arrives filled and stays that way: the provenance URL (`detected_from_url`) on an imported detection. A request's sources are not locked: the analyst who publishes it corrects them like any other field. The locked field carries [`LockedHint`](../frontend/src/components/geolocations/fields/LockedHint.tsx) beside its label, saying why it cannot be retyped, and renders its value through [`LockedUrl`](../frontend/src/components/geolocations/fields/LockedUrl.tsx): an anchor wearing `LOCKED_FIELD`, the box recipe the locked `<Input>` wears, so it reads as the field it is. A stored URL is a link everywhere on the platform, a locked field included. The anchor carries the full URL rather than a host, and truncates rather than wraps so a long permalink keeps the field one line high. `LOCKED_FIELD` lives on [`Input`](../frontend/src/components/ui/Input.tsx) and the locked `<Input>` and `LockedUrl` both wear it, minus `cursor-not-allowed`, which states "you cannot act on this" and is true of the input alone. The label becomes a `<span>` in link mode, because an anchor is not a labelable control. A locked field with no value yet keeps the read-only input: there is no link to render.
-
-**The detections queue is a list, and the work happens in review mode.** `/profile/{username}/detections` is a dense list, one list [`<Item>`](#items) per detection through [`detectionItem`](../frontend/src/components/detections/detectionItem.tsx): the event's anatomy, *No event date* when it has none, the source host and the entry after the analyst, and one state badge. The page header holds the title and **Start reviewing**, with no line under them. A detection with no source link shows no host, since its badge already reads *Incomplete*. The badge describes the evidence, not completeness (`batchCompletionBlockers` in [`lib/events.ts`](../frontend/src/lib/events.ts), which mirrors the server floor in `services/events/batch._publish_detection`; `detection_ready_predicate` is that same floor in SQL, which is what the filter below pages on, and the three are held to one table of detection shapes by their tests). It reads **Ready to review** when the machine found everything it could and the detection is waiting on the judgment a review supplies, the conflict and the source kind, so it takes `<Pill>`'s outline `secondary` tone rather than the filled accent: a detection that still needs two picks must not read as a finished one. Otherwise it reads *Incomplete*, the word of the filter and of the API's `readiness`, followed by the missing piece (*Incomplete: Source file*), or by their count (*Incomplete: 2 pieces*) once several names would outgrow a dense row. The queue names that state *Incomplete* everywhere, and the queue itself is the analyst's detections *to review*: the profile entry, the rail and the completion digest count them in those words. A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) narrows the queue to ready or incomplete detections. It is a query, not a view filter: picking an option refetches with [`readiness`](api.md#get-eventsdetections), so the server cuts the page out of the filtered set and the row count, the page count and the empty line all describe that set. A page-local filter answers about the ten rows on screen while the reader takes it as an answer about the queue, which on an import of several hundred detections ordered newest first is how "0 of 10 on this page" gets read as "none of my work carries any evidence". Beside the bar, `ready_total` and `incomplete_total` state the whole queue's split under every option and on every page, so the one number an analyst wants after an import needs no paging to find. Its labels are one word each, so a `<FieldHelp>` `?` beside the bar says what Ready and Incomplete select, once for the page, and that is where both badges' meaning lives: the rows themselves carry a label and nothing to hover, and the pieces a detection is missing are named in place by the form. A queue with no detection left reads one line, *Nothing left to review.*, in the `boxed` [`<EmptyState>`](../frontend/src/components/ui/EmptyState.tsx): the page is reached that way only after the last submit, since nothing links to it while the queue is empty, and the header's back control returns to the profile. There are no inline controls: the item's link is stretched over the row, so a click, a middle click or **Open in new tab** anywhere on it opens the edit form, which is where a detection missing evidence gets its manual pass. The click opens a review pass starting at that detection, since reaching a detection through the queue is working the queue. [`<LoadMoreRow>`](../frontend/src/components/ui/LoadMoreRow.tsx) sits at the foot: each page the server cuts appends under the rows already loaded, a line above it counts them against the filtered set, and a failed page retries in place. A failed first read prints in an `<ErrorNotice>` with its **Retry**.
-
-**Reviewing is the same form on the same route, one detection at a time.** A queue row and a detection under review open one surface, [`EventEditForm`](../frontend/src/components/geolocations/edit/EventEditForm.tsx) at `/events/{id}/edit`, with the same sections in the same order and every field editable in both cases, the proof editor included. A review pass is that URL carrying `?queue=1`: one address per detection, so a reload keeps its place, the address bar says which detection is open, and the browser's Back steps back one detection. Every entry from the queue page sets the flag, a row click included, so a pass starts wherever the reader entered it; the bare URL stays reachable by hand for a single detection. *Start reviewing* points at `/profile/{username}/detections/review`, which reads the queue and hands over to the first detection's URL, replacing itself in history so Back from that detection lands on the queue list.
-
-With the flag set on a detection the reader owns, the page reads the owner's queue, places the detection in it, and adds the pass's own chrome to the sticky actions: the position (*Detection n of m*) and **Skip**. **Publish** and the close sit in the sticky actions, as on every edit, and the position and **Skip** head them. Publishing runs the single-row [`POST /events/{id}/versions`](api.md#post-eventsidversions) behind the form's confirm and then opens the next detection instead of returning to the queue; closing, behind its own required-reason dialog, hands over the same way; **Skip** hands over without writing. Past the last detection the pass ends on the queue list. The position is read off the live queue, so a detection just published or closed is out of both the count and the walk, and a detection the queue no longer holds carries no position at all: the page is a plain edit again.
-
-**Required by default.** No field carries a `required` or an `optional` marker: per-field markers make the form a legend to decode, and two guides say the same thing better. The count on each publish button names every unmet requirement of its publish path, and a clicked action outlines the missing fields in place. On submit, every missing field and its label turn red in place at once, not the first miss alone (`FORM_INVALID_FIELD`, `FORM_INVALID_LABEL`). No box on the page repeats the list. [`IncompleteFormAnnouncer`](../frontend/src/components/ui/IncompleteFormAnnouncer.tsx) reads it to a screen reader in one sentence on each attempt, from a visually hidden polite live region. The forms set `noValidate`, so the red outlines and the announcer, not native one-bubble-at-a-time validation, own the feedback. It is shared across geolocation, request, and detection submit, each computing its own required set (detection is a superset of create; request is a subset). One content rule: a geolocation's proof must contain an image (`proofHasImage`), the source-to-satellite cross-reference. Every publish sits behind a confirm, a detection's **Publish**, a request's, **Publish geolocation** and **Publish request** alike: a publish makes the event public, and a `detected` row is machine output nobody has vouched for, so a detection's publish applies the whole form and publishes it as `geolocated` in one step, after which every change to it is a version on a public record. The confirm **arms the button in place** rather than replacing it with a confirm pair: the label reads *Confirm*, the button takes `ARMED_RING`, and the second click writes. Nothing is inserted and nothing moves, so the second click lands where the first one did, and the button keeps focus, so Enter twice submits. It disarms on its own after a few seconds, on Escape, and on any click or focus landing elsewhere ([`useConfirmAction`](../frontend/src/hooks/useConfirmAction.ts) owns all of it). What the second click costs is in the `?` beside the button, and the armed state announces itself in a sibling live region, the shape every copy control uses, so no control renames itself mid-gesture.
-
-The account forms follow the same rule: sign-in, registration, the password reset, the single-email forms (forgot password and resend confirmation), Settings → Change password and the invite-code form. Each sets `noValidate`, computes its blanks with `blankFields`, flags them through `useIncompleteForm` (its key type names the form's own fields), outlines each blank field with `FORM_INVALID_FIELD`, turns its [`FieldLabel`](../frontend/src/components/ui/FieldLabel.tsx) red through `invalid`, and announces them through an `IncompleteFormAnnouncer`. The server's and the password rule's messages still show in the `ErrorNotice` once every field is filled. An auth card passes `FORM_LABEL_COMPACT` to its `FieldLabel`s and a Settings card keeps the default size, because a card holds one family of labels and the auth card is the denser surface.
+The detections queue filters on the server, since a filter over the rows on screen reads as one about the queue. A review pass is the edit form with the queue flag, one URL per detection, so a reload keeps the place.
 
 ### Rich text
 
-An event's proof and a collection's description are one format: HTML that the server sanitizes on every write. One editor writes it, one renderer reads it, and the server is the only place its rules are enforced.
+An event's proof and a collection's description are one format: sanitized HTML, enforced only by the server.
 
 ```mermaid
 flowchart LR
@@ -1616,47 +1430,25 @@ flowchart LR
 
 #### The editor
 
-[`<RichTextEditor>`](../frontend/src/components/editor/RichTextEditor.tsx) wraps [BlockNote](https://www.blocknotejs.org) with a schema cut to what the server stores:
-
-- Blocks: paragraph, heading (levels 2 and 3), bulleted and numbered list items, quote, code block, divider, and image. `allowImages={false}` removes the image block for a collection's description.
-- Styles: bold, italic, strikethrough, and inline code. Underline is not offered, because the server drops `<u>`.
-- Links: BlockNote's link control accepts only what `isSafeLinkHref` accepts, an absolute http(s) URL. The link popover is a form of its own. The editor stops its submit at the editor's root, so pressing Enter in the popover adds the link and never submits the form that hosts the editor.
-
-The formatting toolbar drops the alignment, nesting, and replace-file buttons, since the stored HTML carries no alignment or nesting and the replace panel offers an embed tab. The file panel offers upload only, so every image comes from the analyst's own file. The theme reads the neutral scale and accent as CSS variables, so the editor follows the reader's theme and accent. The text size is `FIELD_TEXT`, the size every other field uses. `bare` makes the editor the section's card itself, an event form's **Proof**: `ProofSection`'s card and `p-4` padding, and no inline padding of BlockNote's own, so the text starts where the event page's proof text starts; BlockNote's side menu floats into the card's padding.
-
-The editor reads `initialContent` once, through `tryParseHTMLToBlocks`. Re-key the parent to seed it again. Each change emits `blocksToHTMLLossy` to `onChange`. BlockNote writes U+FFFC into an empty block, and the editor strips it before emitting.
+[`<RichTextEditor>`](../frontend/src/components/editor/RichTextEditor.tsx) cuts BlockNote's schema to what the server stores.
 
 #### Images
 
-An image uploads at publish, not when it is picked:
-
-1. BlockNote's `uploadFile` hook names the file with `safeProofFilename` and stores the block's URL as `placeholder://<filename>`.
-2. `resolveFileUrl` previews that URL from a `blob:` URL while the analyst writes. A placeholder with no staged file loads a blank pixel, so no `placeholder://` src reaches an `img`. The editor empties its staging as it unmounts and revokes the blob URLs on the next task, once its images are gone. A development double mount mounts the editor again before that task, so the staging stays for it.
-3. Each change reports, through `onProofFilesChange`, the staged files whose placeholder is still an `<img src>` in the emitted HTML (`referencedProofFiles`).
-4. The form posts those files as `proof_files[]` beside the HTML. The server matches each file to its placeholder by filename and rewrites the `src` to the stored media URL.
-
-A GIF goes in as its frames, the way the server stores it. `uploadFile` counts the frames from the GIF's blocks (`gifFrameCount` in [`lib/proofImages.ts`](../frontend/src/lib/proofImages.ts)) and refuses a GIF the server refuses: one it cannot read, or one past `MAX_GIF_FRAMES` (6) frames. A refused GIF leaves no image, and a `FieldError` under the editor says why: *This GIF holds 7 frames, and a GIF may hold at most 6. Insert a GIF of 6 frames or fewer.* The next pick clears it. A GIF within the cap splits into one PNG per frame, as the GIF displays it (`splitGif`, through the browser's `ImageDecoder`), named `scan-1.png`, `scan-2.png` and on. The first frame fills the image block that picked the GIF, and each further frame follows it as an image block of its own. While the split runs, the picking block shows the [`<GifSplit>`](#build-on-shared-primitives) tile in place of BlockNote's upload text, and once the frames land, the first frame's block shows its line. Each frame stages and posts like a picked image, so it counts once toward the [proof-image ceiling](api.md#proof-image-ceiling). A browser without `ImageDecoder` stages the GIF whole, and the server splits it at publish.
+An image uploads at publish under a placeholder; the server matches each file to its placeholder by filename.
 
 #### Storage
 
-The server stores the body in a `TEXT` column and sanitizes every write with nh3 in [`sanitize.py`](../backend/app/services/sanitize.py) on the [rich text rules](api.md#rich-text).
+The server sanitizes every write on the [rich text rules](api.md#rich-text).
 
 #### The read view
 
-[`renderProof`](../frontend/src/lib/proof.tsx) parses the stored HTML with html-react-parser and renders only allowlisted tags, each with its class from `TAG_CLASSES`. Any other tag renders its children only. Every attribute is dropped except:
-
-- A link whose `href` passes `isSafeLinkHref` renders through `<OutboundLink ugc>` with `TEXT_LINK` (see [Outbound links](#outbound-links)). Any other link renders as its text.
-- An image whose `src` passes `isSafeImageSrc` becomes [`<ProofImage>`](../frontend/src/components/event/ProofImage.tsx), which opens the shared lightbox. `gateImages` passes the event's `is_graphic` to it, so a proof image takes the same age confirmation as source media. A paragraph that holds an image renders as a `div`.
-
-`isSafeLinkHref` and `isSafeImageSrc` mirror the server's predicates, so a body that bypasses the sanitizer still renders no unsafe URL.
+[`renderProof`](../frontend/src/lib/proof.tsx) renders only allowlisted tags and safe URLs, as the server does.
 
 #### Plain text
 
-`htmlText` in [`lib/proof.tsx`](../frontend/src/lib/proof.tsx) mirrors the server's `html_text`: it concatenates the text with entities decoded, starts a new line at every block boundary and every `<br>`, trims each line, and drops blank lines. The collection description counter measures it, and the server caps the same projection and stores it as `description_text`. `proofHasImage` reads the same parse for the geolocation floor: a proof needs at least one `<img src>`.
+`htmlText` mirrors the server's plain-text projection, which the description counter measures.
 
 ### Errors
-
-Every failure a reader meets is read once, in one module, and shown by one primitive.
 
 ```mermaid
 flowchart LR
@@ -1688,26 +1480,11 @@ flowchart LR
   hooks --> field
 ```
 
-**The wording.** [`apiFetch`](../frontend/src/lib/api.ts) turns every failure into an `ApiError` that carries a `ReadableError` from [`lib/errors.ts`](../frontend/src/lib/errors.ts): a `title` for a fault the reader did not cause, a `message`, and `fields`, the refusals of a refused body keyed by field name. A message the backend wrote for people shows as written, so a refusal is worded where it is raised. The table words the rest, and the browser's and Pydantic's own words never reach the screen.
-
-| Failure | Title | Message |
-|---|---|---|
-| No answer (offline, refused, CORS) | Vidit does not respond | Check your connection, then retry. |
-| 5xx without a typed message | Vidit hit a problem | Retry in a moment. |
-| 429 `rate_limited` | | Too many attempts. Try again in N minutes. (from `Retry-After`) |
-| 429 `read_quota_exceeded` | | You reached the hourly reading limit. Try again in N minutes. |
-| 404 or 403 without a message | | Not found. It may have been deleted. / You cannot do this. |
-| 422 refused body | | The first field's refusal, after its name: *X handle: 15 characters at most: letters, digits and _.* |
-
-A refused body reads each item by its Pydantic `type`: `missing` reads *Required.*, `string_too_long` reads *280 characters at most.*, a `value_error` reads the validator's own message, and an unknown type reads *This value is not accepted.* A validator's message in a backend schema is therefore a sentence for the reader, without the field's name.
-
-**The display.** [`<ErrorNotice>`](../frontend/src/components/ui/ErrorNotice.tsx) is a neutral card with a red mark, `role="alert"`. An error with a `title` reads its title, then its message under it, and takes a **Retry** (`secondary`) when the caller passes `onRetry`: a failed read of a page (`<PageError>`), a section, a list's next page (`<LoadMoreRow>`), the map's points, the map's side panel, a search. Any other error, a form's refusal included, is one line with no Retry, since the same request meets the same refusal. The message can be a node with a link, and `onDismiss` adds a cross that closes the notice: the session-ended notice at the foot of the viewport, with its *Sign in again* link. [`<FieldError>`](../frontend/src/components/ui/ErrorNotice.tsx) is the red line under a field, with a small mark; the field names it through `aria-describedby`, and `alert` announces it when it appears after a submit or an upload. `useMutation`'s `fields` option lists the fields a form shows in place: their refusals arrive in `fieldErrors` and leave the form's `ErrorNotice` empty.
+A backend message written for people shows as written; [`lib/errors.ts`](../frontend/src/lib/errors.ts) words the rest. Errors render in `<ErrorNotice>`, or `<FieldError>` under a field. A refusal gets no Retry, since the same request meets the same refusal.
 
 ### Field help (`?`)
 
-[`FieldHelp`](../frontend/src/components/ui/FieldHelp.tsx) puts a `?` next to a field label, section heading, detail row, filter bar, or icon group: a one-line explanation on hover or focus, pinned on click (touch can't hover), dismissed by outside-click or Escape (a real `role="tooltip"`). It is the app's **one** explanation affordance: an explanation never rides on a native `title` attribute, whose bubble is the browser's chrome rather than Vidit's and appears on no other surface here (`title` stays for the bare name of an icon-only control). It is **neutral grey, not accent** (meta help), the one sanctioned exception to the rule that clickable implies accent. Each `?` is `<FieldHelp concept="…" />`. The concept registry [`lib/fieldHelp.ts`](../frontend/src/lib/fieldHelp.ts) pairs each concept's `text` and `label` once (wording mirrors [`data-model.md`](data-model.md)), so the same concept explains a field on the submit form, the detail page or map panel, and the filter panel without drift. The registry is the only source: a `?` takes a concept key and nothing else, so no instance can word a concept its own way. The `?` is the single source of section *help*: what a concept means is written once, in the registry, and never restated under a heading. A block still states what it counts in a line under its heading where the heading alone leaves the population unstated (the Insights card and its two charts), which is a statement about that block's data rather than a definition of a concept. A concept whose data comes from outside Vidit (a basemap, a map layer or an overlay) also carries `sources` in the registry: the bubble lists them under the sentence, each an [`<OutboundLink>`](#outbound-links) to the provider's page, opening in a new tab. The pointer crosses from the `?` into the bubble without closing it, and a tap pins it on a phone, so the links stay reachable. While the bubble is open, the `?` names it through `aria-controls`, so a `<PopoverPanel>` around the `?` counts a press on a link as inside the panel and stays open. Readers can hide every `?` through Settings → Display, leaving only labels and fields. The switch is saved to the account like the [theme](#theme).
-
-**Tap size.** The glyph is 13px, too small to hit with a thumb, so on a phone, padding plus a matching negative margin grows the anchor to 29 by 25px while the `?` and the label beside it stay where they are. The vertical bleed stops at 6px, the label-to-input gap the form fields use, so a tap aimed at the input below the label reaches the input. The tooltip is positioned off that anchor, so it hangs a few pixels lower and further left on a phone than on desktop, where the glyph keeps its bare box.
+[`FieldHelp`](../frontend/src/components/ui/FieldHelp.tsx) is the one explanation affordance; a native `title` only names an icon-only control. It is grey, the one exception to clickable-means-accent. It takes a registry key, so a concept is worded once. Settings → Display can hide it.
 
 ### Sanctioned one-offs
 
