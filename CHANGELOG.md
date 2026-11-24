@@ -28,6 +28,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Fixed
 
+- Pressing Enter in the link popover of a collection description or an event's proof adds the link instead of submitting the whole form ([#864](https://github.com/vidithq/vidit/pull/864)).
 - A reader west of UTC sees an event's date on its own day, not the day before, and every date on the site reads the same for every reader ([#835](https://github.com/vidithq/vidit/pull/835)).
 - The **New collection** button in the **Add to collection** popovers shows one icon instead of two ([#835](https://github.com/vidithq/vidit/pull/835)).
 - The API reference lists the 30/hour limit on `POST /admin/users/{id}/restore` and counts `POST /collections/collectable-events` in the per-user read quota, and CI fails when the rate-limit tables and the code disagree ([#835](https://github.com/vidithq/vidit/pull/835)).

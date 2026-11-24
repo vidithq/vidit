@@ -23,7 +23,7 @@ import { htmlText } from "@/lib/proof";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 // BlockNote needs the DOM.
-const ProofEditor = dynamic(() => import("@/components/editor/ProofEditor"), {
+const RichTextEditor = dynamic(() => import("@/components/editor/RichTextEditor"), {
   ssr: false,
 });
 
@@ -70,7 +70,7 @@ function missingCollectionFields(
  * nothing: it turns those fields red until they are filled, and `IncompleteFormAnnouncer` reads
  * the gaps to a screen reader.
  *
- * **The description is written in `<ProofEditor>`** with `allowImages={false}` (no upload path,
+ * **The description is written in `<RichTextEditor>`** with `allowImages={false}` (no upload path,
  * and the server drops the node). The form holds the HTML body, and its counter measures the
  * plain-text projection (`htmlText`), the reading the server caps, so markup costs nothing.
  *
@@ -251,7 +251,7 @@ export function CollectionDetailsForm({
             </div>
             {/* The editor is a contenteditable div, not a form control, so the group names it. */}
             <div role="group" aria-label="Description">
-              <ProofEditor
+              <RichTextEditor
                 initialContent={initialDescription}
                 onChange={setDescription}
                 allowImages={false}

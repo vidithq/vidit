@@ -6,8 +6,8 @@ import Link from "next/link";
 import { ProofSection } from "@/components/ui/ProofSection";
 import { TEXT_LINK } from "@/components/ui/styles";
 
-const ProofEditor = dynamic(
-  () => import("@/components/editor/ProofEditor"),
+const RichTextEditor = dynamic(
+  () => import("@/components/editor/RichTextEditor"),
   { ssr: false }
 );
 
@@ -39,7 +39,7 @@ export function ProofEditorPanel({
 }: ProofEditorPanelProps) {
   return (
     <ProofSection editor invalid={invalid}>
-      <ProofEditor
+      <RichTextEditor
         bare
         initialContent={proof}
         initialProofFiles={proofFiles}

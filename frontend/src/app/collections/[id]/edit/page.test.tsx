@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { signedInAs, signedOut } from "@/test/auth";
 import { collection, eventRow } from "@/test/collection";
-import { textHtml } from "@/test/proofEditorStub";
+import { textHtml } from "@/test/richTextEditorStub";
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -16,7 +16,7 @@ vi.mock("next/navigation", () => ({
 const useAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => useAuth() }));
 
-vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
+vi.mock("@/components/editor/RichTextEditor", () => import("@/test/richTextEditorStub"));
 
 import { useApiResource } from "@/test/apiResourceStub";
 vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));

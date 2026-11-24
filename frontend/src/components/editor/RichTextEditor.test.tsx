@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, type FormEvent } from "react";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { en } from "@blocknote/core/locales";
@@ -7,7 +7,7 @@ import type { useCreateBlockNote } from "@blocknote/react";
 import { FORM_INVALID_FIELD } from "@/components/ui/form-styles";
 import { tinyGif } from "@/test/gif";
 
-import ProofEditor, { previewUrl, referencedProofFiles } from "./ProofEditor";
+import RichTextEditor, { previewUrl, referencedProofFiles } from "./RichTextEditor";
 
 // The created editor, so a test drives edits through BlockNote's own API (jsdom has no typing).
 let editor: ReturnType<typeof useCreateBlockNote>;
@@ -76,29 +76,29 @@ describe("previewUrl", () => {
   });
 });
 
-describe("ProofEditor", () => {
+describe("RichTextEditor", () => {
   it("seeds from stored HTML without emitting it back", async () => {
     const onChange = vi.fn();
     const { container } = render(
-      <ProofEditor onChange={onChange} initialContent="<p>Anchor <strong>points</strong></p>" />,
+      <RichTextEditor onChange={onChange} initialContent="<p>Anchor <strong>points</strong></p>" />,
     );
     await waitFor(() => expect(container.querySelector("strong")).toHaveTextContent("points"));
     expect(onChange).not.toHaveBeenCalled();
   });
 
   it("wears the shared invalid outline when the caller flags it", () => {
-    const { container, rerender } = render(<ProofEditor onChange={() => {}} />);
+    const { container, rerender } = render(<RichTextEditor onChange={() => {}} />);
     const box = () => container.firstElementChild as HTMLElement;
     expect(box().className).not.toContain(FORM_INVALID_FIELD);
 
-    rerender(<ProofEditor onChange={() => {}} invalid />);
+    rerender(<RichTextEditor onChange={() => {}} invalid />);
     expect(box().className).toContain(FORM_INVALID_FIELD);
   });
 
   it("emits the typed text as HTML and stages only the images the body still shows", async () => {
     const onChange = vi.fn();
     const onProofFilesChange = vi.fn();
-    render(<ProofEditor onChange={onChange} onProofFilesChange={onProofFilesChange} />);
+    render(<RichTextEditor onChange={onChange} onProofFilesChange={onProofFilesChange} />);
     const kept = png("kept.png");
     const dropped = png("dropped.png");
 
@@ -120,7 +120,7 @@ describe("ProofEditor", () => {
 
   it("keeps a staged image across a remount", async () => {
     const first = vi.fn();
-    const mounted = render(<ProofEditor onChange={() => {}} onProofFilesChange={first} />);
+    const mounted = render(<RichTextEditor onChange={() => {}} onProofFilesChange={first} />);
     const file = png("frame.png");
     await act(async () => {
       const url = (await editor.uploadFile!(file)) as string;
@@ -132,7 +132,7 @@ describe("ProofEditor", () => {
 
     const second = vi.fn();
     const { container } = render(
-      <ProofEditor
+      <RichTextEditor
         onChange={() => {}}
         onProofFilesChange={second}
         initialContent={html}
@@ -150,7 +150,7 @@ describe("ProofEditor", () => {
     const file = png("frame.png");
     const { container } = render(
       <StrictMode>
-        <ProofEditor
+        <RichTextEditor
           onChange={() => {}}
           initialContent='<img src="placeholder://frame.png">'
           initialProofFiles={[file]}
@@ -183,7 +183,7 @@ describe("ProofEditor", () => {
       const frames = ["scan-1.png", "scan-2.png", "scan-3.png", "scan-4.png"].map(png);
       splitGif.mockResolvedValueOnce(frames);
       const onProofFilesChange = vi.fn();
-      render(<ProofEditor onChange={() => {}} onProofFilesChange={onProofFilesChange} />);
+      render(<RichTextEditor onChange={() => {}} onProofFilesChange={onProofFilesChange} />);
 
       expect(await pick(gif(4))).toBe("placeholder://scan-1.png");
       expect(splitGif).toHaveBeenLastCalledWith(expect.any(File), 4);
@@ -194,7 +194,7 @@ describe("ProofEditor", () => {
     it("shows the split in the block that picked it, then says what it became", async () => {
       let split: (files: File[]) => void = () => {};
       splitGif.mockReturnValueOnce(new Promise((done) => (split = done)));
-      const { container } = render(<ProofEditor onChange={() => {}} />);
+      const { container } = render(<RichTextEditor onChange={() => {}} />);
       let blockId = "";
       let url: Promise<unknown> = Promise.resolve();
       act(() => {
@@ -222,13 +222,13 @@ describe("ProofEditor", () => {
 
     it("goes in whole where the browser cannot split it", async () => {
       splitGif.mockResolvedValueOnce(null);
-      render(<ProofEditor onChange={() => {}} />);
+      render(<RichTextEditor onChange={() => {}} />);
       expect(await pick(gif(2))).toBe("placeholder://scan.gif");
       expect(editor.document.filter((b: { type: string }) => b.type === "image")).toHaveLength(1);
     });
 
     it("is refused past six frames, leaving no image and saying why", async () => {
-      const { findByRole, queryByText } = render(<ProofEditor onChange={() => {}} />);
+      const { findByRole, queryByText } = render(<RichTextEditor onChange={() => {}} />);
       expect(await pick(gif(7))).toBe("");
 
       expect(await findByRole("alert")).toHaveTextContent(
@@ -242,9 +242,9 @@ describe("ProofEditor", () => {
 
   it("keeps an image out of a text-only body", async () => {
     const seed = '<p>Before</p><img src="https://cdn.test/p.jpg"><p>After</p>';
-    const images = render(<ProofEditor onChange={() => {}} initialContent={seed} />).container;
+    const images = render(<RichTextEditor onChange={() => {}} initialContent={seed} />).container;
     const textOnly = render(
-      <ProofEditor onChange={() => {}} initialContent={seed} allowImages={false} />,
+      <RichTextEditor onChange={() => {}} initialContent={seed} allowImages={false} />,
     ).container;
 
     await waitFor(() => expect(textOnly).toHaveTextContent("After"));
@@ -266,7 +266,7 @@ describe("ProofEditor", () => {
   ])("ignores a pasted or dropped file: %s", async (_name, file, allowImages) => {
     const onChange = vi.fn();
     const { container } = render(
-      <ProofEditor onChange={onChange} initialContent="<p>Kept</p>" allowImages={allowImages} />,
+      <RichTextEditor onChange={onChange} initialContent="<p>Kept</p>" allowImages={allowImages} />,
     );
     await waitFor(() => expect(container).toHaveTextContent("Kept"));
     const body = container.querySelector<HTMLElement>(".bn-editor")!;
@@ -280,6 +280,36 @@ describe("ProofEditor", () => {
     expect(editor.document).toHaveLength(1);
     expect(editor.document[0].type).toBe("paragraph");
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("adds a link on Enter in the link popover without submitting the host form", async () => {
+    const hostSubmit = vi.fn((e: FormEvent) => e.preventDefault());
+    const onChange = vi.fn();
+    const { container, findByPlaceholderText } = render(
+      <form onSubmit={hostSubmit}>
+        <RichTextEditor onChange={onChange} initialContent="<p>Anchor points</p>" />
+      </form>,
+    );
+    await waitFor(() => expect(container).toHaveTextContent("Anchor points"));
+    act(() => {
+      editor.focus();
+      editor._tiptapEditor.commands.setTextSelection({ from: 1, to: 7 });
+    });
+    const linkButton = container.ownerDocument.querySelector<HTMLElement>(
+      `.bn-formatting-toolbar button[aria-label="${en.formatting_toolbar.link.tooltip}"]`,
+    )!;
+    act(() => linkButton.click());
+    const url = await findByPlaceholderText(en.link_toolbar.form.url_placeholder);
+
+    fireEvent.change(url, { target: { value: "https://example.org" } });
+    fireEvent.submit(url.closest("form")!);
+
+    expect(hostSubmit).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.stringContaining('<a href="https://example.org"'),
+      ),
+    );
   });
 
   describe("formatting toolbar", () => {
@@ -317,7 +347,7 @@ describe("ProofEditor", () => {
       ],
     ])("offers nothing the server drops for %s", async (_name, select, kept) => {
       const { container } = render(
-        <ProofEditor
+        <RichTextEditor
           onChange={() => {}}
           initialContent='<p>Anchor points</p><img src="https://cdn.test/p.jpg">'
         />,

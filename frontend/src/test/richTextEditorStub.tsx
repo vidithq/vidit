@@ -1,8 +1,8 @@
 import type { ComponentProps } from "react";
 
-import type ProofEditor from "@/components/editor/ProofEditor";
+import type RichTextEditor from "@/components/editor/RichTextEditor";
 
-/** The one-paragraph body the proof editor emits for unmarked text. */
+/** The one-paragraph body the rich-text editor emits for unmarked text. */
 export function textHtml(text: string): string {
   return `<p>${text}</p>`;
 }
@@ -11,15 +11,15 @@ function htmlBodyText(html: string | null | undefined): string {
   return html?.replace(/^<p>|<\/p>$/g, "") ?? "";
 }
 
-/** Stands in for `ProofEditor` (BlockNote needs layout APIs jsdom lacks): a textarea that prints
+/** Stands in for `RichTextEditor` (BlockNote needs layout APIs jsdom lacks): a textarea that prints
  *  its seeded body, emits `textHtml` and exposes the flags the caller passed. Mock it with
- *  `vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"))`. */
-export default function ProofEditorStub({
+ *  `vi.mock("@/components/editor/RichTextEditor", () => import("@/test/richTextEditorStub"))`. */
+export default function RichTextEditorStub({
   initialContent,
   onChange,
   allowImages,
   invalid,
-}: ComponentProps<typeof ProofEditor>) {
+}: ComponentProps<typeof RichTextEditor>) {
   return (
     <textarea
       aria-label="Description"
