@@ -616,7 +616,7 @@ Indexes:
 - `ix_password_reset_tokens_user_id` on `(user_id)`. Supports cascade delete and per-user revocation lookups.
 - `ix_password_reset_tokens_live_expires_at`: partial index on `(expires_at) WHERE consumed_at IS NULL`. Keeps the reaper scan cheap as consumed rows accumulate.
 
-Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_for_user` force-revokes the user's prior tokens on a fresh mint. Cleanup runs on demand through `POST /admin/maintenance/reap-password-reset-tokens` (`services/maintenance.py::reap_password_reset_tokens`). It deletes live-but-expired rows immediately and drops consumed rows older than 30 days.
+Lifecycle: `mint` creates a token, `consume` redeems it, and `revoke_all_live_for_user` force-revokes the user's prior tokens on a fresh mint. Cleanup runs on demand through `POST /admin/maintenance/reap-password-reset-tokens` (`services/maintenance.py::reap_password_reset_tokens`), from the admin Maintenance panel. It deletes live-but-expired rows immediately and drops consumed rows older than 30 days.
 
 ---
 

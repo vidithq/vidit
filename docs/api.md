@@ -221,10 +221,10 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST | `/admin/events/{id}/versions/{version_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
-| POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (password reset tokens, pending registrations) |
+| POST | `/admin/maintenance/reap-*` | 🛡️ | Drop expired password reset tokens or pending registrations |
 | POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of detections awaiting completion |
 
-The admin console has no panel for the `/admin/maintenance/*` routes. Call them with an admin session cookie.
+Nothing schedules the `/admin/maintenance/*` routes. An admin runs each one from the Maintenance panel of the admin console, which lists the counts the job returns.
 
 ---
 

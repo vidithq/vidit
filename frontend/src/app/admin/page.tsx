@@ -7,6 +7,8 @@ import { useAdmin } from "@/contexts/AdminContext";
 import { DetectionStatsPanel } from "@/components/admin/DetectionStatsPanel";
 import { ReportsPanel } from "@/components/admin/ReportsPanel";
 import { EventActionsPanel } from "@/components/admin/EventActionsPanel";
+import { CollectionModerationPanel } from "@/components/admin/CollectionModerationPanel";
+import { MaintenancePanel } from "@/components/admin/MaintenancePanel";
 import { OnboardingPanel } from "@/components/admin/OnboardingPanel";
 import { ManageAnalystsPanel } from "@/components/admin/ManageAnalystsPanel";
 import { OrganizationsPanel } from "@/components/admin/OrganizationsPanel";
@@ -33,6 +35,8 @@ export default function AdminPage() {
       <OrganizationsPanel />
       <ReportsPanel />
       <EventActionsPanel />
+      <CollectionModerationPanel />
+      <MaintenancePanel />
     </PageShell>
   );
 }

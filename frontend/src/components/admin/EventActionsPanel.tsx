@@ -5,9 +5,12 @@ import { MapPin } from "lucide-react";
 
 import {
   deleteEvent,
+  idIn,
+  redactEventVersion,
   setEventModeration,
   type AdminEventDeleteResponse,
   type AdminEventModeration,
+  type AdminRedactedVersion,
 } from "@/lib/admin";
 import { countLabel, formatDate, formatInstant } from "@/lib/format";
 import { hitsOf, search } from "@/lib/search";
@@ -17,6 +20,7 @@ import { FORM_LABEL } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { Input } from "@/components/ui/Input";
 import type { ItemData } from "@/components/ui/Item";
 import { ItemSearch } from "@/components/ui/ItemSearch";
 import { eventItem } from "@/lib/items";
@@ -26,9 +30,10 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 /**
  * Every admin action on one event, with no report behind it: the two moderation axes
- * (`PATCH /admin/events/{id}/moderation`, the one verb that undoes a takedown) and the soft or
+ * (`PATCH /admin/events/{id}/moderation`, the one verb that undoes a takedown), the redaction of
+ * one filed version (`POST /admin/events/{id}/versions/{version_no}/redact`) and the soft or
  * hard delete (`DELETE /admin/events/{id}`). The event comes from a title search over `GET /search`
- * or a pasted ID or event link. Hide and delete confirm in place.
+ * or a pasted ID or event link. Hide, redact and delete confirm in place.
  */
 
 type ModerationBody = { is_graphic?: boolean; hidden?: boolean };
@@ -61,13 +66,12 @@ const HIDE_DONE = "Hidden";
 
 type Receipt =
   | { kind: "moderation"; action: string; title: string | null; data: AdminEventModeration }
+  | { kind: "redact"; id: string; title: string | null; data: AdminRedactedVersion }
   | { kind: "delete"; data: AdminEventDeleteResponse };
 
 /** An event the panel acts on. A pasted ID carries no title, and its item shows the ID. */
 type Target = { id: string; title: string | null; item: ItemData };
 
-// An event ID alone or inside an event link (`/events/{id}`, `/events/{id}/v2`).
-const EVENT_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const SEARCH_LIMIT = 10;
 
 async function searchEvents(q: string): Promise<Target[]> {
@@ -84,7 +88,7 @@ async function searchEvents(q: string): Promise<Target[]> {
 }
 
 function pastedEvent(text: string): Target | null {
-  const id = text.match(EVENT_ID)?.[0].toLowerCase();
+  const id = idIn(text);
   return id ? { id, title: null, item: { kind: "event", title: id } } : null;
 }
 
@@ -92,6 +96,7 @@ export function EventActionsPanel() {
   const [target, setTarget] = useState<Target | null>(null);
   const [mode, setMode] = useState<"soft" | "hard">("soft");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [versionNo, setVersionNo] = useState("");
   const id = target?.id ?? "";
 
   const moderateMutation = useMutation(
@@ -103,6 +108,13 @@ export function EventActionsPanel() {
       },
     }
   );
+  const redactMutation = useMutation(() => redactEventVersion(id, Number(versionNo)), {
+    fallback: "Redaction failed",
+    onSuccess: (data) => {
+      setReceipt({ kind: "redact", id, title: target?.title ?? null, data });
+      setVersionNo("");
+    },
+  });
   const deleteMutation = useMutation(
     () => deleteEvent(id, { hard: mode === "hard" }),
     {
@@ -118,17 +130,19 @@ export function EventActionsPanel() {
   const retarget = (next: Target | null) => {
     setTarget(next);
     moderateMutation.reset();
+    redactMutation.reset();
     deleteMutation.reset();
   };
 
   const moderate = (body: ModerationBody, done: string) => {
+    redactMutation.reset();
     deleteMutation.reset();
     void moderateMutation.run({ body, done });
   };
 
-  const busy = moderateMutation.loading || deleteMutation.loading;
+  const busy = moderateMutation.loading || redactMutation.loading || deleteMutation.loading;
   const disabled = busy || !target;
-  const error = moderateMutation.error ?? deleteMutation.error;
+  const error = moderateMutation.error ?? redactMutation.error ?? deleteMutation.error;
   const deleteLabel = mode === "hard" ? "Hard delete" : "Soft delete";
 
   return (
@@ -138,7 +152,8 @@ export function EventActionsPanel() {
         <p className="text-xs text-neutral-500 mt-0.5">
           Act on one event, with no report behind it. Graphic blurs the media
           behind an age confirmation. Hide withholds the event from every
-          public read, and Restore undoes a hide. Soft delete removes the event
+          public read, and Restore undoes a hide. Redact blanks one filed
+          version of the event&apos;s history and keeps its number. Soft delete removes the event
           from public view and keeps its proof and S3 evidence. Hard delete
           erases the row, its media rows and its S3 objects (the GDPR path).
           Every action is audited.
@@ -189,6 +204,33 @@ export function EventActionsPanel() {
       </div>
 
       <div className="space-y-2">
+        <label className={FORM_LABEL} htmlFor="event-actions-version">
+          Redact a version
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            variant="compact"
+            id="event-actions-version"
+            type="number"
+            min={0}
+            placeholder="Version number"
+            value={versionNo}
+            onChange={(e) => setVersionNo(e.target.value)}
+            className="w-40"
+          />
+          <ConfirmButton
+            label="Redact"
+            disabled={disabled || versionNo === ""}
+            onConfirm={() => {
+              moderateMutation.reset();
+              deleteMutation.reset();
+              return redactMutation.run();
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
         <span className={FORM_LABEL}>Delete</span>
         <SegmentedControl
           aria-label="Delete mode"
@@ -232,6 +274,23 @@ export function EventActionsPanel() {
             {receipt.data.hidden_at
               ? `Hidden since ${formatInstant(receipt.data.hidden_at)}.`
               : "Visible on every public read."}
+          </div>
+        </ActionReceipt>
+      )}
+
+      {receipt?.kind === "redact" && (
+        <ActionReceipt
+          action="Redacted"
+          danger
+          header={
+            <>
+              <MapPin size={12} className="text-orange-400" />
+              <span className="font-medium">{receipt.title ?? receipt.id}</span>
+            </>
+          }
+        >
+          <div className="text-neutral-500">
+            Version {receipt.data.version_no} is blank; its number stays in the history.
           </div>
         </ActionReceipt>
       )}

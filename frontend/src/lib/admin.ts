@@ -164,3 +164,45 @@ export function setSiteModeration(id: string, hidden: boolean): Promise<AdminSit
     body: JSON.stringify({ hidden }),
   });
 }
+
+/** The first UUID in `text`: a pasted ID alone or inside a link (`/events/{id}/v2`). */
+export function idIn(text: string): string | null {
+  return text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0].toLowerCase() ?? null;
+}
+
+/** A filed version after the redaction: `redacted` is true and the snapshot is empty. */
+export type AdminRedactedVersion = components["schemas"]["EventVersionRead"];
+
+/** Blank one filed version of an event, keeping its number. Idempotent. */
+export function redactEventVersion(id: string, versionNo: number): Promise<AdminRedactedVersion> {
+  return apiFetch<AdminRedactedVersion>(`/admin/events/${id}/versions/${versionNo}/redact`, {
+    method: "POST",
+  });
+}
+
+/** A collection's takedown state after the PATCH: `hidden_at` is null once restored. */
+export type AdminCollectionModeration = components["schemas"]["AdminCollectionHideResponse"];
+
+/** Withhold a collection from every read but an admin's, or restore it. */
+export function setCollectionModeration(
+  id: string,
+  hidden: boolean
+): Promise<AdminCollectionModeration> {
+  return apiFetch<AdminCollectionModeration>(
+    `/admin/collections/${encodeURIComponent(id)}/moderation`,
+    { method: "PATCH", body: JSON.stringify({ hidden }) }
+  );
+}
+
+/** The maintenance jobs, each `POST /admin/maintenance/{job}`. */
+export type MaintenanceJob =
+  | "reap-password-reset-tokens"
+  | "reap-pending-registrations"
+  | "send-completion-digests";
+
+/** The counts one job returns; a job fills only its own keys. */
+export type AdminMaintenanceResult = components["schemas"]["AdminMaintenanceResponse"];
+
+export function runMaintenance(job: MaintenanceJob): Promise<AdminMaintenanceResult> {
+  return apiFetch<AdminMaintenanceResult>(`/admin/maintenance/${job}`, { method: "POST" });
+}

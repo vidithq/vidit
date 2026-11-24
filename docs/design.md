@@ -2031,9 +2031,11 @@ flowchart LR
 **Admin console.** The moderation panels name every item so a moderator acts on the right one:
 
 - [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) prints an event report's title as its link and the author's `<AuthorByline>` beside it, as it does for a collection or a site.
-- [`<EventActionsPanel>`](../frontend/src/components/admin/EventActionsPanel.tsx) lists each search hit as a static compact [`<Item>`](#items) whose date reads *Undated*, or *Requested* and the request date, where the event date is missing. The picked event's chip keeps the date and the author.
+- [`<EventActionsPanel>`](../frontend/src/components/admin/EventActionsPanel.tsx) lists each search hit as a static compact [`<Item>`](#items) whose date reads *Undated*, or *Requested* and the request date, where the event date is missing. The picked event's chip keeps the date and the author. **Redact** takes a version number and blanks that filed version.
+- [`<CollectionModerationPanel>`](../frontend/src/components/admin/CollectionModerationPanel.tsx) takes a pasted collection ID or link, since a withheld collection is out of search, and offers **Restore** and **Hide**.
+- [`<MaintenancePanel>`](../frontend/src/components/admin/MaintenancePanel.tsx) holds one button per maintenance job. Its receipt lists the counts the job returned.
 - [`<UserActionsCard>`](../frontend/src/components/admin/UserActionsCard.tsx) marks a soft-deleted account with a red *Soft-deleted* pill and the time, and its menu offers **Restore** and **Hard delete** only. The onboarding table marks the account's row the same way.
-- An action leaves an [`ActionReceipt`](../frontend/src/components/admin/ActionReceipt.tsx) whose badge names the action taken (*Hidden*, *Restored*, *Marked graphic*, *Hard delete*). An account action's receipt (`UserOutcomeReceipt`) sums up what changed, such as the events and storage objects a hard delete erased.
+- An action leaves an [`ActionReceipt`](../frontend/src/components/admin/ActionReceipt.tsx) whose badge names the action taken (*Hidden*, *Restored*, *Marked graphic*, *Redacted*, *Hard delete*, *Done*). An account action's receipt (`UserOutcomeReceipt`) sums up what changed, such as the events and storage objects a hard delete erased.
 
 ### Requests board
 
@@ -2226,7 +2228,9 @@ Every destructive action in the app:
 | Organization page | Decline an approval request | Minor | **Decline** button with the cross |
 | Profile | Unfollow | Minor | **Following** toggle |
 | Settings | Revoke an invite code | Important | `ConfirmButton` trash |
-| Admin, Manage an event | Hide, soft delete, hard delete | Important | `ConfirmButton` **Hide**, **Soft delete**, **Hard delete** |
+| Admin, Manage an event | Hide, redact a version, soft delete, hard delete | Important | `ConfirmButton` **Hide**, **Redact**, **Soft delete**, **Hard delete** |
+| Admin, Moderate a collection | Hide the collection | Important | `ConfirmButton` **Hide** |
+| Admin, Maintenance | Drop expired reset tokens or pending registrations | Minor | **Reap …** button with the cross |
 | Admin, Reports | Hide the reported item | Important | `ConfirmButton` **Hide the …** |
 | Admin, Reports | Dismiss a report | Minor | **Dismiss** button |
 | Admin, Analysts | Clear the linked X handle | Minor | **Clear link** button with the cross |
