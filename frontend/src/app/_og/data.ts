@@ -1,9 +1,4 @@
-import { lookup as dnsLookup, type LookupAddress } from "node:dns";
-
-import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
-
 import { API_URL } from "@/lib/api";
-import { isFetchableAvatarUrl, isPrivateAddress } from "@/lib/og";
 
 // Server-side reads behind the share cards and `generateMetadata`. Unlike the browser
 // `apiFetch`, they send no session cookie (a card must never show more than a signed-out
@@ -63,58 +58,13 @@ export async function ogFetch<T>(path: string): Promise<OgRead<T>> {
   }
 }
 
-/**
- * Connection guard for the picture legs: reject a host whose name resolves to an address
- * outside the public unicast space, before the socket opens.
- *
- * `isFetchableAvatarUrl` filters the name only; `169.254.169.254.nip.io` is a public hostname
- * whose A record is the cloud metadata address. Checking in the connector rather than
- * pre-resolving means the address judged is the address the socket uses. URLs reaching this
- * leg are server-minted and name the media host only, so the guard is defense in depth.
- *
- * A mixed answer is rejected whole. The answer is asked for whole (`all: true`) and handed
- * back IPv4 first: a runtime without IPv6 egress can't reach a `2a04:…` address, so leading
- * with one costs the card its picture on a host that also has an A record. A single-address
- * ask gets an IPv4 entry whenever the name has one.
- */
-const imageDispatcher = new Agent({
-  connect: {
-    lookup(hostname, options, callback) {
-      dnsLookup(hostname, { ...options, all: true as const }, (err, addresses) => {
-        if (err) {
-          callback(err, "", 0);
-          return;
-        }
-        const resolved = addresses as LookupAddress[];
-        if (resolved.length === 0 || resolved.some((entry) => isPrivateAddress(entry.address))) {
-          callback(
-            new Error(`image host ${hostname} does not resolve to a public address`),
-            "",
-            0,
-          );
-          return;
-        }
-        const ordered = [
-          ...resolved.filter((entry) => entry.family === 4),
-          ...resolved.filter((entry) => entry.family !== 4),
-        ];
-        if (options.all) {
-          callback(null, ordered);
-          return;
-        }
-        callback(null, ordered[0].address, ordered[0].family);
-      });
-    },
-  },
-});
-
 /** A capped body read's answer; `over` and `empty` are kept apart so the warning names the
  * one that happened. */
 type CappedRead = { status: "ok"; body: Buffer } | { status: "over" } | { status: "empty" };
 
 /** Read a response body under a running byte budget, checked per chunk so a host can't spend
  * the renderer's memory on a body the guard would reject. */
-async function readCapped(body: UndiciResponse["body"], max: number): Promise<CappedRead> {
+async function readCapped(body: Response["body"], max: number): Promise<CappedRead> {
   if (!body) return { status: "empty" };
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -154,12 +104,18 @@ function skipImage(url: string | null | undefined, reason: string): null {
   return null;
 }
 
-/** True when `value` is on the API's own origin, which serves the local storage backend's
- * pictures (`http://localhost:8000/local-storage/...` in development). The API is trusted as
- * `ogFetch` trusts it, so this origin skips the public-host guards. */
-function isApiOrigin(value: string): boolean {
+/** True when `value` names the media host: `NEXT_PUBLIC_MEDIA_HOST` over https, or the API's
+ * own origin, which serves the local storage backend's pictures. Picture URLs are server-minted
+ * and name one of the two, so an exact match keeps the renderer, whose response is published as
+ * an image, from fetching any other host. A build without `NEXT_PUBLIC_MEDIA_HOST` reads the API
+ * origin only. */
+function isMediaUrl(value: string | null | undefined): value is string {
+  if (!value) return false;
   try {
-    return new URL(value).origin === new URL(API_URL).origin;
+    const url = new URL(value);
+    if (url.origin === new URL(API_URL).origin) return true;
+    const mediaHost = process.env.NEXT_PUBLIC_MEDIA_HOST;
+    return !!mediaHost && url.protocol === "https:" && url.host === mediaHost.toLowerCase();
   } catch {
     return false;
   }
@@ -183,27 +139,21 @@ async function reencodePng(body: Buffer): Promise<Buffer> {
 /**
  * Fetch one picture off the media host and inline it as a data URI, or `null` for the caller's
  * fallback (the profile card's monogram, a mosaic's blank tile). One helper for every card
- * picture, so the guards are stated once: `isFetchableAvatarUrl` on the host and
- * `isPrivateAddress` on what it resolves to (see `lib/og.ts`), no redirects (a public host
- * must not bounce the renderer onto a private one), a timeout, a size ceiling enforced as the
- * body arrives, and a decodable content type. A PNG or JPEG under `INLINE_MAX_BYTES` is inlined
- * as fetched; any other decodable picture is re-encoded as PNG first, since resvg draws nothing
- * for it. A rejection costs the fallback and a warning: a card degrades, it does not fail.
- *
- * Reads through `undici`'s own `fetch`, not the global one: `dispatcher` is honoured only by
- * the undici that owns the guarded `Agent`, and a serverless runtime's global `fetch` is a
- * different undici that throws on it, so every picture would fall back while the guard looked
- * applied. This leg has no data cache; the payload reads in `ogFetch` keep theirs, and they
- * are the rate-limit concern.
+ * picture, so the guards are stated once: the media host only (`isMediaUrl`), no redirects (the
+ * media host must not bounce the renderer onto another one), a timeout, a size ceiling enforced
+ * as the body arrives, and a decodable content type. A PNG or JPEG under `INLINE_MAX_BYTES` is
+ * inlined as fetched; any other decodable picture is re-encoded as PNG first, since resvg draws
+ * nothing for it. A rejection costs the fallback and a warning: a card degrades, it does not
+ * fail. This leg has no data cache; the payload reads in `ogFetch` keep theirs, and they are the
+ * rate-limit concern.
  */
 export async function ogImageDataUri(url: string | null | undefined): Promise<string | null> {
-  const ownOrigin = !!url && isApiOrigin(url);
-  if (!ownOrigin && !isFetchableAvatarUrl(url)) return skipImage(url, "rejected by the URL guard");
+  if (!isMediaUrl(url)) return skipImage(url, "not on the media host");
   try {
-    const res = await undiciFetch(url as string, {
+    const res = await fetch(url, {
       signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
       redirect: "error",
-      ...(ownOrigin ? {} : { dispatcher: imageDispatcher }),
+      cache: "no-store",
     });
     if (!res.ok) return skipImage(url, `status ${res.status}`);
     const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
