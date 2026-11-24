@@ -748,9 +748,8 @@ event happens ──▶ media captured ──▶ media posted at a URL ──▶
 
 **Indexes:**
 - `GIST(coords)`. Required for geospatial queries: bounding-box filtering and proximity sort.
-- `(owner_id)`. Supports profile lookup.
 - `(occurred_date)` and `(created_at)`. Support time-based queries.
-- `(owner_id, created_at DESC)`. A composite index for profile listing. Single-author reads key on `owner_id`.
+- `ix_events_owner_created` on `(owner_id, created_at DESC)`. Backs profile listing and every lookup by owner, since it leads with `owner_id`.
 - `ix_events_live`: partial index on `(created_at) WHERE deleted_at IS NULL`. Every public read filters on `deleted_at IS NULL`, and the partial index keeps it tight.
 - `ix_events_status_created_at` on `(status, created_at)`. The requested view, the map, and the detections queue all filter on `status`, newest first.
 - `ix_events_created_at_id` on `(created_at, id)`. Backs the keyset that the capped list endpoints page on. `GET /events` and `GET /events/detections` order by `created_at DESC, id DESC` and cut each page with a row comparison over that pair; see [`api.md`](api.md#pagination).

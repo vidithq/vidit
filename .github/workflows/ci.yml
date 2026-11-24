@@ -131,9 +131,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen
 
-      # No separate `alembic upgrade head` step: the parallel run builds a
-      # template database at alembic head (tests/conftest.py) and clones it
-      # per worker, so the migrations run as part of the pytest step.
+      # Fails when the models and the migrated schema differ, which is when
+      # `alembic revision --autogenerate` would emit operations. The pytest step
+      # migrates its own template database (tests/conftest.py).
+      - name: alembic check
+        if: matrix.group == 1
+        run: uv run alembic upgrade head && uv run alembic check
+
       - name: pytest
         run: >-
           uv run pytest -v -n 4 --dist worksteal

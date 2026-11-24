@@ -162,7 +162,7 @@ class Event(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH))
-    coords = mapped_column(Geometry("POINT", srid=4326), nullable=True, index=True)
+    coords = mapped_column(Geometry("POINT", srid=4326, spatial_index=True), nullable=True)
     proof: Mapped[str] = mapped_column(Text, default="")
     occurred_date: Mapped[date | None] = mapped_column(Date)
     occurred_time: Mapped[time | None] = mapped_column(Time)
@@ -251,9 +251,11 @@ class Event(Base):
         ),
         literal_check("status", EventStatus, "ck_events_status_valid"),
         Index("ix_events_status_created_at", "status", "created_at"),
-        Index("ix_events_owner_id", "owner_id"),
-        Index("ix_events_owner_created", "owner_id", "created_at"),
+        Index("ix_events_owner_created", "owner_id", text("created_at DESC")),
+        Index("ix_events_created_at", "created_at"),
         Index("ix_events_created_at_id", "created_at", "id"),
+        Index("ix_events_live", "created_at", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_events_occurred_date", "occurred_date"),
     )
 
 
@@ -261,7 +263,8 @@ def feed_at() -> ColumnElement[datetime]:
     """Each stamp is set on entry and never cleared, so the key is immutable while a row is in
     the feed. ``created_at`` stands in for a missing stamp because a keyset row comparison
     against NULL is unknown. ``ix_events_timeline_at_id`` indexes this exact expression, and
-    the planner matches it structurally, so changing it needs a migration.
+    the planner matches it structurally, so changing it needs a migration and a matching
+    ``_FEED_AT_INDEXED``.
     """
     return func.coalesce(
         case(
@@ -273,9 +276,18 @@ def feed_at() -> ColumnElement[datetime]:
     )
 
 
+# feed_at() as Postgres prints it back: alembic compares index expressions as text, line breaks
+# included, and SQLAlchemy compiles feed_at() with other parentheses.
+_FEED_AT_INDEXED = (
+    "COALESCE(\nCASE\n"
+    "    WHEN status::text = 'requested'::text THEN requested_at\n"
+    "    WHEN status::text = 'detected'::text THEN detected_at\n"
+    "    ELSE geolocated_at\nEND, created_at)"
+)
+
 Index(
     "ix_events_timeline_at_id",
-    feed_at(),
+    text(_FEED_AT_INDEXED),
     Event.id,
     postgresql_where=and_(
         Event.deleted_at.is_(None),
