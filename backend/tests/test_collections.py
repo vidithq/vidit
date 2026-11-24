@@ -695,15 +695,21 @@ def test_items_reject_a_malformed_cursor(db, owner):
     assert response.status_code == 422
 
 
+def _moderate(collection_id, *, hidden: bool, as_user):
+    return client.patch(
+        f"/api/v1/admin/collections/{collection_id}/moderation",
+        json={"hidden": hidden},
+        headers=login_as(client, as_user),
+    )
+
+
 def test_admin_takedown_hides_a_collection_from_everyone_but_admins(
     db, owner, stranger, admin_user
 ):
     collection = _make_collection(db, owner=owner)
     _add(db, collection, _make_event(db, author=owner, occurred_date=date(2026, 5, 1)))
 
-    takedown = client.delete(
-        f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin_user)
-    )
+    takedown = _moderate(collection.id, hidden=True, as_user=admin_user)
     assert takedown.status_code == 200
     assert takedown.json()["hidden_at"] is not None
 
@@ -732,22 +738,6 @@ def test_admin_takedown_hides_a_collection_from_everyone_but_admins(
     )
 
 
-def test_admin_takedown_is_idempotent_and_keeps_the_first_stamp(db, owner, admin_user):
-    collection = _make_collection(db, owner=owner)
-    headers = login_as(client, admin_user)
-    first = client.delete(f"/api/v1/admin/collections/{collection.id}", headers=headers).json()
-    second = client.delete(f"/api/v1/admin/collections/{collection.id}", headers=headers).json()
-    assert first["hidden_at"] == second["hidden_at"]
-
-
-def _moderate(collection_id, *, hidden: bool, as_user):
-    return client.patch(
-        f"/api/v1/admin/collections/{collection_id}/moderation",
-        json={"hidden": hidden},
-        headers=login_as(client, as_user),
-    )
-
-
 def test_admin_moderation_hides_then_restores_a_collection(db, owner, admin_user):
     """The takedown is reversible: what the PATCH withholds, the PATCH puts back."""
     collection = _make_collection(db, owner=owner)
@@ -768,19 +758,6 @@ def test_admin_moderation_hides_then_restores_a_collection(db, owner, admin_user
     # The owner's profile shelf carries it again.
     body = client.get(f"/api/v1/users/{owner.username}/collections").json()
     assert [item["id"] for item in body["items"]] == [str(collection.id)]
-
-
-def test_admin_moderation_takedown_alias_is_undone_by_the_patch(db, owner, admin_user):
-    """``DELETE`` sets the stamp the ``PATCH`` clears: one axis, two doors."""
-    collection = _make_collection(db, owner=owner)
-    client.delete(
-        f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin_user)
-    )
-    client.cookies.clear()
-
-    assert _moderate(collection.id, hidden=False, as_user=admin_user).json()["hidden_at"] is None
-    client.cookies.clear()
-    assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
 
 
 def test_admin_moderation_is_idempotent_both_ways(db, owner, admin_user):
@@ -808,9 +785,7 @@ def test_admin_moderation_404s_on_an_unknown_collection(db, admin_user):
 def test_withheld_collection_is_out_of_the_profile_list(db, owner, admin_user):
     collection = _make_collection(db, owner=owner)
     _add(db, collection, _make_event(db, author=owner, occurred_date=date(2026, 5, 1)))
-    client.delete(
-        f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin_user)
-    )
+    _moderate(collection.id, hidden=True, as_user=admin_user)
     client.cookies.clear()
 
     body = client.get(f"/api/v1/users/{owner.username}/collections").json()
@@ -859,9 +834,7 @@ def test_authenticated_report_of_a_collection_records_the_reporter(db, owner, st
 def test_report_a_withheld_collection_is_404(db, owner, admin_user):
     """A withheld collection cannot be reported: the same 404 as an unknown id."""
     collection = _make_collection(db, owner=owner)
-    client.delete(
-        f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin_user)
-    )
+    _moderate(collection.id, hidden=True, as_user=admin_user)
     client.cookies.clear()
 
     response = client.post(f"/api/v1/collections/{collection.id}/report", json={"reason": "other"})

@@ -721,7 +721,13 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),
     _Case("post", f"/api/v1/admin/users/{_MISSING_ID}/restore", 30, "admin"),
     _Case("delete", f"/api/v1/admin/events/{_MISSING_ID}", 60, "admin"),
-    _Case("delete", f"/api/v1/admin/collections/{_MISSING_ID}", 60, "admin"),
+    _Case(
+        "patch",
+        f"/api/v1/admin/collections/{_MISSING_ID}/moderation",
+        60,
+        "admin",
+        {"json": {"hidden": True}},
+    ),
     _Case(
         "patch",
         f"/api/v1/admin/sites/{_MISSING_ID}/moderation",

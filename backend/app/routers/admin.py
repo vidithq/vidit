@@ -1,7 +1,6 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from sqlalchemy.orm import Session
 
 from app.cache import points_cache
 from app.dependencies import DB, AdminUser, CurrentUser, Cursor
@@ -286,29 +285,6 @@ def delete_event_admin(
     return result
 
 
-def _collection_takedown(
-    db: Session, collection_id: uuid.UUID, *, hidden: bool, actor: User
-) -> AdminCollectionHideResponse:
-    collection = admin_service.set_takedown(
-        db, Collection, collection_id, hidden=hidden, actor_id=actor.id
-    )
-    return AdminCollectionHideResponse(
-        collection_id=collection.id, title=collection.title, hidden_at=collection.hidden_at
-    )
-
-
-@router.delete(
-    "/collections/{collection_id}",
-    response_model=AdminCollectionHideResponse,
-)
-@limiter.limit("60/hour")
-def hide_collection_admin(
-    request: Request, collection_id: uuid.UUID, db: DB, current_user: AdminUser
-) -> AdminCollectionHideResponse:
-    """Withhold a collection from every read but an admin's."""
-    return _collection_takedown(db, collection_id, hidden=True, actor=current_user)
-
-
 @router.patch(
     "/collections/{collection_id}/moderation",
     response_model=AdminCollectionHideResponse,
@@ -322,7 +298,12 @@ def set_collection_moderation(
     current_user: AdminUser,
 ) -> AdminCollectionHideResponse:
     """Set a collection's moderation state: withhold it, or restore it."""
-    return _collection_takedown(db, collection_id, hidden=body.hidden, actor=current_user)
+    collection = admin_service.set_takedown(
+        db, Collection, collection_id, hidden=body.hidden, actor_id=current_user.id
+    )
+    return AdminCollectionHideResponse(
+        collection_id=collection.id, title=collection.title, hidden_at=collection.hidden_at
+    )
 
 
 @router.patch("/sites/{site_id}/moderation", response_model=AdminSiteModerationRead)
