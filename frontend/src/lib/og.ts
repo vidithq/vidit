@@ -48,12 +48,15 @@ interface OgProfileCount {
 
 /** An analyst's headline counts for the share card and the link description, credited as the
  *  profile credits them: geolocated and detected are the Insights figures (co-geolocated events
- *  included), followers the header's. A failed stats read keeps geolocated off
- *  `geolocations_count`, the same figure, and drops detected. */
+ *  included), followers the header's. A failed stats read drops geolocated and detected. */
 export function ogProfileCounts(profile: PublicProfile, stats: UserStats | null): OgProfileCount[] {
   return [
-    { label: "Geolocated", value: stats?.geolocated_count ?? profile.geolocations_count },
-    ...(stats ? [{ label: "Detected", value: stats.detected_count }] : []),
+    ...(stats
+      ? [
+          { label: "Geolocated", value: stats.geolocated_count },
+          { label: "Detected", value: stats.detected_count },
+        ]
+      : []),
     { label: pluralNoun(profile.followers_count, "Follower"), value: profile.followers_count },
   ];
 }

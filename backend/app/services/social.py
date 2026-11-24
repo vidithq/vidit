@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session, aliased
 from app.models.event import Event, feed_at
 from app.models.follow import Follow
 from app.models.user import User
-from app.schemas.user import UserProfile
+from app.schemas.organization import OrganizationMembershipRead
+from app.schemas.profile import UserProfile
 from app.services import notifications
 from app.services.event_filters import (
     EventFilters,
@@ -19,7 +20,6 @@ from app.services.event_filters import (
     open_requests,
     published_credited_to,
     published_events,
-    visible_events,
 )
 from app.services.geolocator_credit import CARD_LOADS
 from app.services.pagination import keyset_before
@@ -138,17 +138,14 @@ def get_feed_dates(
     )
 
 
-def build_profile(db: Session, user: User, *, viewer: User | None) -> UserProfile:
-    """The public profile of ``user`` as ``viewer`` reads it.
-
-    ``geolocations_count`` counts the published work credited to them, the set
-    :func:`list_published_geolocations` serves, not everything they own: counting detections made
-    the page contradict itself. The wider ``geolocated`` + ``detected`` figure is
-    ``total_events`` on ``GET /users/{username}/stats``.
-    """
-    geolocations_count = (
-        db.query(Event).filter(published_credited_to([user.id]), *visible_events()).count()
-    )
+def build_profile(
+    db: Session,
+    user: User,
+    *,
+    viewer: User | None,
+    organizations: list[OrganizationMembershipRead],
+) -> UserProfile:
+    """The public profile of ``user`` as ``viewer`` reads it."""
     followers_count = db.query(Follow).filter(Follow.followed_id == user.id).count()
     following_count = db.query(Follow).filter(Follow.follower_id == user.id).count()
     following = (
@@ -163,29 +160,8 @@ def build_profile(db: Session, user: User, *, viewer: User | None) -> UserProfil
         avatar_url=user.avatar_url,
         external_links=user.external_links or {},
         created_at=user.created_at,
-        geolocations_count=geolocations_count,
+        organizations=organizations,
         followers_count=followers_count,
         following_count=following_count,
         is_following=following,
     )
-
-
-def list_published_geolocations(
-    db: Session, *, user_id: uuid.UUID, page: int, per_page: int
-) -> tuple[list[Event], int]:
-    """One offset page of the published geolocations credited to ``user_id``, newest event date
-    first, and their total."""
-    credited_and_published = (published_credited_to([user_id]), *visible_events())
-    total = db.query(Event).filter(*credited_and_published).count()
-    rows = (
-        db.query(Event)
-        .options(*CARD_LOADS)
-        .filter(*credited_and_published)
-        # ``occurred_date`` is neither unique nor non-null, so ties could repeat or
-        # skip rows across OFFSET pages; ``created_at, id`` makes it total.
-        .order_by(Event.occurred_date.desc(), Event.created_at.desc(), Event.id.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
-    )
-    return rows, total

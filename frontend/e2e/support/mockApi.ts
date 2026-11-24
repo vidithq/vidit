@@ -118,10 +118,6 @@ const ROUTES: [RegExp, unknown][] = [
   [new RegExp(`^/users/${SIGNED_IN_USER.username}$`), ANALYST_PROFILE],
   [new RegExp(`^/users/${SIGNED_IN_USER.username}/organizations$`), ANALYST_ORGANIZATIONS],
   [new RegExp(`^/users/${SIGNED_IN_USER.username}/stats$`), ANALYST_STATS],
-  [
-    new RegExp(`^/users/${SIGNED_IN_USER.username}/events$`),
-    { items: [], total: 0, page: 1, per_page: 5 },
-  ],
   // The profile's Collections grid, which the signed-in analyst owns.
   [
     new RegExp(`^/users/${SIGNED_IN_USER.username}/collections$`),

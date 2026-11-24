@@ -1,14 +1,14 @@
-"""End-to-end tests for `/users/{username}` + `/users/{username}/events`
+"""End-to-end tests for `/users/{username}` and the profile's published work
 plus `PATCH /users/me` (self-edit of bio / links) and the avatar endpoints.
 
 Contracts:
 
 * Soft-deleted users 404 like unknown ones, so removal is no existence oracle.
-* The profile feed counts and lists only published geolocations (live and
-  `status = 'geolocated'`) with the same filter, so the pager never counts
-  unserved rows. `geolocations_count` counts the same set (the Insights card's
-  Geolocated tile). `GET /users/{u}/stats` reports the documented work: the
-  three worked statuses minus withdrawn requests, summed as `total_events`.
+* The profile lists only published geolocations (live and `status = 'geolocated'`)
+  through `GET /events?author=&status=geolocated&sort=occurred`, and
+  `geolocated_count` on `GET /users/{u}/stats` counts the same set (the Insights
+  card's Geolocated tile). `/stats` reports the documented work: the three
+  worked statuses minus withdrawn requests, summed as `total_events`.
 * `UserProfile` carries bio, avatar_url and external_links, never `email`.
 * `PATCH /users/me` distinguishes an omitted field (preserved) from null or
   empty (cleared).
@@ -54,27 +54,22 @@ def test_profile_returns_user_shape(live_user):
     assert body["avatar_url"] is None
     # Defaults to ``{}``, never NULL.
     assert body["external_links"] == {}
-    assert body["geolocations_count"] == 0
+    assert body["organizations"] == []
     # ``UserProfile`` is public: an email here would be a harvest endpoint.
     assert "email" not in body
 
 
-@pytest.mark.parametrize("page", ["", "/events", "/stats", "/collections"])
+def _published(username: str) -> str:
+    """The profile's Recent submissions read."""
+    return f"/api/v1/events?author={username}&status=geolocated&sort=occurred"
+
+
+@pytest.mark.parametrize("page", ["", "/stats", "/collections", "/organizations"])
 @pytest.mark.parametrize("who", ["unknown", "soft-deleted"])
 def test_user_pages_404_for_an_unknown_or_soft_deleted_user(soft_deleted_user, page, who):
     """Same 404 for both: any distinguishable answer would reveal removed usernames."""
     username = soft_deleted_user.username if who == "soft-deleted" else f"nobody-{uuid.uuid4().hex}"
     assert client.get(f"/api/v1/users/{username}{page}").status_code == 404
-
-
-def test_feed_returns_pagination_envelope(live_user):
-    response = client.get(f"/api/v1/users/{live_user.username}/events")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["items"] == []
-    assert body["total"] == 0
-    assert body["page"] == 1
-    assert body["per_page"] == 20
 
 
 def test_feed_serves_published_work_only(db, live_user):
@@ -93,17 +88,15 @@ def test_feed_serves_published_work_only(db, live_user):
     request = make_event(db, author=live_user, title="request", status=STATUS_REQUESTED)
     removed = make_event(db, author=live_user, title="removed", deleted=True)
 
-    body = client.get(f"/api/v1/users/{live_user.username}/events").json()
+    rows = client.get(_published(live_user.username)).json()
 
-    assert [row["id"] for row in body["items"]] == [str(published.id)]
+    assert [row["id"] for row in rows] == [str(published.id)]
     excluded = {str(detection.id), str(rejected.id), str(request.id), str(removed.id)}
-    assert excluded.isdisjoint({row["id"] for row in body["items"]})
-    # `total` must not count rows the feed never serves (a "Show more" to nowhere).
-    assert body["total"] == 1
+    assert excluded.isdisjoint({row["id"] for row in rows})
 
 
 def test_profile_count_counts_published_work_only(db, live_user):
-    """`geolocations_count` counts published geolocations only, across the lifecycle.
+    """`geolocated_count` counts published geolocations only, across the lifecycle.
 
     An archive import leaves hundreds of machine detections; counting them would
     credit the analyst with claims they never made.
@@ -127,13 +120,13 @@ def test_profile_count_counts_published_work_only(db, live_user):
     )
     make_event(db, author=live_user, title="removed", deleted=True)
 
-    profile = client.get(f"/api/v1/users/{live_user.username}").json()
-    feed = client.get(f"/api/v1/users/{live_user.username}/events").json()
-    assert profile["geolocations_count"] == feed["total"] == 1
+    stats = client.get(f"/api/v1/users/{live_user.username}/stats").json()
+    rows = client.get(_published(live_user.username)).json()
+    assert stats["geolocated_count"] == len(rows) == 1
 
 
 def test_profile_count_and_stats_report_different_numbers(db, live_user):
-    """`/stats` splits by status and sums to `total_events`; the profile counts the
+    """`/stats` splits by status and sums to `total_events`; `geolocated_count` is the
     published part. Collapsing the two would drop the wider figure."""
     make_event(db, author=live_user)
     make_event(db, author=live_user, status=STATUS_DETECTED)
@@ -145,9 +138,7 @@ def test_profile_count_and_stats_report_different_numbers(db, live_user):
         before_closed_status=STATUS_DETECTED,
     )
 
-    profile = client.get(f"/api/v1/users/{live_user.username}").json()
     stats = client.get(f"/api/v1/users/{live_user.username}/stats").json()
-    assert profile["geolocations_count"] == 1
     assert stats["geolocated_count"] == 1
     assert stats["detected_count"] == 1
     assert stats["total_events"] == 2
@@ -166,16 +157,13 @@ def test_feed_orders_published_rows_newest_event_date_first(db, live_user):
         status=STATUS_DETECTED,
     )
 
-    body = client.get(f"/api/v1/users/{live_user.username}/events?per_page=2").json()
-    assert [row["title"] for row in body["items"]] == ["new", "mid"]
-    assert body["total"] == 3
+    make_event(db, author=live_user, occurred_date=None, title="undated")
 
-
-def test_feed_caps_per_page_at_100(db, live_user):
-    """The server caps `per_page` at 100, whatever is requested."""
-    response = client.get(f"/api/v1/users/{live_user.username}/events?per_page=500")
-    assert response.status_code == 200
-    assert response.json()["per_page"] == 100
+    first = client.get(f"{_published(live_user.username)}&limit=2")
+    assert [row["title"] for row in first.json()] == ["new", "mid"]
+    rest = client.get(first.headers["link"].split(">")[0].lstrip("<")).json()
+    # An undated event sorts last.
+    assert [row["title"] for row in rest] == ["old", "undated"]
 
 
 def test_patch_me_requires_auth():

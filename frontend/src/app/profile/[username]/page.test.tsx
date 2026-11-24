@@ -47,10 +47,9 @@ const PROFILE: PublicProfile = {
   external_links: { x: "ana_osint", website: "https://ana.example" },
   followers_count: 4,
   following_count: 2,
-  // Distinct from `geolocated_count`, so a component reading the wrong one fails.
-  geolocations_count: 6,
   created_at: "2026-01-05T09:00:00Z",
   is_following: false,
+  organizations: [],
 };
 
 const SUBMISSION = eventRow("e1", "Strike near Bakhmut", {
@@ -146,15 +145,13 @@ function mockReads({
   useApiResource.mockImplementation((path: string | null) => ({
     data: path === "/users/ana/stats"
       ? stats
-      : path?.startsWith("/users/ana/events")
-      ? { items: submissions }
+      : path?.startsWith("/events?") && path.includes("sort=occurred")
+      ? submissions
       : path?.startsWith("/events/points")
         ? points
-        : path?.startsWith("/users/ana/organizations")
-          ? memberships
-          : path?.startsWith("/users/ana/collections")
-            ? collections
-            : profile,
+        : path?.startsWith("/users/ana/collections")
+          ? collections
+          : { ...profile, organizations: memberships },
     error: null,
     loading: false,
     refetch: vi.fn(),

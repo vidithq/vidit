@@ -437,20 +437,6 @@ export const NOTIFICATION_FEED: Notification[] = [
 
 const ORGANIZATION_REF = { slug: ORGANIZATION_SLUG, name: ORGANIZATION.name, avatar_url: null };
 
-/** The signed-in analyst's profile as `GET /users/{username}` serves it. */
-export const ANALYST_PROFILE: PublicProfile = {
-  id: SIGNED_IN_USER.id,
-  username: SIGNED_IN_USER.username,
-  bio: SIGNED_IN_USER.bio,
-  avatar_url: null,
-  external_links: { x: "analyst", website: "https://example.org" },
-  followers_count: 1204,
-  following_count: 318,
-  geolocations_count: 12,
-  created_at: SIGNED_IN_USER.created_at,
-  is_following: false,
-};
-
 /** Org manager of one organization and member of five more: a row of logos long enough to wrap
  * the identity line at 320px. */
 export const ANALYST_ORGANIZATIONS: OrganizationMembership[] = [
@@ -463,6 +449,20 @@ export const ANALYST_ORGANIZATIONS: OrganizationMembership[] = [
     }),
   ),
 ];
+
+/** The signed-in analyst's profile as `GET /users/{username}` serves it. */
+export const ANALYST_PROFILE: PublicProfile = {
+  id: SIGNED_IN_USER.id,
+  username: SIGNED_IN_USER.username,
+  bio: SIGNED_IN_USER.bio,
+  avatar_url: null,
+  external_links: { x: "analyst", website: "https://example.org" },
+  followers_count: 1204,
+  following_count: 318,
+  created_at: SIGNED_IN_USER.created_at,
+  is_following: false,
+  organizations: ANALYST_ORGANIZATIONS,
+};
 
 export const ANALYST_STATS: UserStats = {
   total_events: 12,

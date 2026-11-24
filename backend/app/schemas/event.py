@@ -19,7 +19,7 @@ from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 # ``GET /events?sort=``: ``created_at`` then ``id``, descending or ascending.
-EventListSort = Literal["newest", "oldest"]
+EventListSort = Literal["newest", "oldest", "occurred"]
 
 
 class PresignedUploadRead(BaseModel):
@@ -253,13 +253,6 @@ class DateHistogram(BaseModel):
     submitted: list[DayCount]
     # The events under every filter, both date windows included.
     total: int
-
-
-class PaginatedEvents(BaseModel):
-    items: list[EventList]
-    total: int
-    page: int
-    per_page: int
 
 
 class PaginatedEventDetails(BaseModel):

@@ -1,5 +1,6 @@
 import hashlib
 from dataclasses import asdict, replace
+from datetime import date
 
 import orjson
 from fastapi import (
@@ -9,7 +10,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 from geoalchemy2.functions import ST_X, ST_Y
-from sqlalchemy import func, not_
+from sqlalchemy import func, not_, tuple_
 from sqlalchemy.orm import selectinload
 
 from app.cache import points_cache
@@ -41,15 +42,21 @@ from app.services.geolocator_credit import CREDIT_LOAD
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_cursor,
+    decode_dated_cursor,
     encode_cursor,
+    encode_dated_cursor,
     keyset_after,
-    keyset_before,
     page_size,
     paged,
 )
 from app.services.thumbnails import thumbnail_loads
 
 router = APIRouter()
+
+# ``sort=occurred`` puts an undated event last: the earliest date stands in for a missing one, so
+# the keyset stays a single row comparison (comparing against NULL is unknown and would drop the
+# page cut). The ``created_at, id`` tail breaks a tie with a real 0001-01-01 event.
+_OCCURRED_KEY = func.coalesce(Event.occurred_date, date.min).label("occurred_key")
 
 
 def _points_cache_key(bbox: tuple[float, float, float, float], filters: EventFilters) -> str:
@@ -157,35 +164,38 @@ def list_events(
     limit: int = Query(MAX_PAGE_SIZE, ge=1),
     cursor: Cursor = None,
 ):
-    """Cards for one lifecycle view, newest or oldest first.
+    """Cards for one lifecycle view, newest or oldest added first, or newest event date first.
 
     Two steps (ids, then full rows) so eager-loads can't inflate the LIMIT count.
     """
     validate_status_filter(status)
     size = page_size(limit)
 
-    id_query = replace(filters, status=status).apply(
-        db.query(Event.id, Event.created_at), view=view
-    )
+    if sort == "occurred":
+        key_columns: tuple = (_OCCURRED_KEY, Event.created_at, Event.id)
+        after: tuple | None = decode_dated_cursor(cursor)
+    else:
+        key_columns = (Event.created_at, Event.id)
+        after = decode_cursor(cursor)
+    oldest = sort == "oldest"
+    order = [column.asc() if oldest else column.desc() for column in key_columns]
+
+    id_query = replace(filters, status=status).apply(db.query(*key_columns), view=view)
     if bbox:
         id_query = id_query.filter(bbox_predicate(parse_bbox(bbox)))
-
-    oldest = sort == "oldest"
-    order = (
-        (Event.created_at.asc(), Event.id.asc())
-        if oldest
-        else (Event.created_at.desc(), Event.id.desc())
-    )
-    after = decode_cursor(cursor)
     if after is not None:
         id_query = id_query.filter(
-            keyset_after((Event.created_at, Event.id), after)
-            if oldest
-            else keyset_before(Event.created_at, Event.id, after)
+            keyset_after(key_columns, after) if oldest else tuple_(*key_columns) < after
         )
 
     window = id_query.order_by(*order).limit(size + 1).all()
-    keys = paged(request, response, window, size, lambda k: encode_cursor(k.created_at, k.id))
+
+    def cursor_of(key) -> str:
+        if sort == "occurred":
+            return encode_dated_cursor(key.occurred_key, key.created_at, key.id)
+        return encode_cursor(key.created_at, key.id)
+
+    keys = paged(request, response, window, size, cursor_of)
 
     if not keys:
         return []

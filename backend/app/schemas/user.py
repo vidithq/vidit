@@ -162,28 +162,6 @@ class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class UserProfile(BaseModel):
-    """Public profile payload for ``GET /users/{username}``.
-
-    Excludes ``email`` and ``is_admin``. ``geolocations_count`` counts
-    published geolocations, the set ``GET /users/{username}/events`` serves;
-    ``total_events`` on :class:`UserStatsRead` includes detections.
-    """
-
-    id: uuid.UUID
-    username: str
-    bio: str | None
-    avatar_url: str | None
-    external_links: dict[str, str | None]
-    created_at: datetime
-    geolocations_count: int
-    followers_count: int
-    following_count: int
-    is_following: bool = False
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class TagCount(BaseModel):
     """One (name, count) entry for a conflict, source-kind or source-host tally."""
 

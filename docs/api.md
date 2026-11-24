@@ -88,7 +88,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/reset-password` | 🌐 | Consume reset token, set new password |
 | POST | `/auth/change-password` | 🔒 | Rotate your password (requires your current password) |
 | **Events** | | | |
-| GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` |
+| GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested`, by date added or by event date |
 | GET | `/events/points` | 🌐 | Compact map-points tuples for one viewport (`bbox` required, cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/events/import-from-tweet` | 🔒 | Import your own X post as detections |
@@ -170,7 +170,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/users/me/invite-codes` | 🔒 | The invite codes you minted, newest first, and your daily quota |
 | POST | `/users/me/invite-codes` | 🔒 | Mint a single-use invite code bound to the invitee's X handle |
 | POST | `/users/me/invite-codes/{id}/revoke` | 🔒 | Revoke an active invite code you minted, keeping its row |
-| GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
 | GET | `/users/{username}/organizations` | 🌐 | List the organizations an analyst belongs to |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
@@ -294,7 +293,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
 | **Users / Feed** | |
-| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /feed`, `GET /feed/dates` | 120/min |
+| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /feed`, `GET /feed/dates` | 120/min |
 | `PATCH /users/me` | 30/min |
 | `PUT`/`DELETE /users/me/avatar` | 20/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
@@ -327,9 +326,9 @@ The read-only admin probes (`GET /admin/detection-stats`, `/admin/users`, `/admi
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 33 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 32 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/dates` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed` · `/feed/dates` · `POST /collections/collectable-events`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/dates` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed` · `/feed/dates` · `POST /collections/collectable-events`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
@@ -872,7 +871,7 @@ The imagery provider check of a source as the form holds it: the provider each l
 
 ### `GET /events`
 
-List one lifecycle view, newest or oldest first, as `EventList` cards (no full proof).
+List one lifecycle view, newest or oldest added first, or newest event date first, as `EventList` cards (no full proof). A profile lists an analyst's published work with `?author={username}&status=geolocated&sort=occurred`.
 
 **Query params:**
 | Param | Type | Description |
@@ -892,7 +891,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
 | `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version. Same character rule. |
 | `has_coords` | bool | `true` keeps rows with a `coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
-| `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`. Both orders are total, so a cursor walk serves every row once. Anything else → 422. |
+| `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`; `occurred` orders by `occurred_date DESC`, then `created_at DESC, id DESC`, with an undated event last. Every order is total, so a cursor walk serves every row once. Anything else → 422. |
 | `limit` | int | Rows per page. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
 
@@ -3042,16 +3041,22 @@ Public profile of an analyst.
     "github": null
   },
   "created_at": "2026-03-28T10:00:00Z",
-  "geolocations_count": 42,
   "followers_count": 17,
   "following_count": 5,
-  "is_following": false
+  "is_following": false,
+  "organizations": [
+    {
+      "organization": { "slug": "open-source-watch", "name": "Open Source Watch", "avatar_url": null },
+      "role": "member",
+      "joined_at": "2026-04-02T08:00:00Z"
+    }
+  ]
 }
 ```
 
 `bio` and `external_links` are set through [`PATCH /users/me`](#patch-usersme); `avatar_url` through `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are signed in and follow this user. Email is never on this shape.
 
-`geolocations_count` counts live rows with `status = "geolocated"` that credit the analyst, as owner or as a [co-geolocator](#shared-credit), the same set as `total` on [`GET /users/{username}/events`](#get-usersusernameevents). For all live work, detections included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
+`organizations` lists the organizations the analyst belongs to, as [`GET /users/{username}/organizations`](#get-usersusernameorganizations) does. Read the analyst's counts on [`GET /users/{username}/stats`](#get-usersusernamestats): `geolocated_count` counts their published work.
 
 **Errors:**
 | Code | Case |
@@ -3335,16 +3340,6 @@ The revoke works while an admin keeps minting off for your account. A revoked co
 |------|------|
 | 404 `invite_code_not_found` | No code carries that id, or another sponsor minted it |
 | 409 `invite_code_not_active` | The code is used, revoked or expired. The message names its status |
-
----
-
-### `GET /users/{username}/events`
-
-An analyst's published geolocations: live rows with `status = "geolocated"` that credit them, as owner or as a [co-geolocator](#shared-credit), newest event date first. `total` counts the same set, and so does `geolocations_count` on [`GET /users/{username}`](#get-usersusername). Offset-paged; [Pagination](#pagination) gives the ordering and cap.
-
-**Query params:** `page` and `per_page`, see [Pagination](#pagination).
-
-**Response 200:** a `PaginatedEvents` whose `items` are the [`EventList`](#get-events) cards `GET /events` serves.
 
 ---
 
@@ -3800,7 +3795,7 @@ Three kinds of row, newest first: a geolocation an analyst published, a request 
 
 | Kind | Rows | Feed timestamp |
 |---|---|---|
-| Geolocation | `status = geolocated`, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves | `geolocated_at` |
+| Geolocation | `status = geolocated`, the set a profile lists through [`GET /events`](#get-events) with `sort=occurred` | `geolocated_at` |
 | Request | `status = requested` | `requested_at` |
 | Detection | `status = detected` | `detected_at` |
 
@@ -4359,7 +4354,7 @@ One Account Activity delivery.
 
 | Endpoint | Scheme | Order | Default | Max |
 |---|---|---|---|---|
-| [`GET /events`](#get-events) | cursor | `created_at DESC, id DESC`; `created_at ASC, id ASC` with `sort=oldest` | 100 | 100 |
+| [`GET /events`](#get-events) | cursor | `created_at DESC, id DESC`; `created_at ASC, id ASC` with `sort=oldest`; `occurred_date DESC` (undated last), then `created_at DESC, id DESC` with `sort=occurred` | 100 | 100 |
 | `GET /admin/invite-codes` | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /events/{id}/versions`](#get-eventsidversions) | cursor | `version_no DESC` | 50 | 100 |
 | [`GET /notifications`](#get-notifications) | cursor | `created_at DESC, id DESC` | 100 | 100 |
@@ -4367,7 +4362,6 @@ One Account Activity delivery.
 | [`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /users/{username}/collections`](#get-usersusernamecollections) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `occurred_date, occurred_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
-| [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `occurred_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |
 | [`GET /search`](#get-search) | cursor in the body | `ts_rank DESC, created_at DESC, id DESC` | 20 | 50 |

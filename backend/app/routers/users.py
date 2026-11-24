@@ -7,9 +7,7 @@ from sqlalchemy.orm import Session
 from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers.events._common import build_event_list
 from app.schemas.collection import CollectionRead
-from app.schemas.event import PaginatedEvents
 from app.schemas.invite_code import (
     SponsoredInviteCodeCreate,
     SponsoredInviteCodeList,
@@ -17,7 +15,8 @@ from app.schemas.invite_code import (
 )
 from app.schemas.organization import OrganizationMembershipRead
 from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
-from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
+from app.schemas.profile import UserProfile
+from app.schemas.user import UserRead, UserStatsRead, UserUpdate
 from app.services import collections as collections_service
 from app.services import organizations as organizations_service
 from app.services import preferences as preferences_service
@@ -129,7 +128,12 @@ def get_user_profile(
     request: Request, username: str, db: DB, current_user: OptionalUser
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
-    return social.build_profile(db, user, viewer=current_user)
+    return social.build_profile(
+        db,
+        user,
+        viewer=current_user,
+        organizations=organizations_service.list_memberships(db, user),
+    )
 
 
 @router.get("/{username}/stats", response_model=UserStatsRead)
@@ -196,27 +200,3 @@ def unfollow_user(request: Request, username: str, db: DB, current_user: Current
     target = _get_live_user_or_404(db, username)
     social.unfollow_user(db, follower_id=current_user.id, followed_user=target)
     db.commit()
-
-
-@router.get("/{username}/events", response_model=PaginatedEvents)
-@authenticated_read_quota
-@limiter.limit("120/minute")
-def get_user_geolocations(
-    request: Request,
-    username: str,
-    db: DB,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1),
-):
-    """One analyst's published geolocations, newest event date first.
-
-    Offset-paged: the profile orders by ``occurred_date``, which is nullable and
-    editable, so it cannot key a cursor.
-    """
-    user = _get_live_user_or_404(db, username)
-    per_page = page_size(per_page)
-    rows, total = social.list_published_geolocations(
-        db, user_id=user.id, page=page, per_page=per_page
-    )
-    items = [build_event_list(geo) for geo in rows]
-    return PaginatedEvents(items=items, total=total, page=page, per_page=per_page)

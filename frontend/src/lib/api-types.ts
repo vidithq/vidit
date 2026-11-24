@@ -819,7 +819,7 @@ export interface paths {
         };
         /**
          * List Events
-         * @description Cards for one lifecycle view, newest or oldest first.
+         * @description Cards for one lifecycle view, newest or oldest added first, or newest event date first.
          *
          *     Two steps (ids, then full rows) so eager-loads can't inflate the LIMIT count.
          */
@@ -2340,29 +2340,6 @@ export interface paths {
          * @description One analyst's collections, newest first (``Link: rel="next"`` cursor).
          */
         get: operations["get_user_collections_api_v1_users__username__collections_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/{username}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get User Geolocations
-         * @description One analyst's published geolocations, newest event date first.
-         *
-         *     Offset-paged: the profile orders by ``occurred_date``, which is nullable and
-         *     editable, so it cannot key a cursor.
-         */
-        get: operations["get_user_geolocations_api_v1_users__username__events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4321,17 +4298,6 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** PaginatedEvents */
-        PaginatedEvents: {
-            /** Items */
-            items: components["schemas"]["EventList"][];
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Total */
-            total: number;
-        };
         /**
          * PossibleDuplicateRead
          * @description Soft-warning hit on the submit form's possible-duplicate probe.
@@ -5618,9 +5584,8 @@ export interface components {
          * UserProfile
          * @description Public profile payload for ``GET /users/{username}``.
          *
-         *     Excludes ``email`` and ``is_admin``. ``geolocations_count`` counts
-         *     published geolocations, the set ``GET /users/{username}/events`` serves;
-         *     ``total_events`` on :class:`UserStatsRead` includes detections.
+         *     Excludes ``email`` and ``is_admin``. ``organizations`` lists the analyst's memberships, as
+         *     ``GET /users/{username}/organizations`` does.
          */
         UserProfile: {
             /** Avatar Url */
@@ -5640,8 +5605,6 @@ export interface components {
             followers_count: number;
             /** Following Count */
             following_count: number;
-            /** Geolocations Count */
-            geolocations_count: number;
             /**
              * Id
              * Format: uuid
@@ -5652,6 +5615,8 @@ export interface components {
              * @default false
              */
             is_following: boolean;
+            /** Organizations */
+            organizations: components["schemas"]["OrganizationMembershipRead"][];
             /** Username */
             username: string;
         };
@@ -7326,7 +7291,7 @@ export interface operations {
                 view?: "located" | "requested";
                 status?: string[] | null;
                 bbox?: string | null;
-                sort?: "newest" | "oldest";
+                sort?: "newest" | "oldest" | "occurred";
                 limit?: number;
                 /** @description Opaque cursor from a Link: rel=next header */
                 cursor?: string | null;
@@ -10442,40 +10407,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_user_geolocations_api_v1_users__username__events_get: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-            };
-            header?: never;
-            path: {
-                username: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedEvents"];
                 };
             };
             /** @description Validation Error */

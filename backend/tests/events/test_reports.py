@@ -231,16 +231,14 @@ def test_hidden_event_absent_from_the_profile_feed_and_count(db, author):
     visible = make_event(db, author=author)
     hidden = make_event(db, author=author, hidden=True)
 
-    feed = client.get(f"/api/v1/users/{author.username}/events")
+    feed = client.get(f"/api/v1/events?author={author.username}&status=geolocated")
     assert feed.status_code == 200
-    body = feed.json()
-    ids = {row["id"] for row in body["items"]}
+    ids = {row["id"] for row in feed.json()}
     assert str(visible.id) in ids
     assert str(hidden.id) not in ids
-    assert body["total"] == 1
 
-    profile = client.get(f"/api/v1/users/{author.username}")
-    assert profile.json()["geolocations_count"] == 1
+    stats = client.get(f"/api/v1/users/{author.username}/stats")
+    assert stats.json()["geolocated_count"] == 1
 
 
 def test_hidden_event_absent_from_the_follow_feed(db, author, second_user):

@@ -12,7 +12,7 @@ function profileFixture(overrides: Partial<PublicProfile> = {}): PublicProfile {
     avatar_url: null,
     external_links: {},
     created_at: "2026-01-01T00:00:00Z",
-    geolocations_count: 0,
+    organizations: [],
     followers_count: 0,
     following_count: 0,
     is_following: false,
@@ -39,12 +39,10 @@ function submission(id: string): RecentSubmission {
 }
 
 describe("RecentSubmissions", () => {
-  it("gates the heading copy on the rows, not on the profile count", () => {
-    // Count and feed arrive on separate requests: a failed feed leaves rows empty under a non-zero
-    // count, and keying the copy off the count would promise "latest geolocations" above an empty list.
+  it("says no geolocations yet when the feed holds no row", () => {
     render(
       <RecentSubmissions
-        profile={profileFixture({ geolocations_count: 47 })}
+        profile={profileFixture()}
         submissions={[]}
         isOwn={false}
       />
@@ -74,7 +72,7 @@ describe("RecentSubmissions", () => {
     // Search's located group otherwise widens to machine detections, so the status filter travels with the link.
     render(
       <RecentSubmissions
-        profile={profileFixture({ geolocations_count: 47 })}
+        profile={profileFixture()}
         submissions={[submission("a")]}
         isOwn={false}
       />

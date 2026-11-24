@@ -609,16 +609,16 @@ def test_soft_delete_event_stamps_once_and_writes_one_admin_event(admin_user, ge
 
 
 def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geolocation):
-    before = client.get(f"/api/v1/users/{regular_user.username}").json()
-    assert before["geolocations_count"] >= 1
+    before = client.get(f"/api/v1/users/{regular_user.username}/stats").json()
+    assert before["geolocated_count"] >= 1
 
     client.delete(
         f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
 
-    after = client.get(f"/api/v1/users/{regular_user.username}").json()
-    assert after["geolocations_count"] == before["geolocations_count"] - 1
+    after = client.get(f"/api/v1/users/{regular_user.username}/stats").json()
+    assert after["geolocated_count"] == before["geolocated_count"] - 1
 
 
 def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):

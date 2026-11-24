@@ -366,15 +366,18 @@ def test_retraction_leaves_the_published_feed_and_count(db, author):
     geo = make_event(db, author=author)
 
     def feed():
-        body = client.get(f"/api/v1/users/{author.username}/events").json()
-        return {r["id"] for r in body["items"]}
+        body = client.get(f"/api/v1/events?author={author.username}&status=geolocated").json()
+        return {r["id"] for r in body}
 
-    before = client.get(f"/api/v1/users/{author.username}").json()["geolocations_count"]
+    def count():
+        return client.get(f"/api/v1/users/{author.username}/stats").json()["geolocated_count"]
+
+    before = count()
     assert str(geo.id) in feed()
 
     assert _close(geo.id, author).status_code == 200
 
-    after = client.get(f"/api/v1/users/{author.username}").json()["geolocations_count"]
+    after = count()
     assert after == before - 1
     assert str(geo.id) not in feed()
 

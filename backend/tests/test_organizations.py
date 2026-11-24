@@ -186,6 +186,8 @@ def test_members_list_and_profile_memberships(db, org, org_manager, make_user):
     assert [(m["organization"]["slug"], m["role"]) for m in memberships] == [
         (org["slug"], "member")
     ]
+    profile = client.get(f"/api/v1/users/{member.username}").json()
+    assert profile["organizations"] == memberships
 
 
 def test_soft_deleted_members_drop_out_of_the_reads(db, org, org_manager, make_user):
