@@ -121,7 +121,7 @@ describe("CollectionPage", () => {
     await renderPage();
 
     expect(screen.getByText("Description")).toBeInTheDocument();
-    // Written in the proof editor, so marks and the list are painted, not flattened.
+    // Written in the rich-text editor, so marks and the list are painted, not flattened.
     expect(screen.getByText("strikes").tagName).toBe("STRONG");
     expect(
       screen.getByText("The eastern approach.").closest("li"),

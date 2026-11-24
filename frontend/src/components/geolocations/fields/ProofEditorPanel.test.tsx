@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 // Stub the `next/dynamic` editor loader: only the card around it is asserted.
 vi.mock("next/dynamic", () => ({
-  default: () => function ProofEditorStub() {
+  default: () => function RichTextEditorStub() {
     return <div data-testid="editor" />;
   },
 }));

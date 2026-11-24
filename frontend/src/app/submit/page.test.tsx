@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ANA, signedInAs } from "@/test/auth";
 // jsdom cannot mount the map canvas (WebGL); it and the proof editor (its own test) keep a marker.
 vi.mock("@/components/map/Map", () => import("@/test/mapStub"));
-vi.mock("@/components/editor/ProofEditor", () => ({
+vi.mock("@/components/editor/RichTextEditor", () => ({
   default: () => <div data-testid="proof-editor" />,
 }));
 

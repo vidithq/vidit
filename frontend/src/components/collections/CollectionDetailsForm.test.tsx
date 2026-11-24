@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { textHtml } from "@/test/proofEditorStub";
+import { textHtml } from "@/test/richTextEditorStub";
 
-vi.mock("@/components/editor/ProofEditor", () => import("@/test/proofEditorStub"));
+vi.mock("@/components/editor/RichTextEditor", () => import("@/test/richTextEditorStub"));
 
 vi.mock("next/navigation", () => import("@/test/navigationStub"));
 
@@ -67,7 +67,7 @@ function fill(title: string, description: string) {
 }
 
 describe("CollectionDetailsForm", () => {
-  it("writes the description in the proof editor, without images", async () => {
+  it("writes the description in the rich-text editor, without images", async () => {
     await renderForm();
 
     expect(descriptionField()).toHaveAttribute("data-allow-images", "false");

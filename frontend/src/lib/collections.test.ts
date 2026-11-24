@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { collection, eventRow } from "@/test/collection";
-import { textHtml } from "@/test/proofEditorStub";
+import { textHtml } from "@/test/richTextEditorStub";
 
 import {
   addEventToCollection,

@@ -45,7 +45,7 @@ import {
   splitGif,
 } from "@/lib/proofImages";
 
-interface ProofEditorProps {
+interface RichTextEditorProps {
   onChange: (html: string) => void;
   /** The proof body's inline images, kept locally while typing and uploaded at publish (as
    * `proof_files[]`). Fires on every change so the parent stages exactly the files the body
@@ -170,7 +170,7 @@ const DROPPED_TOOLBAR_BUTTONS = new Set<unknown>([
   FileCaptionButton,
 ]);
 
-function ProofFormattingToolbar({ blockTypeSelectItems }: FormattingToolbarProps) {
+function RichTextFormattingToolbar({ blockTypeSelectItems }: FormattingToolbarProps) {
   return (
     <FormattingToolbar>
       {getFormattingToolbarItems(blockTypeSelectItems).filter(
@@ -197,16 +197,17 @@ function UploadOnlyFilePanel({ blockId }: FilePanelProps) {
 }
 
 /**
- * The BlockNote proof editor, HTML in and out. A picked image never leaves the browser while
- * typing: BlockNote's upload hook stages the file and stores `placeholder://<filename>` as the
- * block's URL, and `resolveFileUrl` previews it from a blob URL. The parent posts the files still
- * referenced as `proof_files[]` at publish, where the server matches each to its placeholder by
- * filename (see `docs/design.md`, rich text).
+ * The BlockNote rich-text editor, HTML in and out, for an event's proof and a collection's
+ * description: one editor, so marks, lists and link rules stay the same in both.
  *
- * `allowImages={false}` drops the image block for a body stored without images (a collection's
- * description): one editor, so marks, lists and link rules stay the same.
+ * In a proof, a picked image never leaves the browser while typing: BlockNote's upload hook
+ * stages the file and stores `placeholder://<filename>` as the block's URL, and `resolveFileUrl`
+ * previews it from a blob URL. The parent posts the files still referenced as `proof_files[]` at
+ * publish, where the server matches each to its placeholder by filename (see `docs/design.md`,
+ * rich text). `allowImages={false}` drops the image block for a body stored without images (a
+ * collection's description).
  */
-export default function ProofEditor({
+export default function RichTextEditor({
   onChange,
   onProofFilesChange,
   initialContent,
@@ -214,7 +215,7 @@ export default function ProofEditor({
   allowImages = true,
   invalid = false,
   bare = false,
-}: ProofEditorProps) {
+}: RichTextEditorProps) {
   const stagedRef = useRef<StagedImage[]>([]);
   // Filenames claimed this session, so two picks of `IMG.jpg` don't share a placeholder (the
   // server rejects a duplicate proof filename).
@@ -374,7 +375,7 @@ export default function ProofEditor({
         filePanel={false}
         onChange={emit}
       >
-        <FormattingToolbarController formattingToolbar={ProofFormattingToolbar} />
+        <FormattingToolbarController formattingToolbar={RichTextFormattingToolbar} />
         <FilePanelController filePanel={UploadOnlyFilePanel} />
       </BlockNoteView>
       {split &&

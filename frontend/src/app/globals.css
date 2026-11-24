@@ -184,7 +184,7 @@
   }
 }
 
-/* BlockNote proof editor: headings and links read as they do in the rendered proof
+/* BlockNote rich-text editor: headings and links read as they do in the rendered proof
    (`lib/proof.tsx` TAG_CLASSES, and `TEXT_LINK` for links). */
 .bn-editor [data-content-type="heading"] h2 {
   font-size: var(--text-xl);
