@@ -421,33 +421,13 @@ Archived copies sit beside each link:
 
 ### Page chrome
 
-Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx), which owns the `title` / `titleField` / `subtitle` / `back` / `actions` / `stickyActions` / `controls` / `headerSide` slots and the `column` width:
+Every main-app page uses [`<PageShell>`](../frontend/src/components/ui/PageShell.tsx), except `/`, `/map`, the `(auth)/*` group and `app/error.tsx`.
 
-| Element | Style | Notes |
-|---|---|---|
-| Column | `px-4 sm:px-6 lg:pl-[max(4.5rem,calc(50%-var(--container-6xl)/2-1.75rem))]`, then `max-w-[53rem]` (reading) or `max-w-6xl` (with a rail or a side column), then `pt-10 max-sm:pt-16 pb-16`, then `relative space-y-6` | One container across the app, so the title starts at the same x on every page. [`<PageFrame>`](../frontend/src/components/ui/PageFrame.tsx) owns the offset (`sm:pl-14`) and the container through its `column` prop. From `lg` up, the left padding centres a `max-w-6xl` column on the screen, with the sidebar counted as part of the left margin: on a 1512px screen the content starts 180px from the left edge and ends 180px from the right edge. The percentage resolves against the box inside the sidebar, not `100vw`, so a classic scrollbar does not push the column off centre. The padding never drops below 4.5rem, the gutter left of the title for the back arrow; where the screen has no room to spare, the column starts at that gutter and the free space falls on the right. A page with a rail takes `wide`, up to `max-w-6xl` (1152px) of content, which holds a 53rem main column beside the [right rail](#right-rail). A page without a rail takes `reading`, 53rem of content, the line length a centred `max-w-4xl` column leaves inside its padding. It starts at the same left edge as `wide`, so the free space falls on its right. `PageShell` picks the column from its `rail` and `headerSide` props: either one takes `wide`. Its `column` prop overrides the pick: the `/submit` chooser sets `wide`, so its grid of tiles fills the column, and the [public profile](#public-profile) and the [organization page](#organization-page) set `wide`, so their map, charts and lists fill it. [`EventShell`](#event-layout) always sets `headerSide`, so every event surface, a form included, takes `wide`. The side padding drops a step below `sm`, where the desktop gutter leaves the cards too narrow to hold a title beside a thumbnail on a 375px screen. The top padding steps up there instead, to clear the menu chip the rail leaves in the corner; see [Phone chrome](#phone-chrome). The public landing keeps `PageFrame`'s `center` column, the same width centred. |
-| H1 (`title`) | `text-xl font-medium text-neutral-100` | Consistent on every page. |
-| Title field (`titleField`) | In the H1's place; the H1 takes `sr-only` | A form whose first field is the title shows that field where the H1 reads, and the H1 stays the page's heading for assistive tech. [`EventShell`](#event-layout) sets it on the event forms. |
-| Subtitle | `text-sm text-neutral-400` | Tight under the H1 (8 px gap). |
-| Back arrow (`back`) | Track `max-sm:hidden mb-1 lg:absolute lg:inset-y-0 lg:right-full lg:mr-3 lg:mb-0 lg:pointer-events-none`, then `lg:sticky lg:top-10 lg:pt-1.5`, then the button `flex -ml-2 lg:ml-0 lg:pointer-events-auto` | Lives in the gutter from `lg` up, so the title's x-coordinate is the same whether back is present or not. The gutter is the column's left padding, at least 4.5rem from `lg` up. There the button sits in a track that spans the page's height, so it sticks at the top of the viewport while the page scrolls: `top-10` equals the frame's `pt-10`, so the arrow never moves, and `pt-1.5` levels it with the title. The track lets clicks through, so only the button itself takes them. Between `sm` and `lg` the button is a row of its own above the title, since a gutter-parked one lands under the fixed sidebar, where taps reach the nav rather than the button. Below `sm` the header carries no back control at all: the same button is portaled into the menu chip instead (see [Phone chrome](#phone-chrome)). `-ml-2` takes back 8 of the 9px the 36px square insets its 18px glyph by, so the arrow reads as aligned with the heading. **When to set it:** `back` marks a drill-in page reached from content (event / request detail, edit, profile, the detections queue), where "back" means "return to where I clicked this". Sidebar destinations (map, submit, requests, search, about, settings) never set it: they are entered from the rail, so there is no "where I came from" to promise. One exception: a `/submit` path sets it with `onBack`, which replaces the walk below and returns to the chooser, a step back through the history when the chooser opened the path and `/submit` otherwise. **What it walks:** [`smartBack`](../frontend/src/lib/navigation.ts) pops an app-kept stack of visited paths rather than calling `history.back()`, which would walk off the origin. A route that only redirects keeps itself out of that stack (`skipBackRecord`, called before the redirect), since walking back onto one runs its redirect again and lands where the walk started, which reads as an arrow that does nothing. |
-| Actions (`actions`) | Right of the title, wrapping under it below a `14rem` title basis | The page-level action cluster. Every control that acts on the thing the page is about goes here, so a reader finds them in one place. On a profile that is the glyph row (the linked accounts, then Edit profile, New collection and Sign out on your own), and Follow on someone else's profile. On the Requests board it is **Post request**. Edit mode moves the save pair to the sticky actions. The event surfaces leave it empty: their controls are sticky actions instead (`stickyActions`). A panel a cluster control opens (the add-to-collection picker, the Geolocators list) is a [`<Popover>`](../frontend/src/components/ui/Popover.tsx) that floats over the page, so nothing under the header moves. Flex line-breaking measures the title's base size, so the cluster takes its own line rather than squeezing a heading into a one-word column. A preference, not a minimum (`min-w-0`): a hard floor outgrows the frame on the narrowest phones and scrolls the page sideways. The cluster is capped at the header width (`max-w-full`) and wraps inside itself, so a row of several buttons breaks into right-aligned lines on a phone. The subtitle breaks anywhere, since a bio can hold a bare URL, one unbreakable token. |
-| Sticky actions (`stickyActions`) | A zero-height `sticky top-10 max-sm:top-16 z-30` track before the header, the cluster hanging from it at the right, as wide as its actions on one line, up to the column's width | The page's actions, top right of the header, pinned at the top right of the column while the page scrolls, in an `aside` named *Actions* that `PageShell` renders, so no caller spells the landmark. [`EventShell`](#event-layout) sets it, on the event, version and request pages and the event forms. [`CollectionShell`](#collections) sets it on the collection page and the collection forms. The profile and organization edit modes set it for their save pair, the search page for **Add to collection**, and the X post and archive entries of `/submit` for their submit button (**Create the detection**, **Import archive**), which sits outside the form and submits it through its `form` attribute. The header keeps the cluster's room, and the cluster takes a surface once pinned; see [Event layout](#event-layout). `stickyActionsIdle` keeps that room while hiding the cluster (invisible, inert, no surface), for actions that come and go with a page state, so the header never moves when they return. |
-| Controls (`controls`) | `flex flex-wrap items-center justify-between gap-2`, one `space-y-6` step under the header | The view controls: the `<SegmentedControl>` that picks what the page lists or how (the Requests sort), left-aligned under the title. A control that acts rather than picks a view goes in `actions` instead. The row sits above a [right rail](#right-rail), so the rail starts level with the list. |
-| Header side (`headerSide`) | [`PageColumns`](../frontend/src/components/ui/PageShell.tsx): `grid items-start gap-6 lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]` | Lays the page out as a main column and a side column, 65:35 from `lg` up. The header heads the main column and `headerSide` heads the side column, level with the title, under the sticky actions. The children lay out their own `PageColumns` under the header, on the same split, so the columns line up. Below `lg` each side column follows its main column. [`EventShell`](#event-layout) sets it on every event surface to what reads under the pinned row (`actions.below`), `null` when that is empty, and [`CollectionShell`](#collections) sets it on every collection surface. `PageColumns`' `stickySide` pins the side column from `lg` up, under the sticky actions (`lg:top-24`), while the main column scrolls: the collection surfaces set it, since their main column runs to hundreds of rows. |
+- **One column.** Every page shares one container, so the title starts at the same x everywhere. The side padding drops a step below `sm`, because the desktop gutter leaves a card on a 375px screen too narrow for a title beside a thumbnail. The top padding steps up there instead, to clear the menu chip (see [Phone chrome](#phone-chrome)).
+- **Back arrow.** Set `back` only on a drill-in page reached from content (event or request detail, edit, profile, the detections queue). Sidebar destinations never set it, except a `/submit` path, which returns to the chooser. A route that only redirects calls `skipBackRecord`, so the back walk never reruns its redirect.
+- **Actions.** Page actions are buttons in the top-right sticky action bar (`stickyActions`). Every control that acts on the page's subject sits there or in `actions`, so a reader finds them in one place. A panel one opens is a popover, so nothing under the header moves.
 
-Pre-data states use `<PageLoading>` / `<PageError>` (one centered shell). Opt-outs: `/` (landing), `/map` (full-screen map), the `(auth)/*` group, and `app/error.tsx`.
-
-A part of a page that is still loading reads *Loading…* in one muted line, `<PageLoading variant="line">` (`text-sm`): a list body, a panel, a Suspense fallback of the `(auth)/*` group. A dense panel takes `variant="compact"` (`text-xs`): the admin panels, the link dialog's suggestions, the Linked sites field, the map's hover preview. The heading above the line names what loads, so the line names nothing.
-
-The public guides use the same shell, signed in or out: `/guide` ("Getting started", the page a new analyst reads first; see [Getting started page](#getting-started-page)), `/methodology` ("Building a proof"; see [Import and methodology guides](#import-and-methodology-guides)), and `/import` ("Import your work from X": the conditions once, an annotated post for what a detection carries, a screenshot of the Submit mode selector, then one section per entry). Each is a server component of `PageShell` plus `Card`, for SEO, linked from the About page's Guides section. `/bot` and `/archive` are `redirect()` stubs into `/import#bot` and `/import#archive`, and both stay in `PUBLIC_PREFIXES` so a signed-out reader is forwarded rather than sent to the login page. The bot's X bio points at `/bot` (see [The bot](ingestion.md#the-bot)).
-
-[`<LegalLinks>`](../frontend/src/components/ui/LegalLinks.tsx) puts the legal notice and the privacy policy on one muted line: the landing page ends on it and the `(auth)/*` layout puts it under every card.
-
-The `(auth)/*` group composes [`<AuthCard>`](../frontend/src/components/auth/AuthCard.tsx) (a `max-w-sm` centered card). The two single-email pages (`/forgot-password`, `/resend-confirmation`) also share [`<SingleEmailFlow>`](../frontend/src/components/auth/SingleEmailFlow.tsx), whose sent-state copy stays anti-enumeration ("if X is registered…", never confirming the address exists).
-
-`/unsubscribe/notifications` is an `<AuthCard>` too: it turns off the email of one notification kind only on a click of its button, so a mail scanner that opens the link changes nothing. Opened without its token, it reads *Incomplete link*, the title `/reset-password` shows without its token, and links to Settings.
-
-`/confirm-registration` consumes the token, signs you in, and then stays on its success card rather than redirecting. The card offers the two next steps as full-width links with `buttonClasses`: **Import your X archive** (primary, `/submit?import=1`) and **Read Getting started** (secondary, `/guide`).
+The public guides (`/guide`, `/methodology`, `/import`) are server components of `PageShell` plus `Card`, for SEO.
 
 #### Getting started page
 
@@ -503,36 +483,23 @@ flowchart LR
   page -->|"Bringing your work in"| imp
 ```
 
-[`/guide`](../frontend/src/app/guide/page.tsx) is a server component of `PageShell` plus `Card`, like the other guides. The page shows rather than tells: each section is a title, at most one sentence, annotated screenshots, and at most one row of `IconTile`s for what no screenshot shows. Each section is a `Card` whose `h2` carries the anchor:
+[`/guide`](../frontend/src/app/guide/page.tsx) shows rather than tells: each section is a title, at most one sentence, annotated screenshots, and at most one row of tiles for what no screenshot shows.
 
-| Anchor | Heading | What it shows |
-|---|---|---|
-| `#layout` | The layout | A screenshot of the signed-in rail on the map, and one of the phone drawer |
-| `#reading-a-geolocation` | Reading a geolocation | A screenshot of an event page: byline, the source blocks with their files, links and archived copies, coordinates, details, proof, versions, share and report, approvals |
-| `#statuses` | The statuses | The four `StatusBadge`s with one line each, and the steps from detection to geolocation |
-| `#bringing-your-work-in` | Bringing your work in | Tiles to the archive, a pasted post and @ViditBot on `/import`, and to the submit form |
-| `#working-with-others` | Working with others | A screenshot of the approvals on another analyst's geolocation, one of the Feed, and tiles for requesting an approval, co-geolocators and organizations |
-| `#settings` | Your settings | A screenshot of the Notifications card (who can request your approval, the email switch per kind), and tiles for the profile, the X handle and display |
-
-- **Anchors are contract.** Other pages and messages link to a section by its id, so keep every id when you edit a heading. Each heading takes `max-sm:scroll-mt-16`, so a jump on a phone lands below the menu chip.
-- **One marker list.** [`shots.json`](../frontend/src/app/_shots/shots.json) groups the screenshots by page, `guide` and `import`, and names each one's file, route, window, session and markers. The layout, Approvals, Feed, Notifications and Submit shots are signed in. A marker is a target element and its legend line. The screenshot tooling is not part of this repository. It draws a numbered orange disc beside each target and writes the WebP to `frontend/public/<page>/`. [`Shot`](../frontend/src/app/_shots/Shot.tsx) renders one screenshot on either page and numbers the same labels with `NumberedSteps` under the image. Change a marker in the JSON, and the maintainer regenerates the screenshots.
-- **Grounded in the product.** The page names only controls that exist, under the labels the product prints. A change to a surface the page shows updates its tile or its markers in the same PR, and the maintainer regenerates its screenshot.
+- **Anchors are a contract.** Other pages and messages link to each section id. Keep every id when you edit a heading.
+- **Grounded in the product.** The page names only controls that exist, under their product labels. A PR that changes a surface the page shows updates its tile or its markers in [`shots.json`](../frontend/src/app/_shots/shots.json), and the maintainer regenerates the screenshot.
 
 #### Import and methodology guides
 
-The three guides chain: `/guide` links `/import` and `/methodology`, and neither of those restates what another guide owns. A fact lives in one guide, and the others link to it:
+A fact lives in one guide, and the others link to it:
 
-| Fact | Owner | Linked from |
-|---|---|---|
-| The four statuses and the path from detection to geolocation: on the map and in your queue, you review, only you publish, rejecting closes it | `/guide#statuses` | `/import`, one sentence after the annotated post |
-| What makes a detection: your own post from your linked X handle, carrying a coordinate | `/import#detection` | `/guide#bringing-your-work-in` |
-| What a detection carries, and the parsing rules (coordinate formats, a quote outranks links, links that never count, the 120-character title, several candidates leave the source empty) | `/import` | No other guide |
-| Each way in: the archive, a pasted post, @ViditBot | `/import#archive`, `#paste`, `#bot` | `/guide` tiles, as navigation |
-| What a proof is and how to build one, and how to link and archive its sources | `/methodology` | `/guide#reading-a-geolocation`, the form's **Methodology guide** link |
+| Fact | Owner |
+|---|---|
+| The statuses and the path from detection to geolocation | `/guide#statuses` |
+| What makes a detection, what it carries, the parsing rules | `/import` |
+| Each way in: archive, pasted post, @ViditBot | `/import#archive`, `#paste`, `#bot` |
+| What a proof is and how to build one | `/methodology` |
 
-- **The annotated post.** [`/import`](../frontend/src/app/import/page.tsx) shows what a detection carries as a `MockPost` of a typical geolocation post, a quote of the source post with its footage, and numbers its parts with the `STEP_NUMBER` disc that [`NumberedSteps`](../frontend/src/components/ui/NumberedSteps.tsx) exports: 1 coordinates, 2 the source, 3 the source media, 4 the title line, 5 the proof text. A `NumberedSteps` legend beside it gives one line per number, and a short list under it holds the rules a reader needs when a detection looks wrong.
-- **The entry chooser.** Under "Three ways in", `/import` shows the `submit-modes` screenshot of the `/submit` chooser: 1 the chooser, 2 Geolocation, 3 From an X post, 4 Bulk import. A line under the legend says that @ViditBot needs no form. The `IconTile` row under it links each entry's section, which the screenshot does not.
-- **The proof example.** [`/methodology`](../frontend/src/app/methodology/page.tsx) opens on one real proof image from a public geolocation, stored as `frontend/public/methodology/proof-example.webp` and captioned with the analyst and a link to the event page. Numbered discs are baked into the image, and each number marks the step of the same number in the list under it, so a reorder of the first four steps re-bakes the image.
+The `/methodology` proof example has its step numbers baked into the image. Reordering the first four steps means re-baking it.
 
 #### Right rail
 
@@ -553,7 +520,7 @@ flowchart TB
   end
 
   shell["`**PageShell rail=…**
-  PageFrame column=wide: up to 1152px, left-aligned`"]:::core
+  PageFrame column=wide: up to 1152px, centred`"]:::core
   layout["`**PageWithRail**
   53rem main column plus a 17.5rem rail`"]:::core
   pages["`**Feed, Requests board, Search**
@@ -577,13 +544,7 @@ flowchart TB
   sheet -->|each change| list
 ```
 
-`PageWithRail` (inside [`PageShell.tsx`](../frontend/src/components/ui/PageShell.tsx)) lays a page out as a main column and a right rail. Use it for any page whose side panel stays in view while its main column scrolls. Pass the panel as `<PageShell>`'s `rail` (with `railLabel` and `narrowRail`): `PageShell` composes `PageWithRail` and widens its column to `wide`, so the main column keeps the 53rem reading width beside the rail once the screen holds both. A page whose rail comes and goes passes `null` while it is gone, which keeps the column one width and keeps its element mounted.
-
-- **From `lg` up** the rail is a `17.5rem` (280px) column right of the main column, its top level with the top of the main column's first block, under the full-width header. It sticks while the main column scrolls, at its resting top, so it never moves: `PageShell` sets `--rail-top` to the frame's `pt-10` (2.5rem), plus the header's measured height and the 1.5rem gap under it. Once the rail is taller than the viewport it scrolls on its own, so its foot stays reachable.
-- **Below `lg`** the `narrow` prop picks the shape. `stacked` (the default) puts the rail above the main column. `below` puts it under the main column, for a rail that acts on what the column holds; the rail also comes after the column in the tab order at every width. `hidden` takes the rail off the page, for a page that offers its own narrow entry to it.
-- **Without a `rail`** (`null`) the page takes the `reading` column, so a page can drop the rail on a view it does not apply to.
-
-The event forms place their actions in [`EventShell`](#event-layout)'s sticky actions instead of a rail. The feed, the [Requests board](#requests-board) and search mount the [filter panel](#filter-panel) in the rail (`FilterCard`, the panel under its **Filters** header) with `narrowRail="hidden"`, and below `lg` they show its phone bar above the list. The [About page](../frontend/src/app/about/page.tsx) mounts its links in the rail with `narrowRail="below"`: three dense `Card`s (Guides, Stay in touch, Legal) of `LinkRow`s, while the main column keeps the prose (Commitments, Funding, Privacy, Behind Vidit), so the rail's links stay in view while the prose scrolls.
+Use `PageShell`'s `rail` for a side panel that stays in view while the main column scrolls. The event forms put their actions in [`EventShell`](#event-layout)'s sticky actions instead.
 
 #### Filter panel
 
@@ -640,136 +601,30 @@ flowchart TB
   panel --> phone
 ```
 
-One filter model drives the filter panel of the map, search, the feed and the [Requests board](#requests-board). [`model.ts`](../frontend/src/components/filters/model.ts) lists every dimension once in `DIMENSIONS`: its name, its `?`, its control, the surfaces whose data can serve it, and the query parameter that carries it in the page URL and the API. `eventFilterFields` and `readEventFilterParams` in [`lib/search.ts`](../frontend/src/lib/search.ts) write and read the filters through those parameters, so the page URLs, the API queries and a JSON body share one format. [`labels.ts`](../frontend/src/components/filters/labels.ts) names each value and builds the removable pills. [`<FilterPanel>`](../frontend/src/components/filters/FilterPanel.tsx) draws the model in one order on every surface, so the same dimension reads the same way everywhere. A surface leaves out only the dimensions its data cannot serve (`offeredDimensions`).
+Every filter lives inside the filter panel. One model ([`model.ts`](../frontend/src/components/filters/model.ts)) drives it on every surface, in one order, so a dimension reads the same everywhere. A surface leaves out only the dimensions its data cannot serve.
 
-**The panel.** In reading order:
-
-1. **What**: Show, Conflict and Tags.
-2. **When**: the two date timelines, **Event date** and **Added**. Each is a `<TimelineScrubber>`: a histogram of the rows per day, two handles, and the from and to date fields under it. A histogram counts the rows under every filter but its own window, so dragging a handle never reshapes the axis it moves on. Only the map plays a window.
-3. **Source**: Source kind, Level and Media.
-4. **Where**: Location guess.
-5. **Who**: Following, Author, Approved only and Approved by.
-6. **Clear all**, once a filter is on.
-
-`FILTER_GROUPS` in `model.ts` holds the groups in this order. A heading shows only while it holds a line. Each heading is a button that opens or collapses its group (`aria-expanded`). Every group starts collapsed. The viewer's choice is kept in `localStorage` (`useOpenGroups` in [`useFilterPanelState.ts`](../frontend/src/hooks/useFilterPanelState.ts)), so it holds on every surface and across visits; without storage it holds for the session. A collapsed group shows its active filters as removable pills under its heading (`groupPills`), so no active filter is out of sight.
-
-Each dimension is one line, its name in the secondary text colour, with no divider between lines:
-
-- A list dimension (Show, Conflict, Tags, Source kind, Level, Media, Location guess) is a [`<PropertyRow>`](../frontend/src/components/filters/PropertyRow.tsx) with an `<OptionSearch>`: the search field sits on the line, at the right of its name, focus lists every option in a list under the field, over the panel, and a pick closes the list. The picks show as removable accent pills under the line.
-- Author and Approved by are the same line with an [`<ItemSearch>`](../frontend/src/components/ui/ItemSearch.tsx) over the accounts.
-- Following and Approved only are switch lines (`<ToggleRow>`).
-
-No line, chip or pill carries a count, and the panel prints no helper line.
-
-**One hook per surface.** Every surface binds its panel through `useFilterSurface` ([`useFilterSurface.ts`](../frontend/src/components/filters/useFilterSurface.ts)): it holds the filter state, the patch, which drops the values the surface no longer offers (`scopeState`), **Clear all**, and the vocabulary the pickers offer. The map keeps the state in `MapStateContext`, so it survives a visit to another page and resets on reload. Search, the feed and the Requests board keep it in the page URL through `usePageUrl`: the page reads the URL on load and whenever it moves (**Back**, **Forward**, a link), and writes each change with `router.replace`, so a shared link and **Back** land on the same view. Search alone also pushes a history entry for a new Show pick (see [Search](#search)).
-
-**Dimensions by surface.** The page URL and the API name each dimension by its parameter, so a link round-trips the view.
-
-| Dimension | Parameter | Map | Search | Feed | Requests board |
-|---|---|---|---|---|---|
-| Event date | `occurred_date_from`, `occurred_date_to` | In memory, with play | While events are listed | Yes | Yes |
-| Added | `submitted_from`, `submitted_to` | In memory, with play | While events are listed | Yes | Yes |
-| Show | `status`, and `type` on search | Detected, Geolocated, Sites | The statuses, Sites, Collections, Analysts, Organizations | The statuses | No: fixed to Requested |
-| Conflict | `conflict` | Yes | Yes | Yes | Yes |
-| Tags | `tag` | Yes | Yes | Yes | Yes |
-| Source kind | `source_kind` | Yes | Yes | Yes | Yes |
-| Level | `level` | Yes | Yes | Yes | Yes |
-| Media | `media` | Yes | Yes | Yes | Yes |
-| Location guess | `has_coords` | No: every point has one | Yes | Yes | Yes |
-| Following | `scope` | No | No | Yes, on by default | No |
-| Author | `author` | Yes | Yes | Yes | Yes |
-| Approved only | `approved` | Yes | Yes | Yes | No: a request holds no approval |
-| Approved by | `approved_by`, `approved_by_org` | Yes | Yes | Yes | No: a request holds no approval |
-
-On search, a Show pick that lists no event offers only the dimensions its kinds answer (`KIND_DIMENSIONS`, the mirror of the API's rule), and drops the values of the others (`scopeState`), so no hidden filter keeps narrowing the list. Each timeline reads its counts from the surface's histogram: [`GET /search/dates`](api.md#get-searchdates) on search and on the Requests board (the open requests search lists), [`GET /feed/dates`](api.md#get-feeddates) on the feed (`useTimelines`), and the loaded points on the map, which hold a day for each row.
-
-**The Show rule.** The Show line follows one rule on every surface (`showScope` in [`model.ts`](../frontend/src/components/filters/model.ts)). With nothing selected, the surface shows everything. Once you select an option, it shows only what the selected options name. On the map:
-
-| Selected | Events | Sites |
-|---|---|---|
-| Nothing | All | All |
-| Statuses, such as Geolocated | The selected statuses | None |
-| Sites | None | All |
-| Sites and statuses, such as Sites and Detected | The selected statuses | All |
-
-On search, Show holds the kinds the page lists and drives its sections (see [Search](#search)). On the feed it holds the statuses `GET /feed` takes as `status`.
-
-**Placement.** The panel's content is the same in every placement. From `lg` up every surface shows it in one [`FilterCard`](../frontend/src/components/filters/FilterPanel.tsx): a **Filters** header button (the filter icon, accent while a filter is on, the label, the result count and a chevron) over the panel. The header opens and closes the panel. Closed, the card shows every active filter as a removable pill under the header, with **Clear all** once two or more are on. Open, the active filters show only in the panel: in their lines, or under the heading of a collapsed group. The viewer's open or closed choice is kept per surface in `localStorage` (`usePanelOpen` in [`useFilterPanelState.ts`](../frontend/src/hooks/useFilterPanelState.ts)):
-
-- **The map**: [`MapFilters`](../frontend/src/components/map/MapFilters.tsx) floats the card over the map, closed by default, so the map leads with the catalogue. Open, the panel stops above the map's bottom-left controls and scrolls the rest. The filter values live in `MapStateContext`: they survive a visit to another page and reset on reload.
-- **Search, the feed and the Requests board**: the card in the [right rail](#right-rail), open by default.
-- **Every surface below `lg`**: [`FilterSheetBar`](../frontend/src/components/filters/FilterPanel.tsx), a **Filters** button, the result count and every active filter as a removable pill ([`<ActiveFilterPills>`](../frontend/src/components/filters/ActiveFilterPills.tsx)). The button opens the panel in `MediaOverlay`'s sheet variant, docked to the bottom edge. Each change applies at once. **Done**, Escape or a tap on the backdrop closes the sheet. On the map the bar floats over the canvas, right of the menu chip.
-
-**Result count.** The `FilterCard` header and the `FilterSheetBar` show how many objects the surface lists under the current filters, in the muted meta text at the right of the **Filters** label: *284 results*, *1 result* (`countLabel` in [`lib/format.ts`](../frontend/src/lib/format.ts), thousands grouped). The noun keeps the count apart from the active filters, which the accent icon and the pills show. The count is the control's description (`aria-describedby`), so the control keeps the name **Filters**. It follows each filter change, and while the surface fetches the last count stays with the pulsing `<Dot>` after it and the control is `aria-busy`. Each surface passes `count` and `loading` to both placements:
-
-| Surface | Count | Loading while |
-|---|---|---|
-| Map | The event points and sites the map draws: the loaded points under the Show field and both date windows, plus the sites the Show field keeps | The points load |
-| Search | `total` of the list of the one kind picked, else the sum of the sections' `total` | The search runs |
-| Feed | `total` of [`GET /feed/dates`](api.md#get-feeddates) | The histogram loads |
-| Requests board | `total` of [`GET /search/dates`](api.md#get-searchdates) for the open requests | The histogram loads |
-
-`useTimelines` reads the histogram's `total` with its timelines, so the feed and the board count the whole filtered set, not the loaded pages.
-
-A pill reads as **name:** *value*, for example **Show:** *Sites*, **Author:** *ana* or **Event date:** *Until 1 Jan 2025*; a switch's pill reads as its label alone (*Approved only*). A date window reads *From 1 Jan 2024*, *Until 1 Jan 2025* or *1 Jan 2024 to 1 Jan 2025* (`rangeSummary`).
+- No active filter is out of sight: a collapsed group or a closed card shows its active filters as pills.
+- No line, chip or pill carries a count, and the panel prints no helper line.
+- Search, the feed and the Requests board keep the filters in the page URL, so a shared link and **Back** land on the same view. The map keeps them in memory until reload.
+- The Show rule: with nothing selected, a surface shows everything; once you select options, it shows only what they name.
 
 #### Phone chrome
 
-The nav chrome takes three shapes, and the page offset follows it:
+| Width | Nav | Back control |
+|---|---|---|
+| Below `sm` | The rail is off-canvas, opened as a drawer from a menu chip in the top-left corner. Pages take no left inset and clear the chip with top padding. | In the chip |
+| `sm` to `lg` | Fixed 56px rail | A row above the title |
+| `lg` up | The same rail | In the gutter left of the column |
 
-| Width | Nav | Page offset | Back control |
-|---|---|---|---|
-| Below `sm` (640px) | The rail is off-canvas. A floating menu chip in the top-left corner opens it as a drawer. | No left inset. `PageShell` takes `max-sm:pt-16`, so the title clears the chip. | Portaled into the chip, beside the open control. |
-| `sm` to `lg` | Fixed 56px rail, collapsed to glyphs or expanded to labels. | `sm:pl-14`, from `PageFrame`. | A row of its own above the title. |
-| `lg` up | The same rail. | `sm:pl-14`. | Parked in the gutter left of the column. |
+The chip costs only its corner, so each page clears it with its own padding rather than every route giving up a row to a bar. The map's overlays sit beside it.
 
-**The chip is the rail's chrome while the rail is off-canvas** ([`Sidebar.tsx`](../frontend/src/components/Sidebar.tsx)): an opaque `neutral-900` box on a `neutral-800` border, 8px in from the top and left edges, holding a 44px open control (lucide's `Menu`) and, beside it, a slot for the page's back control. It costs the corner it occupies and nothing more, which is why each page clears it with its own top padding rather than every route surrendering a row to a bar. `PageShell` portals its back control into that slot below `sm` through [`phoneBackSlot.ts`](../frontend/src/lib/phoneBackSlot.ts), so a page carrying one shows the arrow beside the open control and every other page shows the open control alone. The brand mark stays in the drawer, where it doubles as the Home entry.
+**The display cutout is part of the box.** The page paints edge to edge, and every surface that owns the screen size uses `dvh`.
 
-**The drawer is the rail's expanded state**, slid over the page: 192px wide, glyphs plus labels, the identity block at the foot, and the beta pill inline under it. A `black/50` scrim covers the page behind it, and the body stops scrolling while it is open. It closes five ways: a tap on any link inside it (the entry already active included, which changes no route), a route change, Escape, a tap on the scrim, and the foot control, which reads *Close* below `sm` and *Collapse* from `sm` up: one row at every width, but two buttons, since closing the drawer and folding the rail act on different state.
+- A surface that floats a set distance from an edge takes the inset as a margin: the menu chip, the map's filter overlay, the map's detail panel from `sm` up.
+- A surface that fills an edge takes it as padding, so its box still reaches the edge: the nav drawer, the map's bottom sheet, the media overlay.
+- The rail takes no inset from `sm` up and paints under the cutout band: a notched phone in landscape is past `sm`, and the inset would leave the glyphs 12px.
 
-**The beta pill has one live copy at any width** ([`BetaBanner.tsx`](../frontend/src/components/BetaBanner.tsx)). The floating corner pill paints over a phone's content, so it hides below `sm` and the drawer renders the same component inline at its foot.
-
-**The map page lays its overlays out around the chip.** The filter bar starts right of the chip's open control (`left-16`) and takes the width its button and pills need, so the map keeps every tap outside it. Its **Filters** button opens the [filter panel](#filter-panel) in a sheet over the whole screen. The detail panel becomes a bottom sheet: full width on the bottom edge, capped at `60dvh`, scrolling its own content, under a grab bar above its close control. The bar is decorative, and marks the sheet as the scrolling surface; the close control dismisses it. The map's bottom-left control group keeps the map's own corner below `sm`, since the 60px offset in [`globals.css`](../frontend/src/app/globals.css) clears a rail that is not there; an open sheet covers that group, and closing it hands the group back.
-
-**A finger gets slop on the canvas** ([`Map.tsx`](../frontend/src/components/map/Map.tsx), [`stack.ts`](../frontend/src/components/map/stack.ts)). On a coarse pointer, a tap that hits bare canvas is re-tested over a 12px box on each side and takes the feature whose projected centre sits nearest, then does what that feature's own layer would have done: a cluster zooms, a stack badge fans out, a pin selects. A ring dot keeps its 12px paint and grows a 32px hit box around it. A tap arms no hover preview, since the compatibility `mousemove` a tap fires would open the card over the pin the finger just selected. A mouse keeps exact hit testing and its preview. The pointer read has one home, `isCoarsePointer` ([`pointer.ts`](../frontend/src/lib/pointer.ts)), on the same media feature the `pointer-coarse:` variant carries in CSS.
-
-**A [`<SegmentedControl>`](../frontend/src/components/ui/SegmentedControl.tsx) always stretches below `sm`**, its options sharing the track and their labels staying on one line. An intrinsic-width track with three labelled options runs past a 375px column, and the browser's answer there, wrapping each label, reads broken. Each option starts from its label's width and the spare room is shared out, so the longest label keeps its words: equal thirds at 320px cut *People I follow* in the settings to *People I f…*.
-
-**A form field renders at 16px on a phone** ([`Input.tsx`](../frontend/src/components/ui/Input.tsx)). `FIELD_TEXT` is the one field type size, 16px below `sm` and 14px from `sm` up, and the three `<Input>` variants, `<Select>`, `<Textarea>` and the locked box all run it. Mobile Safari zooms the page in when you focus an editable element rendering under 16px, and it does not zoom back out when you leave the field, so a smaller field leaves you scrolled sideways on the form you were filling in. The timeline scrubber's date fields, the one field that sets a denser size of its own, carry it as `sm:text-[11px]`, so they keep the dense desktop size and take the floor on a phone. The field's height follows its type size, 38px from `sm` up and 42px below it.
-
-**A field's trailing actions are cleared by one figure at each size**, `TRAILING_ROOM` in the same file. The widest adornment holds two ghost icon buttons and the icon button steps from 32px to 36px on a phone, so the text padding that clears it is `pr-18` from `sm` up and `pr-20` below. [`<LockedUrl>`](../frontend/src/components/geolocations/fields/LockedUrl.tsx) reads that constant too, so its value stops where an adorned field's does. A mark that stands down on a phone takes `sm:pr-10`, one icon button's room from `sm` up and none below, which the field asks for with `trailingFromSm`: `<Input>` then hides the slot below `sm` and leaves the field its full width there, so the two halves of the decision stay together. [`<DateTimeInput>`](../frontend/src/components/ui/DateTimeInput.tsx) takes that form for every date, time and instant field: at 320px the instant in a link's post time field needs the whole field, so the picker mark is a desktop affordance, and below `sm` a tap on the field opens the engine's own picker. The narrow-viewport suite measures the room the instant field leaves against the width the engine paints its value in.
-
-**The coordinate pair holds one line at every width** ([`CoordinateInputs.tsx`](../frontend/src/components/geolocations/CoordinateInputs.tsx)). The line is a three-column grid: Latitude and Longitude share the room in two shrinking columns, and the map and copy actions take only their own width after them. The pair has no visible labels: each field is named for assistive technology (`aria-label`, *Latitude* and *Longitude*) and shows an example value as its placeholder, and a refused pair turns both fields red (`FORM_INVALID_FIELD`). The fields run half the usual side padding and tight tracking, so a 6-decimal value shows whole from 375px up and in the forms' side column at 1024px. At 320px the 16px field text and the 36px tap squares leave room for about 6 characters, and the rest scrolls inside the field. The narrow-viewport suite measures the line in the Location card and in a source editor at both phone widths and at 1024px.
-
-**A pin or a corner drags under one finger** ([`useLayerDrag.ts`](../frontend/src/components/map/useLayerDrag.ts)). The event forms' pin (`<PointMap>` with `onPick`) and the contour editor's corners and edge dots drag through one hook, with the mouse or one finger. A grab holds the map's own pan for the gesture, and a finger dragging does not scroll the page under it. A second finger leaves the gesture to the map, so a pinch still zooms.
-
-**An embedded map hands the one-finger swipe back to the page** ([`Map.tsx`](../frontend/src/components/map/Map.tsx)). The `embedded` prop sets MapLibre's `cooperativeGestures` on the event page's location box and on the profile map, which drops the canvas to `touch-action: pan-x pan-y`: a swipe that starts on the map scrolls the article, panning takes two fingers, and zooming takes Command or Ctrl with the wheel, announced on the blocked gesture. On desktop, a bare wheel over either map scrolls the page, and MapLibre paints its own overlay saying to hold Command or Ctrl. `/map` leaves the prop unset, since there the map is the page.
-
-**The page frames on `dvh` and paints under the cutout.** [`app/layout.tsx`](../frontend/src/app/layout.tsx) exports `viewport` with `viewportFit: "cover"`, so the document reaches the physical edges of the screen.
-
-- Every surface that owns the screen size takes it on `dvh` rather than `vh`: the document body, both page frames (`<PageFrame>` and `<PageCenter>`), the map page, the media lightbox, and the global error boundary. `vh` is the tallest the viewport gets, so with mobile Safari's URL bar showing, a `vh` frame pushes centred blocks low and puts the last row behind the bottom chrome.
-- Edge chrome takes the insets back through the `safe-*` utilities in [`globals.css`](../frontend/src/app/globals.css). A surface that floats a set distance from an edge takes the inset as a margin: the menu chip, the map's filter overlay, and the map's detail panel from `sm` up. A surface that fills an edge takes it as padding, so its box still reaches the edge: the nav drawer, the map's bottom sheet, and the media overlay, whose backdrop covers the cutout band so a tap there closes the viewer.
-- The nav element takes that padding only while it is the drawer (`max-sm:`). From `sm` up it is the 56px rail, which takes no inset and paints under the cutout band, since a notched phone in landscape is past `sm` and the inset would leave 12px for the glyphs.
-- The page column takes its horizontal insets in `<PageFrame>` and `<PageCenter>` ([`PageFrame.tsx`](../frontend/src/components/ui/PageFrame.tsx)), which keeps every route's content out from under the cutout in landscape.
-- `env()` reads 0 where the device reports no inset, so both forms are inert on a desktop.
-
-**The media lightbox scrolls instead of overflowing** ([`MediaLightbox.tsx`](../frontend/src/components/ui/MediaLightbox.tsx)). The frame is `80dvh` inside an `overflow-y-auto` overlay, so a video's control bar stays on screen with the iOS URL bar visible. The content sits at the top of the overlay with auto vertical margins, which centre it while it fits and collapse to 0 when it does not, so nothing lands above scroll origin. The content is sized by what it holds rather than clamped to the overlay's height, so a tall frame scrolls.
-
-**An interactive chip and a filter line are tap targets.** `TAP_STEP` ([`Button.tsx`](../frontend/src/components/ui/Button.tsx)) is the one phone floor, 36px below `sm` and the exact desktop shape from `sm` up. It raises the tappable height only, so a control keeps its own type scale and its own horizontal padding. [`<Pill>`](../frontend/src/components/ui/Pill.tsx) takes it whenever it carries an `onClick`, or an `onRemove`, which is every suggestion chip and every removable pick or active filter; a static pill is a label and keeps its resting height. [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx) makes its whole row the switch and carries the step. **Clear all**, in the panel and after the active filter pills, is a ghost `<Button>` and carries the step as well. A square control smaller than the icon button takes the same floor through `ICON_TAP_STEP`, the width and the height together: the settings accent swatch, a `<FileManager>` tile's remove control, the timeline scrubber's play and reset controls, and the sidebar's three community links, each naming its own desktop square beside it.
-
-**A boolean preference is a [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx).** Its accessible name is its label alone (`aria-label`), and its description is its accessible description. An empty button laid over the whole row carries `role="switch"` and the click, and `<Switch>` renders as its visual span, so a tap anywhere on the row toggles rather than having to land on the 20x36px track, and the row takes `TAP_STEP`. The span takes no pointer event (`pointer-events-none`), so a click on the track or its knob reaches the button under it. `concept` puts a [`FieldHelp`](#field-help-) `?` after the label. The `?` stacks above the row's button rather than inside it, so a tap on it opens its help and never toggles. `variant` picks the shape, and defaults from `description`: `filter` is a line of the [filter panel](#filter-panel), its name like a `<PropertyRow>`'s beside a small switch; `setting` is a settings preference, the label at reading size over a line saying what the preference does when there is one. The basemap panel uses `setting` rows without a description. The accessible name is the label alone (`aria-labelledby` on it), so a screen reader announces the switch by what it switches, and the description is its accessible description. `disabled` reads the state but refuses the toggle and dims the row; give it a `description` that says when the switch applies.
-
-**Settings shows labels only.** Each card heading, setting and switch on the settings page carries its explanation behind its `?`, and no line under it. The concepts are in [`lib/fieldHelp.ts`](../frontend/src/lib/fieldHelp.ts): `display_settings`, `help_tooltips`, `light_mode`, `accent_color`, `notification_settings`, `approval_request_audience`, `x_handle`, `invite_analysts`, and one `notification_<kind>` per notification kind, built from the kind's `setting` sentence in `NOTIFICATION_KIND_COPY`. Once a setting reaches the account, the card heading shows **Saved** with a check at its right edge for 1.5 s (`useFlash`, the timer `useCopyToClipboard` also runs on), in `META_LINE`, inside a `role="status"` region so a screen reader hears it. A failed save shows the card's `ErrorNotice` instead.
-
-**Settings → Notifications is a list of [`<ToggleRow>`](../frontend/src/components/ui/ToggleRow.tsx)s.** Each row is one notification kind with one **Email** switch, its label and `?` on the left. The switch applies to the account, whatever the device. The in-app notifications list shows every kind and has no switch. The approval-request audience sits outside the list.
-
-**A pick-one preference is a [`<ChoiceRow>`](../frontend/src/components/ui/ChoiceRow.tsx).** It is the `<ToggleRow>` shape for a setting with a few named choices: the label at reading size, over a line saying what the setting does when there is one, and a `<SegmentedControl>` named by the label. `concept` puts a `?` after the label. Settings and the organization page both render **Accept approval requests from** through it. Below `sm` the bar drops under the text and takes the full column.
-
-**A colour preference is a [`<SwatchPicker>`](../frontend/src/components/ui/SwatchPicker.tsx).** It is an ARIA radiogroup of round swatches. The selected swatch is the one tab stop, the arrow keys move focus and selection together and wrap at the ends, and Home and End jump to the ends. The selected swatch wears a light ring and the focused one an accent ring. Settings → Display uses it for the accent colour.
-
-**A pill never outgrows the box it sits in.** `<Pill>` holds its width against its neighbours (`shrink-0`), which is what keeps a badge from being squeezed on a crowded row, so a pill carrying one long word would hold its full width and run past its container. `max-w-full` bounds the box and `wrap-anywhere` breaks the word inside it, so a long tag name on the request card's content column takes a second line rather than scrolling the page sideways. Use `wrap-anywhere` (`overflow-wrap: anywhere`) and not `break-words`: a pill is an `inline-flex` box, sized by its content's min-content width, and a `break-word` opportunity is excluded from that measurement, so the box would stay as wide as the unbroken word. The same token breaks the account email on the settings page and the page subtitle in `<PageShell>`.
-
-**A detail row gives way rather than squeezing** ([`DetailRow.tsx`](../frontend/src/components/ui/DetailRow.tsx)). Label and value share one line at every width, and `*:min-w-0` lifts the automatic flex floor off both halves, so a value carrying `truncate` cuts itself to the room the row leaves and a value that wraps on its own (a close reason, a tag list) takes the lines it needs beside the label. The label never shrinks, so it stays on one line at every width. The row does not wrap: wrapping drops a truncating value onto a line of its own before `truncate` engages, which is a different row from the one the desktop map panel is laid out as. `gap-x-4` is the only gutter between the two halves, so a value adds no margin of its own. [`<SourceLabel>`](../frontend/src/components/ui/SourceLabel.tsx) truncates against that rule rather than against a width ceiling of its own, which is why it takes no width prop. A `wrapLabel` row is the one exception to the fixed label: its value holds one line at its full width (`shrink-0`), so the label wraps instead when the row runs short (a source's **Capture position**, the event's **Coordinates**).
+Below `sm`, a date field's picker mark stands down and a tap on the field opens the engine's own picker.
 
 #### One event, four surfaces, two writes
 
