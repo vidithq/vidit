@@ -2441,7 +2441,7 @@ flowchart LR
 
 - Blocks: paragraph, heading (levels 2 and 3), bulleted and numbered list items, quote, code block, divider, and image. `allowImages={false}` removes the image block for a collection's description.
 - Styles: bold, italic, strikethrough, and inline code. Underline is not offered, because the server drops `<u>`.
-- Links: BlockNote's link control accepts only what `isSafeLinkHref` accepts, an absolute http(s) URL.
+- Links: BlockNote's link control accepts only what `isSafeLinkHref` accepts, an absolute http(s) URL. The link popover is a form of its own. The editor stops its submit at the editor's root, so pressing Enter in the popover adds the link and never submits the form that hosts the editor.
 
 The formatting toolbar drops the alignment, nesting, and replace-file buttons, since the stored HTML carries no alignment or nesting and the replace panel offers an embed tab. The file panel offers upload only, so every image comes from the analyst's own file. The theme reads the neutral scale and accent as CSS variables, so the editor follows the reader's theme and accent. The text size is `FIELD_TEXT`, the size every other field uses. `bare` makes the editor the section's card itself, an event form's **Proof**: `ProofSection`'s card and `p-4` padding, and no inline padding of BlockNote's own, so the text starts where the event page's proof text starts; BlockNote's side menu floats into the card's padding.
 

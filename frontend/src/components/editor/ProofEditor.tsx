@@ -346,7 +346,11 @@ export default function ProofEditor({
   };
 
   return (
+    // BlockNote's link popover is a form that prevents its default but lets the submit bubble
+    // through the React tree (portals included) to a host form, which would then save without the
+    // link.
     <div
+      onSubmit={(e) => e.stopPropagation()}
       className={cn(
         bare
           ? // Inside `ProofSection`, which is the frame: no inline padding of BlockNote's own, so

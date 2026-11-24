@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, type FormEvent } from "react";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { en } from "@blocknote/core/locales";
@@ -280,6 +280,36 @@ describe("ProofEditor", () => {
     expect(editor.document).toHaveLength(1);
     expect(editor.document[0].type).toBe("paragraph");
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("adds a link on Enter in the link popover without submitting the host form", async () => {
+    const hostSubmit = vi.fn((e: FormEvent) => e.preventDefault());
+    const onChange = vi.fn();
+    const { container, findByPlaceholderText } = render(
+      <form onSubmit={hostSubmit}>
+        <ProofEditor onChange={onChange} initialContent="<p>Anchor points</p>" />
+      </form>,
+    );
+    await waitFor(() => expect(container).toHaveTextContent("Anchor points"));
+    act(() => {
+      editor.focus();
+      editor._tiptapEditor.commands.setTextSelection({ from: 1, to: 7 });
+    });
+    const linkButton = container.ownerDocument.querySelector<HTMLElement>(
+      `.bn-formatting-toolbar button[aria-label="${en.formatting_toolbar.link.tooltip}"]`,
+    )!;
+    act(() => linkButton.click());
+    const url = await findByPlaceholderText(en.link_toolbar.form.url_placeholder);
+
+    fireEvent.change(url, { target: { value: "https://example.org" } });
+    fireEvent.submit(url.closest("form")!);
+
+    expect(hostSubmit).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.stringContaining('<a href="https://example.org"'),
+      ),
+    );
   });
 
   describe("formatting toolbar", () => {
