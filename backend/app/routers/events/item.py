@@ -28,7 +28,7 @@ from app.routers.events._common import (
     resolve_live_event,
     resolve_readable_event,
 )
-from app.schemas.collection import CollectionMembershipList
+from app.schemas.collection import CollectionMembershipRead
 from app.schemas.event import (
     VERSION_NOTE_MAX_LENGTH,
     EventCloseRequest,
@@ -196,7 +196,7 @@ def get_event_version(
     return build_version_read(row)
 
 
-@router.get("/{event_id}/collections", response_model=CollectionMembershipList)
+@router.get("/{event_id}/collections", response_model=list[CollectionMembershipRead])
 @limiter.limit("120/minute")
 def list_event_collections(
     request: Request, event_id: uuid.UUID, current_user: CurrentUser, db: DB
@@ -204,9 +204,7 @@ def list_event_collections(
     """Your collections, each saying whether this event is already on it."""
     geo = resolve_live_event(db, event_id)
     collections_service.ensure_credited(db, event_id=geo.id, user=current_user)
-    return CollectionMembershipList(
-        items=collections_service.list_memberships(db, owner=current_user, event_id=geo.id)
-    )
+    return collections_service.list_memberships(db, owner=current_user, event_id=geo.id)
 
 
 @router.post("/{event_id}/close", response_model=EventRead)

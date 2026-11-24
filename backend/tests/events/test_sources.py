@@ -287,7 +287,7 @@ def test_an_upload_is_staged_then_taken_by_the_write(db, author, conflict):
         files={"file": ("strike.jpg", TINY_JPEG, "image/jpeg")},
     )
     assert staged.status_code == 201, staged.text
-    [body] = staged.json()["items"]
+    [body] = staged.json()
     assert body["kind"] == "image" and body["original_filename"] == "strike.jpg"
     assert datetime.fromisoformat(body["expires_at"]) > datetime.now(UTC) + timedelta(hours=23)
     assert stored_path(storage_key(body["storage_url"])).exists()
@@ -387,7 +387,7 @@ def _post_gif(user, frames: int, filename: str = "comparison.gif"):
 def test_a_gif_is_staged_as_one_png_per_frame(db, author, conflict):
     response = _post_gif(author, 2)
     assert response.status_code == 201, response.text
-    items = response.json()["items"]
+    items = response.json()
     assert [i["original_filename"] for i in items] == ["comparison-1.png", "comparison-2.png"]
     assert {i["kind"] for i in items} == {"image"}
     for index, item in enumerate(items):
@@ -409,7 +409,7 @@ def test_a_gif_is_staged_as_one_png_per_frame(db, author, conflict):
 def test_a_single_frame_gif_is_staged_as_one_png(author):
     response = _post_gif(author, 1, filename="scan.gif")
     assert response.status_code == 201, response.text
-    [item] = response.json()["items"]
+    [item] = response.json()
     assert item["original_filename"] == "scan.png"
     assert storage_key(item["storage_url"]).endswith(".png")
 

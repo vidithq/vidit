@@ -944,7 +944,7 @@ def test_owner_delete_under_an_open_report_withholds_the_collection(
     headers = login_as(client, owner)
     assert client.get(path).status_code == 404
     assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
-    assert client.get(f"/api/v1/events/{event.id}/collections").json()["items"] == []
+    assert client.get(f"/api/v1/events/{event.id}/collections").json() == []
     patch = {"title": "Renamed", "description": _description("Still here.")}
     assert client.patch(path, json=patch, headers=headers).status_code == 404
     assert client.delete(path, headers=headers).status_code == 404
@@ -1118,7 +1118,7 @@ def test_event_collections_report_membership_to_the_owner(db, owner):
     body = client.get(
         f"/api/v1/events/{event.id}/collections", headers=login_as(client, owner)
     ).json()
-    by_title = {item["title"]: item["in_collection"] for item in body["items"]}
+    by_title = {item["title"]: item["in_collection"] for item in body}
     assert by_title == {"Holding": True, "Other": False}
 
 
@@ -1134,7 +1134,7 @@ def test_event_collections_carry_each_collections_cover(db, owner):
     body = client.get(
         f"/api/v1/events/{event.id}/collections", headers=login_as(client, owner)
     ).json()
-    covers = {item["title"]: item["cover"] for item in body["items"]}
+    covers = {item["title"]: item["cover"] for item in body}
     assert covers == {
         "Holding": client.get(f"/api/v1/collections/{holding.id}").json()["cover"],
         "Other": [],
@@ -1158,7 +1158,7 @@ def test_event_collections_count_each_collection_on_the_showable_predicate(db, o
     body = client.get(
         f"/api/v1/events/{event.id}/collections", headers=login_as(client, owner)
     ).json()
-    assert {item["title"]: item["event_count"] for item in body["items"]} == {
+    assert {item["title"]: item["event_count"] for item in body} == {
         "Holding": 2,
         "Other": 0,
     }

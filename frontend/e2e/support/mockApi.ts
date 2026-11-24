@@ -79,7 +79,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/events\/possible-duplicates$/, []],
   [/^\/tags$/, TAGS],
   [/^\/tags\/suggested$/, SUGGESTED_TAGS],
-  [/^\/uploads$/, { items: [UPLOAD] }],
+  [/^\/uploads$/, [UPLOAD]],
   [/^\/conflicts$/, CONFLICTS],
   [new RegExp(`^/events/${EVENT_ID}$`), EVENT],
   [

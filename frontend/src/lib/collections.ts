@@ -40,9 +40,6 @@ export type CollectionCoverTile =
 export type CollectionMembership =
   components["schemas"]["CollectionMembershipRead"];
 
-export type CollectionMemberships =
-  components["schemas"]["CollectionMembershipList"];
-
 /** The mark that names a collection wherever a surface says what kind of thing it is.
  *  The profile card wears none: its mosaic tells collections apart. */
 export const CollectionIcon = ACTION_ICONS.collect;

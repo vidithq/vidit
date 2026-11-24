@@ -2110,7 +2110,8 @@ export interface paths {
         put?: never;
         /**
          * Create Upload
-         * @description Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``.
+         * @description Stage one source file, or each frame of a GIF in frame order; a source of a later event
+         *     write names one by ``id``.
          */
         post: operations["create_upload_api_v1_uploads_post"];
         delete?: never;
@@ -3269,14 +3270,6 @@ export interface components {
             event_ids?: string[];
             /** Title */
             title: string;
-        };
-        /**
-         * CollectionMembershipList
-         * @description Every collection the caller owns, as the popover reads them.
-         */
-        CollectionMembershipList: {
-            /** Items */
-            items: components["schemas"]["CollectionMembershipRead"][];
         };
         /**
          * CollectionMembershipRead
@@ -5477,14 +5470,6 @@ export interface components {
             event_id: string;
             /** Url */
             url: string;
-        };
-        /**
-         * UploadList
-         * @description What ``POST /uploads`` staged: one file, or one per frame of a GIF, in frame order.
-         */
-        UploadList: {
-            /** Items */
-            items: components["schemas"]["UploadRead"][];
         };
         /**
          * UploadRead
@@ -7904,7 +7889,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionMembershipList"];
+                    "application/json": components["schemas"]["CollectionMembershipRead"][];
                 };
             };
             /** @description Validation Error */
@@ -9893,7 +9878,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UploadList"];
+                    "application/json": components["schemas"]["UploadRead"][];
                 };
             };
             /** @description Validation Error */

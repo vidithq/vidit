@@ -763,20 +763,18 @@ Stage one source file before the event write that uses it: the first layer of th
 
 **Request body (`multipart/form-data`):** one `file` part, an image, a GIF or a video within the [file limits](#file-limits).
 
-**Response 201:** an `UploadList`, whose `items` holds one `UploadRead` per staged file. A GIF stages one PNG per frame, in frame order, each named after the GIF with its frame number (`scan.gif` gives `scan-1.png`, `scan-2.png`); every other file stages as one item. Each item is a file of its own: a source names one `id`.
+**Response 201:** an array of `UploadRead`, one per staged file. A GIF stages one PNG per frame, in frame order, each named after the GIF with its frame number (`scan.gif` gives `scan-1.png`, `scan-2.png`); every other file stages as one item. Each item is a file of its own: a source names one `id`.
 ```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "kind": "video",
-      "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
-      "original_filename": "IMG_2034.MOV",
-      "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
-      "expires_at": "2026-03-17T09:42:00Z"
-    }
-  ]
-}
+[
+  {
+    "id": "uuid",
+    "kind": "video",
+    "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+    "original_filename": "IMG_2034.MOV",
+    "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
+    "expires_at": "2026-03-17T09:42:00Z"
+  }
+]
 ```
 
 `storage_url` lets the form preview the file. Only you can reference the upload. It expires 24 hours after it was staged: an event write naming it after `expires_at` is `upload_expired`, and the import worker deletes it within the hour after that. A write that takes it consumes it, so a second write naming it is `upload_not_found`.
@@ -1399,14 +1397,12 @@ One superseded version by its number, the read behind a `/events/{id}/vN` addres
 
 Your collections, each saying whether this event is already on it. Only an analyst the event credits, its owner or a [co-geolocator](#shared-credit), may put it on a collection, so anyone else gets a 403. Empty collections are listed; withheld collections and collections [pending erasure](#delete-collectionsid) are not.
 
-**Response 200:**
+**Response 200:** an array of `CollectionMembershipRead`.
 ```json
-{
-  "items": [
-    { "id": "uuid", "title": "Zaporizhzhia plant", "cover": [{ "url": "…", "kind": "image", "role": "source" }], "event_count": 12, "in_collection": true },
-    { "id": "uuid", "title": "March strikes", "cover": [], "event_count": 0, "in_collection": false }
-  ]
-}
+[
+  { "id": "uuid", "title": "Zaporizhzhia plant", "cover": [{ "url": "…", "kind": "image", "role": "source" }], "event_count": 12, "in_collection": true },
+  { "id": "uuid", "title": "March strikes", "cover": [], "event_count": 0, "in_collection": false }
+]
 ```
 
 `cover` is the collection's mosaic, as on [`GET /collections/{id}`](#get-collectionsid).

@@ -12,7 +12,6 @@ export type Source = components["schemas"]["SourceRead"];
 type SourceLink = components["schemas"]["SourceLinkRead"];
 /** A staged source file (`POST /uploads`), referenced by a source's `upload_id`. */
 export type Upload = components["schemas"]["UploadRead"];
-type UploadList = components["schemas"]["UploadList"];
 type LinkUpload = components["schemas"]["LinkUploadRead"];
 export type SourceLevel = Source["level"];
 export type SourceKind = Source["kind"];
@@ -403,7 +402,7 @@ export function sourcesChanged(stored: Source[], drafts: SourceDraft[]): boolean
 export async function uploadSourceFile(file: File): Promise<Upload[]> {
   const fd = new FormData();
   fd.append("file", file);
-  return (await apiFetch<UploadList>("/uploads", { method: "POST", body: fd })).items;
+  return apiFetch<Upload[]>("/uploads", { method: "POST", body: fd });
 }
 
 const X_HOST_RE = /^(?:www\.)?(?:x|twitter)\.com$/i;

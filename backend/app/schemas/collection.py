@@ -90,12 +90,6 @@ class CollectionMembershipRead(BaseModel):
     in_collection: bool
 
 
-class CollectionMembershipList(BaseModel):
-    """Every collection the caller owns, as the popover reads them."""
-
-    items: list[CollectionMembershipRead]
-
-
 class SearchMatch(BaseModel):
     """What one search names: ``q`` and the event filters of ``GET /search``, as a JSON body,
     under the query parameters' names."""
