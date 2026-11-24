@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- A serial backend test run works on its own copy of the migrated test database instead of the database `DATABASE_URL` names, and every test run drops the copies it made when it ends ([#888](https://github.com/vidithq/vidit/pull/888)).
+
 ## v0.8.3, 2026-11-24
 
 ### Added
