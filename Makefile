@@ -1,6 +1,6 @@
 # Vidit - Makefile for local development
 
-.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections mock-admin gen-api-types check-dup vulture check-changelog hygiene
+.PHONY: help install env db-up db-down migrate dev-backend dev-frontend dev-worker dev test clean init seed seed-detections mock-admin gen-api-types check-dup vulture check-changelog check-design-size hygiene
 
 help:
 	@echo "Available commands:"
@@ -19,7 +19,7 @@ help:
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
 	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
-	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + changelog line-length checks"
+	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + changelog line-length + design.md byte budget checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 
 init: install env db-up migrate
@@ -88,7 +88,16 @@ vulture:
 check-changelog:
 	awk 'length($$0) > 300 { print "::error file=CHANGELOG.md,line=" NR "::Line is " length($$0) " characters; keep a CHANGELOG entry to one line of at most 300"; bad=1 } END { exit bad }' CHANGELOG.md
 
-hygiene: check-dup vulture check-changelog
+# docs/design.md holds only the decisions no code states; CI runs this target too.
+DESIGN_DOC_BUDGET := 80000
+check-design-size:
+	@size=$$(wc -c < docs/design.md | tr -d ' '); \
+	if [ "$$size" -gt $(DESIGN_DOC_BUDGET) ]; then \
+	  echo "::error file=docs/design.md::docs/design.md is $$size bytes, over its budget of $(DESIGN_DOC_BUDGET). Cut prose that code already states: props, sizes and consumer lists belong in the component file and its /palette entry."; \
+	  exit 1; \
+	fi
+
+hygiene: check-dup vulture check-changelog check-design-size
 	cd frontend && npm run knip
 	cd frontend && npm run palette:check
 
