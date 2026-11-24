@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Fixed
+
+- The models declare every database index, so a generated migration no longer proposes dropping the search, map and partial indexes, and CI fails when the models and the migrated schema differ ([#884](https://github.com/vidithq/vidit/pull/884)).
+
 ## v0.8.3, 2026-11-24
 
 ### Added

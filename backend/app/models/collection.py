@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, CreatedAt, UpdatedAt
@@ -28,7 +28,17 @@ class Collection(Base):
         cascade="all, delete-orphan",
     )
 
-    __table_args__ = (Index("ix_collections_owner_created_at", "owner_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_collections_owner_created_at", "owner_id", "created_at"),
+        Index(
+            "ix_collections_search_fts",
+            text(
+                "to_tsvector('simple_unaccent'::regconfig, (COALESCE(title, ''::character"
+                " varying)::text || ' '::text) || COALESCE(description_text, ''::text))"
+            ),
+            postgresql_using="gin",
+        ),
+    )
 
 
 class CollectionEvent(Base):

@@ -45,6 +45,15 @@ class Organization(Base):
             ApprovalRequestAudience,
             "ck_organizations_approval_request_audience_valid",
         ),
+        Index(
+            "ix_organizations_search_fts",
+            text(
+                "to_tsvector('simple_unaccent'::regconfig, (((COALESCE(name, ''::character"
+                " varying)::text || ' '::text) || COALESCE(slug, ''::character varying)::text)"
+                " || ' '::text) || COALESCE(bio, ''::text))"
+            ),
+            postgresql_using="gin",
+        ),
     )
 
 

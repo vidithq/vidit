@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Integer, String, Text, text
+from sqlalchemy import Boolean, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,6 +39,18 @@ class User(Base):
         secondaryjoin="User.id == InviteCode.created_by_id",
         viewonly=True,
         uselist=False,
+    )
+
+    __table_args__ = (
+        Index("ix_users_live", "created_at", postgresql_where=text("deleted_at IS NULL")),
+        Index(
+            "ix_users_search_fts",
+            text(
+                "to_tsvector('simple_unaccent'::regconfig, (COALESCE(username, ''::character"
+                " varying)::text || ' '::text) || COALESCE(bio, ''::text))"
+            ),
+            postgresql_using="gin",
+        ),
     )
 
     @property
