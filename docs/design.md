@@ -1400,7 +1400,7 @@ flowchart LR
   the Version note in its popover, the geolocators byline`"]:::shared
   versions["`**POST /events/{id}/versions**
   files the version it supersedes`"]:::core
-  request_write["`**POST /events/{id}/request**
+  request_write["`**PUT /events/{id}/request**
   overwrites in place`"]:::core
 
   request --> publish

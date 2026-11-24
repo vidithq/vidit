@@ -560,7 +560,7 @@ def _edit_request(request: Event, editor: User, **overrides):
         "sources": _kept(request, kind="unknown"),
     }
     data.update(overrides)
-    return client.post(
+    return client.put(
         f"/api/v1/events/{request.id}/request",
         headers=login_as(client, editor),
         data=data,
@@ -775,7 +775,7 @@ def test_edit_request_owner_only(db, author, second_user):
 
 def test_edit_request_requires_authentication(db, author):
     request = _make_request(db, author=author)
-    response = client.post(
+    response = client.put(
         f"/api/v1/events/{request.id}/request",
         data={"title": "Edited title", "sources": _kept(request, kind="unknown")},
     )
@@ -792,7 +792,7 @@ def test_edit_request_rejects_a_row_that_left_requested(db, author):
 
 
 def test_edit_request_404_for_unknown(author):
-    response = client.post(
+    response = client.put(
         f"/api/v1/events/{uuid.uuid4()}/request",
         headers=login_as(client, author),
         data={"title": "Edited title", "sources": sources_field(source_spec())},

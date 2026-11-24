@@ -120,7 +120,7 @@ def test_an_edit_that_moves_the_sources_saves_their_new_order(author):
             source["links"][0]["url"], id=source["id"], level=source["level"], media_id=media
         )
 
-    edited = client.post(
+    edited = client.put(
         f"/api/v1/events/{created.json()['id']}/request",
         headers=login_as(client, author),
         data={"title": "Where?", "sources": sources_field(kept(c), kept(a), kept(b))},
@@ -496,7 +496,7 @@ def test_a_request_edit_sweeps_the_file_nothing_names_any_more(db, author):
     source = created.json()["sources"][0]
     key = storage_key(source["media"]["storage_url"])
     replacement = stage_file(author)
-    edited = client.post(
+    edited = client.put(
         f"/api/v1/events/{created.json()['id']}/request",
         headers=login_as(client, author),
         data={
@@ -522,7 +522,7 @@ def test_a_source_kept_by_id_keeps_its_file_and_a_dropped_one_goes(db, author):
         },
     )
     kept, dropped = created.json()["sources"]
-    edited = client.post(
+    edited = client.put(
         f"/api/v1/events/{created.json()['id']}/request",
         headers=login_as(client, author),
         data={

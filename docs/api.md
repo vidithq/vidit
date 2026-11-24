@@ -102,7 +102,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/uploads/from-proof` | 🔒 | Stage a copy of a proof image of an event you edit |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
-| POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
+| PUT | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
 | POST | `/events/{id}/versions` | 🔒 | Publish a request or a detection, or correct a published event; files the version it supersedes |
 | GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
@@ -262,7 +262,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /uploads/from-link` | 30/min |
 | `POST /uploads/from-proof` | 30/min |
 | `POST /sources/check` | 120/min |
-| `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
+| `POST /events`, `POST /events/requests`, `PUT /events/{id}/request` | 30/min |
 | `POST /events/{id}/versions` | 30/min |
 | `POST /events/{id}/close` | 60/min |
 | `POST /events/{id}/report` | 10/hour (per IP only, anonymous allowed) |
@@ -556,7 +556,7 @@ flowchart LR
   open --> req
   imp --> det
   create --> geo
-  req -->|"`**POST /events/{id}/request**, owner edit, stays version 0`"| req
+  req -->|"`**PUT /events/{id}/request**, owner edit, stays version 0`"| req
   req -->|"`**POST /events/{id}/versions**, anyone, files version 0`"| geo
   det -->|"`**POST /events/{id}/versions**, owner, files version 0`"| geo
   geo -->|"`**POST /events/{id}/versions**, owner, files a version`"| geo
@@ -569,9 +569,9 @@ flowchart LR
 
 ### Event form fields
 
-Four multipart endpoints take the event form. Each posts the whole row state at once, its sources included. This table states every field once; each endpoint section lists only its own rules.
+Four multipart endpoints take the event form. Each sends the whole row state at once, its sources included. This table states every field once; each endpoint section lists only its own rules.
 
-Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`POST /events/{id}/request`](#post-eventsidrequest), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
+Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`PUT /events/{id}/request`](#put-eventsidrequest), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
 
 | Field | Rule | create | requests | request | versions |
 |---|---|---|---|---|---|
@@ -1308,7 +1308,7 @@ Open a request: create a `requested` event. A `direct` or `indirect` source with
 
 ---
 
-### `POST /events/{id}/request` 🔒
+### `PUT /events/{id}/request` 🔒
 
 Correct an open request in place. Owner only, and only while `requested`. **No version is filed:** the row keeps its id, `requested_at`, `requested_by` and provenance columns, moves `updated_at`, and stays at `version_no` 0. Publishing the request is [`POST /events/{id}/versions`](#post-eventsidversions), which anyone may call.
 
@@ -1327,7 +1327,7 @@ Correct an open request in place. Owner only, and only while `requested`. **No v
 
 Publish a request or a detection, or correct a published event. The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, in one transaction under a row lock, so two concurrent writes take their numbers in order.
 
-**Publish.** A `requested` or `detected` event is version 0. Writing to it files it as version 0, the request or the detection as it stood, and the event becomes `geolocated` at version 1, stamped `geolocated_at`, with you added to `geolocators`. A detection is owner-only. A request is anyone's to publish: you become its `owner`, `requested_by` keeps the original poster, and when you publish someone else's request the same transaction writes a `request_fulfilled` [notification](#notifications) for them. A publish always changes the status, so `nothing_changed` does not apply to it. A publish also invites the analysts in `geolocator_invites` (see [Invitations on the publish](#invitations-on-the-publish)). A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL. The requester's own edit of an open request stays in place at version 0 through [`POST /events/{id}/request`](#post-eventsidrequest).
+**Publish.** A `requested` or `detected` event is version 0. Writing to it files it as version 0, the request or the detection as it stood, and the event becomes `geolocated` at version 1, stamped `geolocated_at`, with you added to `geolocators`. A detection is owner-only. A request is anyone's to publish: you become its `owner`, `requested_by` keeps the original poster, and when you publish someone else's request the same transaction writes a `request_fulfilled` [notification](#notifications) for them. A publish always changes the status, so `nothing_changed` does not apply to it. A publish also invites the analysts in `geolocator_invites` (see [Invitations on the publish](#invitations-on-the-publish)). A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL. The requester's own edit of an open request stays in place at version 0 through [`PUT /events/{id}/request`](#put-eventsidrequest).
 
 **Correction.** A `geolocated` event is owner-only.
 

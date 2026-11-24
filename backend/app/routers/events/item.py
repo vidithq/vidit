@@ -118,7 +118,7 @@ def get_event(request: Request, event_id: uuid.UUID, db: DB, current_user: Optio
 # upload stay off the event loop (``engineering.md``, Request concurrency).
 
 
-@router.post("/{event_id}/request", response_model=EventRead)
+@router.put("/{event_id}/request", response_model=EventRead)
 @limiter.limit("30/minute")
 def update_event_request(
     request: Request,

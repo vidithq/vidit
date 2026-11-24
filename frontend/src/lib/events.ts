@@ -212,8 +212,8 @@ function appendGeolocatorInvites(fd: FormData, usernames: string[] = []): void {
   );
 }
 
-function postEventForm<T>(path: string, fd: FormData): Promise<T> {
-  return apiFetch<T>(path, { method: "POST", body: fd });
+function postEventForm<T>(path: string, fd: FormData, method: "POST" | "PUT" = "POST"): Promise<T> {
+  return apiFetch<T>(path, { method, body: fd });
 }
 
 /** Mirrors `schemas/event.VERSION_NOTE_MAX_LENGTH`; change both. */
@@ -617,11 +617,11 @@ export function createEventRequest(input: EventWriteInput): Promise<EventDetail>
   return postEventForm("/events/requests", eventFormData(input));
 }
 
-/** Correct an open request: `POST /events/{id}/request`, owner-only, `requested`-only. No
+/** Correct an open request: `PUT /events/{id}/request`, owner-only, `requested`-only. No
  *  version is filed (a request is a question, not a vouched claim): the row is overwritten.
  *  Posting no guess clears it. */
 export function updateEventRequest(id: string, input: EventWriteInput): Promise<EventDetail> {
-  return postEventForm(`/events/${id}/request`, eventFormData(input));
+  return postEventForm(`/events/${id}/request`, eventFormData(input), "PUT");
 }
 
 /** `POST /events/import-from-tweet`: runs detection over one of your own X posts and

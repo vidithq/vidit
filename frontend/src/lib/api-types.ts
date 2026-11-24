@@ -1313,12 +1313,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
         /**
          * Update Event Request
          * @description Correct an open request, overwriting it in place (owner-only).
          */
-        post: operations["update_event_request_api_v1_events__event_id__request_post"];
+        put: operations["update_event_request_api_v1_events__event_id__request_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3213,8 +3213,8 @@ export interface components {
             /** File */
             file: string;
         };
-        /** Body_update_event_request_api_v1_events__event_id__request_post */
-        Body_update_event_request_api_v1_events__event_id__request_post: {
+        /** Body_update_event_request_api_v1_events__event_id__request_put */
+        Body_update_event_request_api_v1_events__event_id__request_put: {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /** Lat */
@@ -8268,7 +8268,7 @@ export interface operations {
             };
         };
     };
-    update_event_request_api_v1_events__event_id__request_post: {
+    update_event_request_api_v1_events__event_id__request_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -8281,7 +8281,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_update_event_request_api_v1_events__event_id__request_post"];
+                "multipart/form-data": components["schemas"]["Body_update_event_request_api_v1_events__event_id__request_put"];
             };
         };
         responses: {

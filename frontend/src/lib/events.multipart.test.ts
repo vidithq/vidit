@@ -119,13 +119,14 @@ describe("the event write body", () => {
 
 describe("the event write endpoints", () => {
   it.each([
-    ["create", () => createEvent(input), "/events"],
-    ["request", () => createEventRequest(input), "/events/requests"],
-    ["request edit", () => updateEventRequest("e1", input), "/events/e1/request"],
-    ["version", () => saveVersion("e1", { ...input, version_no: 0 }), "/events/e1/versions"],
-  ])("%s posts to its endpoint", async (_name, write, path) => {
+    ["create", () => createEvent(input), "POST", "/events"],
+    ["request", () => createEventRequest(input), "POST", "/events/requests"],
+    ["request edit", () => updateEventRequest("e1", input), "PUT", "/events/e1/request"],
+    ["version", () => saveVersion("e1", { ...input, version_no: 0 }), "POST", "/events/e1/versions"],
+  ])("%s sends to its endpoint", async (_name, write, method, path) => {
     await write();
     expect(lastCall()[0]).toBe(path);
+    expect((mockFetch.mock.calls.at(-1) as [string, RequestInit])[1].method).toBe(method);
     expect(lastBody().has("sources")).toBe(true);
   });
 
