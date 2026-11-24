@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- A share card draws a picture only from the media host set in `NEXT_PUBLIC_MEDIA_HOST`, or from the API's own origin; an instance that leaves the variable unset and serves media from another host shows the monogram instead ([#885](https://github.com/vidithq/vidit/pull/885)).
+
 ## v0.8.3, 2026-11-24
 
 ### Added
