@@ -148,7 +148,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/site-links` | 🌐 | The sites an event is linked to |
 | POST | `/events/{id}/site-links` | 🔒 | Link your published event to a site, or change the effect of its link (idempotent) |
 | DELETE | `/events/{id}/site-links/{site_id}` | 🔒 | Unlink your event from a site (idempotent) |
-| GET | `/events/{id}/site-suggestions` | 🔒 | Sites your event may link to, nearest first or by name |
 | **Search** | | | |
 | GET | `/search` | 🌐 | One ranked list of events, sites, collections, analysts and organizations |
 | GET | `/search/sections` | 🌐 | The top hits of each type, one section per type |
@@ -290,7 +289,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /sites/{id}`, `GET /sites/{id}/versions`, `GET /sites/{id}/versions/{version_no}` | 120/min |
 | `POST /sites`, `POST /sites/{id}/versions`, `POST /sites/{id}/sources`, `DELETE /sites/{id}/sources/{source_id}` | 30/min |
 | `POST /sites/{id}/report` | 10/hour (per IP only, anonymous allowed) |
-| `GET /sites/suggestions`, `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
+| `GET /sites/suggestions`, `GET /events/{id}/site-links` | 120/min |
 | `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/sections`, `GET /search/dates`, `GET /search/authors` | 60/min |
@@ -332,9 +331,9 @@ The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/u
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 34 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 33 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/dates` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed` · `/feed/dates` · `POST /collections/collectable-events`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/dates` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed` · `/feed/dates` · `POST /collections/collectable-events`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
@@ -565,7 +564,7 @@ flowchart LR
   geo -->|"`**POST /events/{id}/close**, retract`"| closed
 ```
 
-[`GET /events`](#get-events) lists one view (`requested` is the request queue, `located` the catalog) and [`GET /events/{id}`](#get-eventsid) reads any status. `DELETE /admin/events/{id}` is the only write that removes a row. The links from a published event to the [sites](#sites) it hit live under `/events/{id}/site-links` and `/events/{id}/site-suggestions`, documented in [Sites](#sites).
+[`GET /events`](#get-events) lists one view (`requested` is the request queue, `located` the catalog) and [`GET /events/{id}`](#get-eventsid) reads any status. `DELETE /admin/events/{id}` is the only write that removes a row. The links from a published event to the [sites](#sites) it hit live under `/events/{id}/site-links`, documented in [Sites](#sites).
 
 ### Event form fields
 
@@ -2658,7 +2657,7 @@ Each share is the area of the intersection over the area of one zone, computed o
 
 ### `GET /sites/suggestions` 🔒
 
-The sites a point may link to, nearest first, for an event form whose event is not written yet. It ranks like [`GET /events/{id}/site-suggestions`](#get-eventsidsite-suggestions), measured from `lat`, `lng` instead of the event's point. Any signed-in analyst may call it. Capped at 20.
+The sites a point may link to, nearest first. An event form sends the point it holds, and the event page sends the event's point. Any signed-in analyst may call it. Capped at 20.
 
 **Query params:**
 
@@ -2671,7 +2670,16 @@ The sites a point may link to, nearest first, for an event form whose event is n
 - **Without `q`:** the visible sites whose current zone lies within `margin_m` of the point. No point gets an empty array.
 - **With `q`:** the visible sites whose name matches, at any distance. `margin_m` is ignored.
 
-**Response 200:** an array of `SiteSuggestionRead`, as `GET /events/{id}/site-suggestions` returns it. `distance_m` is `null` without a point.
+Results sort by `distance_m`, then by name. A suggestion with a `null` `distance_m` sorts last.
+
+**Response 200:** an array of `SiteSuggestionRead`:
+```json
+[
+  { "id": "uuid", "name": "Saky airbase", "kind": "airbase", "media": null, "distance_m": 420.7 }
+]
+```
+
+`distance_m` is the distance in metres from the point to the site's current zone, 0 inside it, and `null` without a point.
 
 **Errors:**
 | Code | Case |
@@ -3010,39 +3018,6 @@ Remove your event's link to a site. Owner only. The link row is deleted and no r
 |------|------|
 | 403 | `not_event_owner` |
 | 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`) |
-
----
-
-### `GET /events/{id}/site-suggestions` 🔒
-
-The sites an event may link to, nearest first. Any signed-in analyst may call it. Capped at 20.
-
-**Query params:**
-
-| Param | Rule |
-|---|---|
-| `margin_m` | Metres from the event's point to a site's current zone, 0 to 10000, default 10000. A value outside the range is a 422 |
-| `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
-
-- **Without `q`:** the visible sites whose current zone lies within `margin_m` of the event's point. An event without a point gets an empty array.
-- **With `q`:** the visible sites whose name matches, at any distance. `margin_m` is ignored.
-
-Results sort by `distance_m`, then by name. A suggestion with a `null` `distance_m` sorts last.
-
-**Response 200:** an array of `SiteSuggestionRead`:
-```json
-[
-  { "id": "uuid", "name": "Saky airbase", "kind": "airbase", "media": null, "distance_m": 420.7 }
-]
-```
-
-`distance_m` is the distance in metres from the event's point to the site's current zone, 0 inside it, and `null` when the event has no point.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`) |
-| 422 | `margin_m` outside 0 to 10000, or `q` empty or over 100 characters |
 
 ---
 

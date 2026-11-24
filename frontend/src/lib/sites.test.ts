@@ -12,7 +12,7 @@ vi.mock("./api", async (importOriginal) => ({
 import { newSourceDraft } from "./sources";
 import {
   saveSiteLinks,
-  siteSuggestionsNearPath,
+  siteSuggestionsPath,
   contourBefore,
   contourOfSource,
   contourOn,
@@ -352,11 +352,11 @@ describe("saveSiteLinks", () => {
   });
 });
 
-describe("siteSuggestionsNearPath", () => {
+describe("siteSuggestionsPath", () => {
   it("carries the point and the query when there are some", () => {
-    expect(siteSuggestionsNearPath({ lat: 48.5, lng: 2.25 }, " depot ")).toBe(
+    expect(siteSuggestionsPath({ lat: 48.5, lng: 2.25 }, " depot ")).toBe(
       "/sites/suggestions?lat=48.5&lng=2.25&q=depot",
     );
-    expect(siteSuggestionsNearPath(null, "")).toBe("/sites/suggestions");
+    expect(siteSuggestionsPath(null, "")).toBe("/sites/suggestions");
   });
 });

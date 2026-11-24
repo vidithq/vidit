@@ -840,7 +840,7 @@ def test_a_site_picture_is_the_first_image_in_source_order_never_a_graphic_one(d
     def pictures() -> set[str | None]:
         headers = login_as(client, owner)
         suggested = client.get(
-            f"/api/v1/events/{event.id}/site-suggestions", headers=headers
+            f"{SITES}/suggestions", params={"lat": lat, "lng": LNG}, headers=headers
         ).json()
         (linked,) = client.get(f"/api/v1/events/{event.id}/site-links", headers=headers).json()
         rows = [
@@ -860,24 +860,6 @@ def test_a_site_picture_is_the_first_image_in_source_order_never_a_graphic_one(d
     db.query(Source).filter(Source.site_id == site["id"]).update({"is_graphic": True})
     db.commit()
     assert pictures() == {None}
-
-
-def test_site_suggestions_by_distance_and_by_name(db, users):
-    owner = users()
-    lat = LAT - 0.4
-    site = _create_site(owner, _square(0.01, lat=lat), name=f"Depot {uuid.uuid4().hex[:6]}")
-    near = _event(db, owner, lat=lat, lng=LNG + 0.015)
-    far = _event(db, owner, lat=lat, lng=LNG + 0.5)
-    headers = login_as(client, owner)
-
-    path = f"/api/v1/events/{near.id}/site-suggestions"
-    assert site["id"] in {row["id"] for row in client.get(path, headers=headers).json()}
-    far_path = f"/api/v1/events/{far.id}/site-suggestions"
-    assert site["id"] not in {row["id"] for row in client.get(far_path, headers=headers).json()}
-    by_name = client.get(far_path, params={"q": site["name"][-6:]}, headers=headers).json()
-    assert [row["id"] for row in by_name] == [site["id"]]
-    assert by_name[0]["kind"] == "airbase"
-    assert by_name[0]["distance_m"] > 40_000
 
 
 def test_site_suggestions_near_a_point_by_distance_and_by_name(users):
@@ -911,7 +893,7 @@ def test_site_suggestions_near_a_point_by_distance_and_by_name(users):
     assert client.get(path, params={"q": "Depot"}).status_code == 401
 
 
-def test_site_suggestions_reach_10_km_by_default(db, users):
+def test_site_suggestions_reach_10_km_by_default(users):
     owner = users()
     lat = LAT - 0.35
     site = _create_site(owner, _square(0.01, lat=lat), name=f"Depot {uuid.uuid4().hex[:6]}")
@@ -923,9 +905,6 @@ def test_site_suggestions_reach_10_km_by_default(db, users):
             f"{SITES}/suggestions", params={"lat": lat, "lng": lng}, headers=headers
         )
         assert (site["id"] in {row["id"] for row in near_point.json()}) is suggested
-        event = _event(db, owner, lat=lat, lng=lng)
-        near_event = client.get(f"/api/v1/events/{event.id}/site-suggestions", headers=headers)
-        assert (site["id"] in {row["id"] for row in near_event.json()}) is suggested
 
 
 def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, users):
@@ -963,7 +942,7 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
     assert client.post(f"{SITES}/{site['id']}/report", json={"reason": "other"}).status_code == 404
     headers = login_as(client, owner)
     suggestions = client.get(
-        f"/api/v1/events/{event.id}/site-suggestions", params={"q": site["name"]}, headers=headers
+        f"{SITES}/suggestions", params={"q": site["name"]}, headers=headers
     ).json()
     assert suggestions == []
     assert _file(owner, site["id"], _source()).status_code == 404

@@ -637,7 +637,6 @@ _DOCUMENTED_LIMITS = [
         {"json": {"site_id": str(_MISSING_ID), "effect": "damage"}},
     ),
     _Case("delete", f"/api/v1/events/{_MISSING_ID}/site-links/{_MISSING_ID}", 60),
-    _Case("get", f"/api/v1/events/{_MISSING_ID}/site-suggestions", 120),
     _Case("get", "/api/v1/sites/suggestions", 120),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/geolocator-invites", 120),
     _Case(

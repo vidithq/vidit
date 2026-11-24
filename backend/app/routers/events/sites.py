@@ -1,13 +1,13 @@
-"""An event's links to sites: ``/events/{id}/site-links`` and ``/events/{id}/site-suggestions``."""
+"""An event's links to sites: ``/events/{id}/site-links``."""
 
 import uuid
 
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, Request, status
 
 from app.dependencies import DB, CurrentUser, OptionalUser
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import resolve_live_event, resolve_readable_event
-from app.schemas.site import EventSiteLinkCreate, EventSiteLinkRead, SiteSuggestionRead
+from app.schemas.site import EventSiteLinkCreate, EventSiteLinkRead
 from app.services import sites as sites_service
 
 router = APIRouter()
@@ -52,20 +52,3 @@ def unlink_site(
     """Remove your event's link to a site (owner only). Idempotent (204)."""
     geo = resolve_live_event(db, event_id)
     sites_service.unlink_event(db, event=geo, user=current_user, site_id=site_id)
-
-
-@router.get("/{event_id}/site-suggestions", response_model=list[SiteSuggestionRead])
-@authenticated_read_quota
-@limiter.limit("120/minute")
-def list_site_suggestions(
-    request: Request,
-    event_id: uuid.UUID,
-    db: DB,
-    current_user: CurrentUser,
-    margin_m: float = Query(sites_service.DEFAULT_MARGIN_M, ge=0, le=sites_service.MAX_MARGIN_M),
-    q: str | None = Query(None, min_length=1, max_length=100),
-) -> list[SiteSuggestionRead]:
-    """Sites this event may link to, nearest first: those within ``margin_m`` metres of the
-    event, or with ``q``, those whose name contains it. Capped at 20."""
-    geo = resolve_live_event(db, event_id)
-    return sites_service.suggest_sites(db, event=geo, margin_m=margin_m, q=q)

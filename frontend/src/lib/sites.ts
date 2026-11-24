@@ -113,14 +113,8 @@ export function eventSiteLinksPath(eventId: string): string {
   return `/events/${encodeURIComponent(eventId)}/site-links`;
 }
 
-export function siteSuggestionsPath(eventId: string, q: string): string {
-  const base = `/events/${encodeURIComponent(eventId)}/site-suggestions`;
-  const query = q.trim();
-  return query ? `${base}?${new URLSearchParams({ q: query }).toString()}` : base;
-}
-
-/** `GET /sites/suggestions`: the sites near a point not yet written, or matching `q`. */
-export function siteSuggestionsNearPath(point: { lat: number; lng: number } | null, q: string): string {
+/** `GET /sites/suggestions`: the sites near a point, or matching `q`. */
+export function siteSuggestionsPath(point: { lat: number; lng: number } | null, q: string): string {
   const params = new URLSearchParams();
   if (point) {
     params.set("lat", String(point.lat));

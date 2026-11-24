@@ -55,7 +55,7 @@ export function useEventSites(event: EventDetail | null): {
   const [linking, setLinking] = useState(false);
   const offer = useSatelliteOffer();
   const suggestions = useApiResource<SiteSuggestion[]>(
-    event && linking ? siteSuggestionsPath(event.id, "") : null,
+    event && linking ? siteSuggestionsPath(event.coords, "") : null,
   );
 
   if (!event) return { block: null, linkAction: null };
@@ -112,7 +112,7 @@ export function useEventSites(event: EventDetail | null): {
           searchLabel={SITE_SEARCH_COPY.label}
           searchPlaceholder={SITE_SEARCH_COPY.placeholder}
           search={(q, signal) =>
-            apiFetch<SiteSuggestion[]>(siteSuggestionsPath(event.id, q), { signal }).then((found) =>
+            apiFetch<SiteSuggestion[]>(siteSuggestionsPath(event.coords, q), { signal }).then((found) =>
               found.map(siteCandidate),
             )
           }

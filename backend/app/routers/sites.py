@@ -92,7 +92,7 @@ def list_site_suggestions(
 ) -> list[SiteSuggestionRead]:
     """Sites a point may link to, nearest first: those within ``margin_m`` metres of ``lat``,
     ``lng``, or with ``q``, those whose name contains it."""
-    return sites_service.suggest_sites_near(db, lat=lat, lng=lng, margin_m=margin_m, q=q)
+    return sites_service.suggest_sites(db, lat=lat, lng=lng, margin_m=margin_m, q=q)
 
 
 @router.post(
