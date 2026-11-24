@@ -107,7 +107,7 @@ describe("<OnboardingPanel>", () => {
       username: "ana",
       mode: "hard",
       deleted_at: null,
-      cascaded_geolocations: 3,
+      cascaded_events: 3,
       transferred_events: 1,
       media_count: 7,
     });

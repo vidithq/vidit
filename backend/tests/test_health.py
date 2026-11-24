@@ -71,7 +71,7 @@ def test_negative_content_length_returns_413():
     assert detail["message"].startswith("Request body too large (max ")
 
 
-def test_body_size_cap_admits_full_geolocation_batch():
+def test_body_size_cap_admits_full_event_batch():
     """The cap admits the largest legitimate submit: one source video at
     ``max_video_size`` plus a full proof-image batch at ``max_image_size`` each,
     in one multipart request."""

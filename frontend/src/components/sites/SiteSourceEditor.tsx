@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 
 import { SourceEditor } from "@/components/sources/SourceEditor";
 import { sourceDraftUpdaters, sourcesBlockWrite } from "@/components/sources/SourcesField";
-import { PublishActions, usePublishAction } from "@/components/geolocations/PublishActions";
+import { PublishActions, usePublishAction } from "@/components/event-form/PublishActions";
 import type { ButtonAction } from "@/components/ui/Button";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { FieldLabel } from "@/components/ui/FieldLabel";

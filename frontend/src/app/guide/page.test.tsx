@@ -8,7 +8,7 @@ import SHOTS from "../_shots/shots.json";
 
 const ANCHORS = [
   "layout",
-  "reading-a-geolocation",
+  "reading-an-event",
   "statuses",
   "bringing-your-work-in",
   "working-with-others",

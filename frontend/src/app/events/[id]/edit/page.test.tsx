@@ -56,7 +56,7 @@ vi.mock("@/lib/events", async (importOriginal) => ({
 
 import { FORM_INVALID_LABEL } from "@/components/ui/form-styles";
 import { closeEvent, saveVersion, updateEventRequest } from "@/lib/events";
-import { PUBLISH_CONFIRM } from "@/components/geolocations/PublishActions";
+import { PUBLISH_CONFIRM } from "@/components/event-form/PublishActions";
 import type { Source } from "@/lib/sources";
 import type { Conflict, EventDetail, Tag } from "@/types";
 

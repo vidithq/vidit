@@ -6,7 +6,7 @@ import { useEffect, useId, useState, type ComponentProps } from "react";
 import { HeldCoverage } from "@/components/collections/CollectionCoverage";
 import { CollectionDetails, CollectionShell } from "@/components/collections/CollectionShell";
 import { EventPicker } from "@/components/collections/EventPicker";
-import { TitleField } from "@/components/geolocations/TitleField";
+import { TitleField } from "@/components/event-form/TitleField";
 import { Button, type ButtonAction } from "@/components/ui/Button";
 import { CharCounter } from "@/components/ui/CharCounter";
 import { CountBadge } from "@/components/ui/CountBadge";

@@ -128,7 +128,7 @@ export const FIELD_HELP = {
     text: "An invited analyst is credited once they accept. Editing and closing stay with the owner. Invites, withdrawals and removals apply right away and do not create a new version.",
     label: "How does shared credit work?",
   },
-  close_geolocation: {
+  close_geolocated: {
     text: "Closing takes this geolocation back. It stays readable, with your reason beside it.",
     label: "What does closing do?",
   },

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { TitleField } from "@/components/geolocations/TitleField";
+import { TitleField } from "@/components/event-form/TitleField";
 import { Card } from "@/components/ui/Card";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { OptionSearch } from "@/components/ui/OptionSearch";

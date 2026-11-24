@@ -3,9 +3,9 @@
 import { useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Download } from "lucide-react";
 
-import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
-import { MediaManager } from "@/components/geolocations/MediaManager";
-import { LockedHint } from "@/components/geolocations/fields/LockedHint";
+import { CoordinateInputs } from "@/components/event-form/CoordinateInputs";
+import { MediaManager } from "@/components/event-form/MediaManager";
+import { LockedHint } from "@/components/event-form/fields/LockedHint";
 import {
   ArchiveBox,
   ArchiveSnapshotField,

@@ -248,7 +248,7 @@ def delete_user_admin(
 def delete_event_admin(
     request: Request, event_id: uuid.UUID, db: DB, current_user: AdminUser, hard: bool = False
 ) -> AdminEventDeleteResponse:
-    """Remove a geolocation: soft by default, `?hard=true` for GDPR erasure."""
+    """Remove an event: soft by default, `?hard=true` for GDPR erasure."""
     delete_event = admin_service.hard_delete_event if hard else admin_service.soft_delete_event
     result = delete_event(db, actor_id=current_user.id, event_id=event_id)
     points_cache.invalidate()

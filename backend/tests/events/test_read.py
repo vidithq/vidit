@@ -23,7 +23,7 @@ from tests.events._helpers import WORLD_BBOX, client
 WORLD_BOUNDS = parse_bbox(WORLD_BBOX)
 
 
-def test_list_returns_seeded_geolocation(db, author):
+def test_list_returns_seeded_event(db, author):
     geo = make_event(db, author=author)
     response = client.get("/api/v1/events")
     assert response.status_code == 200

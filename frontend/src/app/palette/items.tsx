@@ -14,7 +14,7 @@ import { Pill } from "@/components/ui/Pill";
 import { RemoveButton } from "@/components/ui/RemoveButton";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { detectionItem } from "@/components/detections/detectionItem";
-import { SUBMIT_PATHS } from "@/components/geolocations/SubmitChooser";
+import { SUBMIT_PATHS } from "@/components/event-form/SubmitChooser";
 import { NO_ANSWER } from "@/lib/errors";
 import { collectionItem, eventItem, searchHitItem, siteItem } from "@/lib/items";
 import { MOCK_DETAIL, MOCK_MEDIA, MOCK_SOURCE, Variant, type PaletteCategory } from "./shared";

@@ -580,13 +580,13 @@ def _swept(monkeypatch) -> list[str]:
 
 
 @pytest.fixture
-def geolocation(db, regular_user):
+def published_event(db, regular_user):
     return make_event(db, author=regular_user, kind="unknown")
 
 
-def test_soft_delete_event_stamps_once_and_writes_one_admin_event(admin_user, geolocation, db):
+def test_soft_delete_event_stamps_once_and_writes_one_admin_event(admin_user, published_event, db):
     """A second call keeps the first stamp and writes no second audit row."""
-    geo_id, title = geolocation.id, geolocation.title
+    geo_id, title = published_event.id, published_event.title
     headers = login_as(client, admin_user)
     first = client.delete(f"/api/v1/admin/events/{geo_id}", headers=headers)
     assert first.status_code == 200
@@ -604,16 +604,16 @@ def test_soft_delete_event_stamps_once_and_writes_one_admin_event(admin_user, ge
     assert second.status_code == 200
     assert second.json()["deleted_at"] == body["deleted_at"]
 
-    event = audit_row(db, admin_user, "geolocation_soft_deleted")
+    event = audit_row(db, admin_user, "event_soft_deleted")
     assert event.target == {"event_id": str(geo_id), "title": title}
 
 
-def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geolocation):
+def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, published_event):
     before = client.get(f"/api/v1/users/{regular_user.username}/stats").json()
     assert before["geolocated_count"] >= 1
 
     client.delete(
-        f"/api/v1/admin/events/{geolocation.id}",
+        f"/api/v1/admin/events/{published_event.id}",
         headers=login_as(client, admin_user),
     )
 
@@ -621,10 +621,10 @@ def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geo
     assert after["geolocated_count"] == before["geolocated_count"] - 1
 
 
-def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
+def test_hard_delete_drops_row_and_writes_event(admin_user, published_event, db):
     # Capture before the API removes the row (a refresh after deletion raises ObjectDeletedError).
-    geo_id = geolocation.id
-    geo_title = geolocation.title
+    geo_id = published_event.id
+    geo_title = published_event.title
 
     response = client.delete(
         f"/api/v1/admin/events/{geo_id}?hard=true",
@@ -640,17 +640,17 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     db.expire_all()
     assert db.query(Event).filter(Event.id == geo_id).first() is None
 
-    event = audit_row(db, admin_user, "geolocation_hard_deleted")
+    event = audit_row(db, admin_user, "event_hard_deleted")
     assert event.target["event_id"] == str(geo_id)
 
 
-def test_hard_delete_sweeps_image_derivatives(admin_user, geolocation, db, monkeypatch):
+def test_hard_delete_sweeps_image_derivatives(admin_user, published_event, db, monkeypatch):
     """GDPR erasure leaves nothing on S3: every image's ``_hero`` / ``_thumb`` keys reach the
     sweep too, a proof image's included."""
-    geo_id = geolocation.id
+    geo_id = published_event.id
     stem = uuid.uuid4().hex
-    geolocation.sources[0].media = _media(f"uploads/{stem}.png")
-    geolocation.media = [_media(f"proof_images/{stem}.jpg")]
+    published_event.sources[0].media = _media(f"uploads/{stem}.png")
+    published_event.media = [_media(f"proof_images/{stem}.jpg")]
     db.commit()
     swept = _swept(monkeypatch)
 
@@ -671,17 +671,17 @@ def test_hard_delete_sweeps_image_derivatives(admin_user, geolocation, db, monke
 
 
 def test_hard_delete_keeps_a_file_a_copy_on_another_event_names(
-    admin_user, geolocation, second_user, db, monkeypatch
+    admin_user, published_event, second_user, db, monkeypatch
 ):
     """A source copied onto another event shares the stored object: erasing one event drops its
     media row and leaves the object to the copy."""
     key = f"uploads/{uuid.uuid4().hex}.jpg"
-    geolocation.sources[0].media = _media(key)
+    published_event.sources[0].media = _media(key)
     _copy_holder(db, second_user, key)
     swept = _swept(monkeypatch)
 
     response = client.delete(
-        f"/api/v1/admin/events/{geolocation.id}?hard=true",
+        f"/api/v1/admin/events/{published_event.id}?hard=true",
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 200
@@ -778,7 +778,7 @@ def test_hard_delete_user_sweeps_their_avatar(admin_user, regular_user, db):
 
 
 def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
-    admin_user, regular_user, geolocation, db
+    admin_user, regular_user, published_event, db
 ):
     regular_user.x_handle = f"freed{uuid.uuid4().hex[:8]}"
     db.commit()
@@ -791,14 +791,14 @@ def test_soft_delete_user_marks_deleted_at_and_cascades_geos(
     body = response.json()
     assert body["mode"] == "soft"
     assert body["deleted_at"] is not None
-    assert body["cascaded_geolocations"] >= 1
+    assert body["cascaded_events"] >= 1
 
     db.expire_all()
     refreshed_user = db.query(User).filter(User.id == regular_user.id).first()
     assert refreshed_user.deleted_at is not None
     # The handle is released with the tombstone (the UNIQUE spans tombstoned rows and PATCH refuses them).
     assert refreshed_user.x_handle is None
-    refreshed_geo = db.query(Event).filter(Event.id == geolocation.id).first()
+    refreshed_geo = db.query(Event).filter(Event.id == published_event.id).first()
     assert refreshed_geo.deleted_at is not None
 
 
@@ -813,7 +813,7 @@ def test_soft_delete_user_writes_admin_event(admin_user, regular_user, db):
 
 
 def test_restore_user_revives_the_account_and_the_events_its_soft_delete_hid(
-    admin_user, regular_user, geolocation, db
+    admin_user, regular_user, published_event, db
 ):
     """An event soft-deleted on its own carries another stamp and stays deleted."""
     earlier = make_event(db, author=regular_user, source_url=None)
@@ -832,7 +832,7 @@ def test_restore_user_revives_the_account_and_the_events_its_soft_delete_hid(
 
     db.expire_all()
     assert db.get(User, regular_user.id).deleted_at is None
-    assert db.get(Event, geolocation.id).deleted_at is None
+    assert db.get(Event, published_event.id).deleted_at is None
     assert db.get(Event, earlier.id).deleted_at is not None
     assert client.get(f"/api/v1/users/{regular_user.username}").status_code == 200
     audit = audit_row(db, admin_user, "user_restored")
@@ -857,11 +857,11 @@ def test_list_invite_codes_marks_a_soft_deleted_redeemer(admin_user, regular_use
     assert row["redeemer"]["deleted_at"] == deleted["deleted_at"]
 
 
-def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, geolocation, db):
+def test_hard_delete_user_drops_row_and_events(admin_user, regular_user, published_event, db):
     """GDPR erasure takes the user's events, requests included; their media cascade via the
     source FK, and the S3 sweep after commit is counted in ``media_count``."""
     user_id = regular_user.id
-    geo_id = geolocation.id
+    geo_id = published_event.id
     request_id = _seed_request(db, regular_user)
     media_id = (
         db.query(Media.id)
@@ -878,7 +878,7 @@ def test_hard_delete_user_drops_row_and_geolocations(admin_user, regular_user, g
     body = response.json()
     assert body["mode"] == "hard"
     assert body["deleted_at"] is None
-    assert body["cascaded_geolocations"] >= 2
+    assert body["cascaded_events"] >= 2
     assert body["media_count"] >= 1
 
     db.expire_all()
@@ -1057,7 +1057,7 @@ def _seed_request(db, author: User) -> uuid.UUID:
 
 
 def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user, db):
-    """Banning a user hides their requested events from public reads like their geolocations; one ``cascaded_geolocations`` count covers both."""
+    """Banning a user hides their requested events from public reads like their published events; one ``cascaded_events`` count covers both."""
     request_id = _seed_request(db, regular_user)
 
     response = client.delete(
@@ -1068,7 +1068,7 @@ def test_soft_delete_user_cascades_to_requested_events(admin_user, regular_user,
     body = response.json()
     assert body["mode"] == "soft"
     # One requested event flipped.
-    assert body["cascaded_geolocations"] >= 1
+    assert body["cascaded_events"] >= 1
 
     db.expire_all()
     cascaded = db.query(Event).filter(Event.id == request_id).one()
@@ -1091,12 +1091,12 @@ def test_soft_delete_user_cascade_count_is_idempotent(admin_user, regular_user, 
     )
     assert first.status_code == second.status_code == 200
     assert first.json()["deleted_at"] == second.json()["deleted_at"]
-    assert first.json()["cascaded_geolocations"] >= 1
-    assert second.json()["cascaded_geolocations"] == 0
+    assert first.json()["cascaded_events"] >= 1
+    assert second.json()["cascaded_events"] == 0
 
 
 def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regular_user, db):
-    """The audit row carries the cascade count (requested events included in ``cascaded_geolocations``)."""
+    """The audit row carries the cascade count (requested events included in ``cascaded_events``)."""
     _seed_request(db, regular_user)
 
     client.delete(
@@ -1104,7 +1104,7 @@ def test_soft_delete_user_writes_cascade_count_in_admin_event(admin_user, regula
         headers=login_as(client, admin_user),
     )
     event = audit_row(db, admin_user, "user_soft_deleted")
-    assert event.target["cascaded_geolocations"] >= 1
+    assert event.target["cascaded_events"] >= 1
 
 
 def _detection_stats(admin_user):

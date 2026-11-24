@@ -64,7 +64,7 @@ function Plate({ children, className }: { children: ReactNode; className?: strin
 
 const Into = () => <ArrowRight size={14} className="shrink-0 text-neutral-600" />;
 
-const GEOLOCATION_PREVIEW = (
+const SINGLE_PREVIEW = (
   <MapPlate>
     <span className="absolute left-[68%] top-[34%] flex size-3 items-center justify-center">
       <span className="absolute size-6 rounded-full bg-orange-500/20" />
@@ -172,7 +172,7 @@ export const SUBMIT_PATHS = [
     title: "Geolocation",
     note: "You found where it happened.",
     needs: ["Source", "Coordinates", "Proof image", "Conflict"],
-    preview: GEOLOCATION_PREVIEW,
+    preview: SINGLE_PREVIEW,
   },
   {
     href: submitHref("single"),

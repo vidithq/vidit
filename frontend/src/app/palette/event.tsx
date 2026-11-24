@@ -12,10 +12,10 @@ import {
   PublishActions,
   REQUEST_CONFIRM,
   SAVING_LABEL,
-  publishGeolocationButton,
+  publishEventButton,
   requestWriteButton,
   usePublishAction,
-} from "@/components/geolocations/PublishActions";
+} from "@/components/event-form/PublishActions";
 import { SourcesField } from "@/components/sources/SourcesField";
 import { eventPanelContent } from "@/components/event/EventDetailBody";
 import { MapPanelBody } from "@/components/map/MapSidePanel";
@@ -65,7 +65,7 @@ function PalettePublishActions() {
           disabled={false}
           help="action_submit"
           buttons={[
-            publishGeolocationButton(
+            publishEventButton(
               { action: publish, busy: false, missing: [{ key: "proof", label: "Proof" }] },
               "Publish geolocation",
             ),

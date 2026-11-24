@@ -4,7 +4,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 
 import { EventLocation } from "@/components/event/EventLocation";
-import { CoordinateInputs } from "@/components/geolocations/CoordinateInputs";
+import { CoordinateInputs } from "@/components/event-form/CoordinateInputs";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { coordinatePair, pairInputs, type CoordinatePair } from "@/lib/coordinates";
 import { EVENT_FIELDS } from "@/lib/events";

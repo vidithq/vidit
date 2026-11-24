@@ -7,21 +7,21 @@ import { useStoredDraft } from "@/hooks/useStoredDraft";
 import { createEvent, createEventRequest } from "@/lib/events";
 import { draftUrls } from "@/lib/sources";
 import { PageLoading, PageShell } from "@/components/ui/PageShell";
-import { ImportArchivePanel } from "@/components/geolocations/ImportArchivePanel";
-import { ImportPostPanel, type ImportShell } from "@/components/geolocations/ImportPostPanel";
-import { SubmitChooser } from "@/components/geolocations/SubmitChooser";
-import { EventFormShell, useEventForm } from "@/components/geolocations/EventFormFields";
+import { ImportArchivePanel } from "@/components/event-form/ImportArchivePanel";
+import { ImportPostPanel, type ImportShell } from "@/components/event-form/ImportPostPanel";
+import { SubmitChooser } from "@/components/event-form/SubmitChooser";
+import { EventFormShell, useEventForm } from "@/components/event-form/EventFormFields";
 import {
   PUBLISHING_LABEL,
   PUBLISH_CONFIRM,
   PublishActions,
   REQUEST_CONFIRM,
-  publishGeolocationButton,
+  publishEventButton,
   requestWriteButton,
-} from "@/components/geolocations/PublishActions";
-import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
+} from "@/components/event-form/PublishActions";
+import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/event-form/useEventWrite";
 import { useDraftGeolocatorsByline } from "@/components/event/useGeolocatorsByline";
-import { DuplicateProbe } from "@/components/geolocations/fields/DuplicateProbe";
+import { DuplicateProbe } from "@/components/event-form/fields/DuplicateProbe";
 import { eventHref, requestHref, submitHref, type SubmitMode } from "@/lib/routes";
 
 // The page's paths, differing only in where the work starts: `single` is one event by hand,
@@ -83,7 +83,7 @@ function SubmitForm() {
 
   // Both publishes are public, so each arms on a first click and writes on the second. They
   // share one error banner; each click clears the other's.
-  const geolocation = useEventWrite(form, {
+  const publication = useEventWrite(form, {
     floor: "publish",
     post: async () => {
       const created = await createEvent(form.publishInput(geolocators.invitees));
@@ -111,7 +111,7 @@ function SubmitForm() {
     confirm: REQUEST_CONFIRM,
     resetAll: () => writes.reset(),
   });
-  const writes = writeGroup(geolocation, request);
+  const writes = writeGroup(publication, request);
 
   if (authLoading || !user || !stored.ready) {
     return <PageLoading />;
@@ -127,7 +127,7 @@ function SubmitForm() {
       // The two buttons fill a 320px line: the `?` shows from `sm` up.
       helpFromSm
       buttons={[
-        publishGeolocationButton(geolocation, "Publish geolocation"),
+        publishEventButton(publication, "Publish geolocation"),
         requestWriteButton(request, "Publish request", PUBLISHING_LABEL),
       ]}
     />

@@ -1,4 +1,4 @@
-"""The owner Detections queue ``GET /geolocations/detections``.
+"""The owner Detections queue ``GET /events/detections``.
 
 Scoped to ``current_user`` (any URL username is ignored), in full ``EventRead`` shape,
 with the ``readiness`` filter and its counts.

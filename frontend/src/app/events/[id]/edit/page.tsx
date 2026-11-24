@@ -3,7 +3,7 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-import { EventEditForm } from "@/components/geolocations/edit/EventEditForm";
+import { EventEditForm } from "@/components/event-form/edit/EventEditForm";
 import { PageError, PageLoading, PageShell } from "@/components/ui/PageShell";
 import { TEXT_LINK } from "@/components/ui/styles";
 import { useApiResource } from "@/hooks/useApiResource";

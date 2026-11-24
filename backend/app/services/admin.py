@@ -380,7 +380,7 @@ def soft_delete_event(
         log_admin_event(
             db,
             actor_id=actor_id,
-            action="geolocation_soft_deleted",
+            action="event_soft_deleted",
             target={"event_id": str(geo.id), "title": geo.title},
         )
         db.commit()
@@ -459,7 +459,7 @@ def hard_delete_event(
         "media_count": len(objects),
     }
     db.delete(geo)
-    log_admin_event(db, actor_id=actor_id, action="geolocation_hard_deleted", target=target)
+    log_admin_event(db, actor_id=actor_id, action="event_hard_deleted", target=target)
     db.commit()
 
     sweep_unreferenced(db, objects, context=f"event {event_id} hard-delete")
@@ -572,7 +572,7 @@ def soft_delete_user(
 
     # Cascade to every live event (located and requested). ``deleted_at IS NULL`` leaves earlier
     # timestamps untouched, so the count reflects only what this call flipped.
-    cascaded_geolocations = (
+    cascaded_events = (
         db.query(Event)
         .filter(
             Event.owner_id == user.id,
@@ -588,7 +588,7 @@ def soft_delete_user(
         target={
             "user_id": str(user.id),
             "username": user.username,
-            "cascaded_geolocations": cascaded_geolocations,
+            "cascaded_events": cascaded_events,
             "transferred_events": len(handed_over),
             "freed_x_handle": freed_x_handle,
         },
@@ -599,7 +599,7 @@ def soft_delete_user(
         username=user.username,
         mode="soft",
         deleted_at=user.deleted_at,
-        cascaded_geolocations=cascaded_geolocations,
+        cascaded_events=cascaded_events,
         transferred_events=len(handed_over),
     )
 
@@ -667,13 +667,13 @@ def hard_delete_user(
         raise UserNotFoundError("User not found")
 
     owned, handed_over = _hand_over_on_departure(db, user, live_only=False)
-    geolocations = [geo for geo in owned if geo.id not in handed_over]
+    deleted_events = [geo for geo in owned if geo.id not in handed_over]
 
     # 2. Capture every file the deleted events name, the account's staged uploads, the source
     # files of its sites (the owner cascade drops their rows), and its profile picture (personal
     # data on the same erasure request, referenced by nothing else once the row is gone).
     objects: list[StoredObject] = []
-    for geo in geolocations:
+    for geo in deleted_events:
         objects.extend(event_objects(db, geo))
     objects.extend(
         upload_object(upload) for upload in db.query(Upload).filter(Upload.uploader_id == user.id)
@@ -685,20 +685,20 @@ def hard_delete_user(
         user_id=user.id,
         username=user.username,
         mode="hard",
-        cascaded_geolocations=len(geolocations),
+        cascaded_events=len(deleted_events),
         transferred_events=len(handed_over),
         media_count=len(objects),
     )
     target = {
         "user_id": str(user.id),
         "username": user.username,
-        "geolocation_count": len(geolocations),
+        "event_count": len(deleted_events),
         "transferred_count": len(handed_over),
         "media_count": len(objects),
     }
 
     # 3. Drop events manually so their cascades fire before the user row goes.
-    for geo in geolocations:
+    for geo in deleted_events:
         db.delete(geo)
 
     # 4. The approvals they placed for an organization stay.

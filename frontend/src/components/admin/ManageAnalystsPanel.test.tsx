@@ -23,7 +23,7 @@ describe("<ManageAnalystsPanel>", () => {
       Promise.resolve(
         path.startsWith("/admin/users?q=")
           ? [ana]
-          : { username: "ana", mode: "hard", cascaded_geolocations: 1, transferred_events: 0, media_count: 2 },
+          : { username: "ana", mode: "hard", cascaded_events: 1, transferred_events: 0, media_count: 2 },
       ),
     );
     render(<ManageAnalystsPanel />);

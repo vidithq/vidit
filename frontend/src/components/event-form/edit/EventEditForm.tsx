@@ -5,15 +5,15 @@ import { useRouter } from "next/navigation";
 
 import { ApiError } from "@/lib/api";
 
-import { EventFormShell, useEventForm } from "@/components/geolocations/EventFormFields";
+import { EventFormShell, useEventForm } from "@/components/event-form/EventFormFields";
 import {
   PUBLISH_CONFIRM,
   PublishActions,
   SAVING_LABEL,
-  publishGeolocationButton,
+  publishEventButton,
   requestWriteButton,
-} from "@/components/geolocations/PublishActions";
-import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/geolocations/useEventWrite";
+} from "@/components/event-form/PublishActions";
+import { WRITE_FALLBACK, useEventWrite, writeGroup } from "@/components/event-form/useEventWrite";
 
 import { LABEL_TEXT } from "@/components/ui/form-styles";
 import { Button } from "@/components/ui/Button";
@@ -230,7 +230,7 @@ export function EventEditForm({
                 ),
               },
             }
-          : { ...publishGeolocationButton(submit, "Publish"), form: EDIT_FORM_ID },
+          : { ...publishEventButton(submit, "Publish"), form: EDIT_FORM_ID },
         ...(isRequest && isOwner
           ? [requestWriteButton(saveRequest, "Save request", SAVING_LABEL)]
           : []),

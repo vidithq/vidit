@@ -519,7 +519,7 @@ def test_erasure_hands_the_event_to_the_co_geolocator(db, admin_user, author, se
     _credit(db, geo, second_user)
 
     body = _erase(admin_user, author)
-    assert (body["cascaded_geolocations"], body["transferred_events"]) == (0, 1)
+    assert (body["cascaded_events"], body["transferred_events"]) == (0, 1)
 
     db.expire_all()
     kept = db.get(Event, geo.id)
@@ -569,7 +569,7 @@ def test_erasure_purges_a_soft_deleted_event_instead_of_handing_it_over(
     geo_id = geo.id
 
     body = _erase(admin_user, author)
-    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 0)
+    assert (body["cascaded_events"], body["transferred_events"]) == (1, 0)
     db.expire_all()
     assert db.get(Event, geo_id) is None
     assert _notifications(db, second_user) == []
@@ -589,7 +589,7 @@ def test_a_ban_hands_co_credited_events_over_and_hides_the_rest(
     alone = published_geo(db, author)
 
     body = _ban(admin_user, author)
-    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 1)
+    assert (body["cascaded_events"], body["transferred_events"]) == (1, 1)
 
     db.expire_all()
     kept = db.get(Event, shared.id)
@@ -613,7 +613,7 @@ def test_erasure_after_a_ban_hands_over_what_the_ban_hid(db, admin_user, author,
     geo_id, removed_id = geo.id, removed.id
 
     body = _erase(admin_user, author)
-    assert (body["cascaded_geolocations"], body["transferred_events"]) == (1, 1)
+    assert (body["cascaded_events"], body["transferred_events"]) == (1, 1)
     db.expire_all()
     kept = db.get(Event, geo_id)
     assert (kept.owner_id, kept.deleted_at) == (second_user.id, None)
@@ -627,7 +627,7 @@ def test_erasure_deletes_an_event_with_no_live_co_geolocator(db, admin_user, aut
     with_banned_id = with_banned.id
 
     body = _erase(admin_user, author)
-    assert (body["cascaded_geolocations"], body["transferred_events"]) == (2, 0)
+    assert (body["cascaded_events"], body["transferred_events"]) == (2, 0)
     db.expire_all()
     assert db.query(Event).filter(Event.id.in_([alone, with_banned_id])).count() == 0
 

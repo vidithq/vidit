@@ -41,7 +41,7 @@ def _grouped(body: dict) -> dict[str, list[dict]]:
         return [h for h in hits if h["type"] == type_ and (not statuses or h["status"] in statuses)]
 
     return {
-        "geolocations": of("event", STATUS_GEOLOCATED, STATUS_DETECTED),
+        "located": of("event", STATUS_GEOLOCATED, STATUS_DETECTED),
         "requests": of("event", STATUS_REQUESTED),
         "collections": of("collection"),
         "users": of("user"),
@@ -92,14 +92,14 @@ def test_limit_outside_range_returns_422():
     assert response.status_code == 422
 
 
-def test_search_matches_geolocation_by_title(db, caller):
+def test_search_matches_event_by_title(db, caller):
     token = _unique_token()
     geo = make_event(db, author=caller, title=f"Spotted {token} convoy near checkpoint")
     db.add(
         Media(
             sha256=fake_sha256(),
             source_id=geo.sources[0].id,
-            storage_url=f"http://localhost:8000/local-storage/geolocation_media/{geo.id}/x.jpg",
+            storage_url=f"http://localhost:8000/local-storage/event_media/{geo.id}/x.jpg",
             kind="image",
         )
     )
@@ -108,7 +108,7 @@ def test_search_matches_geolocation_by_title(db, caller):
         Media(
             sha256=fake_sha256(),
             event_id=geo.id,
-            storage_url=f"http://localhost:8000/local-storage/geolocation_media/{geo.id}/p.jpg",
+            storage_url=f"http://localhost:8000/local-storage/event_media/{geo.id}/p.jpg",
             kind="image",
         )
     )
@@ -117,8 +117,8 @@ def test_search_matches_geolocation_by_title(db, caller):
     response = client.get(f"/api/v1/search?q={token}&type=event")
     assert response.status_code == 200
     body = _grouped(response.json())
-    assert len(body["geolocations"]) == 1
-    hit = body["geolocations"][0]
+    assert len(body["located"]) == 1
+    hit = body["located"][0]
     assert hit["id"] == str(geo_id)
     assert token in hit["title"]
     assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["title_highlight"]
@@ -140,7 +140,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
         Media(
             sha256=fake_sha256(),
             event_id=proof_only.id,
-            storage_url=f"http://localhost:8000/local-storage/geolocation_media/{proof_only.id}/p.jpg",
+            storage_url=f"http://localhost:8000/local-storage/event_media/{proof_only.id}/p.jpg",
             kind="image",
         )
     )
@@ -149,7 +149,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
         Media(
             sha256=fake_sha256(),
             event_id=video_only.id,
-            storage_url=f"http://localhost:8000/local-storage/geolocation_media/{video_only.id}/p.mp4",
+            storage_url=f"http://localhost:8000/local-storage/event_media/{video_only.id}/p.mp4",
             kind="video",
         )
     )
@@ -157,7 +157,7 @@ def test_search_proof_only_event_surfaces_proof_image_thumbnail(db, caller):
     ids = [proof_only.id, video_only.id]
     response = client.get(f"/api/v1/search?q={token}&type=event")
     assert response.status_code == 200
-    hits = {h["id"]: h for h in _grouped(response.json())["geolocations"]}
+    hits = {h["id"]: h for h in _grouped(response.json())["located"]}
     proof_hit = hits[str(ids[0])]
     assert [m["kind"] for m in proof_hit["media"]] == ["image"]
     assert proof_hit["media"][0]["storage_url"].endswith(f"{ids[0]}/p.jpg")
@@ -215,7 +215,7 @@ def test_a_source_match_still_obeys_the_filters(db, caller, other_author, free_t
     def hits(**params) -> list[str]:
         response = client.get("/api/v1/search", params={"type": "event", **params})
         assert response.status_code == 200, response.text
-        return sorted(h["id"] for h in _grouped(response.json())["geolocations"])
+        return sorted(h["id"] for h in _grouped(response.json())["located"])
 
     assert hits(q=f"thermal {token}") == sorted(str(i) for i in ids)
     for q in (f"thermal {token}", f"t.me/{token}"):
@@ -279,7 +279,7 @@ def test_search_hits_carry_the_graphic_flag(db, caller):
     response = client.get(f"/api/v1/search?q={token}")
     assert response.status_code == 200
     body = _grouped(response.json())
-    assert [hit["is_graphic"] for hit in body["geolocations"]] == [True]
+    assert [hit["is_graphic"] for hit in body["located"]] == [True]
     assert [hit["is_graphic"] for hit in body["requests"]] == [True]
 
 
@@ -326,7 +326,7 @@ def test_search_excludes_soft_deleted_users(make_user):
 def seed_collection(db, caller):
     """Open a collection, optionally with one showable event on it; it goes with its owner.
 
-    The item's title carries no test token, so it stays out of the geolocations group.
+    The item's title carries no test token, so it stays out of the located group.
     """
 
     def _make(title, description, *, owner=None, empty=False, hidden=False):
@@ -531,7 +531,7 @@ def test_search_type_all_returns_every_group(db, caller, make_user, seed_collect
     assert response.status_code == 200
     raw = response.json()
     body = _grouped(raw)
-    assert [h["id"] for h in body["geolocations"]] == [str(geo.id)]
+    assert [h["id"] for h in body["located"]] == [str(geo.id)]
     assert [h["id"] for h in body["requests"]] == [str(request.id)]
     assert [h["id"] for h in body["users"]] == [str(user.id)]
     assert [h["id"] for h in body["collections"]] == [str(collection_id)]
@@ -668,7 +668,7 @@ def test_search_strips_planted_sentinel_bytes_from_title(db, caller):
     geo_id = make_event(db, author=caller, title=f"planted \x02bad\x03 then {token} fragment").id
     response = client.get(f"/api/v1/search?q={token}&type=event")
     assert response.status_code == 200
-    hit = next(h for h in _grouped(response.json())["geolocations"] if h["id"] == str(geo_id))
+    hit = next(h for h in _grouped(response.json())["located"] if h["id"] == str(geo_id))
     th = hit["title_highlight"]
     assert th.count(HIGHLIGHT_START) == th.count(HIGHLIGHT_STOP)
     assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in th
@@ -686,7 +686,7 @@ def test_author_filter_scopes_event_groups_and_empties_users(db, caller, other_a
     response = client.get(f"/api/v1/search?q={token}&author={caller.username}")
     assert response.status_code == 200
     body = _grouped(response.json())
-    assert [h["id"] for h in body["geolocations"]] == [str(mine)]
+    assert [h["id"] for h in body["located"]] == [str(mine)]
     # Otherwise the caller's username would match itself.
     assert body["users"] == []
 
@@ -702,11 +702,11 @@ def test_author_with_empty_query_browses_the_authors_view(db, caller, other_auth
     response = client.get(f"/api/v1/search?author={caller.username}")
     assert response.status_code == 200
     body = _grouped(response.json())
-    geo_ids = [h["id"] for h in body["geolocations"]]
+    geo_ids = [h["id"] for h in body["located"]]
     assert geo_ids.index(str(newer)) < geo_ids.index(str(older))
     assert str(noise) not in geo_ids
     # Without an FTS predicate the plain title is the highlight.
-    newest = next(h for h in body["geolocations"] if h["id"] == str(newer))
+    newest = next(h for h in body["located"] if h["id"] == str(newer))
     assert newest["title_highlight"] == newest["title"]
     assert HIGHLIGHT_START not in newest["title_highlight"]
     # The requested view rides the same scope.
@@ -731,7 +731,7 @@ def test_conflict_filter_scopes_search(db, conflict, caller):
     response = client.get(f"/api/v1/search?q={token}&conflict={conflict.name}")
     assert response.status_code == 200
     body = _grouped(response.json())
-    assert [h["id"] for h in body["geolocations"]] == [str(tagged)]
+    assert [h["id"] for h in body["located"]] == [str(tagged)]
     assert body["users"] == []
 
 
@@ -742,11 +742,11 @@ def test_event_date_filter_scopes_search_and_browses(db, caller):
     db.query(Event).filter(Event.id == outside).update({"occurred_date": date(2020, 1, 1)})
     db.commit()
     response = client.get(f"/api/v1/search?q={token}&occurred_date_from=2026-01-01")
-    ids = [h["id"] for h in _grouped(response.json())["geolocations"]]
+    ids = [h["id"] for h in _grouped(response.json())["located"]]
     assert str(inside) in ids and str(outside) not in ids
     # The date window alone is an active filter in browse mode.
     response = client.get(f"/api/v1/search?author={caller.username}&occurred_date_from=2026-01-01")
-    ids = [h["id"] for h in _grouped(response.json())["geolocations"]]
+    ids = [h["id"] for h in _grouped(response.json())["located"]]
     assert str(inside) in ids and str(outside) not in ids
 
 
@@ -767,7 +767,7 @@ def test_status_filter_scopes_search(db, caller):
     response = client.get(f"/api/v1/search?q={token}&status=detected")
     assert response.status_code == 200
     body = _grouped(response.json())
-    assert [h["id"] for h in body["geolocations"]] == [str(detected)]
+    assert [h["id"] for h in body["located"]] == [str(detected)]
     assert body["users"] == []
 
     response = client.get(f"/api/v1/search?q={token}&status=hallucinated")
@@ -826,9 +826,9 @@ def test_author_filter_is_exact_on_search(db, caller):
     fragment = caller.username[:6]
     response = client.get(f"/api/v1/search?q={token}&author={fragment}")
     assert response.status_code == 200
-    assert _grouped(response.json())["geolocations"] == []
+    assert _grouped(response.json())["located"] == []
     response = client.get(f"/api/v1/search?q={token}&author={caller.username.upper()}")
-    assert [h["id"] for h in _grouped(response.json())["geolocations"]] == [str(geo)]
+    assert [h["id"] for h in _grouped(response.json())["located"]] == [str(geo)]
 
 
 def test_a_handle_in_the_query_matches_the_analysts_credited_events(db, caller, other_author):
@@ -841,12 +841,12 @@ def test_a_handle_in_the_query_matches_the_analysts_credited_events(db, caller, 
     body = _grouped(
         client.get("/api/v1/search", params={"q": f"@{caller.username.upper()}"}).json()
     )
-    assert {h["id"] for h in body["geolocations"]} == {str(mine), str(untitled)}
+    assert {h["id"] for h in body["located"]} == {str(mine), str(untitled)}
     assert [u["username"] for u in body["users"]] == [caller.username]
 
     body = _grouped(client.get("/api/v1/search", params={"q": f"{token} {caller.username}"}).json())
-    assert [h["id"] for h in body["geolocations"]] == [str(mine)]
-    assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in body["geolocations"][0]["title_highlight"]
+    assert [h["id"] for h in body["located"]] == [str(mine)]
+    assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in body["located"][0]["title_highlight"]
     assert [u["username"] for u in body["users"]] == [caller.username]
 
 
@@ -858,7 +858,7 @@ def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
     ).id
     response = client.get(f"/api/v1/search?author={caller.username}")
     assert response.status_code == 200
-    hit = next(h for h in _grouped(response.json())["geolocations"] if h["id"] == str(geo))
+    hit = next(h for h in _grouped(response.json())["located"] if h["id"] == str(geo))
     assert HIGHLIGHT_START not in hit["title_highlight"]
     assert HIGHLIGHT_STOP not in hit["title_highlight"]
 
@@ -866,7 +866,7 @@ def test_browse_mode_strips_planted_sentinel_bytes_from_title(db, caller):
 def _geo_ids(**params) -> list[str]:
     response = client.get("/api/v1/search", params={"type": "event", "limit": 50, **params})
     assert response.status_code == 200, response.text
-    return [h["id"] for h in _grouped(response.json())["geolocations"]]
+    return [h["id"] for h in _grouped(response.json())["located"]]
 
 
 def test_the_query_takes_phrases_or_and_exclusions(db, caller):
@@ -898,9 +898,9 @@ def test_the_last_word_matches_as_a_prefix_while_typing(db, caller, seed_collect
     whole = make_event(db, author=caller, title=f"Shelling near {token}").id
     collection_id = seed_collection(f"Front of {token}ka", "What this one holds.")
     body = _grouped(client.get("/api/v1/search", params={"q": f"shelling {token[:-2]}"}).json())
-    assert {h["id"] for h in body["geolocations"]} == {str(whole), str(longer)}
+    assert {h["id"] for h in body["located"]} == {str(whole), str(longer)}
     body = _grouped(client.get("/api/v1/search", params={"q": token}).json())
-    assert [h["id"] for h in body["geolocations"]] == [str(whole), str(longer)]
+    assert [h["id"] for h in body["located"]] == [str(whole), str(longer)]
     assert [c["id"] for c in body["collections"]] == [str(collection_id)]
     users = client.get("/api/v1/search", params={"q": caller.username[:-3], "type": "user"})
     assert [u["username"] for u in _grouped(users.json())["users"]] == [caller.username]
@@ -916,8 +916,8 @@ def test_accents_fold_on_both_sides(db, caller):
     caller.bio = f"Géolocalisation {token}"
     db.commit()
     body = _grouped(client.get("/api/v1/search", params={"q": f"cafe {token}"}).json())
-    assert [h["id"] for h in body["geolocations"]] == [str(cafe)]
-    assert f"{HIGHLIGHT_START}Café{HIGHLIGHT_STOP}" in body["geolocations"][0]["title_highlight"]
+    assert [h["id"] for h in body["located"]] == [str(cafe)]
+    assert f"{HIGHLIGHT_START}Café{HIGHLIGHT_STOP}" in body["located"][0]["title_highlight"]
     assert _geo_ids(q=f"Hézbollah {token}") == [str(hezbollah)]
     users = _grouped(client.get("/api/v1/search", params={"q": f"geolocalisation {token}"}).json())
     assert [u["username"] for u in users["users"]] == [caller.username]
@@ -1004,7 +1004,7 @@ def test_search_matches_organization_by_name(caller, soft_deleted_user, seed_org
     # The soft-deleted member is not counted.
     assert hit["member_count"] == 1
     # The other groups stay empty on this scope.
-    assert body["users"] == [] and body["geolocations"] == []
+    assert body["users"] == [] and body["located"] == []
 
 
 def test_search_matches_organization_by_slug(seed_org):
@@ -1193,7 +1193,7 @@ def test_search_matches_a_site_by_name(caller, seed_site):
         f"http://localhost:8000/sites/{site_id}.jpg"
     ]
     assert f"{HIGHLIGHT_START}{token}{HIGHLIGHT_STOP}" in hit["name_highlight"]
-    assert body["geolocations"] == [] and body["organizations"] == []
+    assert body["located"] == [] and body["organizations"] == []
 
 
 def test_a_site_without_a_file_carries_no_image(seed_site):
@@ -1256,11 +1256,11 @@ def test_hidden_sites_stay_out_of_search(caller, soft_deleted_user, seed_site):
 @pytest.mark.parametrize(
     ("types", "groups"),
     [
-        (("event",), {"geolocations"}),
+        (("event",), {"located"}),
         (("collection",), {"collections"}),
         (("site",), {"sites"}),
-        (("site", "event"), {"sites", "geolocations"}),
-        ((), {"geolocations", "collections", "sites"}),
+        (("site", "event"), {"sites", "located"}),
+        ((), {"located", "collections", "sites"}),
     ],
     ids=["event", "collection", "site", "site-and-event", "every-type"],
 )
@@ -1269,7 +1269,7 @@ def test_type_narrows_the_hits(db, caller, seed_collection, seed_site, types, gr
     seeded = {
         "collections": [str(seed_collection(f"Shelf {token}", "One shelf."))],
         "sites": [str(seed_site(f"Site {token}"))],
-        "geolocations": [str(make_event(db, author=caller, title=f"Event {token}").id)],
+        "located": [str(make_event(db, author=caller, title=f"Event {token}").id)],
     }
     query = "".join(f"&type={type_}" for type_ in types)
     body = _grouped(client.get(f"/api/v1/search?q={token}{query}").json())

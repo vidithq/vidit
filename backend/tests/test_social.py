@@ -223,7 +223,7 @@ def test_feed_empty_when_no_follows(db, make_user):
     assert "Link" not in response.headers
 
 
-def test_feed_following_carries_geolocations_and_requests_credited(db, make_user):
+def test_feed_following_carries_events_and_requests_credited(db, make_user):
     """A geolocation counts for its owner and a request for its requester, so a request
     fulfilled by a stranger leaves the requester's followers and reaches the fulfiller's."""
     viewer = make_user("viewer")

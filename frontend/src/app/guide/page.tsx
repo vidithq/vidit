@@ -28,7 +28,7 @@ import { Shot } from "../_shots/Shot";
 
 const TITLE = "Getting started";
 const DESCRIPTION =
-  "Find your way around Vidit: the layout, how to read a geolocation, the statuses, how to bring your work in from X, how to work with other analysts, and your settings.";
+  "Find your way around Vidit: the layout, how to read an event, the statuses, how to bring your work in from X, how to work with other analysts, and your settings.";
 
 export const metadata: Metadata = staticPageMetadata({
   path: "/guide",
@@ -40,7 +40,7 @@ const glyph = (Icon: LucideIcon) => <Icon size={13} strokeWidth={1.8} />;
 
 const SECTIONS = {
   layout: { title: "The layout" },
-  "reading-a-geolocation": { title: "Reading a geolocation" },
+  "reading-an-event": { title: "Reading an event" },
   statuses: { title: "The statuses" },
   "bringing-your-work-in": { title: "Bringing your work in" },
   "working-with-others": { title: "Working with others" },
@@ -122,7 +122,7 @@ export default function GuidePage() {
       </Section>
 
       <Section
-        id="reading-a-geolocation"
+        id="reading-an-event"
         lead={
           <>
             Every event page has the same parts, and the{" "}

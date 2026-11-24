@@ -29,7 +29,7 @@ const CLOSE_NOUN: Partial<Record<EventStatus, string>> = {
 const CLOSE_HELP: Partial<Record<EventStatus, Concept>> = {
   requested: "close_request",
   detected: "close_detection",
-  geolocated: "close_geolocation",
+  geolocated: "close_geolocated",
 };
 
 /** What this row is called in the close copy (see `CLOSE_NOUN`). */

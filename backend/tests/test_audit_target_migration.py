@@ -1,4 +1,4 @@
-"""Migration ``d4f6b8a0c2e4`` renames the event key of the admin log targets."""
+"""Migration ``d4f6b8a0c2e4`` names the event resource "event" in the stored admin log."""
 
 import json
 import uuid
@@ -10,7 +10,8 @@ from tests._migrations import alembic, database_at
 
 REVISION = "d4f6b8a0c2e4"
 DOWN_REVISION = "c3e5a7b9d1f2"
-OLD_KEY = "geolocation_id"
+# The stored names the migration replaces, spelled once.
+OLD = "geolocation"
 
 
 @pytest.fixture
@@ -25,11 +26,14 @@ def _targets(url: str) -> dict[str, object]:
         return dict(cur.fetchall())
 
 
-def test_upgrade_renames_the_key_and_downgrade_restores_it(pre_rename_db):
+def test_upgrade_renames_actions_and_keys_and_downgrade_restores_them(pre_rename_db):
     event = str(uuid.uuid4())
     rows = {
-        "geolocation_soft_deleted": {OLD_KEY: event, "title": "Strike"},
-        "approval_deleted": {OLD_KEY: event, "version_no": 2},
+        f"{OLD}_soft_deleted": {f"{OLD}_id": event, "title": "Strike"},
+        f"{OLD}_hard_deleted": {f"{OLD}_id": event, "media_count": 3},
+        "approval_deleted": {f"{OLD}_id": event, "version_no": 2},
+        "user_soft_deleted": {f"cascaded_{OLD}s": 4, "transferred_events": 1},
+        "user_hard_deleted": {f"{OLD}_count": 5, "transferred_count": 0},
         "report_filed": {"event_id": event},
         "login": None,
     }
@@ -42,8 +46,11 @@ def test_upgrade_renames_the_key_and_downgrade_restores_it(pre_rename_db):
 
     alembic(pre_rename_db, "upgrade", REVISION)
     assert _targets(pre_rename_db) == {
-        "geolocation_soft_deleted": {"event_id": event, "title": "Strike"},
+        "event_soft_deleted": {"event_id": event, "title": "Strike"},
+        "event_hard_deleted": {"event_id": event, "media_count": 3},
         "approval_deleted": {"event_id": event, "version_no": 2},
+        "user_soft_deleted": {"cascaded_events": 4, "transferred_events": 1},
+        "user_hard_deleted": {"event_count": 5, "transferred_count": 0},
         "report_filed": {"event_id": event},
         "login": None,
     }

@@ -109,7 +109,7 @@ type ButtonWrite = Pick<PublishButton, "action" | "busy" | "missing">;
 
 /** The primary write that publishes a geolocation: *Publish geolocation* on the submit form,
  *  *Publish* on the edit form. */
-export function publishGeolocationButton(
+export function publishEventButton(
   { action, busy, missing }: ButtonWrite,
   label: string,
 ): PublishButton {

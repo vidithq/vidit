@@ -444,7 +444,7 @@ async def test_a_taken_down_pair_is_skipped(db, owner, takedown):
     assert {column: getattr(rows[0], column) for column in takedown} == takedown
 
 
-async def test_retracted_geolocation_is_skipped(db, owner):
+async def test_retracted_event_is_skipped(db, owner):
     """Closing a published row does not let a re-import reopen it as a fresh ``detected`` row."""
     _publish_the_default_pair(db, owner)
     geo = db.query(Event).filter(Event.owner_id == owner.id).one()

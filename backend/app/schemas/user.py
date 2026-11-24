@@ -134,7 +134,7 @@ class ExternalLinks(BaseModel):
 
 
 class AuthorRef(BaseModel):
-    """Compact author handle for bylines (geolocation card, geolocator credit,
+    """Compact author handle for bylines (event card, geolocator credit,
     search hit). ``from_attributes`` lets call sites assign a SQLAlchemy row
     directly."""
 

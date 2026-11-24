@@ -89,8 +89,8 @@ def list_possible_duplicates(
 ):
     """Soft-warning probe used by the submit form.
 
-    Returns geolocations that might be the same event as the one being
-    submitted; never blocks the submit.
+    Returns the events that might duplicate the one being submitted;
+    never blocks the submit.
 
     Match rule: within ~500m of (lat, lng) AND (a source URL on the same host
     OR same occurred_date). ``source_url`` is one URL the form holds. Coordinate-less rows never match. Authenticated-only so the

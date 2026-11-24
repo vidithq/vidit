@@ -12,11 +12,11 @@ import type { EventLayoutSlots } from "@/components/event/EventLayout";
 import { EventShell } from "@/components/event/EventShell";
 import { IncompleteFormAnnouncer } from "@/components/ui/IncompleteFormAnnouncer";
 
-import { TitleField } from "@/components/geolocations/TitleField";
-import { useTaxonomy, type TaxonomyState } from "@/components/geolocations/TaxonomyFields";
-import { DetailsFields } from "@/components/geolocations/fields/DetailsFields";
-import { LocationPicker } from "@/components/geolocations/fields/LocationPicker";
-import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/geolocations/fields/ProofEditorPanel";
+import { TitleField } from "@/components/event-form/TitleField";
+import { useTaxonomy, type TaxonomyState } from "@/components/event-form/TaxonomyFields";
+import { DetailsFields } from "@/components/event-form/fields/DetailsFields";
+import { LocationPicker } from "@/components/event-form/fields/LocationPicker";
+import { PROOF_GUIDE_LINK, ProofEditorPanel } from "@/components/event-form/fields/ProofEditorPanel";
 import { LinkedSitesField, useSiteLinksDraft, type SiteLinksDraft } from "@/components/sites/LinkedSitesField";
 import type { DraftSiteLink } from "@/lib/sites";
 import { SourcesField } from "@/components/sources/SourcesField";

@@ -3903,13 +3903,13 @@ Remove a user. Both modes invalidate the points cache. Audited as `user_soft_del
   "username": "throwaway",
   "mode": "soft",
   "deleted_at": "2026-05-09T16:45:00Z",
-  "cascaded_geolocations": 5,
+  "cascaded_events": 5,
   "transferred_events": 0,
   "media_count": 0
 }
 ```
 
-`cascaded_geolocations` counts every event the user owned, whatever its status, less the ones handed over. `transferred_events` counts the events handed to a co-geolocator, in both modes. For `mode = "hard"`, `deleted_at` is `null` and `media_count` counts the files swept.
+`cascaded_events` counts every event the user owned, whatever its status, less the ones handed over. `transferred_events` counts the events handed to a co-geolocator, in both modes. For `mode = "hard"`, `deleted_at` is `null` and `media_count` counts the files swept.
 
 ### `POST /admin/users/{id}/restore` 🛡️
 
@@ -3946,7 +3946,7 @@ Hard-delete every detection the user owns, soft-deleted ones included (rows, med
 
 ### `DELETE /admin/events/{id}` 🛡️
 
-Remove an event. Both modes invalidate the points cache. Audited as `geolocation_soft_deleted` or `geolocation_hard_deleted`.
+Remove an event. Both modes invalidate the points cache. Audited as `event_soft_deleted` or `event_hard_deleted`.
 
 - **Soft delete** (default) sets `deleted_at`; rows and storage objects stay, and every public read filters the event out. Idempotent: a repeat keeps the original timestamp and appends no audit row.
 - **Hard delete** (`?hard=true`, GDPR erasure) drops the row, its sources and its media rows, then deletes the storage objects, including the dropped source files its versions name. An object a copy on another event still names stays. The DB commits before the storage sweep; a per-key storage failure is logged and swallowed.

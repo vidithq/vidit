@@ -76,7 +76,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Event Admin
-         * @description Remove a geolocation: soft by default, `?hard=true` for GDPR erasure.
+         * @description Remove an event: soft by default, `?hard=true` for GDPR erasure.
          */
         delete: operations["delete_event_admin_api_v1_admin_events__event_id__delete"];
         options?: never;
@@ -963,8 +963,8 @@ export interface paths {
          * List Possible Duplicates
          * @description Soft-warning probe used by the submit form.
          *
-         *     Returns geolocations that might be the same event as the one being
-         *     submitted; never blocks the submit.
+         *     Returns the events that might duplicate the one being submitted;
+         *     never blocks the submit.
          *
          *     Match rule: within ~500m of (lat, lng) AND (a source URL on the same host
          *     OR same occurred_date). ``source_url`` is one URL the form holds. Coordinate-less rows never match. Authenticated-only so the
@@ -2737,10 +2737,10 @@ export interface components {
          */
         AdminUserDeleteResponse: {
             /**
-             * Cascaded Geolocations
+             * Cascaded Events
              * @default 0
              */
-            cascaded_geolocations: number;
+            cascaded_events: number;
             /** Deleted At */
             deleted_at?: string | null;
             /**
@@ -3016,7 +3016,7 @@ export interface components {
         };
         /**
          * AuthorRef
-         * @description Compact author handle for bylines (geolocation card, geolocator credit,
+         * @description Compact author handle for bylines (event card, geolocator credit,
          *     search hit). ``from_attributes`` lets call sites assign a SQLAlchemy row
          *     directly.
          */

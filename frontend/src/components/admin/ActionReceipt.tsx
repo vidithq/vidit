@@ -56,7 +56,7 @@ function outcomeSummary(outcome: UserOutcome): { action: string; danger: boolean
         ? {
             action: "Hard delete",
             danger: true,
-            text: `Erased the account, ${countLabel(data.cascaded_geolocations, "event")} and ${countLabel(
+            text: `Erased the account, ${countLabel(data.cascaded_events, "event")} and ${countLabel(
               data.media_count,
               "storage object",
             )}.${handed}`,
@@ -64,7 +64,7 @@ function outcomeSummary(outcome: UserOutcome): { action: string; danger: boolean
         : {
             action: "Soft delete",
             danger: false,
-            text: `Hid the account and ${countLabel(data.cascaded_geolocations, "event")}.${handed}`,
+            text: `Hid the account and ${countLabel(data.cascaded_events, "event")}.${handed}`,
           };
     }
     case "restore":

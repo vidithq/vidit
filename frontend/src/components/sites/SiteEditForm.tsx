@@ -7,7 +7,7 @@ import { RotateCcw } from "lucide-react";
 import { EventSection } from "@/components/event/EventLayout";
 import { EventShell } from "@/components/event/EventShell";
 import { VersionNotePanel } from "@/components/event/VersionNotePanel";
-import { PublishActions, SAVING_LABEL, usePublishAction } from "@/components/geolocations/PublishActions";
+import { PublishActions, SAVING_LABEL, usePublishAction } from "@/components/event-form/PublishActions";
 import { SourceBlock } from "@/components/sources/SourceBlock";
 import { SourcesRow } from "@/components/sources/SourcesRow";
 import { Button } from "@/components/ui/Button";

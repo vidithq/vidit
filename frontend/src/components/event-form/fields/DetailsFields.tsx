@@ -2,7 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 
-import type { TaxonomyState } from "@/components/geolocations/TaxonomyFields";
+import type { TaxonomyState } from "@/components/event-form/TaxonomyFields";
 import { Card } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { DateTimeInput } from "@/components/ui/DateTimeInput";

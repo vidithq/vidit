@@ -10,7 +10,7 @@ import { MediaGallery } from "@/components/ui/MediaGallery";
 import { VideoPlayer } from "@/components/ui/VideoPlayer";
 import { MediaLightbox } from "@/components/ui/MediaLightbox";
 import { HOVER_REVEAL } from "@/components/ui/styles";
-import { MediaManager } from "@/components/geolocations/MediaManager";
+import { MediaManager } from "@/components/event-form/MediaManager";
 import { MOCK_MEDIA, Variant, type PaletteCategory, VIDEO_SRC } from "./shared";
 
 // No sample clip ships with the repo: without NEXT_PUBLIC_DEMO_VIDEO_URL (an `.mp4`, since the

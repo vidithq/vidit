@@ -1,4 +1,4 @@
-"""`GET /geolocations/possible-duplicates`, the submit-form duplicate probe."""
+"""`GET /events/possible-duplicates`, the submit-form duplicate probe."""
 
 from __future__ import annotations
 
