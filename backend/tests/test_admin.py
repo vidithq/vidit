@@ -38,29 +38,17 @@ from tests._fixtures import (
 from tests.conftest import DEFAULT_PASSWORD, login_as
 
 
-def test_admin_me_returns_200_for_admin(admin_user):
-    response = client.get("/api/v1/admin/me", headers=login_as(client, admin_user))
-    assert response.status_code == 200
-    assert response.json() == {"is_admin": True}
-
-
-def test_admin_me_answers_false_for_regular_user(regular_user):
-    response = client.get("/api/v1/admin/me", headers=login_as(client, regular_user))
-    assert response.status_code == 200
-    assert response.json() == {"is_admin": False}
-
-
-def test_admin_me_returns_401_for_anonymous():
-    response = client.get("/api/v1/admin/me")
-    assert response.status_code == 401
+def test_auth_me_carries_the_admin_role(admin_user, regular_user):
+    assert client.get("/api/v1/auth/me", headers=login_as(client, admin_user)).json()["is_admin"]
+    client.cookies.clear()
+    body = client.get("/api/v1/auth/me", headers=login_as(client, regular_user)).json()
+    assert body["is_admin"] is False
 
 
 _ADMIN_ROUTES = sorted(
     (method, route.path)
     for route in app.routes
-    if isinstance(route, APIRoute)
-    and route.path.startswith("/api/v1/admin/")
-    and route.path != "/api/v1/admin/me"
+    if isinstance(route, APIRoute) and route.path.startswith("/api/v1/admin/")
     for method in route.methods
 )
 

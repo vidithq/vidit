@@ -83,7 +83,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/resend-confirmation` | 🌐 | Resend the confirmation email and invalidate the previous token |
 | POST | `/auth/login` | 🌐 | Email + password → session + CSRF cookies |
 | POST | `/auth/logout` | 🌐 | Clear session cookies (idempotent) |
-| GET | `/auth/me` | 🔒 | Current user |
+| GET | `/auth/me` | 🔒 | Current user, with your admin role and bound X handle |
 | POST | `/auth/forgot-password` | 🌐 | Email a single-use reset token (always 204) |
 | POST | `/auth/reset-password` | 🌐 | Consume reset token, set new password |
 | POST | `/auth/change-password` | 🔒 | Rotate your password (requires your current password) |
@@ -167,7 +167,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/users/me/avatar` | 🔒 | Remove your profile picture |
 | GET | `/users/me/preferences` | 🔒 | Your display and notification preferences, each beside its default |
 | PATCH | `/users/me/preferences` | 🔒 | Change some of your preferences |
-| GET | `/users/me/x-handle` | 🔒 | The X handle an admin bound to your account |
 | GET | `/users/me/invite-codes` | 🔒 | The invite codes you minted, newest first, and your daily quota |
 | POST | `/users/me/invite-codes` | 🔒 | Mint a single-use invite code bound to the invitee's X handle |
 | POST | `/users/me/invite-codes/{id}/revoke` | 🔒 | Revoke an active invite code you minted, keeping its row |
@@ -204,7 +203,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
 | **Admin** (collapsed below) | | | |
-| GET | `/admin/me` | 🔒 | `is_admin` probe, answered for every analyst |
 | GET | `/admin/detection-stats` | 🛡️ | Machine-extraction quality: reject-rate + pending missing-piece counts |
 | POST/GET | `/admin/invite-codes` | 🛡️ | Mint / list invite codes |
 | POST | `/admin/invite-codes/{id}/revoke` | 🛡️ | Revoke an invite code, keeping its row |
@@ -303,7 +301,6 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | `GET /users/me/preferences` | 120/min |
 | `PATCH /users/me/preferences` | 60/min |
-| `GET /users/me/x-handle` | 120/min |
 | `GET /users/me/invite-codes` | 120/min |
 | `POST /users/me/invite-codes` | 30/hour, plus the daily quota in [`POST /users/me/invite-codes`](#post-usersmeinvite-codes) |
 | `POST /users/me/invite-codes/{id}/revoke` | 30/hour |
@@ -327,7 +324,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `PATCH /admin/sites/{id}/moderation` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
-The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
+The read-only admin probes (`GET /admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
 
 ### Per-user read quota
 
@@ -461,11 +458,16 @@ Returns your user account.
   "bio": null,
   "avatar_url": null,
   "external_links": {},
-  "created_at": "2026-03-28T10:00:00Z"
+  "created_at": "2026-03-28T10:00:00Z",
+  "is_admin": false,
+  "x_handle": "osint_hawk"
 }
 ```
 
-**This shape carries no `is_admin` field.** The admin role surfaces only through [`GET /admin/me`](#get-adminme).
+This shape only ever describes you, so it carries your role and your bound X handle:
+
+- `is_admin` is `true` when your account holds the site admin role.
+- `x_handle` is the X handle the Vidit bot and the archive import use to credit posts to you, or `null` when none is bound. Only an admin writes it, through [`PATCH /admin/users/{id}`](#patch-adminusersid).
 
 ---
 
@@ -3215,19 +3217,6 @@ The body rejects unknown fields, unknown kinds, non-boolean switches, and displa
 
 ---
 
-### `GET /users/me/x-handle` 🔒
-
-The X handle bound to your account, which the Vidit bot and the archive import use to credit posts to you. Only an admin writes the bound handle, through [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle).
-
-**Response 200:**
-```json
-{ "x_handle": "osint_hawk" }
-```
-
-`x_handle` is `null` when no handle is bound.
-
----
-
 ### `GET /users/me/invite-codes` 🔒
 
 The invite codes you minted, newest first, used or not, and where your daily quota stands.
@@ -3879,19 +3868,10 @@ The rows a [`GET /feed`](#get-feed) walk lists, counted per day on each date axi
 
 ## Admin
 
-All routes below are mounted under `/admin` and, except `GET /admin/me`, gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `audit_log` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
+All routes below are mounted under `/admin` and gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `audit_log` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
 
 <details>
 <summary>Admin endpoints. Expand for contracts.</summary>
-
-### `GET /admin/me` 🔒
-
-Answers every signed-in analyst with their own role, so the frontend reads it on every page without a refused request. An anonymous call returns 401.
-
-**Response 200:**
-```json
-{ "is_admin": true }
-```
 
 ### `GET /admin/detection-stats` 🛡️
 

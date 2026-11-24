@@ -582,7 +582,6 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", "/api/v1/users/no-such-user/follow", 60),
     _Case("get", f"{ME}/preferences", 120),
     _Case("patch", f"{ME}/preferences", 60, "user", {"json": {"display": {"theme": "dark"}}}),
-    _Case("get", f"{ME}/x-handle", 120),
     _Case("get", f"{ME}/invite-codes", 120),
     # Minting is off for the probe account, so no request mints or meets the daily quota.
     _Case("post", f"{ME}/invite-codes", 30, "user_minting_off", {"json": {"x_handle": "rl_probe"}}),

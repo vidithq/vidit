@@ -497,11 +497,9 @@ def test_avatar_endpoints_require_auth():
     assert client.delete("/api/v1/users/me/avatar").status_code == 401
 
 
-def test_my_x_handle_reads_the_handle_an_admin_bound(db, live_user):
+def test_auth_me_carries_the_handle_an_admin_bound(db, live_user):
     login_as(client, live_user)
-    assert client.get("/api/v1/users/me/x-handle").json() == {"x_handle": None}
+    assert client.get("/api/v1/auth/me").json()["x_handle"] is None
     live_user.x_handle = f"h_{uuid.uuid4().hex[:8]}"
     db.commit()
-    assert client.get("/api/v1/users/me/x-handle").json() == {"x_handle": live_user.x_handle}
-    client.cookies.clear()
-    assert client.get("/api/v1/users/me/x-handle").status_code == 401
+    assert client.get("/api/v1/auth/me").json()["x_handle"] == live_user.x_handle

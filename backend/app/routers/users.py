@@ -17,7 +17,7 @@ from app.schemas.invite_code import (
 )
 from app.schemas.organization import OrganizationMembershipRead
 from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
-from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate, XHandleRead
+from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate
 from app.services import collections as collections_service
 from app.services import organizations as organizations_service
 from app.services import preferences as preferences_service
@@ -83,13 +83,6 @@ def update_my_preferences(
     result = preferences_service.update_preferences(db, user=current_user, body=body)
     db.commit()
     return result
-
-
-@router.get("/me/x-handle", response_model=XHandleRead)
-@limiter.limit("120/minute")
-def get_my_x_handle(request: Request, current_user: CurrentUser) -> XHandleRead:
-    """The X handle bound to your account. Only an admin links or changes it."""
-    return XHandleRead(x_handle=current_user.x_handle)
 
 
 @router.get("/me/invite-codes", response_model=SponsoredInviteCodeList)

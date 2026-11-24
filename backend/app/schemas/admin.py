@@ -91,16 +91,6 @@ class AdminInviteCodeRead(BaseModel):
     used_at: datetime | None
 
 
-class AdminMeResponse(BaseModel):
-    """Tiny response for the frontend route guard.
-
-    Separate from `UserRead` so ``is_admin`` doesn't leak to the public schema
-    or the OpenAPI spec.
-    """
-
-    is_admin: bool
-
-
 class AdminUserRead(BaseModel):
     """User shape returned by the admin search endpoint: the bot-attribution
     `x_handle` plus `email` (NULL on legacy rows), which `UserProfile` omits.

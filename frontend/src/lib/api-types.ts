@@ -245,26 +245,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Admin Me
-         * @description Whether the signed-in analyst is a site admin.
-         */
-        get: operations["admin_me_api_v1_admin_me_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/organizations": {
         parameters: {
             query?: never;
@@ -2367,26 +2347,6 @@ export interface paths {
         patch: operations["update_my_preferences_api_v1_users_me_preferences_patch"];
         trace?: never;
     };
-    "/api/v1/users/me/x-handle": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get My X Handle
-         * @description The X handle bound to your account. Only an admin links or changes it.
-         */
-        get: operations["get_my_x_handle_api_v1_users_me_x_handle_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/users/{username}": {
         parameters: {
             query?: never;
@@ -2798,17 +2758,6 @@ export interface components {
             old_consumed?: number | null;
             /** Pending Registrations Deleted */
             pending_registrations_deleted?: number | null;
-        };
-        /**
-         * AdminMeResponse
-         * @description Tiny response for the frontend route guard.
-         *
-         *     Separate from `UserRead` so ``is_admin`` doesn't leak to the public schema
-         *     or the OpenAPI spec.
-         */
-        AdminMeResponse: {
-            /** Is Admin */
-            is_admin: boolean;
         };
         /**
          * AdminOrganizationRead
@@ -5750,10 +5699,8 @@ export interface components {
         };
         /**
          * UserRead
-         * @description Authenticated-self payload for ``/auth/me`` and register/login.
-         *
-         *     ``is_admin`` is absent so the role stays off the public OpenAPI schema
-         *     (``/admin/me`` is the probe).
+         * @description Authenticated-self payload for ``/auth/me`` and register/login. It only ever
+         *     describes the caller, so it carries the caller's role and admin-bound X handle.
          */
         UserRead: {
             /** Avatar Url */
@@ -5776,8 +5723,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Admin */
+            is_admin: boolean;
             /** Username */
             username: string;
+            /** X Handle */
+            x_handle: string | null;
         };
         /**
          * UserStatsRead
@@ -5859,11 +5810,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-        };
-        /** XHandleRead */
-        XHandleRead: {
-            /** X Handle */
-            x_handle: string | null;
         };
         /**
          * ZonePolygon
@@ -6311,37 +6257,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMaintenanceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    admin_me_api_v1_admin_me_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminMeResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10547,37 +10462,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserPreferencesRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_my_x_handle_api_v1_users_me_x_handle_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["XHandleRead"];
                 };
             };
             /** @description Validation Error */

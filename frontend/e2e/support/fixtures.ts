@@ -23,7 +23,6 @@ import type { UserPreferences } from "@/lib/preferences";
 import type { PublicProfile, UserStats } from "@/lib/users";
 import type { OrganizationApprovalRequest } from "@/lib/approvalRequests";
 import type { Upload } from "@/lib/sources";
-import type { XHandleState } from "@/lib/xHandle";
 import type {
   Conflict,
   EventDetail,
@@ -55,7 +54,11 @@ export const SIGNED_IN_USER: User = {
   avatar_url: null,
   external_links: {},
   created_at: "2025-01-04T09:00:00Z",
+  is_admin: false,
+  x_handle: "osint_hawk_2024",
 };
+
+export const SIGNED_IN_ADMIN: User = { ...SIGNED_IN_USER, is_admin: true };
 
 /**
  * Name of the tag that measures `<Pill>`'s wrap. One token with no space in it,
@@ -336,11 +339,6 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     { kind: "organization_manager_inherited", email: true, default: true },
   ],
   approval_request_audience: "following",
-};
-
-/** A bound handle, as the Account card reads it. */
-export const X_HANDLE: XHandleState = {
-  x_handle: "osint_hawk_2024",
 };
 
 /** Slug of the organization the signed-in analyst manages. */

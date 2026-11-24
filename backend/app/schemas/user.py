@@ -146,11 +146,8 @@ class AuthorRef(BaseModel):
 
 
 class UserRead(BaseModel):
-    """Authenticated-self payload for ``/auth/me`` and register/login.
-
-    ``is_admin`` is absent so the role stays off the public OpenAPI schema
-    (``/admin/me`` is the probe).
-    """
+    """Authenticated-self payload for ``/auth/me`` and register/login. It only ever
+    describes the caller, so it carries the caller's role and admin-bound X handle."""
 
     id: uuid.UUID
     username: str
@@ -159,12 +156,10 @@ class UserRead(BaseModel):
     avatar_url: str | None
     external_links: dict[str, str | None]
     created_at: datetime
+    is_admin: bool
+    x_handle: str | None
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class XHandleRead(BaseModel):
-    x_handle: str | None
 
 
 class UserProfile(BaseModel):

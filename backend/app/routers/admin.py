@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from app.cache import points_cache
-from app.dependencies import DB, AdminUser, CurrentUser, Cursor
+from app.dependencies import DB, AdminUser, Cursor
 from app.models.collection import Collection
 from app.models.site import Site
 from app.models.user import User
@@ -19,7 +19,6 @@ from app.schemas.admin import (
     AdminInviteCodeCreate,
     AdminInviteCodeRead,
     AdminMaintenanceResponse,
-    AdminMeResponse,
     AdminPurgeDetectedResponse,
     AdminSiteModerationRead,
     AdminSiteModerationUpdate,
@@ -53,14 +52,6 @@ from app.services.pagination import (
 )
 
 router = APIRouter()
-
-
-@router.get("/me", response_model=AdminMeResponse)
-def admin_me(current_user: CurrentUser) -> AdminMeResponse:
-    """Whether the signed-in analyst is a site admin."""
-    # The one route here open to every analyst: the frontend probes it on each signed-in page,
-    # so a 403 would log a console error for every analyst who is not an admin.
-    return AdminMeResponse(is_admin=current_user.is_admin)
 
 
 @router.get("/detection-stats", response_model=AdminDetectionStatsRead)
