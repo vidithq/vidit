@@ -83,7 +83,9 @@ python_version = "3.12"
 check_untyped_defs = true
 warn_unused_ignores = true
 ignore_missing_imports = true
-exclude = ["alembic/versions/"]
+# Pydantic serializes every schema field, a read vulture cannot trace, so the
+# schemas are not scanned. An orphaned schema class goes unreported.
+exclude = ["alembic/versions/", "app/schemas/"]
 
 [[tool.mypy.overrides]]
 module = ["boto3", "boto3.*", "botocore", "botocore.*"]
@@ -99,7 +101,9 @@ ignore_missing_imports = true
 # scripts + the whitelist.
 [tool.vulture]
 paths = ["app", "scripts", "vulture_whitelist.py"]
-exclude = ["alembic/versions/"]
+# Pydantic serializes every schema field, a read vulture cannot trace, so the
+# schemas are not scanned. An orphaned schema class goes unreported.
+exclude = ["alembic/versions/", "app/schemas/"]
 # 60, not the default 80: an unused module-level function / method scores 60, so
 # an 80 floor would let a genuinely orphaned function through and the gate would
 # only ever catch unused locals. At 60 vulture also flags every framework name it

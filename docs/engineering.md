@@ -971,7 +971,7 @@ EOF
 | Backend | **uv** | `pyproject.toml` + `uv.lock` |
 | Frontend | **npm** | `package.json` + `package-lock.json` |
 
-**vulture** is the dead-code gate on the backend: unused functions, classes, methods, and fields that ruff's `F401` misses, the analogue of the frontend's **knip**. Its configuration and framework-magic allowlist live in [`backend/pyproject.toml`](../backend/pyproject.toml) `[tool.vulture]` and [`backend/vulture_whitelist.py`](../backend/vulture_whitelist.py). It runs in the `backend-lint` job and through `make hygiene`.
+**vulture** is the dead-code gate on the backend: unused functions, classes, methods, and fields that ruff's `F401` misses, the analogue of the frontend's **knip**. Its configuration and framework-magic allowlist live in [`backend/pyproject.toml`](../backend/pyproject.toml) `[tool.vulture]` and [`backend/vulture_whitelist.py`](../backend/vulture_whitelist.py). It skips `app/schemas/`, since Pydantic reads every schema field, so a new response field needs no whitelist entry and an unused schema class goes unreported. It runs in the `backend-lint` job and through `make hygiene`.
 
 ### Dependency security updates
 
