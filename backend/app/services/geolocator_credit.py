@@ -47,8 +47,7 @@ CARD_LOADS = (
 )
 
 # Geolocators plus pending invitations, per event, the owner included. Bounds the byline every
-# card prints. Mirrored by ``frontend/src/lib/geolocatorCredit.ts::MAX_EVENT_GEOLOCATORS``;
-# change both.
+# card prints. Generated into the frontend's ``lib/api-constants.ts``.
 MAX_EVENT_GEOLOCATORS = 10
 
 

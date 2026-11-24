@@ -1,17 +1,11 @@
+import { CSRF_COOKIE, CSRF_HEADER, PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH } from "./api-constants";
+
 // Auth state lives in HttpOnly cookies (`vidit_session` JWT, `vidit_csrf` CSRF token). JS only
 // reads the CSRF token, to echo it as `X-CSRF-Token` on state-changing requests.
 
-// Mirrors `auth_cookies.CSRF_COOKIE` + `CSRF_HEADER`; change both. Exported so the e2e suite
-// (`e2e/support/mockApi.ts`) sets the same cookie. `proxy.ts` keeps a third, deliberately
-// inlined copy (edge runtime).
-export const CSRF_COOKIE = "vidit_csrf";
-export const CSRF_HEADER = "X-CSRF-Token";
-
-// Mirrors `schemas/auth.PASSWORD_MIN_LENGTH`; change both.
-export const PASSWORD_MIN_LENGTH = 8;
-// Mirrors `schemas/auth.PASSWORD_MAX_BYTES`; change both. UTF-8 bytes (the bcrypt input limit). As
-// `maxLength` it caps UTF-16 units, which never outnumber UTF-8 bytes, so it never blocks a valid one.
-export const PASSWORD_MAX_BYTES = 72;
+// `PASSWORD_MAX_BYTES` counts UTF-8 bytes (the bcrypt input limit). As `maxLength` it caps UTF-16
+// units, which never outnumber UTF-8 bytes, so it never blocks a valid one.
+export { CSRF_COOKIE, CSRF_HEADER, PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH };
 
 export function readCsrfToken(): string | null {
   if (typeof document === "undefined") return null;

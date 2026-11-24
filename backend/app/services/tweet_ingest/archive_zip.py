@@ -13,7 +13,7 @@ The zip is attacker-controlled, so extraction is hardened:
 ``tweets.js`` is located under any prefix (``data/``, a top folder) and its media
 rebased beside it, giving the flat ``archive_dir`` ``archive.read_tweets`` expects.
 Mirrored in the browser by ``frontend/src/lib/archive.ts`` (keep-allowlist,
-root discovery, ``MAX_UPLOAD_BYTES``); change both.
+root discovery); change both.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ _MEDIA_DIR = "tweets_media"
 # Sanity guard on the compressed zip, not a product limit (those are the
 # per-media caps at assemble time). Enforced by the presigned POST policy and
 # re-checked at enqueue and in the worker. Under S3's 5 GB single-part POST
-# ceiling. Mirrored by ``frontend/src/lib/archive.ts``.
+# ceiling. Generated into the frontend's ``lib/api-constants.ts``.
 MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
 
 # Anti-zip-bomb caps, far above any real export: total bounds disk use,

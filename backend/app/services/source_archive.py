@@ -31,13 +31,12 @@ from app.services.sanitize import normalised_host
 
 # Hosts a snapshot may live on. The allowlist is the abuse bound: the catalog
 # renders the URL as an outbound link. archive.today serves one set of
-# snapshots under six interchangeable domains. Mirrored by
-# ``frontend/src/lib/snapshots.ts::SNAPSHOT_HOSTS`` (keys) and ``snapshotProvider``
-# (providers); change both.
+# snapshots under six interchangeable domains. Generated into the frontend's
+# ``lib/api-constants.ts``, which lists the hosts in this order.
 PROVIDER_HOSTS: dict[str, ArchiveProvider] = {
     "web.archive.org": "wayback",
-    "archive.ph": "archive_today",
     "archive.today": "archive_today",
+    "archive.ph": "archive_today",
     "archive.is": "archive_today",
     "archive.md": "archive_today",
     "archive.li": "archive_today",

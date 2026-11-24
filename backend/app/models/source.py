@@ -22,7 +22,7 @@ from app.database import Base, CreatedAt, UpdatedAt, literal_check
 
 SourceLevel = Literal["direct", "indirect", "context"]
 # The levels that support a publication (``services/events/sources.check_publish_floor``).
-# Mirrored by ``frontend/src/lib/sources.ts::isEvidenceLevel``; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 EVIDENCE_LEVELS: tuple[SourceLevel, ...] = ("direct", "indirect")
 
 SourceKind = Literal[
@@ -41,15 +41,14 @@ SourceKind = Literal[
 ]
 SOURCE_KINDS: tuple[SourceKind, ...] = get_args(SourceKind)
 # The kinds that are documents, not captures: a document carries no capture position, and a
-# write drops one it posts (``schemas/source.SourceCreate``). Mirrored by
-# ``frontend/src/lib/sources.ts::DOCUMENT_SOURCE_KINDS``; change both.
+# write drops one it posts (``schemas/source.SourceCreate``). Generated into the frontend's ``lib/api-constants.ts``.
 DOCUMENT_SOURCE_KINDS: frozenset[SourceKind] = frozenset({"article", "official_statement", "other"})
 
 ArchiveProvider = Literal["wayback", "archive_today", "ghostarchive"]
 
 # Ceilings per event and per source. A write past either is rejected, not truncated; an
-# import truncates instead (no one to report to). Mirrored, with the two input caps below, in
-# ``frontend/src/lib/sources.ts``; change both.
+# import truncates instead (no one to report to). These and the two input caps below are
+# generated into the frontend's ``lib/api-constants.ts``.
 MAX_SOURCES_PER_EVENT = 10
 MAX_LINKS_PER_SOURCE = 10
 # Input caps: the columns are unbounded ``Text``.

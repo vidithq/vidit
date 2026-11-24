@@ -1,5 +1,6 @@
 import { parseHttp } from "./format";
 import type { ArchivedLink } from "@/types";
+import { SNAPSHOT_PROVIDER_HOSTS } from "./api-constants";
 
 /**
  * Reads the original out of a replay URL so the paste field can warn about an obvious
@@ -10,41 +11,35 @@ import type { ArchivedLink } from "@/types";
  * nothing and reports "no warning" when it cannot compare confidently.
  */
 
-/** Mirrors the `wayback` entry of `source_archive.PROVIDER_HOSTS`; change both.
- *  `ArchivedCopies` prefills its Save Page Now door on it. */
-export const WAYBACK_HOST = "web.archive.org";
+type SnapshotProvider = ArchivedLink["provider"];
 
-/** archive.today's six interchangeable domains (one set of snapshots). Mirrors the
- *  `archive_today` entries of `source_archive.PROVIDER_HOSTS`; change both. `ArchivedCopies`
- *  builds its host list from it. */
-const ARCHIVE_TODAY_HOSTS = [
-  "archive.today",
-  "archive.ph",
-  "archive.is",
-  "archive.md",
-  "archive.li",
-  "archive.vn",
-];
+/** Every host a snapshot may live on, in the order the server lists them. */
+export const SNAPSHOT_HOSTS = Object.keys(SNAPSHOT_PROVIDER_HOSTS);
 
-/** Mirrors the `ghostarchive` entry of `source_archive.PROVIDER_HOSTS`; change both. */
-export const GHOSTARCHIVE_HOST = "ghostarchive.org";
+const hostOf = (provider: SnapshotProvider): string =>
+  SNAPSHOT_HOSTS.find((host) => snapshotProviderOfHost(host) === provider) as string;
 
-/** Every host a snapshot may live on. Mirrors the keys of `PROVIDER_HOSTS` in
- *  `services/source_archive.py`; change both. */
-export const SNAPSHOT_HOSTS = [WAYBACK_HOST, ...ARCHIVE_TODAY_HOSTS, GHOSTARCHIVE_HOST];
+function snapshotProviderOfHost(host: string): SnapshotProvider | null {
+  return Object.hasOwn(SNAPSHOT_PROVIDER_HOSTS, host)
+    ? SNAPSHOT_PROVIDER_HOSTS[host as keyof typeof SNAPSHOT_PROVIDER_HOSTS]
+    : null;
+}
+
+/** `ArchivedCopies` prefills its Save Page Now door on it. */
+export const WAYBACK_HOST = hostOf("wayback");
+
+export const GHOSTARCHIVE_HOST = hostOf("ghostarchive");
 
 /** The archive service a stored snapshot URL lives on, read off its host as the server derives
  *  `provider`; null for a host outside `SNAPSHOT_HOSTS`. */
-export function snapshotProvider(snapshot: string): ArchivedLink["provider"] | null {
+export function snapshotProvider(snapshot: string): SnapshotProvider | null {
   let host: string;
   try {
     host = new URL(snapshot).hostname.toLowerCase();
   } catch {
     return null;
   }
-  if (host === WAYBACK_HOST) return "wayback";
-  if (ARCHIVE_TODAY_HOSTS.includes(host)) return "archive_today";
-  return host === GHOSTARCHIVE_HOST ? "ghostarchive" : null;
+  return snapshotProviderOfHost(host);
 }
 
 /** Wayback replay path `/web/<timestamp>/<original url>`, optional replay modifier included.
@@ -78,7 +73,7 @@ function replayedLink(snapshot: string): string | null {
   const pattern =
     host === WAYBACK_HOST
       ? REPLAY_PATH_RE
-      : ARCHIVE_TODAY_HOSTS.includes(host)
+      : snapshotProviderOfHost(host) === "archive_today"
         ? CAPTURE_PATH_RE
         : null;
   const match = pattern?.exec(path);

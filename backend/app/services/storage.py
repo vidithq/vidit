@@ -55,7 +55,8 @@ ALLOWED_VIDEO_TYPES = {"video/mp4", "video/webm"}
 # ``MAX_GIF_FRAMES`` make a clip, refused for an MP4 upload. An avatar takes none.
 GIF_CONTENT_TYPE = "image/gif"
 GIF_FRAME_CONTENT_TYPE = "image/png"
-# Mirrored by ``frontend/src/lib/mediaTypes.ts``; change both.
+# The allowlists, ``GIF_CONTENT_TYPE`` and this cap are generated into the frontend's
+# ``lib/api-constants.ts``.
 MAX_GIF_FRAMES = 6
 
 # Extension comes from the validated MIME, never ``file.filename`` (attacker
@@ -85,7 +86,7 @@ def safe_storage_extension(content_type: str | None) -> str:
 
 LOCAL_STORAGE_MOUNT_PATH = "/local-storage"
 LOCAL_DEV_BASE_URL = "http://localhost:8000"
-# Mirrored by frontend lib/proof.tsx LOCAL_STORAGE_URL_PREFIX; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 LOCAL_STORAGE_URL_PREFIX = f"{LOCAL_DEV_BASE_URL}{LOCAL_STORAGE_MOUNT_PATH}"
 
 # Dev/CI stand-in for the S3 POST-policy target (``main.py``, local backend only).
@@ -736,7 +737,7 @@ async def upload_avatar_image(file: UploadFile, owner_id: UUID) -> UploadResult:
 
 
 # 255: common filesystem-name max (NTFS / ext4), above any camera filename.
-# Mirrored by `lib/proofImages.ts` (``safe_original_filename``).
+# Generated into the frontend's ``lib/api-constants.ts``.
 ORIGINAL_FILENAME_MAX_LEN = 255
 
 # Rejected in a stored filename: ``Cc`` (control chars) and ``Cf`` (format

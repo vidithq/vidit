@@ -11,7 +11,7 @@ from .errors import InvalidCoordinatesError
 
 
 def validate_coordinates(lat: float, lng: float) -> None:
-    """Reject out-of-range coordinates. Mirrored by `frontend/src/lib/coordinates.ts`."""
+    """Reject out-of-range coordinates."""
     if not LAT_MIN <= lat <= LAT_MAX:
         raise InvalidCoordinatesError(f"Latitude must be between {LAT_MIN:g} and {LAT_MAX:g}")
     if not LNG_MIN <= lng <= LNG_MAX:

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, CreatedAt
 
-# Mirrored by ``frontend/src/components/ui/TagPicker.tsx::TAG_NAME_MAX_LEN``; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 NAME_MAX_LENGTH = 100
 
 event_tags = Table(

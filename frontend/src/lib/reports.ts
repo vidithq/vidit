@@ -8,8 +8,7 @@ export type ContentReportReason =
 /** One report as the admin queue reads it (`resolved_at === null` means open). */
 export type ContentReport = components["schemas"]["ContentReportRead"];
 
-/** Mirrors `schemas/report.DETAILS_MAX_LENGTH`; change both. */
-export const REPORT_DETAILS_MAX_LEN = 2000;
+export { REPORT_DETAILS_MAX_LEN } from "./api-constants";
 
 /** One label per report bucket, shared by the report form and the admin queue. Keyed by the
  *  generated union so a new backend reason fails `tsc`. */

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { VIDIT_HOST as CANONICAL_HOST } from "@/lib/outbound";
+import { CSRF_COOKIE } from "@/lib/api-constants";
 
-// Mirrors `CSRF_COOKIE` in `lib/auth.ts`; change both. Inlined because `lib/auth.ts` touches
-// `document.cookie`, absent in the edge runtime. The backend sets and clears it with the
-// HttpOnly session cookie, so its presence proxies "has a session"; a stale cookie still 401s
-// at the API and the page bounces in its effect.
-const CSRF_COOKIE = "vidit_csrf";
+// The backend sets and clears `CSRF_COOKIE` with the HttpOnly session cookie, so its presence
+// proxies "has a session"; a stale cookie still 401s at the API and the page bounces in its
+// effect. Read from `lib/api-constants.ts`, not `lib/auth.ts`, which touches `document.cookie`,
+// absent in the edge runtime.
 
 // Paths reachable without a session; everything else is default-deny. Content routes (map,
 // events, requests, profiles, organizations, search) are public. Write and account surfaces (`/submit`,

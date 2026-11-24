@@ -9,9 +9,7 @@ import { FieldLabel } from "@/components/ui/FieldLabel";
 import { EVENT_FIELDS } from "@/lib/events";
 import { FieldError } from "./ErrorNotice";
 import { OptionSearch } from "./OptionSearch";
-
-// Mirrors `schemas/tag.py` `TagCreate.name` (the `String(100)` cap); change both.
-const TAG_NAME_MAX_LEN = 100;
+import { TAG_NAME_MAX_LEN } from "@/lib/api-constants";
 
 interface TagPickerProps {
   /** Live tags (referenced by at least one event or source) plus the ones created here: the

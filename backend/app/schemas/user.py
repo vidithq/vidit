@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.services.sanitize import PLATFORM_HOSTS
 
-# Per-field caps: generous but keeping payloads predictable. Mirrors
-# ``frontend/src/components/profile/useProfileEdit.ts::BIO_MAX_LEN``.
+# Per-field caps: generous but keeping payloads predictable. ``BIO_MAX_LEN`` is generated
+# into the frontend's ``lib/api-constants.ts``.
 BIO_MAX_LEN = 500
 URL_MAX_LEN = 500
 HANDLE_MAX_LEN = 200
@@ -38,9 +38,8 @@ def normalise_url(value: str | None) -> str | None:
     return cleaned
 
 
-# The platform rules, mirrored by ``frontend/src/lib/users.ts`` (``SOCIAL_HOSTS``
-# + ``SOCIAL_HANDLE_PATTERN``; change both). Canonical host first: a stored
-# handle expands to it when linked.
+# The platform rules, generated into the frontend's ``lib/api-constants.ts`` for ``x`` and
+# ``github``. Canonical host first: a stored handle expands to it when linked.
 SOCIAL_PROFILE_HOSTS: dict[str, tuple[str, ...]] = {
     field: PLATFORM_HOSTS[field] for field in ("x", "github")
 }

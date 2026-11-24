@@ -12,6 +12,7 @@ import {
   type VersionReader,
 } from "./versions";
 import type { EventStatus } from "@/types";
+import { SITE_MARGIN_M, SITE_NAME_MAX_LEN, SITE_SOURCE_NOTE_MAX_LEN } from "./api-constants";
 
 export type Site = components["schemas"]["SiteRead"];
 type SiteCreated = components["schemas"]["SiteCreatedRead"];
@@ -32,12 +33,9 @@ export type SiteVersionEntry = VersionEntry<Site>;
 export type SiteKind = Site["kind"];
 export type LinkEffect = EventSiteLink["effect"];
 
-/** Mirrors backend `models/event.TITLE_MAX_LENGTH`, the cap on a site name; change both. */
-export const SITE_NAME_MAX_LEN = 255;
-/** Mirrors backend `schemas/site.SITE_SOURCE_NOTE_MAX_LENGTH`; change both. */
-export const SITE_SOURCE_NOTE_MAX_LEN = 500;
-/** Mirrors backend `services/sites.DEFAULT_MARGIN_M`, the `margin_m` default; change both. */
-export const SITE_MARGIN_KM = 10;
+export { SITE_NAME_MAX_LEN, SITE_SOURCE_NOTE_MAX_LEN };
+/** The `margin_m` default of the site suggestions, in kilometres. */
+export const SITE_MARGIN_KM = SITE_MARGIN_M / 1000;
 
 /** Keyed by the generated union, so a kind the backend adds fails the type-check. */
 export const SITE_KIND_LABELS: Record<SiteKind, string> = {

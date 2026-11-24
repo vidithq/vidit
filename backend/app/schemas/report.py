@@ -7,7 +7,7 @@ from app.models.content_report import ContentReportReason, ContentReportResoluti
 from app.schemas.user import AuthorRef
 
 # Ceiling on the reporter's free text (the column is unbounded ``Text``).
-# Mirrored by ``frontend/src/lib/events.ts::REPORT_DETAILS_MAX_LEN``.
+# Generated into the frontend's ``lib/api-constants.ts``.
 DETAILS_MAX_LENGTH = 2000
 
 

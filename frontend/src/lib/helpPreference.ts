@@ -1,4 +1,5 @@
 import { createAttributePreference } from "./attributePreference";
+import { DISPLAY_DEFAULTS } from "./api-constants";
 
 /**
  * Display preference: whether the `?` field-help affordances (see `FieldHelp`) are hidden.
@@ -9,11 +10,10 @@ export const HELP_PREF_EVENT = "vidit:help-hidden-changed";
 
 type Stored = "1" | "0";
 
-// Unset reads as shown. Mirrors backend schemas/preferences.DISPLAY_DEFAULTS; change both.
 const pref = createAttributePreference<Stored>({
   key: "vidit:help-hidden",
   event: HELP_PREF_EVENT,
-  fallback: "0",
+  fallback: DISPLAY_DEFAULTS.help_tooltips ? "0" : "1",
   isValid: (value): value is Stored => value === "1" || value === "0",
 });
 

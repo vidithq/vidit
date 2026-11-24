@@ -23,6 +23,7 @@ import type {
   SearchSections,
   SearchUserHit,
 } from "@/types";
+import { USERNAME_PATTERN } from "./api-constants";
 
 type SearchOptions = { q: string; types?: SearchHitType[] } & EventFilterParams;
 
@@ -224,9 +225,8 @@ export function profileSearchHref(
   return `/search?${searchPageParams("", { ...filters, author: username, show })}`;
 }
 
-/** Mirrors `USERNAME_PATTERN` (`schemas/__init__.py`); change both. The username charset, and
- *  the `?author=` gate: anything else would 422. */
-export const USERNAME_RE = /^[A-Za-z0-9_-]{1,50}$/;
+/** The username charset, and the `?author=` gate: anything else would 422. */
+export const USERNAME_RE = new RegExp(USERNAME_PATTERN);
 
 /** Username typeahead for the exact-match author filter and the co-geolocator invite:
  *  `GET /search/authors` (prefix matches first). A query the `?author=` gate refuses suggests

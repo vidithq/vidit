@@ -2,6 +2,7 @@ import { apiFetch } from "./api";
 import { parseHttp } from "./format";
 import type { components } from "./api-types";
 import type { ExternalLinks, User } from "@/types";
+import { SOCIAL_HANDLE_PATTERNS, SOCIAL_PROFILE_HOSTS } from "./api-constants";
 
 /** Payload for `PATCH /users/me`. `undefined` omits (preserves the column); `null` or an
  *  empty string clears it (`model_dump(exclude_unset=True)`). `external_links` is replaced
@@ -62,18 +63,14 @@ function asHttpUrl(value: string | null | undefined): string | null {
 }
 
 /** Hosts whose URLs name a profile on the platform, canonical first (a parsed handle links
- *  to it); bare hosts only, the parser folds `www.`. Mirrors `schemas/user.SOCIAL_PROFILE_HOSTS`;
- *  change both. */
-const SOCIAL_HOSTS: Record<"x" | "github", readonly string[]> = {
-  x: ["x.com", "twitter.com", "mobile.twitter.com"],
-  github: ["github.com"],
-};
+ *  to it); bare hosts only, the parser folds `www.`. */
+const SOCIAL_HOSTS: Record<"x" | "github", readonly string[]> = SOCIAL_PROFILE_HOSTS;
 
-/** Each platform's account-name rule. Mirrors `schemas/user.SOCIAL_HANDLE_PATTERNS`; change
- *  both. A value the platform would refuse neither links nor prints as a handle. */
+/** Each platform's account-name rule. A value the platform would refuse neither links nor
+ *  prints as a handle. */
 const SOCIAL_HANDLE_PATTERN: Record<"x" | "github", RegExp> = {
-  x: /^[A-Za-z0-9_]{1,15}$/,
-  github: /^[A-Za-z0-9-]{1,39}$/,
+  x: new RegExp(SOCIAL_HANDLE_PATTERNS.x),
+  github: new RegExp(SOCIAL_HANDLE_PATTERNS.github),
 };
 
 /** The account a stored X or GitHub value names, or `{ handle: null }`; the href and the

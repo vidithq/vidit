@@ -11,9 +11,9 @@ import {
 import { fileToDataUrl } from "@/lib/files";
 import { useMutation } from "@/hooks/useMutation";
 import type { ExternalLinks } from "@/types";
+import { BIO_MAX_LEN } from "@/lib/api-constants";
 
-// Bio ceiling, mirrors the backend BIO_MAX_LEN in schemas/user.py; change both.
-export const BIO_MAX_LEN = 500;
+export { BIO_MAX_LEN };
 
 const LINK_ORDER = { x: null, discord: null, website: null, github: null } satisfies Record<
   keyof ExternalLinks,

@@ -156,7 +156,7 @@ def stats_for(db: Session, collection_ids: Sequence[uuid.UUID]) -> dict[uuid.UUI
 
 
 # Tiles in the profile card's mosaic; a fifth would be too small to read.
-# Mirrored by frontend lib/og.ts MOSAIC_MAX_TILES; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 COVER_TILES = 4
 
 

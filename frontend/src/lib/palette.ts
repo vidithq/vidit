@@ -15,6 +15,7 @@
 import { createAttributePreference } from "./attributePreference";
 import type { components } from "./api-types";
 import type { ThemeId } from "./theme";
+import { DISPLAY_DEFAULTS } from "./api-constants";
 
 export type PaletteId = components["schemas"]["DisplayPreferences"]["palette"];
 
@@ -86,8 +87,7 @@ export const PALETTES: readonly PaletteOption[] = (
   Object.keys(PALETTE_OPTIONS) as PaletteId[]
 ).map((id) => ({ id, ...PALETTE_OPTIONS[id] }));
 
-// Mirrors backend schemas/preferences.DISPLAY_DEFAULTS; change both.
-export const DEFAULT_PALETTE: PaletteId = "orange";
+export const DEFAULT_PALETTE: PaletteId = DISPLAY_DEFAULTS.palette;
 
 export const PALETTE_EVENT = "vidit:palette-changed";
 

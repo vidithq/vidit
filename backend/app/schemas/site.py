@@ -34,7 +34,7 @@ MAX_SOURCES_PER_WRITE = 10
 MAX_ZONE_VERTICES = 1000
 # A zone covers a site, not a region: the largest sites, training grounds, cover a few hundred
 # km², so this cap holds them with margin and refuses a region drawn by mistake (docs/api.md).
-# Mirrored by ``frontend/src/lib/siteZone.ts::MAX_ZONE_AREA_KM2``; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 MAX_ZONE_AREA_KM2 = 1_000
 # A longitude span of 180 degrees or more would let a zone wrap the antimeridian.
 MAX_ZONE_LNG_SPAN_DEG = 180

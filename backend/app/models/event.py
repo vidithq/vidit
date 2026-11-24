@@ -50,7 +50,7 @@ def _initial_version(context: DefaultExecutionContext) -> int:
     return 0 if state in (STATUS_REQUESTED, STATUS_DETECTED) else 1
 
 
-# Mirrored by ``frontend/src/lib/events.ts::EVENT_TITLE_MAX_LEN``; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 TITLE_MAX_LENGTH = 255
 
 # WGS 84 bounds of ``Event.coords``; ``services.events.validate_coordinates`` enforces them.

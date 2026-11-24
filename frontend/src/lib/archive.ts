@@ -1,18 +1,16 @@
 import { Zip, type ZipInputFile } from "fflate";
 
 import { ApiError } from "./api";
+import { MAX_ARCHIVE_UPLOAD_BYTES } from "./api-constants";
 
 // Allowlisted contents; mirrors `services/tweet_ingest/archive_zip.py`.
 const TWEETS_FILE = "tweets.js";
 const MEDIA_DIR = "tweets_media/";
 
-/** Mirrors `MAX_UPLOAD_BYTES` in `services/tweet_ingest/archive_zip.py`; change both. The
- *  presigned POST pins it as S3 `content-length-range`, so an over-cap body gets an
- *  unretryable 400; checking here fails before a multi-GB upload starts. */
-export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
-
-/** `MAX_UPLOAD_BYTES` for user-facing copy, derived so it can't go stale. */
-export const MAX_UPLOAD_LABEL = `${MAX_UPLOAD_BYTES / 1024 ** 3} GB`;
+/** `MAX_ARCHIVE_UPLOAD_BYTES` for user-facing copy. The presigned POST pins the cap as S3
+ *  `content-length-range`, so an over-cap body gets an unretryable 400; checking here fails
+ *  before a multi-GB upload starts. */
+export const MAX_UPLOAD_LABEL = `${MAX_ARCHIVE_UPLOAD_BYTES / 1024 ** 3} GB`;
 
 /** The stripped archive is still over the cap. Carries `archive_too_large`; the import panel
  *  maps the code to its own copy, so this text serves other callers. */
@@ -157,7 +155,7 @@ async function readCentralDirectory(file: File): Promise<CdEntry[]> {
  *  tests override it to avoid a multi-GB fixture. */
 export async function stripArchive(
   file: File,
-  maxBytes: number = MAX_UPLOAD_BYTES
+  maxBytes: number = MAX_ARCHIVE_UPLOAD_BYTES
 ): Promise<StrippedArchive> {
   const head = await sliceBytes(file, 0, 4);
   if (!(head.length >= 4 && head[0] === 0x50 && head[1] === 0x4b)) {

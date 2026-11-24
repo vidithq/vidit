@@ -354,10 +354,11 @@ jobs:
           if-no-files-found: ignore
 
   # The frontend's enum types (lib/api-types.ts) are GENERATED from the backend
-  # OpenAPI spec, not hand-maintained — so a backend schema change that isn't
-  # regenerated would drift the committed types silently. This job regenerates
-  # them (same `make gen-api-types` chain a contributor runs) and fails if the
-  # result differs from what's committed. Needs both toolchains: uv + Python to
+  # OpenAPI spec, and its backend values (lib/api-constants.ts) from the backend
+  # modules, so a backend change that isn't regenerated would drift the
+  # committed files silently. This job regenerates both (same
+  # `make gen-api-types` chain a contributor runs) and fails if the result
+  # differs from what's committed. Needs both toolchains: uv + Python to
   # dump the spec (like backend-lint), Node + npm to run openapi-typescript
   # (like frontend).
   api-types:
@@ -393,8 +394,8 @@ jobs:
       - name: Regenerate API types from the OpenAPI spec
         run: make gen-api-types
 
-      - name: Fail if the committed types drifted from the spec
-        run: git diff --exit-code frontend/src/lib/api-types.ts
+      - name: Fail if the committed types or constants drifted from the backend
+        run: git diff --exit-code frontend/src/lib/api-types.ts frontend/src/lib/api-constants.ts
 
   # The audit-hygiene gates. jscpd caps total duplication at 1% — the current
   # tree is ~0.5%, so it fails when a contributor adds a meaningful chunk of
