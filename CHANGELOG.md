@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- A pull request adds its changelog entry without the PR link; `scripts/changelog.py release` adds every link when a release is cut.
+
 ## v0.8.3, 2026-11-24
 
 ### Added

@@ -84,9 +84,8 @@ check-dup:
 vulture:
 	cd backend && uv run vulture
 
-# CHANGELOG entries stay one short line each (CONTRIBUTING.md).
 check-changelog:
-	awk 'length($$0) > 300 { print "::error file=CHANGELOG.md,line=" NR "::Line is " length($$0) " characters; keep a CHANGELOG entry to one line of at most 300"; bad=1 } END { exit bad }' CHANGELOG.md
+	python3 scripts/changelog.py check
 
 hygiene: check-dup vulture check-changelog
 	cd frontend && npm run knip
