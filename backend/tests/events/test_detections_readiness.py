@@ -1,4 +1,4 @@
-"""``detection_ready_predicate`` (SQL) must match ``batch._publish_detection`` row by row.
+"""``detection_ready_predicate`` (SQL) must match the publish floor checks row by row.
 
 The third implementation, ``batchCompletionBlockers`` in
 ``frontend/src/lib/events.ts``, is held to the same table by
@@ -9,13 +9,26 @@ from __future__ import annotations
 
 from app.models.event import STATUS_DETECTED, Event
 from app.services.events import detection_ready_predicate
-from app.services.events.batch import _publish_detection
+from app.services.events.rules import _require_proof_image
+from app.services.events.sources import check_publish_floor
 from app.services.evidence_intake import EvidenceIntakeError
 from tests._fixtures import make_detection
 from tests.events._readiness_cases import READINESS_CASES, READY_CASE_NAMES
 
 
-def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict):
+def _clears_publish_floor(geo: Event) -> bool:
+    """The floor a publish holds the stored row to, in the server's check order."""
+    if geo.coords is None or any(not source.links for source in geo.sources):
+        return False
+    try:
+        _require_proof_image(geo.proof)
+        check_publish_floor((s.level, s.media is not None) for s in geo.sources)
+    except EvidenceIntakeError:
+        return False
+    return True
+
+
+def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author):
     """A review supplies the conflict and the source kind, so only the evidence floor can refuse."""
     rows = {
         name: make_detection(db, author, **overrides)
@@ -32,20 +45,7 @@ def test_sql_predicate_and_publish_floor_agree_row_by_row(db, author, conflict):
         )
     }
 
-    floor_ready = set()
-    for name, geo in rows.items():
-        try:
-            _publish_detection(
-                db,
-                event_id=geo.id,
-                current_user=author,
-                kind="smartphone",
-                conflicts=[conflict],
-            )
-        except EvidenceIntakeError:
-            db.rollback()
-        else:
-            floor_ready.add(name)
+    floor_ready = {name for name, geo in rows.items() if _clears_publish_floor(geo)}
 
     assert sql_ready == floor_ready
     # Agreement alone passes two identically wrong rules, so pin the table too.

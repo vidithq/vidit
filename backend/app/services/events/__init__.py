@@ -5,13 +5,12 @@ a shared module imports only other shared modules, ``errors`` imports no sibling
 no verb module imports another.
 
 * ``errors``, ``coordinates``, ``sources``, ``rules``: shared.
-* ``readiness``: the batch publish floor as one SQL predicate.
-* ``create``, ``request``, ``revision``, ``batch``, ``closure``: one per verb.
+* ``readiness``: the stored-row publish floor of a detection as one SQL predicate.
+* ``create``, ``request``, ``revision``, ``closure``: one per verb.
 """
 
 from __future__ import annotations
 
-from .batch import complete_detections
 from .closure import close
 from .coordinates import validate_coordinates
 from .create import create_with_evidence
@@ -31,7 +30,6 @@ __all__ = [
     "ImportProvenance",
     "InvalidCoordinatesError",
     "close",
-    "complete_detections",
     "create_with_evidence",
     "detection_ready_predicate",
     "save_version",

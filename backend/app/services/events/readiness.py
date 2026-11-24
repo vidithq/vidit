@@ -1,7 +1,4 @@
-"""The publish floor of a batch completion, projected into SQL for the queue.
-
-A change to a floor leg in ``batch._publish_detection`` is a change here.
-"""
+"""The publish floor a detection's stored row must clear, projected into SQL for the queue."""
 
 from __future__ import annotations
 
@@ -26,7 +23,7 @@ DetectionReadiness = Literal["all", "ready", "incomplete"]
 
 
 def detection_ready_predicate() -> ColumnElement[bool]:
-    """The publish floor of :func:`_publish_detection`, as one SQL predicate.
+    """The publish floor of a detection's stored row, as one SQL predicate.
 
     Ready means everything the review form cannot supply is on the row:
 

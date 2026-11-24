@@ -103,7 +103,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
 | POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
-| POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
 | POST | `/events/{id}/versions` | 🔒 | Publish a request or a detection, or correct a published event; files the version it supersedes |
 | GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
@@ -270,7 +269,6 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /sources/check` | 120/min |
 | `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
 | `POST /events/{id}/versions` | 30/min |
-| `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
 | `POST /events/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `GET /events/{id}/collections`, `GET /events/{id}/geolocator-invites` | 120/min |
@@ -561,7 +559,7 @@ flowchart LR
   create --> geo
   req -->|"`**POST /events/{id}/request**, owner edit, stays version 0`"| req
   req -->|"`**POST /events/{id}/versions**, anyone, files version 0`"| geo
-  det -->|"`**POST /events/{id}/versions**, **POST /events/batch-complete**, owner, files version 0`"| geo
+  det -->|"`**POST /events/{id}/versions**, owner, files version 0`"| geo
   geo -->|"`**POST /events/{id}/versions**, owner, files a version`"| geo
   req -->|"`**POST /events/{id}/close**, withdraw`"| closed
   det -->|"`**POST /events/{id}/close**, reject`"| closed
@@ -595,7 +593,7 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 
 #### Evidence floor
 
-`POST /events`, `versions` and [`POST /events/batch-complete`](#post-eventsbatch-complete) check the post-write state against one floor, before anything is written:
+`POST /events` and `versions` check the post-write state against one floor, before anything is written:
 
 1. A `direct` or `indirect` source: none is `source_required`, and none with a file is `source_file_required`. A `context` source may be a URL only.
 2. At least one [conflict](#conflicts): `conflict_required`. The `"Other"` conflict keeps the rule satisfiable. No tag is required.
@@ -1323,63 +1321,6 @@ Correct an open request in place. Owner only, and only while `requested`. **No v
 **Response 200:** an [`EventRead`](#get-eventsid), still `"status": "requested"` and `"version_no": 0`.
 
 **Errors:** the [event write errors](#event-write-errors), except `proof_image_required` and `conflict_required`. 403 means you are not the owner. 409 `invalid_state` means the row is not `requested`.
-
----
-
-### `POST /events/batch-complete` 🔒
-
-Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and one source kind per row.
-
-Each row runs in its own transaction against the [evidence floor](#evidence-floor). A row that fails rolls back alone and stays a detection; the rest still publish. A published row files the detection as version 0, becomes version 1, and credits you in `event_geolocators`. Owner only: every targeted detection must be yours.
-
-**Request body:**
-```json
-{
-  "conflict_ids": ["3f1c…"],
-  "rows": [
-    { "event_id": "9a2b…", "kind": "smartphone" },
-    { "event_id": "5c04…", "kind": "drone" }
-  ]
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `conflict_ids` | UUID[] | 1 to 10 [conflicts](#conflicts), applied to every row, replacing the conflicts the detections held |
-| `rows` | object[] | 1 to 100 rows, one per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own. `kind` is one of the [source kinds](#sources) and goes onto every source of the detection that carries a file; a value outside the list is a 422 |
-
-**Response 200:** verdicts in submission order.
-```json
-{
-  "published": 1,
-  "failed": 1,
-  "rows": [
-    { "event_id": "9a2b…", "published": true, "code": null, "message": null },
-    { "event_id": "5c04…", "published": false, "code": "proof_image_required",
-      "message": "At least one proof image is required" }
-  ]
-}
-```
-
-A `200` does not mean every row published; read `published` and `failed`. A failed row's `code`, checked in this order:
-
-| `code` | Case |
-|--------|------|
-| `event_not_found` | Hard-deleted, soft-deleted or withheld by an admin |
-| `invalid_state` | The row is no longer `detected` |
-| `coordinates_required` | The detection carries no point |
-| `proof_image_required` | The stored proof body holds no image |
-| `source_link_required` | A source of the detection carries no URL |
-| `source_required` | The detection carries no `direct` or `indirect` source |
-| `source_file_required` | No `direct` or `indirect` source of the detection carries a file |
-| `internal_error` | A database failure on that row alone. The detection is untouched and retriable as-is |
-
-**Errors** (whole call, evaluated before any row publishes):
-| Code | Case |
-|------|------|
-| 400 | `conflict_required`: no `conflict_ids` entry resolves to a live conflict |
-| 403 | A targeted detection belongs to another analyst; nothing is published |
-| 422 | Empty `conflict_ids` or `rows`, over 10 conflicts, over 100 rows, a repeated `event_id`, a malformed UUID, or a `kind` outside the list |
 
 ---
 
@@ -4419,7 +4360,7 @@ Drop expired `pending_registrations` rows that the inline cleanup on `/auth/regi
 
 ### `POST /admin/maintenance/send-completion-digests` 🛡️
 
-Email every analyst holding unpublished detections one message with the count and a link to their detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them.
+Email every analyst holding unpublished detections one message with the count and a link to their detections queue.
 
 - Selection: live detections only, owned by a live, active account with an address.
 - Ordered by backlog size and cut at 200 analysts per call; call again to cover the rest.

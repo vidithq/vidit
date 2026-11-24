@@ -912,26 +912,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/batch-complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch Complete Events
-         * @description Publish the selected detections: ``detected`` → ``geolocated``.
-         */
-        post: operations["batch_complete_events_api_v1_events_batch_complete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/events/detections": {
         parameters: {
             query?: never;
@@ -3238,64 +3218,6 @@ export interface components {
             /** Authors */
             authors: string[];
         };
-        /**
-         * BatchCompletionCreate
-         * @description Body of ``POST /events/batch-complete``.
-         *
-         *     One conflict set for the whole selection; the source kind varies per row.
-         */
-        BatchCompletionCreate: {
-            /** Conflict Ids */
-            conflict_ids: string[];
-            /** Rows */
-            rows: components["schemas"]["BatchCompletionRowCreate"][];
-        };
-        /**
-         * BatchCompletionRead
-         * @description Response of ``POST /events/batch-complete``: verdicts in submission order.
-         */
-        BatchCompletionRead: {
-            /** Failed */
-            failed: number;
-            /** Published */
-            published: number;
-            /** Rows */
-            rows: components["schemas"]["BatchCompletionRowRead"][];
-        };
-        /**
-         * BatchCompletionRowCreate
-         * @description One detection in a batch completion and the kind of its sources that carry a file.
-         */
-        BatchCompletionRowCreate: {
-            /**
-             * Event Id
-             * Format: uuid
-             */
-            event_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
-        };
-        /**
-         * BatchCompletionRowRead
-         * @description One row's outcome. ``code`` / ``message`` are NULL when published,
-         *     otherwise the stable error code the single-row publish would return.
-         */
-        BatchCompletionRowRead: {
-            /** Code */
-            code: string | null;
-            /**
-             * Event Id
-             * Format: uuid
-             */
-            event_id: string;
-            /** Message */
-            message: string | null;
-            /** Published */
-            published: boolean;
-        };
         /** Body_create_event_api_v1_events_post */
         Body_create_event_api_v1_events_post: {
             /** Conflict Ids */
@@ -3796,7 +3718,7 @@ export interface components {
          * ErrorCode
          * @enum {string}
          */
-        ErrorCode: "admin_error" | "already_approved" | "already_geolocator" | "already_invited" | "already_member" | "already_requested" | "already_resolved" | "approval_not_found" | "approval_request_not_found" | "archive_invalid" | "archive_malformed" | "archive_no_tweets" | "archive_too_large" | "archive_upload_invalid" | "archive_upload_missing" | "collection_not_found" | "conflict_required" | "coordinates_required" | "daily_cap_reached" | "email_already_registered" | "email_pending_confirmation" | "event_error" | "event_not_collectable" | "event_not_found" | "event_not_linkable" | "evidence_intake_error" | "evidence_processing_failed" | "geolocator_cannot_approve" | "geolocator_not_found" | "imagery_not_reopenable" | "invalid_avatar" | "invalid_coordinates" | "invalid_description" | "invalid_file" | "invalid_invite" | "invalid_or_expired_token" | "invalid_proof" | "invalid_source_url" | "invalid_state" | "invalid_tweet_url" | "invalid_unsubscribe_token" | "invalid_zone" | "invite_code_not_active" | "invite_code_not_found" | "invite_code_used" | "invite_minting_disabled" | "invite_not_found" | "invite_quota_exceeded" | "last_manager" | "link_has_no_file" | "link_not_accessible" | "lock_timeout" | "member_not_found" | "not_a_geolocator" | "not_credited" | "not_event_owner" | "not_mutual_follow" | "not_organization_manager" | "not_organization_member" | "not_site_owner" | "not_source_author" | "not_your_post" | "nothing_changed" | "organization_error" | "organization_not_found" | "owner_cannot_leave" | "post_unreadable" | "proof_files_mismatch" | "proof_image_not_found" | "proof_image_required" | "rate_limited" | "read_quota_exceeded" | "recently_declined" | "registration_error" | "report_already_resolved" | "report_error" | "report_not_found" | "report_target_gone" | "report_verdict_not_applicable" | "requests_not_accepted" | "site_contour_required" | "site_not_found" | "site_source_not_found" | "site_version_not_found" | "slug_taken" | "snapshot_not_a_replay_url" | "snapshot_not_a_snapshot_code" | "snapshot_provider_not_allowed" | "snapshot_url_invalid" | "snapshot_url_not_https" | "snapshot_url_too_long" | "source_carries_contour" | "source_file_required" | "source_link_required" | "source_media_not_found" | "source_not_found" | "source_required" | "sponsored_invite_error" | "target_is_geolocator" | "too_many_events" | "too_many_files" | "too_many_geolocators" | "too_many_source_links" | "too_many_sources" | "too_many_uploads" | "unsupported_link" | "upload_expired" | "upload_not_found" | "upload_too_large" | "upstream_busy" | "upstream_unreadable" | "user_not_found" | "username_already_taken" | "username_pending_confirmation" | "version_limit" | "version_mismatch" | "version_not_found" | "x_handle_conflict" | "zone_too_large" | "zone_too_wide";
+        ErrorCode: "admin_error" | "already_approved" | "already_geolocator" | "already_invited" | "already_member" | "already_requested" | "already_resolved" | "approval_not_found" | "approval_request_not_found" | "archive_invalid" | "archive_malformed" | "archive_no_tweets" | "archive_too_large" | "archive_upload_invalid" | "archive_upload_missing" | "collection_not_found" | "conflict_required" | "daily_cap_reached" | "email_already_registered" | "email_pending_confirmation" | "event_error" | "event_not_collectable" | "event_not_found" | "event_not_linkable" | "evidence_intake_error" | "evidence_processing_failed" | "geolocator_cannot_approve" | "geolocator_not_found" | "imagery_not_reopenable" | "invalid_avatar" | "invalid_coordinates" | "invalid_description" | "invalid_file" | "invalid_invite" | "invalid_or_expired_token" | "invalid_proof" | "invalid_source_url" | "invalid_state" | "invalid_tweet_url" | "invalid_unsubscribe_token" | "invalid_zone" | "invite_code_not_active" | "invite_code_not_found" | "invite_code_used" | "invite_minting_disabled" | "invite_not_found" | "invite_quota_exceeded" | "last_manager" | "link_has_no_file" | "link_not_accessible" | "lock_timeout" | "member_not_found" | "not_a_geolocator" | "not_credited" | "not_event_owner" | "not_mutual_follow" | "not_organization_manager" | "not_organization_member" | "not_site_owner" | "not_source_author" | "not_your_post" | "nothing_changed" | "organization_error" | "organization_not_found" | "owner_cannot_leave" | "post_unreadable" | "proof_files_mismatch" | "proof_image_not_found" | "proof_image_required" | "rate_limited" | "read_quota_exceeded" | "recently_declined" | "registration_error" | "report_already_resolved" | "report_error" | "report_not_found" | "report_target_gone" | "report_verdict_not_applicable" | "requests_not_accepted" | "site_contour_required" | "site_not_found" | "site_source_not_found" | "site_version_not_found" | "slug_taken" | "snapshot_not_a_replay_url" | "snapshot_not_a_snapshot_code" | "snapshot_provider_not_allowed" | "snapshot_url_invalid" | "snapshot_url_not_https" | "snapshot_url_too_long" | "source_carries_contour" | "source_file_required" | "source_link_required" | "source_media_not_found" | "source_not_found" | "source_required" | "sponsored_invite_error" | "target_is_geolocator" | "too_many_events" | "too_many_files" | "too_many_geolocators" | "too_many_source_links" | "too_many_sources" | "too_many_uploads" | "unsupported_link" | "upload_expired" | "upload_not_found" | "upload_too_large" | "upstream_busy" | "upstream_unreadable" | "user_not_found" | "username_already_taken" | "username_pending_confirmation" | "version_limit" | "version_mismatch" | "version_not_found" | "x_handle_conflict" | "zone_too_large" | "zone_too_wide";
         /**
          * EventCloseRequest
          * @description Body for ``POST /events/{id}/close``. The reason is required because a
@@ -7725,41 +7647,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_complete_events_api_v1_events_batch_complete_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BatchCompletionCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BatchCompletionRead"];
                 };
             };
             /** @description Validation Error */

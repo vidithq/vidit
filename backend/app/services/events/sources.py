@@ -210,10 +210,6 @@ def planned_floor(planned: list[PlannedSource]) -> list[tuple[SourceLevel, bool]
     return [(p.spec.level, p.has_file) for p in planned]
 
 
-def stored_floor(sources: Iterable[Source]) -> list[tuple[SourceLevel, bool]]:
-    return [(s.level, s.media is not None) for s in sources]
-
-
 def _link_rows(source: Source, links: list[SourceLinkCreate]) -> list[SourceLink]:
     """The new link rows; a re-posted copy keeps the ``archived_at`` it was recorded at."""
     stored = {link.url: link for link in source.links}

@@ -97,7 +97,7 @@ describe("batchCompletionBlockers", () => {
     storage_url: "https://cdn/x.jpg",
   };
   const LINK = { url: "https://x.com/a/status/1", posted_at: null, archived: null };
-  // A detection as the import leaves it, missing only the source kind and conflict the batch supplies.
+  // A detection as the import leaves it, missing only the source kind and conflict the review supplies.
   const importedDetection = {
     coords: { lat: 48.5, lng: 37.8 },
     proof: '<img src="https://x/y.jpg">',
@@ -134,7 +134,7 @@ describe("batchCompletionBlockers", () => {
   });
 
   // Mirrors `backend/tests/events/_readiness_cases.py`, shape for shape; change both. The
-  // readiness rule has three expressions (this one, `services/events/batch._publish_detection`,
+  // readiness rule has three expressions (this one, the floor checks in `test_detections_readiness.py`,
   // and the SQL `services/events.detection_ready_predicate`): a disagreement shows as a row
   // badged Ready that the Ready filter hides.
   describe("agrees with the server's readiness filter, shape for shape", () => {

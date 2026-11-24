@@ -753,7 +753,7 @@ export async function awaitImportJob(
 
 /** Human labels of what stops a detection from publishing; empty means "ready" (only the
  *  conflict and source kind choices remain).
- *  Mirrors the server floor in `services/events/batch._publish_detection`, and only that:
+ *  Mirrors the publish floor a detection's stored row must clear on the server, and only that:
  *  form-level requirements (title) are excluded. The server stays the authority.
  *  `services/events.detection_ready_predicate` is the SQL behind the queue's `readiness`
  *  filter; both are held to `backend/tests/events/_readiness_cases.py` and its mirror in

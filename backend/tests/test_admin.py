@@ -562,9 +562,7 @@ def geolocation(db, regular_user):
     return make_event(db, author=regular_user, kind="unknown")
 
 
-def test_soft_delete_event_stamps_once_and_writes_one_admin_event(
-    admin_user, geolocation, db
-):
+def test_soft_delete_event_stamps_once_and_writes_one_admin_event(admin_user, geolocation, db):
     """A second call keeps the first stamp and writes no second audit row."""
     geo_id, title = geolocation.id, geolocation.title
     headers = login_as(client, admin_user)

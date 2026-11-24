@@ -13,13 +13,6 @@ class InvalidCoordinatesError(EventError):
     code = "invalid_coordinates"
 
 
-class CoordinatesRequiredError(EventError):
-    """The transition requires coordinates and the row has none (a detection may
-    be born without a point)."""
-
-    code = "coordinates_required"
-
-
 class InvalidProofError(EventError):
     code = "invalid_proof"
 

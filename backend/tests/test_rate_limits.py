@@ -521,24 +521,6 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"data": _SUBMIT_FORM, **_SUBMIT_FILE},
     ),
-    # The conflict id resolves to nothing, so the call 400s before any lock.
-    _Case(
-        "post",
-        "/api/v1/events/batch-complete",
-        10,
-        "user",
-        {
-            "json": {
-                "conflict_ids": [str(_MISSING_ID)],
-                "rows": [
-                    {
-                        "event_id": str(_MISSING_ID),
-                        "kind": "smartphone",
-                    }
-                ],
-            }
-        },
-    ),
     _Case(
         "post",
         f"/api/v1/events/{_MISSING_ID}/close",
