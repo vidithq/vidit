@@ -1,4 +1,4 @@
-"""``POST /events/{id}/report`` (open to anonymous viewers) and the takedown it can lead to.
+"""``POST /reports`` against an event (open to anonymous viewers) and the takedown it can lead to.
 
 A withheld event drops off every public read, except the admin detail read.
 """
@@ -29,8 +29,13 @@ def notify_address(monkeypatch):
 def test_anonymous_report_is_accepted(db, author):
     geo = make_event(db, author=author)
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "illegal_content", "details": "Hosting this is unlawful."},
+        "/api/v1/reports",
+        json={
+            "kind": "event",
+            "target_id": str(geo.id),
+            "reason": "illegal_content",
+            "details": "Hosting this is unlawful.",
+        },
     )
     assert response.status_code == 201, response.text
     body = response.json()
@@ -49,8 +54,8 @@ def test_anonymous_report_is_accepted(db, author):
 def test_authenticated_report_records_the_reporter(db, author, second_user):
     geo = make_event(db, author=author)
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "graphic_not_flagged"},
+        "/api/v1/reports",
+        json={"kind": "event", "target_id": str(geo.id), "reason": "graphic_not_flagged"},
         headers=login_as(client, second_user),
     )
     assert response.status_code == 201, response.text
@@ -61,8 +66,8 @@ def test_authenticated_report_records_the_reporter(db, author, second_user):
 def test_report_rejects_an_unknown_reason(db, author):
     geo = make_event(db, author=author)
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "i-just-dont-like-it"},
+        "/api/v1/reports",
+        json={"kind": "event", "target_id": str(geo.id), "reason": "i-just-dont-like-it"},
     )
     assert response.status_code == 422
 
@@ -70,16 +75,16 @@ def test_report_rejects_an_unknown_reason(db, author):
 def test_report_rejects_over_long_details(db, author):
     geo = make_event(db, author=author)
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "other", "details": "x" * 2001},
+        "/api/v1/reports",
+        json={"kind": "event", "target_id": str(geo.id), "reason": "other", "details": "x" * 2001},
     )
     assert response.status_code == 422
 
 
 def test_report_404_for_unknown_event(author):
     response = client.post(
-        f"/api/v1/events/{uuid.uuid4()}/report",
-        json={"reason": "other"},
+        "/api/v1/reports",
+        json={"kind": "event", "target_id": str(uuid.uuid4()), "reason": "other"},
     )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "event_not_found"
@@ -89,8 +94,8 @@ def test_report_404_for_hidden_event(db, author):
     """A withheld event answers 404 to a reporter, like an id that never existed."""
     geo = make_event(db, author=author, hidden=True)
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "other"},
+        "/api/v1/reports",
+        json={"kind": "event", "target_id": str(geo.id), "reason": "other"},
     )
     assert response.status_code == 404
 
@@ -100,8 +105,13 @@ def test_notification_carries_the_report_for_an_anonymous_reporter(
 ):
     geo = make_event(db, author=author, title="Shelling on Market Street")
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "illegal_content", "details": "This footage is unlawful to host."},
+        "/api/v1/reports",
+        json={
+            "kind": "event",
+            "target_id": str(geo.id),
+            "reason": "illegal_content",
+            "details": "This footage is unlawful to host.",
+        },
     )
     assert response.status_code == 201, response.text
 
@@ -127,8 +137,8 @@ def test_notification_names_a_signed_in_reporter(
 ):
     geo = make_event(db, author=author)
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "privacy"},
+        "/api/v1/reports",
+        json={"kind": "event", "target_id": str(geo.id), "reason": "privacy"},
         headers=login_as(client, second_user),
     )
     assert response.status_code == 201, response.text
@@ -147,8 +157,8 @@ def test_no_notification_when_no_address_is_configured(db, author, sent_emails, 
     geo = make_event(db, author=author)
 
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "other"},
+        "/api/v1/reports",
+        json={"kind": "event", "target_id": str(geo.id), "reason": "other"},
     )
     assert response.status_code == 201, response.text
     assert sent_emails == []
@@ -167,8 +177,8 @@ def test_report_survives_a_notification_send_failure(db, author, monkeypatch, no
     geo = make_event(db, author=author)
 
     response = client.post(
-        f"/api/v1/events/{geo.id}/report",
-        json={"reason": "copyright"},
+        "/api/v1/reports",
+        json={"kind": "event", "target_id": str(geo.id), "reason": "copyright"},
     )
     assert response.status_code == 201, response.text
 
@@ -265,3 +275,15 @@ def test_hidden_event_is_frozen_for_its_owner(db, author):
         headers=headers,
     )
     assert close.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"kind": "user", "target_id": str(uuid.uuid4()), "reason": "other"},
+        {"kind": "event", "reason": "other"},
+        {"kind": "event", "target_id": "not-a-uuid", "reason": "other"},
+    ],
+)
+def test_report_rejects_an_unknown_kind_or_a_missing_target(body):
+    assert client.post("/api/v1/reports", json=body).status_code == 422

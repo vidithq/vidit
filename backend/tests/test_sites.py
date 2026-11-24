@@ -916,7 +916,8 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
 
     client.cookies.clear()
     report = client.post(
-        f"{SITES}/{site['id']}/report", json={"reason": "other", "details": "Fake"}
+        "/api/v1/reports",
+        json={"kind": "site", "target_id": str(site["id"]), "reason": "other", "details": "Fake"},
     )
     assert report.status_code == 201, report.text
     assert report.json()["site"]["name"] == site["name"]
@@ -939,7 +940,13 @@ def test_a_reported_site_is_withheld_from_every_public_read_and_restored(db, use
     assert client.get(f"{SITES}/{site['id']}/versions").status_code == 404
     assert _on_map(site["id"], "2025-12-31") is None
     assert client.get(f"/api/v1/events/{event.id}/site-links").json() == []
-    assert client.post(f"{SITES}/{site['id']}/report", json={"reason": "other"}).status_code == 404
+    assert (
+        client.post(
+            "/api/v1/reports",
+            json={"kind": "site", "target_id": str(site["id"]), "reason": "other"},
+        ).status_code
+        == 404
+    )
     headers = login_as(client, owner)
     suggestions = client.get(
         f"{SITES}/suggestions", params={"q": site["name"]}, headers=headers

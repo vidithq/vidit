@@ -766,26 +766,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/collections/{collection_id}/report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Report Collection
-         * @description Report a collection for moderation.
-         */
-        post: operations["report_collection_api_v1_collections__collection_id__report_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/conflicts": {
         parameters: {
             query?: never;
@@ -1280,26 +1260,6 @@ export interface paths {
          * @description Take a co-geolocator's credit off this event: the owner removes one, or you leave.
          */
         delete: operations["remove_geolocator_api_v1_events__event_id__geolocators__username__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/{event_id}/report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Report Event
-         * @description Report an event for moderation.
-         */
-        post: operations["report_event_api_v1_events__event_id__report_post"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1801,6 +1761,26 @@ export interface paths {
         patch: operations["update_organization_member_api_v1_organizations__slug__members__username__patch"];
         trace?: never;
     };
+    "/api/v1/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Content
+         * @description Report an event, a collection or a site for moderation.
+         */
+        post: operations["report_content_api_v1_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -1960,26 +1940,6 @@ export interface paths {
         get: operations["get_site_api_v1_sites__site_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sites/{site_id}/report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Report Site
-         * @description Report a site for moderation.
-         */
-        post: operations["report_site_api_v1_sites__site_id__report_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3419,17 +3379,26 @@ export interface components {
         };
         /**
          * ContentReportCreate
-         * @description Body for ``POST /events/{id}/report``, ``POST /collections/{id}/report``
-         *     and ``POST /sites/{id}/report``: the path names the target.
+         * @description Body for ``POST /reports``: ``kind`` and ``target_id`` name what is reported.
          */
         ContentReportCreate: {
             /** Details */
             details?: string | null;
             /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "event" | "collection" | "site";
+            /**
              * Reason
              * @enum {string}
              */
             reason: "illegal_content" | "graphic_not_flagged" | "copyright" | "privacy" | "other";
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
         };
         /**
          * ContentReportList
@@ -7217,43 +7186,6 @@ export interface operations {
             };
         };
     };
-    report_collection_api_v1_collections__collection_id__report_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ContentReportCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ContentReportRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_conflicts_api_v1_conflicts_get: {
         parameters: {
             query?: {
@@ -8170,43 +8102,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    report_event_api_v1_events__event_id__report_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                event_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ContentReportCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ContentReportRead"];
-                };
             };
             /** @description Validation Error */
             422: {
@@ -9271,6 +9166,41 @@ export interface operations {
             };
         };
     };
+    report_content_api_v1_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentReportRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_api_v1_search_get: {
         parameters: {
             query?: {
@@ -9631,43 +9561,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SiteRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    report_site_api_v1_sites__site_id__report_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                site_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ContentReportCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ContentReportRead"];
                 };
             };
             /** @description Validation Error */

@@ -96,7 +96,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/import-archive` | 🔒 | Enqueue your staged archive (by `upload_key`) for the backfill worker |
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + import counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
-| POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/uploads` | 🔒 | Stage one source file, or each frame of a GIF, for a later event write (multipart, one file) |
 | POST | `/uploads/from-link` | 🔒 | Stage the file of an X, public Telegram or TikTok post, by its link |
 | POST | `/uploads/from-proof` | 🔒 | Stage a copy of a proof image of an event you edit |
@@ -123,7 +122,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/approval-requests/{request_id}/decline` | 🔒 | Decline an approval request addressed to you or to an organization you manage |
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
-| POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
 | GET | `/collections/{id}` | 🌐 | One collection: owner, title, description, tags, item count, date range |
 | PATCH | `/collections/{id}` | 🔒 | Write your collection's title and description |
 | DELETE | `/collections/{id}` | 🔒 | Drop your collection; the events it held stay |
@@ -138,7 +136,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/sites` | 🔒 | Create a site with its first source, its contour and your linked events; answers with the sites its zone overlaps |
 | POST | `/sites/overlaps` | 🔒 | List the sites whose current zone shares area with a drawn zone |
 | GET | `/sites/suggestions` | 🔒 | Sites a point may link to, nearest first or by name |
-| POST | `/sites/{id}/report` | 🌐 | Report a site for moderation (anonymous allowed) |
 | GET | `/sites/{id}` | 🌐 | One site: current zone, last source, sources, contours, linked events |
 | POST | `/sites/{id}/versions` | 🔒 | Edit your site in one transaction, filing one version |
 | GET | `/sites/{id}/versions` | 🌐 | The site's superseded versions, newest first (cursor-paged) |
@@ -198,6 +195,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | **Feed** | | | |
 | GET | `/feed` | 🔒 | Published geolocations, open requests and machine detections, from followed analysts or everyone |
 | GET | `/feed/dates` | 🔒 | The rows of the feed, counted per day |
+| **Reports** | | | |
+| POST | `/reports` | 🌐 | Report an event, a collection or a site for moderation (anonymous allowed) |
 | **Webhooks** | | | |
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
@@ -264,7 +263,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /events`, `POST /events/requests`, `PUT /events/{id}/request` | 30/min |
 | `POST /events/{id}/versions` | 30/min |
 | `POST /events/{id}/close` | 60/min |
-| `POST /events/{id}/report` | 10/hour (per IP only, anonymous allowed) |
+| `POST /reports` | 10/hour (per IP only, anonymous allowed), one bucket for the three kinds |
 | `GET /events/{id}/collections`, `GET /events/{id}/geolocator-invites` | 120/min |
 | `POST /events/{id}/geolocator-invites`, `DELETE /events/{id}/geolocator-invites/{username}` | 30/hour |
 | `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
@@ -276,7 +275,6 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Collections** | |
 | `GET /collections/{id}`, `GET /collections/{id}/events` | 120/min |
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
-| `POST /collections/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
 | `POST /collections/{id}/events` | 10/min |
 | `POST /collections/collectable-count`, `POST /collections/collectable-events` | 60/min |
@@ -284,7 +282,6 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /sites`, `POST /sites/overlaps` | 60/min |
 | `GET /sites/{id}`, `GET /sites/{id}/versions`, `GET /sites/{id}/versions/{version_no}` | 120/min |
 | `POST /sites`, `POST /sites/{id}/versions`, `POST /sites/{id}/sources`, `DELETE /sites/{id}/sources/{source_id}` | 30/min |
-| `POST /sites/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `GET /sites/suggestions`, `GET /events/{id}/site-links` | 120/min |
 | `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
@@ -1108,7 +1105,7 @@ One archive-import job. Owner only: another user's job id reads as 404. Poll it 
 
 Full detail for a single event, in any lifecycle state.
 
-A withheld event (`hidden_at` set by an admin, directly or by resolving a [content report](#post-eventsidreport) as `hidden`) answers 404 for everyone but an admin. A soft-deleted event answers 404 for every caller, admins included.
+A withheld event (`hidden_at` set by an admin, directly or by resolving a [content report](#post-reports) as `hidden`) answers 404 for everyone but an admin. A soft-deleted event answers 404 for every caller, admins included.
 
 **Response 200:** an `EventRead`.
 ```json
@@ -1208,45 +1205,6 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 | Code | Case |
 |------|------|
 | 404 | Event not found, soft-deleted, or withheld and you are not an admin |
-
----
-
-### `POST /events/{id}/report` 🌐
-
-Report an event for moderation. Anonymous allowed; a signed-in reporter is recorded as `reporter_id`.
-
-**Request body:**
-```json
-{
-  "reason": "graphic_not_flagged",
-  "details": "Shows a body at 0:14, no graphic-content warning on the card."
-}
-```
-
-`reason` is one of `illegal_content`, `graphic_not_flagged`, `copyright`, `privacy`, `other`. `details` is optional free text, capped at 2000 characters.
-
-**Response 201:** a `ContentReportRead`.
-```json
-{
-  "id": "uuid",
-  "event_id": "uuid",
-  "collection": null,
-  "site": null,
-  "reason": "graphic_not_flagged",
-  "details": "Shows a body at 0:14, no graphic-content warning on the card.",
-  "reporter_id": null,
-  "created_at": "2026-08-12T09:14:00Z",
-  "resolved_at": null,
-  "resolution": null
-}
-```
-
-One report names one target: `event_id` here, `collection` from [`POST /collections/{id}/report`](#post-collectionsidreport), or `site` from [`POST /sites/{id}/report`](#post-sitesidreport). All land in the same [queue](#get-adminreports).
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | `event_not_found`: unknown id, soft-deleted, or already withheld, one answer for all three |
 
 ---
 
@@ -2258,31 +2216,6 @@ A body without `title` or without `description` is a 422. Repeated ids collapse 
 
 ---
 
-### `POST /collections/{id}/report` 🌐
-
-Report a collection for moderation. Same body, `reason` values and anonymous rule as [`POST /events/{id}/report`](#post-eventsidreport).
-
-**Response 201:** a [`ContentReportRead`](#post-eventsidreport) with `event_id` `null` and `collection` set:
-```json
-{
-  "collection": {
-    "id": "uuid",
-    "title": "Zaporizhzhia plant",
-    "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
-    "deleted_at": null
-  }
-}
-```
-
-The report lands in the [`GET /admin/reports`](#get-adminreports) queue. A collection takes the verdicts `hidden` and `dismissed`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | `collection_not_found`: unknown id, already withheld, pending erasure, or owned by a soft-deleted account, one answer for all four. An admin gets it too |
-
----
-
 ### `GET /collections/{id}` 🌐
 
 One collection's header: owner, title, description, tags, item count, and the date range its items span.
@@ -2353,7 +2286,7 @@ Write your collection's title and description. Owner only. Both fields are requi
 
 Drop your collection and its memberships. Owner only. The events it held are untouched.
 
-While an open [content report](#post-collectionsidreport) names the collection, the delete only marks it pending erasure (`collections.deleted_at`). The response is the same 204. The collection answers 404 at once for everyone but an admin, its owner included, and leaves every list and search. A moderator still reads it in full from the [report queue](#get-adminreports). Resolving the last open report on it, whatever the verdict, erases it. A collection that no open report names is erased at once.
+While an open [content report](#post-reports) names the collection, the delete only marks it pending erasure (`collections.deleted_at`). The response is the same 204. The collection answers 404 at once for everyone but an admin, its owner included, and leaves every list and search. A moderator still reads it in full from the [report queue](#get-adminreports). Resolving the last open report on it, whatever the verdict, erases it. A collection that no open report names is erased at once.
 
 **Response 204:** no body.
 
@@ -2686,30 +2619,6 @@ Results sort by `distance_m`, then by name. A suggestion with a `null` `distance
 |------|------|
 | 400 | `invalid_coordinates`: one of `lat` and `lng` alone, or a value out of range |
 | 422 | `margin_m` outside 0 to 10000, or `q` empty or over 100 characters |
-
----
-
-### `POST /sites/{id}/report` 🌐
-
-Report a site for moderation. Same body, `reason` values and anonymous rule as [`POST /events/{id}/report`](#post-eventsidreport).
-
-**Response 201:** a [`ContentReportRead`](#post-eventsidreport) with `event_id` and `collection` `null` and `site` set:
-```json
-{
-  "site": {
-    "id": "uuid",
-    "name": "Saky airbase",
-    "owner": { "id": "uuid", "username": "analyst", "avatar_url": null }
-  }
-}
-```
-
-The report lands in the [`GET /admin/reports`](#get-adminreports) queue. A site takes the verdicts `hidden` and `dismissed`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | `site_not_found`: unknown id, already withheld, or owned by a soft-deleted account. An admin gets it too |
 
 ---
 
@@ -4196,7 +4105,7 @@ The moderation queue: open reports first, then newest first within each group, e
 
 **Query params:** `page` and `per_page`, see [Pagination](#pagination).
 
-**Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-eventsidreport).
+**Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-reports).
 
 - `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `audit_log`, not on the wire.
 - A row names one target. `event_id` carries the event's id, and `event` its `id`, current `title` and `owner`. `collection` carries the collection's current title and owner, read at queue time, and `deleted_at`, the time its owner deleted it while a report was open, or `null`. Such a collection takes every verdict a live one takes. `site` carries the site's current `id`, `name` and `owner`.
@@ -4303,6 +4212,57 @@ Email every analyst holding unpublished detections one message with the count an
 ```
 
 </details>
+
+---
+
+## Reports
+
+### `POST /reports` 🌐
+
+Report an event, a collection or a site for moderation. Anonymous allowed; a signed-in reporter is recorded as `reporter_id`.
+
+**Request body:**
+```json
+{
+  "kind": "event",
+  "target_id": "uuid",
+  "reason": "graphic_not_flagged",
+  "details": "Shows a body at 0:14, no graphic-content warning on the card."
+}
+```
+
+| Field | Rule |
+|---|---|
+| `kind` | `event`, `collection` or `site` |
+| `target_id` | The id of the reported event, collection or site |
+| `reason` | `illegal_content`, `graphic_not_flagged`, `copyright`, `privacy` or `other` |
+| `details` | Optional free text, at most 2000 characters |
+
+**Response 201:** a `ContentReportRead`. It names its one target: `event_id` for an event, `collection` for a collection, `site` for a site, and `null` in the other two.
+```json
+{
+  "id": "uuid",
+  "event_id": "uuid",
+  "collection": null,
+  "site": null,
+  "reason": "graphic_not_flagged",
+  "details": "Shows a body at 0:14, no graphic-content warning on the card.",
+  "reporter_id": null,
+  "created_at": "2026-08-12T09:14:00Z",
+  "resolved_at": null,
+  "resolution": null
+}
+```
+
+A reported collection reads as `{"id", "title", "owner", "deleted_at"}`, and a reported site as `{"id", "name", "owner"}`. Every report lands in the [`GET /admin/reports`](#get-adminreports) queue. A collection or a site takes the verdicts `hidden` and `dismissed`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `event_not_found`: unknown id, soft-deleted, or already withheld, one answer for all three |
+| 404 | `collection_not_found`: unknown id, already withheld, pending erasure, or owned by a soft-deleted account. An admin gets it too |
+| 404 | `site_not_found`: unknown id, already withheld, or owned by a soft-deleted account. An admin gets it too |
+| 422 | A `kind` outside the list, a missing or malformed `target_id`, an unknown `reason`, or `details` over 2000 characters |
 
 ---
 

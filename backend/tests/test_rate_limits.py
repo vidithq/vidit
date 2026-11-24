@@ -530,10 +530,10 @@ _DOCUMENTED_LIMITS = [
     # Open to anonymous viewers; 10/hour is the tightest write limit.
     _Case(
         "post",
-        f"/api/v1/events/{_MISSING_ID}/report",
+        "/api/v1/reports",
         10,
         "anon",
-        {"json": {"reason": "other"}},
+        {"json": {"kind": "event", "target_id": str(_MISSING_ID), "reason": "other"}},
     ),
     _Case(
         "post",
@@ -626,7 +626,6 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"json": {"version_no": 1, "name": "probe", "kind": "depot"}},
     ),
-    _Case("post", f"/api/v1/sites/{_MISSING_ID}/report", 10, "anon", {"json": {"reason": "other"}}),
     _Case(
         "post",
         f"/api/v1/events/{_MISSING_ID}/site-links",

@@ -6,10 +6,9 @@ the verb its arguments.
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Query, Request, Response, status
+from fastapi import APIRouter, Query, Request, Response, status
 
 from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
-from app.models.content_report import ContentReport
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list
 from app.schemas.collection import (
@@ -23,10 +22,8 @@ from app.schemas.collection import (
     SearchMatch,
 )
 from app.schemas.event import EventList
-from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import collections as collections_service
 from app.services import collections_bulk
-from app.services import reports as reports_service
 from app.services.pagination import (
     MAX_PAGE_SIZE,
     decode_chronological_cursor,
@@ -89,31 +86,6 @@ def list_collectable_matches(
     )
     rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
     return [build_event_list(event) for event in rows]
-
-
-@router.post(
-    "/{collection_id}/report",
-    response_model=ContentReportRead,
-    status_code=status.HTTP_201_CREATED,
-)
-@limiter.limit("10/hour")
-def report_collection(
-    request: Request,
-    collection_id: uuid.UUID,
-    body: ContentReportCreate,
-    background_tasks: BackgroundTasks,
-    current_user: OptionalUser,
-    db: DB,
-) -> ContentReport:
-    """Report a collection for moderation."""
-    return reports_service.create_report(
-        db,
-        kind="collection",
-        target_id=collection_id,
-        body=body,
-        reporter=current_user,
-        background_tasks=background_tasks,
-    )
 
 
 @router.get("/{collection_id}", response_model=CollectionRead)

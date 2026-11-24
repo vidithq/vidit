@@ -797,8 +797,13 @@ def test_anonymous_report_of_a_collection_is_accepted(db, owner):
     client.cookies.clear()
 
     response = client.post(
-        f"/api/v1/collections/{collection.id}/report",
-        json={"reason": "privacy", "details": "This shelf names a private address."},
+        "/api/v1/reports",
+        json={
+            "kind": "collection",
+            "target_id": str(collection.id),
+            "reason": "privacy",
+            "details": "This shelf names a private address.",
+        },
     )
     assert response.status_code == 201, response.text
     body = response.json()
@@ -820,8 +825,8 @@ def test_anonymous_report_of_a_collection_is_accepted(db, owner):
 def test_authenticated_report_of_a_collection_records_the_reporter(db, owner, stranger):
     collection = _make_collection(db, owner=owner)
     response = client.post(
-        f"/api/v1/collections/{collection.id}/report",
-        json={"reason": "copyright"},
+        "/api/v1/reports",
+        json={"kind": "collection", "target_id": str(collection.id), "reason": "copyright"},
         headers=login_as(client, stranger),
     )
     assert response.status_code == 201, response.text
@@ -835,13 +840,19 @@ def test_report_a_withheld_collection_is_404(db, owner, admin_user):
     _moderate(collection.id, hidden=True, as_user=admin_user)
     client.cookies.clear()
 
-    response = client.post(f"/api/v1/collections/{collection.id}/report", json={"reason": "other"})
+    response = client.post(
+        "/api/v1/reports",
+        json={"kind": "collection", "target_id": str(collection.id), "reason": "other"},
+    )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "collection_not_found"
 
 
 def test_report_an_unknown_collection_is_404():
-    response = client.post(f"/api/v1/collections/{uuid.uuid4()}/report", json={"reason": "other"})
+    response = client.post(
+        "/api/v1/reports",
+        json={"kind": "collection", "target_id": str(uuid.uuid4()), "reason": "other"},
+    )
     assert response.status_code == 404
 
 
@@ -858,7 +869,10 @@ def report_ids(db):
 
 def _report(collection: Collection, report_ids: list[uuid.UUID]) -> str:
     client.cookies.clear()
-    response = client.post(f"/api/v1/collections/{collection.id}/report", json={"reason": "other"})
+    response = client.post(
+        "/api/v1/reports",
+        json={"kind": "collection", "target_id": str(collection.id), "reason": "other"},
+    )
     assert response.status_code == 201, response.text
     report_ids.append(uuid.UUID(response.json()["id"]))
     return response.json()["id"]
@@ -912,7 +926,13 @@ def test_owner_delete_under_an_open_report_withholds_the_collection(
     path = f"/api/v1/collections/{collection.id}"
     assert client.get(path).status_code == 404
     assert client.get(f"{path}/events").status_code == 404
-    assert client.post(f"{path}/report", json={"reason": "other"}).status_code == 404
+    assert (
+        client.post(
+            "/api/v1/reports",
+            json={"kind": "collection", "target_id": str(collection.id), "reason": "other"},
+        ).status_code
+        == 404
+    )
     assert client.get(path, headers=login_as(client, stranger)).status_code == 404
     client.cookies.clear()
     assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []

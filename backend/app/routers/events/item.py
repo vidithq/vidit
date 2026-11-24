@@ -5,19 +5,16 @@ import uuid
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     Form,
     HTTPException,
     Query,
     Request,
     Response,
-    status,
 )
 from sqlalchemy.orm import Session
 
 from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
-from app.models.content_report import ContentReport
 from app.models.event import TITLE_MAX_LENGTH, Event, EventVersion
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import (
@@ -39,10 +36,8 @@ from app.schemas.event import (
     EventVersionList,
     EventVersionRead,
 )
-from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import collections as collections_service
 from app.services import events as events_service
-from app.services import reports as reports_service
 from app.services import versions as versions_service
 from app.services.geolocator_credit import has_pending_invite
 from app.services.pagination import (
@@ -59,33 +54,6 @@ def _serialize_event(db: Session, geo: Event) -> EventRead:
     read = build_event_read(geo)
     read.version_zero = versions_service.version_zero(db, geo)
     return read
-
-
-# Ahead of the ``/{event_id}`` reads: the extra path segment means the
-# catch-all cannot shadow it.
-@router.post(
-    "/{event_id}/report",
-    response_model=ContentReportRead,
-    status_code=status.HTTP_201_CREATED,
-)
-@limiter.limit("10/hour")
-def report_event(
-    request: Request,
-    event_id: uuid.UUID,
-    body: ContentReportCreate,
-    background_tasks: BackgroundTasks,
-    current_user: OptionalUser,
-    db: DB,
-) -> ContentReport:
-    """Report an event for moderation."""
-    return reports_service.create_report(
-        db,
-        kind="event",
-        target_id=event_id,
-        body=body,
-        reporter=current_user,
-        background_tasks=background_tasks,
-    )
 
 
 @router.get("/{event_id}", response_model=EventRead)

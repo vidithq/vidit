@@ -1763,7 +1763,7 @@ flowchart LR
   gc["`**GET /collections/{id}**`"]:::core
   gce["`**GET /collections/{id}/events**
   walked to the end once`"]:::core
-  act["`**POST /collections/{id}/report**
+  act["`**POST /reports**
   **DELETE /collections/{id}**`"]:::core
   ge["`**GET /events/{id}/collections**`"]:::core
   pick["`**GET /events**, **GET /search**
@@ -1916,7 +1916,7 @@ Each surface supplies the item's action, because the two writes differ: one even
 - **Add to collection** opens a `PopoverPanel` under the button holding [`<BulkAddToCollectionPanel>`](../frontend/src/components/collections/BulkAddToCollectionPanel.tsx). It carries no heading of its own: the head row already counts the selection (*N selected*), and the panel's `label` names the dialog. Each collection from `GET /users/{username}/collections` takes **Add** as its action in the shared picker. After the write the row reads *Added N* in an accent `<Pill>` with a check in place of **Add**, since the panel offers no undo; its count grows by what was added, and a line under the list says what the write did (*44 added, 3 already in this collection*) with a link to the collection. A refusal shows in the `ErrorNotice` and leaves the row actionable. The selection stays, so the same set can go on a second collection.
 - The footer, **New collection**, opens `/collections/new` carrying the selection (see [Writing a collection](#writing-a-collection)).
 
-**Moderation.** [`POST /collections/{id}/report`](api.md#post-collectionsidreport) writes to the event reports' table, and [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) lists collection reports beside event reports. A collection row prints the title as the link and the owner's `<AuthorByline>` beside it, since an admin recognises a collection by name rather than id. Its verdicts are `Hide the collection`, which confirms in a `<ConfirmDialog>` like the event takedown, and `Dismiss`. It offers no `Mark graphic`, since a collection carries no media of its own.
+**Moderation.** [`POST /reports`](api.md#post-reports) with `kind: collection` writes to the event reports' table, and [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) lists collection reports beside event reports. A collection row prints the title as the link and the owner's `<AuthorByline>` beside it, since an admin recognises a collection by name rather than id. Its verdicts are `Hide the collection`, which confirms in a `<ConfirmDialog>` like the event takedown, and `Dismiss`. It offers no `Mark graphic`, since a collection carries no media of its own.
 
 ### Sites
 

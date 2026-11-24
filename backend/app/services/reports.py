@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Literal, NamedTuple
+from typing import Any, NamedTuple
 
 from fastapi import BackgroundTasks
 from sqlalchemy import ColumnElement, func
@@ -72,8 +72,6 @@ class _Target(NamedTuple):
     not_found_message: str
 
 
-ReportKind = Literal["event", "collection", "site"]
-
 # Each kind files against ``ContentReport.<kind>_id`` (``ck_content_reports_one_target``). The
 # visibility read is viewer-blind: an admin reads a withheld collection or site, but nobody files
 # a report against one.
@@ -93,13 +91,12 @@ _TARGETS: dict[str, _Target] = {
 def create_report(
     db: Session,
     *,
-    kind: ReportKind,
-    target_id: uuid.UUID,
     body: ContentReportCreate,
     reporter: User | None,
     background_tasks: BackgroundTasks,
 ) -> ContentReport:
     """File one report against a target a reader can see, or raise the target's not-found error."""
+    kind, target_id = body.kind, body.target_id
     target = _TARGETS[kind]
     visible = (
         db.query(target.model.id, target.title.label("title"))

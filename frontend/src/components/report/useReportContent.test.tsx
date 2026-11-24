@@ -88,11 +88,7 @@ describe("useReportContent state per target", () => {
 });
 
 describe("useReportContent per kind", () => {
-  it.each([
-    ["event", "/events/x1/report"],
-    ["collection", "/collections/x1/report"],
-    ["site", "/sites/x1/report"],
-  ] as const)("sends a %s report to its endpoint", async (kind, path) => {
+  it.each(["event", "collection", "site"] as const)("sends a %s report", async (kind) => {
     apiFetch.mockResolvedValue(undefined);
     render(<ReportHarness kind={kind} eventId="x1" />);
 
@@ -105,9 +101,14 @@ describe("useReportContent per kind", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send report" }));
 
     await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith(path, {
+      expect(apiFetch).toHaveBeenCalledWith("/reports", {
         method: "POST",
-        body: JSON.stringify({ reason: "illegal_content", details: "not what it says" }),
+        body: JSON.stringify({
+          kind,
+          target_id: "x1",
+          reason: "illegal_content",
+          details: "not what it says",
+        }),
       })
     );
     expect(apiFetch).toHaveBeenCalledTimes(1);

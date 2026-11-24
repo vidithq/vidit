@@ -21,24 +21,20 @@ export const REPORT_REASON_LABELS: Record<ContentReportReason, string> = {
   other: "Something else",
 };
 
-/** What a report is filed against. Mirrors the three report routes. */
-export type ReportTargetKind = "event" | "collection" | "site";
+type ContentReportCreate = components["schemas"]["ContentReportCreate"];
 
-const REPORT_ROUTE: Record<ReportTargetKind, string> = {
-  event: "events",
-  collection: "collections",
-  site: "sites",
-};
+/** What a report is filed against. */
+export type ReportTargetKind = ContentReportCreate["kind"];
 
-/** `POST /{kind}s/{id}/report`. Open to anyone: `apiFetch` omits the CSRF header with no
- *  session cookie. The backend caps it per IP. */
+/** `POST /reports`. Open to anyone: `apiFetch` omits the CSRF header with no session cookie.
+ *  The backend caps it per IP. */
 export function reportContent(
   kind: ReportTargetKind,
   id: string,
-  body: components["schemas"]["ContentReportCreate"],
+  body: Omit<ContentReportCreate, "kind" | "target_id">,
 ): Promise<ContentReport> {
-  return apiFetch<ContentReport>(
-    `/${REPORT_ROUTE[kind]}/${encodeURIComponent(id)}/report`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
+  return apiFetch<ContentReport>("/reports", {
+    method: "POST",
+    body: JSON.stringify({ kind, target_id: id, ...body }),
+  });
 }
