@@ -1,16 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
-const session = vi.hoisted(() => ({ user: { x_handle: null as string | null } }));
-
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: session.user }) }));
+import { describe, expect, it } from "vitest";
 
 import { AccountXHandle } from "./AccountXHandle";
 
 describe("AccountXHandle", () => {
   it("shows the bound handle read-only", () => {
-    session.user = { x_handle: "osint_hawk" };
-    render(<AccountXHandle />);
+    render(<AccountXHandle xHandle="osint_hawk" />);
 
     expect(screen.getByText("@osint_hawk")).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
@@ -19,8 +14,7 @@ describe("AccountXHandle", () => {
   });
 
   it("says so when no handle is linked", () => {
-    session.user = { x_handle: null };
-    render(<AccountXHandle />);
+    render(<AccountXHandle xHandle={null} />);
 
     expect(screen.getByText("No X handle linked")).toBeInTheDocument();
   });
