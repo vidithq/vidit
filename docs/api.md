@@ -192,8 +192,8 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/organizations/{slug}/invite-candidates` | 🔒 | The mutual follows you can invite (managers) |
 | POST | `/organizations/{slug}/invites` | 🔒 | Invite an analyst in mutual follow (org managers) |
 | DELETE | `/organizations/{slug}/invites/{username}` | 🔒 | Withdraw a pending invite (managers) |
-| POST | `/organizations/{slug}/invite/accept` | 🔒 | Accept your invite |
-| POST | `/organizations/{slug}/invite/decline` | 🔒 | Decline your invite |
+| POST | `/organizations/{slug}/invites/accept` | 🔒 | Accept your invite |
+| POST | `/organizations/{slug}/invites/decline` | 🔒 | Decline your invite |
 | PATCH | `/organizations/{slug}/members/{username}` | 🔒 | Change a member's role (managers) |
 | DELETE | `/organizations/{slug}/members/{username}` | 🔒 | Remove a member, or leave |
 | **Feed** | | | |
@@ -315,7 +315,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /organizations/{slug}/invites`, `GET /organizations/{slug}/invite-candidates`, `GET /organizations/{slug}/approval-requests` | 60/min |
 | `POST /organizations/{slug}/invites` | 30/hour |
 | `DELETE /organizations/{slug}/invites/{username}` | 60/min |
-| `POST /organizations/{slug}/invite/accept`, `POST /organizations/{slug}/invite/decline` | 30/min |
+| `POST /organizations/{slug}/invites/accept`, `POST /organizations/{slug}/invites/decline` | 30/min |
 | `PATCH`/`DELETE /organizations/{slug}/members/{username}` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/organizations/{slug}` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` · `POST /admin/users/{id}/restore` | 30/hour |
@@ -3599,8 +3599,8 @@ flowchart LR
   inviter and invitee follow each other`"]:::core
   pending[("`**organization_members**
   state invited: one row per analyst and organization`")]:::store
-  accept["`**POST .../invite/accept**`"]:::shared
-  decline["`**POST .../invite/decline**`"]:::shared
+  accept["`**POST .../invites/accept**`"]:::shared
+  decline["`**POST .../invites/decline**`"]:::shared
   members[("`**organization_members**
   state active, role: manager or member`")]:::store
   manage["`**PATCH** or **DELETE .../members/{username}**
@@ -3754,7 +3754,7 @@ Withdraw the pending invite of the analyst with that username. Managers only. No
 
 ---
 
-### `POST /organizations/{slug}/invite/accept` 🔒
+### `POST /organizations/{slug}/invites/accept` 🔒
 
 Accept your pending invite and join as a `member`. Writes an `organization_invite_accepted` [notification](#notifications) for the org manager who invited you.
 
@@ -3762,7 +3762,7 @@ Accept your pending invite and join as a `member`. Writes an `organization_invit
 
 ---
 
-### `POST /organizations/{slug}/invite/decline` 🔒
+### `POST /organizations/{slug}/invites/decline` 🔒
 
 Decline your pending invite. Nobody is notified.
 

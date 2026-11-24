@@ -93,7 +93,7 @@ export function answerOrganizationInvite(
   slug: string,
   answer: InviteAnswer,
 ): Promise<void> {
-  return apiFetch<void>(`${organizationPath(slug)}/invite/${answer}`, { method: "POST" });
+  return apiFetch<void>(`${organizationPath(slug)}/invites/${answer}`, { method: "POST" });
 }
 
 export function setOrganizationRole(

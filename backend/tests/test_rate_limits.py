@@ -663,8 +663,8 @@ _DOCUMENTED_LIMITS = [
     _Case("get", f"{_ORG}/approval-requests", 60),
     _Case("post", f"{_ORG}/invites", 30, "user", {"json": {"username": "nobody"}}),
     _Case("delete", f"{_ORG}/invites/{_MISSING_ID}", 60),
-    _Case("post", f"{_ORG}/invite/accept", 30),
-    _Case("post", f"{_ORG}/invite/decline", 30),
+    _Case("post", f"{_ORG}/invites/accept", 30),
+    _Case("post", f"{_ORG}/invites/decline", 30),
     _Case("patch", f"{_ORG}/members/nobody", 60, "user", {"json": {"role": "member"}}),
     _Case("delete", f"{_ORG}/members/nobody", 60),
     # The named first admin does not exist, so the create 404s after the limiter.

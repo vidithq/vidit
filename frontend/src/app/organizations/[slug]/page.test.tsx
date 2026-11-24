@@ -167,7 +167,7 @@ describe("OrganizationPage", () => {
     ).toBeTruthy();
     fireEvent.click(accept);
     await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invite/accept", {
+      expect(apiFetch).toHaveBeenCalledWith("/organizations/osw/invites/accept", {
         method: "POST",
       }),
     );

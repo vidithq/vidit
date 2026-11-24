@@ -1673,46 +1673,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/organizations/{slug}/invite/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Accept Organization Invite
-         * @description Accept your pending invite and join as a member.
-         */
-        post: operations["accept_organization_invite_api_v1_organizations__slug__invite_accept_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organizations/{slug}/invite/decline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decline Organization Invite
-         * @description Decline your pending invite.
-         */
-        post: operations["decline_organization_invite_api_v1_organizations__slug__invite_decline_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/organizations/{slug}/invites": {
         parameters: {
             query?: never;
@@ -1731,6 +1691,46 @@ export interface paths {
          * @description Invite an analyst in mutual follow with you. Org managers only.
          */
         post: operations["create_organization_invite_api_v1_organizations__slug__invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Organization Invite
+         * @description Accept your pending invite and join as a member.
+         */
+        post: operations["accept_organization_invite_api_v1_organizations__slug__invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invites/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Organization Invite
+         * @description Decline your pending invite.
+         */
+        post: operations["decline_organization_invite_api_v1_organizations__slug__invites_decline_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9055,68 +9055,6 @@ export interface operations {
             };
         };
     };
-    accept_organization_invite_api_v1_organizations__slug__invite_accept_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decline_organization_invite_api_v1_organizations__slug__invite_decline_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_organization_invites_api_v1_organizations__slug__invites_get: {
         parameters: {
             query?: never;
@@ -9175,6 +9113,68 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationInviteRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_organization_invite_api_v1_organizations__slug__invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_organization_invite_api_v1_organizations__slug__invites_decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
