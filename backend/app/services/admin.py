@@ -33,6 +33,7 @@ from app.schemas.admin import (
     AdminPurgeDetectedResponse,
     AdminUserDeleteResponse,
     AdminUserRestoreResponse,
+    AdminUserUpdate,
 )
 from app.schemas.user import AuthorRef
 from app.services import geolocator_credit, organizations, versions
@@ -319,29 +320,41 @@ def search_users(db: Session, *, query: str, limit: int = 20) -> list[User]:
     )
 
 
-def set_user_x_handle(
+def update_user(
     db: Session,
     *,
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
-    x_handle: str | None,
+    body: AdminUserUpdate,
 ) -> User:
-    user = db.query(User).filter(User.id == user_id).first()
+    """Apply the fields ``body`` sets, in one transaction, with one audit row per field."""
+    user = db.query(User).filter(User.id == user_id).with_for_update().first()
     if user is None or user.deleted_at is not None:
         # A link on a tombstoned account would resurrect with the row.
         raise UserNotFoundError("User not found")
 
-    if x_handle is not None:
-        _assert_x_handle_free(db, x_handle, exclude_user_id=user_id)
+    if "x_handle" in body.model_fields_set:
+        x_handle = body.x_handle
+        if x_handle is not None:
+            _assert_x_handle_free(db, x_handle, exclude_user_id=user_id)
+            action = "x_handle_linked"
+            target = {"user_id": str(user.id), "x_handle": x_handle}
+        else:
+            action = "x_handle_cleared"
+            target = {"user_id": str(user.id)}
         user.x_handle = x_handle
-        action = "x_handle_linked"
-        target = {"user_id": str(user.id), "x_handle": x_handle}
-    else:
-        user.x_handle = None
-        action = "x_handle_cleared"
-        target = {"user_id": str(user.id)}
+        log_admin_event(db, actor_id=actor_id, action=action, target=target)
 
-    log_admin_event(db, actor_id=actor_id, action=action, target=target)
+    enabled = body.invite_minting
+    if enabled is not None and user.is_invite_minting_enabled != enabled:
+        user.is_invite_minting_enabled = enabled
+        log_admin_event(
+            db,
+            actor_id=actor_id,
+            action="invite_minting_enabled" if enabled else "invite_minting_disabled",
+            target={"user_id": str(user.id)},
+        )
+
     try:
         db.commit()
     except IntegrityError as exc:
@@ -350,28 +363,6 @@ def set_user_x_handle(
         db.rollback()
         raise XHandleConflictError("X handle already linked to another user") from exc
     db.refresh(user)
-    return user
-
-
-def set_invite_minting(
-    db: Session,
-    *,
-    actor_id: uuid.UUID,
-    user_id: uuid.UUID,
-    enabled: bool,
-) -> User:
-    user = db.query(User).filter(User.id == user_id).with_for_update().first()
-    if user is None or user.deleted_at is not None:
-        raise UserNotFoundError("User not found")
-    if user.is_invite_minting_enabled != enabled:
-        user.is_invite_minting_enabled = enabled
-        log_admin_event(
-            db,
-            actor_id=actor_id,
-            action="invite_minting_enabled" if enabled else "invite_minting_disabled",
-            target={"user_id": str(user.id)},
-        )
-        db.commit()
     return user
 
 

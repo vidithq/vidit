@@ -199,8 +199,10 @@ def test_list_returns_own_codes_and_quota_state(sponsor, make_user, admin_user, 
 
 
 def test_admin_switch_turns_minting_off_and_on(sponsor, admin_user, db):
-    path = f"/api/v1/admin/users/{sponsor.id}/invite-minting"
-    response = client.patch(path, json={"enabled": False}, headers=login_as(client, admin_user))
+    path = f"/api/v1/admin/users/{sponsor.id}"
+    response = client.patch(
+        path, json={"invite_minting": False}, headers=login_as(client, admin_user)
+    )
     assert response.status_code == 200
     assert response.json()["is_invite_minting_enabled"] is False
 
@@ -210,7 +212,9 @@ def test_admin_switch_turns_minting_off_and_on(sponsor, admin_user, db):
     listing = client.get(_MINE, headers=login_as(client, sponsor)).json()
     assert listing["minting_enabled"] is False
 
-    response = client.patch(path, json={"enabled": True}, headers=login_as(client, admin_user))
+    response = client.patch(
+        path, json={"invite_minting": True}, headers=login_as(client, admin_user)
+    )
     assert response.json()["is_invite_minting_enabled"] is True
     assert _mint(sponsor, _handle()).status_code == 201
 
@@ -224,20 +228,24 @@ def test_admin_switch_turns_minting_off_and_on(sponsor, admin_user, db):
 
 
 def test_admin_switch_is_idempotent_without_a_second_audit_row(sponsor, admin_user, db):
-    path = f"/api/v1/admin/users/{sponsor.id}/invite-minting"
+    path = f"/api/v1/admin/users/{sponsor.id}"
     headers = login_as(client, admin_user)
     for _ in range(2):
-        assert client.patch(path, json={"enabled": False}, headers=headers).status_code == 200
+        assert (
+            client.patch(path, json={"invite_minting": False}, headers=headers).status_code == 200
+        )
     assert db.query(AuditLog).filter(AuditLog.actor_id == admin_user.id).count() == 1
 
 
 def test_admin_switch_is_admin_only_and_404s_an_unknown_user(sponsor, admin_user):
-    path = f"/api/v1/admin/users/{sponsor.id}/invite-minting"
-    response = client.patch(path, json={"enabled": False}, headers=login_as(client, sponsor))
+    path = f"/api/v1/admin/users/{sponsor.id}"
+    response = client.patch(path, json={"invite_minting": False}, headers=login_as(client, sponsor))
     assert response.status_code == 403
 
-    missing = f"/api/v1/admin/users/{uuid.uuid4()}/invite-minting"
-    response = client.patch(missing, json={"enabled": False}, headers=login_as(client, admin_user))
+    missing = f"/api/v1/admin/users/{uuid.uuid4()}"
+    response = client.patch(
+        missing, json={"invite_minting": False}, headers=login_as(client, admin_user)
+    )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "user_not_found"
 

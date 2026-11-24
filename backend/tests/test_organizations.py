@@ -95,7 +95,7 @@ def test_analysts_and_organizations_share_one_x_handle_namespace(
     headers = login_as(client, site_admin)
     analyst = make_user()
     taken = client.patch(
-        f"/api/v1/admin/users/{analyst.id}/x-handle",
+        f"/api/v1/admin/users/{analyst.id}",
         json={"x_handle": org["x_handle"]},
         headers=headers,
     )

@@ -217,8 +217,7 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/collections/{id}/moderation` | 🛡️ | Withhold a collection from public view, or restore it (moves `hidden_at`) |
 | PATCH | `/admin/sites/{id}/moderation` | 🛡️ | Withhold a site from public view, or restore it (moves `hidden_at`) |
-| PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
-| PATCH | `/admin/users/{id}/invite-minting` | 🛡️ | Turn minting invite codes from Settings on or off for one analyst |
+| PATCH | `/admin/users/{id}` | 🛡️ | Link or clear the bot-attribution X handle, and turn invite minting from Settings on or off |
 | DELETE | `/admin/approvals/{approval_id}` | 🛡️ | Delete one approval; its reviewer or organization can approve that version again |
 | GET | `/admin/reports` | 🛡️ | The moderation queue: event, collection and site reports, open ones first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
@@ -320,7 +319,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `PATCH`/`DELETE /organizations/{slug}/members/{username}` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/organizations/{slug}` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` · `POST /admin/users/{id}/restore` | 30/hour |
-| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `PATCH /admin/users/{id}/invite-minting` · `DELETE /admin/events/{id}` · `DELETE /admin/approvals/{approval_id}` | 60/hour |
+| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}` · `DELETE /admin/events/{id}` · `DELETE /admin/approvals/{approval_id}` | 60/hour |
 | `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `PATCH /admin/sites/{id}/moderation` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
@@ -3246,7 +3245,7 @@ The invite codes you minted, newest first, used or not, and where your daily quo
 |-------|---------|
 | `items[].link` | The register page on the app's public origin (`FRONTEND_URL`), with the code in the `code` query parameter. The register form reads it and locks the code field. |
 | `items[].status` | `active`, `exhausted`, `revoked` or `expired`, computed at read time like [`GET /admin/invite-codes`](#get-admininvite-codes). |
-| `minting_enabled` | `false` when an admin turned minting off for your account through [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting). Settings then hides the mint form. |
+| `minting_enabled` | `false` when an admin turned minting off for your account through [`PATCH /admin/users/{id}`](#patch-adminusersid). Settings then hides the mint form. |
 | `minted_today` | The codes you minted since 00:00 UTC, revoked ones included. |
 | `resets_at` | The next 00:00 UTC, when `minted_today` returns to 0. |
 
@@ -3274,7 +3273,7 @@ flowchart LR
 
   mint["`**POST /users/me/invite-codes**
   switch and daily quota checked`"]:::spec
-  switch["`**PATCH /admin/users/{id}/invite-minting**`"]:::shared
+  switch["`**PATCH /admin/users/{id}**`"]:::shared
   revoke["`**POST /admin/invite-codes/{id}/revoke**`"]:::shared
   selfrevoke["`**POST /users/me/invite-codes/{id}/revoke**
   your own active code`"]:::spec
@@ -3906,7 +3905,7 @@ Mint a new invite code. Audited as `invite_created`.
 }
 ```
 
-Every code is single-use. `expires_in_days` is optional (omit or `null` for no expiry), at most `365`. `x_handle` is optional and binds the code to an X handle, normalized like [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle). Redemption copies it onto the new account; if the handle is linked elsewhere by then, the account is created without it.
+Every code is single-use. `expires_in_days` is optional (omit or `null` for no expiry), at most `365`. `x_handle` is optional and binds the code to an X handle, normalized like [`PATCH /admin/users/{id}`](#patch-adminusersid). Redemption copies it onto the new account; if the handle is linked elsewhere by then, the account is created without it.
 
 **Response 201:** an `AdminInviteCodeRead`, as in the list below.
 
@@ -3987,7 +3986,7 @@ Case-insensitive substring match on username or email. `%` and `_` match themsel
 ]
 ```
 
-`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `is_invite_minting_enabled` is the switch [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting) moves.
+`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `is_invite_minting_enabled` is the switch [`PATCH /admin/users/{id}`](#patch-adminusersid) moves.
 
 ### `DELETE /admin/users/{id}` 🛡️
 
@@ -4107,37 +4106,30 @@ Idempotent: a site already in the requested state keeps its timestamp and files 
 
 ---
 
-### `PATCH /admin/users/{id}/x-handle` 🛡️
+### `PATCH /admin/users/{id}` 🛡️
 
-Link or clear the X handle the bot attributes mentions to. Registration copies an invite-bound handle; this endpoint links any other handle and repairs one that failed to link at redemption. An analyst cannot change their own handle. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited as `x_handle_linked` or `x_handle_cleared`.
+Change an analyst's admin-held settings. Send one field or both; an omitted field keeps its value.
+
+| Field | Rule |
+|---|---|
+| `x_handle` | The X handle the bot attributes mentions to. Registration copies an invite-bound handle; this field links any other handle and repairs one that failed to link at redemption. An analyst cannot change their own handle. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited as `x_handle_linked` or `x_handle_cleared` |
+| `invite_minting` | `true` or `false`: whether the analyst can mint invite codes from Settings ([`POST /users/me/invite-codes`](#post-usersmeinvite-codes)). Codes the analyst already minted stay valid; revoke them one by one. Audited as `invite_minting_enabled` or `invite_minting_disabled`, with target `{"user_id": …}`. Setting the value the account already holds writes no audit row |
+
+Both fields apply in one transaction, with one audit row per field.
 
 **Request body:**
 ```json
-{ "x_handle": "@osint_hawk" }
+{ "x_handle": "@osint_hawk", "invite_minting": false }
 ```
 
 **Response 200:** the updated `AdminUserRead`.
 
-**Response 409:** `x_handle_conflict`, the handle is linked to another account or an organization.
-
-**Response 422:** value outside the handle alphabet.
-
-**Response 404:** unknown or soft-deleted user id.
-
-### `PATCH /admin/users/{id}/invite-minting` 🛡️
-
-Turn minting invite codes from Settings ([`POST /users/me/invite-codes`](#post-usersmeinvite-codes)) on or off for one analyst. Codes the analyst already minted stay valid; revoke them one by one. Audited as `invite_minting_enabled` or `invite_minting_disabled`, with target `{"user_id": …}`. Setting the value the account already holds writes no audit row.
-
-**Request body:**
-```json
-{ "enabled": false }
-```
-
-**Response 200:** the updated `AdminUserRead`.
-
-**Response 404:** `user_not_found`, an unknown or soft-deleted user id.
-
-**Response 422:** a missing or non-boolean `enabled`, or an unknown field.
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `user_not_found`: an unknown or soft-deleted user id |
+| 409 | `x_handle_conflict`: the handle is linked to another account or an organization |
+| 422 | An empty body, an unknown field, a handle outside the alphabet, or an `invite_minting` that is not a boolean |
 
 ### `DELETE /admin/approvals/{approval_id}` 🛡️
 
@@ -4167,7 +4159,7 @@ Create an organization and name its first org manager, who joins at once without
 }
 ```
 
-`slug` is 2 to 50 lowercase letters, digits or inner hyphens, and never changes. `x_handle` is normalized like [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle). `bio` and `external_links` follow [`PATCH /users/me`](#patch-usersme). `approval_request_audience` is `following` (the default), `everyone` or `nobody`, as on [`PATCH /organizations/{slug}`](#patch-organizationsslug). Only `name`, `slug` and `manager_username` are required.
+`slug` is 2 to 50 lowercase letters, digits or inner hyphens, and never changes. `x_handle` is normalized like [`PATCH /admin/users/{id}`](#patch-adminusersid). `bio` and `external_links` follow [`PATCH /users/me`](#patch-usersme). `approval_request_audience` is `following` (the default), `everyone` or `nobody`, as on [`PATCH /organizations/{slug}`](#patch-organizationsslug). Only `name`, `slug` and `manager_username` are required.
 
 **Response 201:** the organization, as on [`GET /organizations/{slug}`](#get-organizationsslug).
 

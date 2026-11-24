@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.user import AuthorRef
 
@@ -30,7 +30,7 @@ class AdminInviteCodeCreate(BaseModel):
     Every code is single-use, so the audit trail (`used_by_id`, `used_at`) is
     unambiguous. ``x_handle`` optionally binds the code to an X handle that
     redemption copies onto the new account (same normalization as
-    `PATCH /admin/users/{id}/x-handle`).
+    `PATCH /admin/users/{id}`).
     """
 
     expires_in_days: int | None = Field(default=None, ge=1, le=365)
@@ -107,12 +107,6 @@ class AdminUserRead(BaseModel):
     # Who minted the code the account was created from (``User.sponsor``).
     sponsor: AuthorRef | None
     created_at: datetime
-
-
-class UserInviteMintingUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool
 
 
 class AdminUserDeleteResponse(BaseModel):
@@ -226,14 +220,30 @@ class AdminPurgeDetectedResponse(BaseModel):
     media_count: int = 0
 
 
-class UserXHandleUpdate(BaseModel):
-    """Body for `PATCH /admin/users/{id}/x-handle`.
+class AdminUserUpdate(BaseModel):
+    """Body for `PATCH /admin/users/{id}`: an omitted field keeps its value.
 
-    ``None`` clears the link; a value is normalized and must match
-    ``^[a-z0-9_]{1,15}$`` (else 422).
+    ``x_handle`` set to ``None`` clears the link; a value is normalized and must
+    match ``^[a-z0-9_]{1,15}$`` (else 422).
     """
 
-    x_handle: XHandle | None
+    model_config = ConfigDict(extra="forbid")
+
+    x_handle: XHandle | None = None
+    invite_minting: bool | None = None
+
+    @field_validator("invite_minting")
+    @classmethod
+    def _invite_minting_not_null(cls, value: bool | None) -> bool:
+        if value is None:
+            raise ValueError("invite_minting is true or false")
+        return value
+
+    @model_validator(mode="after")
+    def _one_field_at_least(self) -> "AdminUserUpdate":
+        if not self.model_fields_set:
+            raise ValueError("Send x_handle, invite_minting, or both")
+        return self
 
 
 class AdminMaintenanceResponse(BaseModel):

@@ -666,7 +666,7 @@ def test_confirm_survives_taken_x_handle_and_skips_link(
 ):
     """A handle linked to another account between mint and redemption: registration succeeds without the link.
 
-    The admin x-handle endpoint is the repair path.
+    The admin user PATCH is the repair path.
     """
     bound = f"bh{uuid.uuid4().hex[:10]}"
     holder = User(

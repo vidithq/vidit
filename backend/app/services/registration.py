@@ -328,7 +328,7 @@ def confirm_pending_registration(db: Session, raw_token: str) -> User:
     if invite.x_handle is not None:
         # Copy the invite's X handle (bot-attribution link). Fail-soft if the
         # handle was taken since mint: registration still succeeds and the
-        # admin x-handle endpoint repairs it.
+        # admin user PATCH repairs it.
         if x_handle_holder(db, invite.x_handle) is not None:
             logger.warning(
                 "Invite %s bound x_handle %s but a user or organization already carries it; "

@@ -703,17 +703,10 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"/api/v1/admin/invite-codes/{_MISSING_ID}", 60, "admin"),
     _Case(
         "patch",
-        f"/api/v1/admin/users/{_MISSING_ID}/x-handle",
+        f"/api/v1/admin/users/{_MISSING_ID}",
         60,
         "admin",
         {"json": {"x_handle": "someone"}},
-    ),
-    _Case(
-        "patch",
-        f"/api/v1/admin/users/{_MISSING_ID}/invite-minting",
-        60,
-        "admin",
-        {"json": {"enabled": False}},
     ),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}", 30, "admin"),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),

@@ -440,7 +440,7 @@ def test_search_users_returns_empty_for_blank_query(admin_user):
 )
 def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db, raw, handle):
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": raw},
         headers=login_as(client, admin_user),
     )
@@ -457,12 +457,12 @@ def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db, 
 
 def test_clear_x_handle_with_null(admin_user, regular_user, db):
     client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": "to_clear"},
         headers=login_as(client, admin_user),
     )
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": None},
         headers=login_as(client, admin_user),
     )
@@ -480,7 +480,7 @@ def test_clear_x_handle_with_null(admin_user, regular_user, db):
 def test_set_x_handle_409_when_linked_to_another_user(admin_user, regular_user, make_user, db):
     held_handle = make_user("holder", x_handle=f"held{uuid.uuid4().hex[:8]}").x_handle
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": held_handle},
         headers=login_as(client, admin_user),
     )
@@ -500,11 +500,45 @@ def test_set_x_handle_409_when_linked_to_another_user(admin_user, regular_user, 
 )
 def test_set_x_handle_422_on_invalid_handle(admin_user, regular_user, bad_handle):
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": bad_handle},
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 422
+
+
+def test_update_user_sets_both_fields_with_one_audit_row_each(admin_user, regular_user, db):
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}",
+        json={"x_handle": "both_fields", "invite_minting": False},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["x_handle"] == "both_fields"
+    assert response.json()["is_invite_minting_enabled"] is False
+    actions = sorted(
+        row.action for row in db.query(AuditLog).filter(AuditLog.actor_id == admin_user.id)
+    )
+    assert actions == ["invite_minting_disabled", "x_handle_linked"]
+
+
+@pytest.mark.parametrize("body", [{}, {"invite_minting": None}, {"enabled": False}])
+def test_update_user_422_on_an_empty_or_unknown_body(admin_user, regular_user, body):
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}", json=body, headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 422
+
+
+def test_update_user_leaves_an_omitted_field_alone(admin_user, regular_user, db):
+    regular_user.x_handle = "kept_handle"
+    db.commit()
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}",
+        json={"invite_minting": False},
+        headers=login_as(client, admin_user),
+    )
+    assert response.json()["x_handle"] == "kept_handle"
 
 
 def test_set_x_handle_404_for_soft_deleted_user(admin_user, regular_user, db):
@@ -512,7 +546,7 @@ def test_set_x_handle_404_for_soft_deleted_user(admin_user, regular_user, db):
     db.commit()
 
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": "some_handle"},
         headers=login_as(client, admin_user),
     )

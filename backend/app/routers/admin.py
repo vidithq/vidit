@@ -25,8 +25,7 @@ from app.schemas.admin import (
     AdminUserDeleteResponse,
     AdminUserRead,
     AdminUserRestoreResponse,
-    UserInviteMintingUpdate,
-    UserXHandleUpdate,
+    AdminUserUpdate,
 )
 from app.schemas.event import EventVersionRead
 from app.schemas.organization import (
@@ -192,33 +191,13 @@ def search_users(db: DB, current_user: AdminUser, q: str = "") -> list[User]:
     return admin_service.search_users(db, query=q)
 
 
-@router.patch("/users/{user_id}/x-handle", response_model=AdminUserRead)
+@router.patch("/users/{user_id}", response_model=AdminUserRead)
 @limiter.limit("60/hour")
-def set_user_x_handle(
-    request: Request, user_id: uuid.UUID, body: UserXHandleUpdate, db: DB, current_user: AdminUser
+def update_user_admin(
+    request: Request, user_id: uuid.UUID, body: AdminUserUpdate, db: DB, current_user: AdminUser
 ) -> User:
-    """Link or clear the X handle the bot attributes mentions to."""
-    return admin_service.set_user_x_handle(
-        db,
-        actor_id=current_user.id,
-        user_id=user_id,
-        x_handle=body.x_handle,
-    )
-
-
-@router.patch("/users/{user_id}/invite-minting", response_model=AdminUserRead)
-@limiter.limit("60/hour")
-def set_user_invite_minting(
-    request: Request,
-    user_id: uuid.UUID,
-    body: UserInviteMintingUpdate,
-    db: DB,
-    current_user: AdminUser,
-) -> User:
-    """Turn minting invite codes from Settings on or off for one analyst."""
-    return admin_service.set_invite_minting(
-        db, actor_id=current_user.id, user_id=user_id, enabled=body.enabled
-    )
+    """Link or clear the bot-attribution X handle, or turn invite minting on or off."""
+    return admin_service.update_user(db, actor_id=current_user.id, user_id=user_id, body=body)
 
 
 @router.post("/users/{user_id}/restore", response_model=AdminUserRestoreResponse)

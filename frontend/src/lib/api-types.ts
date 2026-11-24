@@ -406,7 +406,11 @@ export interface paths {
         delete: operations["delete_user_admin_api_v1_admin_users__user_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update User Admin
+         * @description Link or clear the bot-attribution X handle, or turn invite minting on or off.
+         */
+        patch: operations["update_user_admin_api_v1_admin_users__user_id__patch"];
         trace?: never;
     };
     "/api/v1/admin/users/{user_id}/detected-events": {
@@ -429,26 +433,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/users/{user_id}/invite-minting": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Set User Invite Minting
-         * @description Turn minting invite codes from Settings on or off for one analyst.
-         */
-        patch: operations["set_user_invite_minting_api_v1_admin_users__user_id__invite_minting_patch"];
-        trace?: never;
-    };
     "/api/v1/admin/users/{user_id}/restore": {
         parameters: {
             query?: never;
@@ -467,26 +451,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}/x-handle": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Set User X Handle
-         * @description Link or clear the X handle the bot attributes mentions to.
-         */
-        patch: operations["set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch"];
         trace?: never;
     };
     "/api/v1/auth/change-password": {
@@ -2662,7 +2626,7 @@ export interface components {
          *     Every code is single-use, so the audit trail (`used_by_id`, `used_at`) is
          *     unambiguous. ``x_handle`` optionally binds the code to an X handle that
          *     redemption copies onto the new account (same normalization as
-         *     `PATCH /admin/users/{id}/x-handle`).
+         *     `PATCH /admin/users/{id}`).
          */
         AdminInviteCodeCreate: {
             /** Expires In Days */
@@ -2903,6 +2867,19 @@ export interface components {
             user_id: string;
             /** Username */
             username: string;
+        };
+        /**
+         * AdminUserUpdate
+         * @description Body for `PATCH /admin/users/{id}`: an omitted field keeps its value.
+         *
+         *     ``x_handle`` set to ``None`` clears the link; a value is normalized and must
+         *     match ``^[a-z0-9_]{1,15}$`` (else 422).
+         */
+        AdminUserUpdate: {
+            /** Invite Minting */
+            invite_minting?: boolean | null;
+            /** X Handle */
+            x_handle?: string | null;
         };
         /**
          * ApprovalCreate
@@ -5615,11 +5592,6 @@ export interface components {
             /** Storage Url */
             storage_url: string;
         };
-        /** UserInviteMintingUpdate */
-        UserInviteMintingUpdate: {
-            /** Enabled */
-            enabled: boolean;
-        };
         /**
          * UserPreferencesRead
          * @description Effective values, each beside the default it falls back to.
@@ -5786,17 +5758,6 @@ export interface components {
             /** Bio */
             bio?: string | null;
             external_links?: components["schemas"]["ExternalLinks"] | null;
-        };
-        /**
-         * UserXHandleUpdate
-         * @description Body for `PATCH /admin/users/{id}/x-handle`.
-         *
-         *     ``None`` clears the link; a value is normalized and must match
-         *     ``^[a-z0-9_]{1,15}$`` (else 422).
-         */
-        UserXHandleUpdate: {
-            /** X Handle */
-            x_handle: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -6580,6 +6541,43 @@ export interface operations {
             };
         };
     };
+    update_user_admin_api_v1_admin_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     purge_detected_events_admin_api_v1_admin_users__user_id__detected_events_delete: {
         parameters: {
             query?: never;
@@ -6613,43 +6611,6 @@ export interface operations {
             };
         };
     };
-    set_user_invite_minting_api_v1_admin_users__user_id__invite_minting_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserInviteMintingUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     restore_user_admin_api_v1_admin_users__user_id__restore_post: {
         parameters: {
             query?: never;
@@ -6670,43 +6631,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminUserRestoreResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserXHandleUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserRead"];
                 };
             };
             /** @description Validation Error */

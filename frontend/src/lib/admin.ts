@@ -51,24 +51,15 @@ export function searchUsers(query: string): Promise<AdminUser[]> {
   );
 }
 
-export function setUserXHandle(
+/** `PATCH /admin/users/{id}`: link or clear the X handle, or turn invite minting from Settings
+ *  on or off. An omitted field keeps its value. */
+export function updateUser(
   userId: string,
-  body: { x_handle: string | null }
+  body: components["schemas"]["AdminUserUpdate"]
 ): Promise<AdminUser> {
-  return apiFetch<AdminUser>(`/admin/users/${userId}/x-handle`, {
+  return apiFetch<AdminUser>(`/admin/users/${userId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
-  });
-}
-
-/** Turn minting invite codes from Settings on or off for one analyst. */
-export function setUserInviteMinting(
-  userId: string,
-  enabled: boolean
-): Promise<AdminUser> {
-  return apiFetch<AdminUser>(`/admin/users/${userId}/invite-minting`, {
-    method: "PATCH",
-    body: JSON.stringify({ enabled }),
   });
 }
 
