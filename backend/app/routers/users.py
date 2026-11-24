@@ -114,13 +114,13 @@ def mint_my_invite_code(
     return sponsored_invites.mint(db, sponsor=current_user, x_handle=body.x_handle)
 
 
-@router.post("/me/invite-codes/{code_id}/revoke", response_model=SponsoredInviteCodeRead)
+@router.post("/me/invite-codes/{invite_code_id}/revoke", response_model=SponsoredInviteCodeRead)
 @limiter.limit("30/hour")
 def revoke_my_invite_code(
-    request: Request, code_id: uuid.UUID, db: DB, current_user: CurrentUser
+    request: Request, invite_code_id: uuid.UUID, db: DB, current_user: CurrentUser
 ) -> SponsoredInviteCodeRead:
     """Revoke an active invite code you minted. The row stays in your list."""
-    return sponsored_invites.revoke_own(db, sponsor=current_user, code_id=code_id)
+    return sponsored_invites.revoke_own(db, sponsor=current_user, invite_code_id=invite_code_id)
 
 
 @router.get("/{username}", response_model=UserProfile)

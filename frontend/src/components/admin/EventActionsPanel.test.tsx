@@ -82,7 +82,7 @@ describe("<EventActionsPanel>", () => {
 
   it("hard deletes only on the second click of its in-place confirm", async () => {
     apiFetch.mockResolvedValue({
-      geolocation_id: ID,
+      event_id: ID,
       title: "Strike",
       mode: "hard",
       media_count: 2,

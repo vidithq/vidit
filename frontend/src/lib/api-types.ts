@@ -84,7 +84,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/events/{geolocation_id}": {
+    "/api/v1/admin/events/{event_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -95,16 +95,16 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete Geolocation Admin
+         * Delete Event Admin
          * @description Remove a geolocation: soft by default, `?hard=true` for GDPR erasure.
          */
-        delete: operations["delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete"];
+        delete: operations["delete_event_admin_api_v1_admin_events__event_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/events/{geolocation_id}/moderation": {
+    "/api/v1/admin/events/{event_id}/moderation": {
         parameters: {
             query?: never;
             header?: never;
@@ -121,10 +121,10 @@ export interface paths {
          * Set Event Moderation
          * @description Set an event's moderation state directly, with no report behind it.
          */
-        patch: operations["set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch"];
+        patch: operations["set_event_moderation_api_v1_admin_events__event_id__moderation_patch"];
         trace?: never;
     };
-    "/api/v1/admin/events/{geolocation_id}/versions/{version_no}/redact": {
+    "/api/v1/admin/events/{event_id}/versions/{version_no}/redact": {
         parameters: {
             query?: never;
             header?: never;
@@ -137,7 +137,7 @@ export interface paths {
          * Redact Event Version
          * @description Blank one filed version of an event's history.
          */
-        post: operations["redact_event_version_api_v1_admin_events__geolocation_id__versions__version_no__redact_post"];
+        post: operations["redact_event_version_api_v1_admin_events__event_id__versions__version_no__redact_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -165,7 +165,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/invite-codes/{invite_id}": {
+    "/api/v1/admin/invite-codes/{invite_code_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -179,13 +179,13 @@ export interface paths {
          * Delete Invite Code
          * @description Drop the row of a code no account was created from. 409 once it was.
          */
-        delete: operations["delete_invite_code_api_v1_admin_invite_codes__invite_id__delete"];
+        delete: operations["delete_invite_code_api_v1_admin_invite_codes__invite_code_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/invite-codes/{invite_id}/revoke": {
+    "/api/v1/admin/invite-codes/{invite_code_id}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -198,7 +198,7 @@ export interface paths {
          * Revoke Invite Code
          * @description Retire a code while keeping its row. The list still shows it.
          */
-        post: operations["revoke_invite_code_api_v1_admin_invite_codes__invite_id__revoke_post"];
+        post: operations["revoke_invite_code_api_v1_admin_invite_codes__invite_code_id__revoke_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1121,7 +1121,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}": {
+    "/api/v1/events/{event_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1135,7 +1135,7 @@ export interface paths {
          *     A withheld event (``hidden_at``) answers 404 for everyone but an admin,
          *     who must read what was taken down to judge the report.
          */
-        get: operations["get_event_api_v1_events__geolocation_id__get"];
+        get: operations["get_event_api_v1_events__event_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1144,7 +1144,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approval-request-targets": {
+    "/api/v1/events/{event_id}/approval-request-targets": {
         parameters: {
             query?: never;
             header?: never;
@@ -1155,7 +1155,7 @@ export interface paths {
          * List Approval Request Targets
          * @description Analysts and organizations you can ask to approve this event now (geolocators only).
          */
-        get: operations["list_approval_request_targets_api_v1_events__geolocation_id__approval_request_targets_get"];
+        get: operations["list_approval_request_targets_api_v1_events__event_id__approval_request_targets_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1164,7 +1164,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approval-requests": {
+    "/api/v1/events/{event_id}/approval-requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -1176,21 +1176,21 @@ export interface paths {
          * @description Open approval requests on this event: all of them for its geolocators, those addressed to
          *     you or to an organization you manage otherwise.
          */
-        get: operations["list_approval_requests_api_v1_events__geolocation_id__approval_requests_get"];
+        get: operations["list_approval_requests_api_v1_events__event_id__approval_requests_get"];
         put?: never;
         /**
          * Create Approval Request
          * @description Ask an analyst or an organization to approve the live version of a published event you
          *     geolocated.
          */
-        post: operations["create_approval_request_api_v1_events__geolocation_id__approval_requests_post"];
+        post: operations["create_approval_request_api_v1_events__event_id__approval_requests_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approval-requests/{request_id}/decline": {
+    "/api/v1/events/{event_id}/approval-requests/{request_id}/decline": {
         parameters: {
             query?: never;
             header?: never;
@@ -1203,14 +1203,14 @@ export interface paths {
          * Decline Approval Request
          * @description Decline an approval request addressed to you, or to an organization you belong to.
          */
-        post: operations["decline_approval_request_api_v1_events__geolocation_id__approval_requests__request_id__decline_post"];
+        post: operations["decline_approval_request_api_v1_events__event_id__approval_requests__request_id__decline_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approvals": {
+    "/api/v1/events/{event_id}/approvals": {
         parameters: {
             query?: never;
             header?: never;
@@ -1222,21 +1222,21 @@ export interface paths {
          * @description The approvals of the event: one version's, every version's, or one analyst's across
          *     versions, and whether you may approve it.
          */
-        get: operations["list_approvals_api_v1_events__geolocation_id__approvals_get"];
+        get: operations["list_approvals_api_v1_events__event_id__approvals_get"];
         put?: never;
         /**
          * Approve Event
          * @description Approve the live version of a published geolocation you are not credited on, as
          *     yourself or, as one of its members, for an organization.
          */
-        post: operations["approve_event_api_v1_events__geolocation_id__approvals_post"];
+        post: operations["approve_event_api_v1_events__event_id__approvals_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/close": {
+    "/api/v1/events/{event_id}/close": {
         parameters: {
             query?: never;
             header?: never;
@@ -1249,14 +1249,14 @@ export interface paths {
          * Close Event
          * @description Close an event: withdraw, reject or retract it (owner-only).
          */
-        post: operations["close_event_api_v1_events__geolocation_id__close_post"];
+        post: operations["close_event_api_v1_events__event_id__close_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/collections": {
+    "/api/v1/events/{event_id}/collections": {
         parameters: {
             query?: never;
             header?: never;
@@ -1267,7 +1267,7 @@ export interface paths {
          * List Event Collections
          * @description Your collections, each saying whether this event is already on it.
          */
-        get: operations["list_event_collections_api_v1_events__geolocation_id__collections_get"];
+        get: operations["list_event_collections_api_v1_events__event_id__collections_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1276,7 +1276,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocator-invites": {
+    "/api/v1/events/{event_id}/geolocator-invites": {
         parameters: {
             query?: never;
             header?: never;
@@ -1288,20 +1288,20 @@ export interface paths {
          * @description Pending invitations to share this event's credit: all of them for the owner, your own
          *     otherwise.
          */
-        get: operations["list_geolocator_invites_api_v1_events__geolocation_id__geolocator_invites_get"];
+        get: operations["list_geolocator_invites_api_v1_events__event_id__geolocator_invites_get"];
         put?: never;
         /**
          * Invite Geolocator
          * @description Invite an analyst to share this published event's credit (owner only).
          */
-        post: operations["invite_geolocator_api_v1_events__geolocation_id__geolocator_invites_post"];
+        post: operations["invite_geolocator_api_v1_events__event_id__geolocator_invites_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocator-invites/accept": {
+    "/api/v1/events/{event_id}/geolocator-invites/accept": {
         parameters: {
             query?: never;
             header?: never;
@@ -1314,14 +1314,14 @@ export interface paths {
          * Accept Geolocator Invite
          * @description Accept your invitation: you join this event's geolocators.
          */
-        post: operations["accept_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_accept_post"];
+        post: operations["accept_geolocator_invite_api_v1_events__event_id__geolocator_invites_accept_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocator-invites/decline": {
+    "/api/v1/events/{event_id}/geolocator-invites/decline": {
         parameters: {
             query?: never;
             header?: never;
@@ -1334,14 +1334,14 @@ export interface paths {
          * Decline Geolocator Invite
          * @description Decline your invitation.
          */
-        post: operations["decline_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_decline_post"];
+        post: operations["decline_geolocator_invite_api_v1_events__event_id__geolocator_invites_decline_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocator-invites/{username}": {
+    "/api/v1/events/{event_id}/geolocator-invites/{username}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1355,13 +1355,13 @@ export interface paths {
          * Withdraw Geolocator Invite
          * @description Withdraw a pending invitation (owner only).
          */
-        delete: operations["withdraw_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites__username__delete"];
+        delete: operations["withdraw_geolocator_invite_api_v1_events__event_id__geolocator_invites__username__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocators/{username}": {
+    "/api/v1/events/{event_id}/geolocators/{username}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1375,13 +1375,13 @@ export interface paths {
          * Remove Geolocator
          * @description Take a co-geolocator's credit off this event: the owner removes one, or you leave.
          */
-        delete: operations["remove_geolocator_api_v1_events__geolocation_id__geolocators__username__delete"];
+        delete: operations["remove_geolocator_api_v1_events__event_id__geolocators__username__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/report": {
+    "/api/v1/events/{event_id}/report": {
         parameters: {
             query?: never;
             header?: never;
@@ -1394,14 +1394,14 @@ export interface paths {
          * Report Event
          * @description Report an event for moderation.
          */
-        post: operations["report_event_api_v1_events__geolocation_id__report_post"];
+        post: operations["report_event_api_v1_events__event_id__report_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/request": {
+    "/api/v1/events/{event_id}/request": {
         parameters: {
             query?: never;
             header?: never;
@@ -1414,14 +1414,14 @@ export interface paths {
          * Update Event Request
          * @description Correct an open request, overwriting it in place (owner-only).
          */
-        post: operations["update_event_request_api_v1_events__geolocation_id__request_post"];
+        post: operations["update_event_request_api_v1_events__event_id__request_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/site-links": {
+    "/api/v1/events/{event_id}/site-links": {
         parameters: {
             query?: never;
             header?: never;
@@ -1432,20 +1432,20 @@ export interface paths {
          * List Site Links
          * @description The visible sites this event is linked to, oldest link first.
          */
-        get: operations["list_site_links_api_v1_events__geolocation_id__site_links_get"];
+        get: operations["list_site_links_api_v1_events__event_id__site_links_get"];
         put?: never;
         /**
          * Link Site
          * @description Link your published event to a site, or change the effect of its link (idempotent).
          */
-        post: operations["link_site_api_v1_events__geolocation_id__site_links_post"];
+        post: operations["link_site_api_v1_events__event_id__site_links_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/site-links/{site_id}": {
+    "/api/v1/events/{event_id}/site-links/{site_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1459,13 +1459,13 @@ export interface paths {
          * Unlink Site
          * @description Remove your event's link to a site (owner only). Idempotent (204).
          */
-        delete: operations["unlink_site_api_v1_events__geolocation_id__site_links__site_id__delete"];
+        delete: operations["unlink_site_api_v1_events__event_id__site_links__site_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/site-suggestions": {
+    "/api/v1/events/{event_id}/site-suggestions": {
         parameters: {
             query?: never;
             header?: never;
@@ -1477,7 +1477,7 @@ export interface paths {
          * @description Sites this event may link to, nearest first: those within ``margin_m`` metres of the
          *     event, or with ``q``, those whose name contains it. Capped at 20.
          */
-        get: operations["list_site_suggestions_api_v1_events__geolocation_id__site_suggestions_get"];
+        get: operations["list_site_suggestions_api_v1_events__event_id__site_suggestions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1486,7 +1486,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/versions": {
+    "/api/v1/events/{event_id}/versions": {
         parameters: {
             query?: never;
             header?: never;
@@ -1497,20 +1497,20 @@ export interface paths {
          * List Event Versions
          * @description The event's superseded versions, newest first.
          */
-        get: operations["list_event_versions_api_v1_events__geolocation_id__versions_get"];
+        get: operations["list_event_versions_api_v1_events__event_id__versions_get"];
         put?: never;
         /**
          * Save Event Version
          * @description Publish a request or a detection, or correct a published event, filing a version.
          */
-        post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
+        post: operations["save_event_version_api_v1_events__event_id__versions_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/versions/{version_no}": {
+    "/api/v1/events/{event_id}/versions/{version_no}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1521,7 +1521,7 @@ export interface paths {
          * Get Event Version
          * @description One superseded version of an event, by its number.
          */
-        get: operations["get_event_version_api_v1_events__geolocation_id__versions__version_no__get"];
+        get: operations["get_event_version_api_v1_events__event_id__versions__version_no__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2384,7 +2384,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/users/me/invite-codes/{code_id}/revoke": {
+    "/api/v1/users/me/invite-codes/{invite_code_id}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -2397,7 +2397,7 @@ export interface paths {
          * Revoke My Invite Code
          * @description Revoke an active invite code you minted. The row stays in your list.
          */
-        post: operations["revoke_my_invite_code_api_v1_users_me_invite_codes__code_id__revoke_post"];
+        post: operations["revoke_my_invite_code_api_v1_users_me_invite_codes__invite_code_id__revoke_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2707,10 +2707,10 @@ export interface components {
             /** Deleted At */
             deleted_at?: string | null;
             /**
-             * Geolocation Id
+             * Event Id
              * Format: uuid
              */
-            geolocation_id: string;
+            event_id: string;
             /**
              * Media Count
              * @default 0
@@ -3358,8 +3358,8 @@ export interface components {
             /** File */
             file: string;
         };
-        /** Body_save_event_version_api_v1_events__geolocation_id__versions_post */
-        Body_save_event_version_api_v1_events__geolocation_id__versions_post: {
+        /** Body_save_event_version_api_v1_events__event_id__versions_post */
+        Body_save_event_version_api_v1_events__event_id__versions_post: {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /**
@@ -3406,8 +3406,8 @@ export interface components {
             /** File */
             file: string;
         };
-        /** Body_update_event_request_api_v1_events__geolocation_id__request_post */
-        Body_update_event_request_api_v1_events__geolocation_id__request_post: {
+        /** Body_update_event_request_api_v1_events__event_id__request_post */
+        Body_update_event_request_api_v1_events__event_id__request_post: {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /** Lat */
@@ -6143,14 +6143,14 @@ export interface operations {
             };
         };
     };
-    delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete: {
+    delete_event_admin_api_v1_admin_events__event_id__delete: {
         parameters: {
             query?: {
                 hard?: boolean;
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -6178,12 +6178,12 @@ export interface operations {
             };
         };
     };
-    set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch: {
+    set_event_moderation_api_v1_admin_events__event_id__moderation_patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -6215,12 +6215,12 @@ export interface operations {
             };
         };
     };
-    redact_event_version_api_v1_admin_events__geolocation_id__versions__version_no__redact_post: {
+    redact_event_version_api_v1_admin_events__event_id__versions__version_no__redact_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 version_no: number;
             };
             cookie?: {
@@ -6319,12 +6319,12 @@ export interface operations {
             };
         };
     };
-    delete_invite_code_api_v1_admin_invite_codes__invite_id__delete: {
+    delete_invite_code_api_v1_admin_invite_codes__invite_code_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                invite_id: string;
+                invite_code_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -6350,12 +6350,12 @@ export interface operations {
             };
         };
     };
-    revoke_invite_code_api_v1_admin_invite_codes__invite_id__revoke_post: {
+    revoke_invite_code_api_v1_admin_invite_codes__invite_code_id__revoke_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                invite_id: string;
+                invite_code_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8064,12 +8064,12 @@ export interface operations {
             };
         };
     };
-    get_event_api_v1_events__geolocation_id__get: {
+    get_event_api_v1_events__event_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8097,7 +8097,7 @@ export interface operations {
             };
         };
     };
-    list_approval_request_targets_api_v1_events__geolocation_id__approval_request_targets_get: {
+    list_approval_request_targets_api_v1_events__event_id__approval_request_targets_get: {
         parameters: {
             query?: {
                 /** @description Narrows by a substring of the username or organization */
@@ -8105,7 +8105,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8133,12 +8133,12 @@ export interface operations {
             };
         };
     };
-    list_approval_requests_api_v1_events__geolocation_id__approval_requests_get: {
+    list_approval_requests_api_v1_events__event_id__approval_requests_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8166,12 +8166,12 @@ export interface operations {
             };
         };
     };
-    create_approval_request_api_v1_events__geolocation_id__approval_requests_post: {
+    create_approval_request_api_v1_events__event_id__approval_requests_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8203,12 +8203,12 @@ export interface operations {
             };
         };
     };
-    decline_approval_request_api_v1_events__geolocation_id__approval_requests__request_id__decline_post: {
+    decline_approval_request_api_v1_events__event_id__approval_requests__request_id__decline_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 request_id: string;
             };
             cookie?: {
@@ -8237,7 +8237,7 @@ export interface operations {
             };
         };
     };
-    list_approvals_api_v1_events__geolocation_id__approvals_get: {
+    list_approvals_api_v1_events__event_id__approvals_get: {
         parameters: {
             query?: {
                 /** @description Defaults to the live version unless reviewer or all_versions is set */
@@ -8248,7 +8248,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8276,12 +8276,12 @@ export interface operations {
             };
         };
     };
-    approve_event_api_v1_events__geolocation_id__approvals_post: {
+    approve_event_api_v1_events__event_id__approvals_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8313,12 +8313,12 @@ export interface operations {
             };
         };
     };
-    close_event_api_v1_events__geolocation_id__close_post: {
+    close_event_api_v1_events__event_id__close_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8350,12 +8350,12 @@ export interface operations {
             };
         };
     };
-    list_event_collections_api_v1_events__geolocation_id__collections_get: {
+    list_event_collections_api_v1_events__event_id__collections_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8383,12 +8383,12 @@ export interface operations {
             };
         };
     };
-    list_geolocator_invites_api_v1_events__geolocation_id__geolocator_invites_get: {
+    list_geolocator_invites_api_v1_events__event_id__geolocator_invites_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8416,12 +8416,12 @@ export interface operations {
             };
         };
     };
-    invite_geolocator_api_v1_events__geolocation_id__geolocator_invites_post: {
+    invite_geolocator_api_v1_events__event_id__geolocator_invites_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8453,12 +8453,12 @@ export interface operations {
             };
         };
     };
-    accept_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_accept_post: {
+    accept_geolocator_invite_api_v1_events__event_id__geolocator_invites_accept_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8484,12 +8484,12 @@ export interface operations {
             };
         };
     };
-    decline_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_decline_post: {
+    decline_geolocator_invite_api_v1_events__event_id__geolocator_invites_decline_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8515,12 +8515,12 @@ export interface operations {
             };
         };
     };
-    withdraw_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites__username__delete: {
+    withdraw_geolocator_invite_api_v1_events__event_id__geolocator_invites__username__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 username: string;
             };
             cookie?: {
@@ -8547,12 +8547,12 @@ export interface operations {
             };
         };
     };
-    remove_geolocator_api_v1_events__geolocation_id__geolocators__username__delete: {
+    remove_geolocator_api_v1_events__event_id__geolocators__username__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 username: string;
             };
             cookie?: {
@@ -8579,12 +8579,12 @@ export interface operations {
             };
         };
     };
-    report_event_api_v1_events__geolocation_id__report_post: {
+    report_event_api_v1_events__event_id__report_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8616,12 +8616,12 @@ export interface operations {
             };
         };
     };
-    update_event_request_api_v1_events__geolocation_id__request_post: {
+    update_event_request_api_v1_events__event_id__request_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8629,7 +8629,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_update_event_request_api_v1_events__geolocation_id__request_post"];
+                "multipart/form-data": components["schemas"]["Body_update_event_request_api_v1_events__event_id__request_post"];
             };
         };
         responses: {
@@ -8653,12 +8653,12 @@ export interface operations {
             };
         };
     };
-    list_site_links_api_v1_events__geolocation_id__site_links_get: {
+    list_site_links_api_v1_events__event_id__site_links_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8686,12 +8686,12 @@ export interface operations {
             };
         };
     };
-    link_site_api_v1_events__geolocation_id__site_links_post: {
+    link_site_api_v1_events__event_id__site_links_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8723,12 +8723,12 @@ export interface operations {
             };
         };
     };
-    unlink_site_api_v1_events__geolocation_id__site_links__site_id__delete: {
+    unlink_site_api_v1_events__event_id__site_links__site_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 site_id: string;
             };
             cookie?: {
@@ -8755,7 +8755,7 @@ export interface operations {
             };
         };
     };
-    list_site_suggestions_api_v1_events__geolocation_id__site_suggestions_get: {
+    list_site_suggestions_api_v1_events__event_id__site_suggestions_get: {
         parameters: {
             query?: {
                 margin_m?: number;
@@ -8763,7 +8763,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8791,7 +8791,7 @@ export interface operations {
             };
         };
     };
-    list_event_versions_api_v1_events__geolocation_id__versions_get: {
+    list_event_versions_api_v1_events__event_id__versions_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -8800,7 +8800,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8828,12 +8828,12 @@ export interface operations {
             };
         };
     };
-    save_event_version_api_v1_events__geolocation_id__versions_post: {
+    save_event_version_api_v1_events__event_id__versions_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8841,7 +8841,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_save_event_version_api_v1_events__geolocation_id__versions_post"];
+                "multipart/form-data": components["schemas"]["Body_save_event_version_api_v1_events__event_id__versions_post"];
             };
         };
         responses: {
@@ -8865,12 +8865,12 @@ export interface operations {
             };
         };
     };
-    get_event_version_api_v1_events__geolocation_id__versions__version_no__get: {
+    get_event_version_api_v1_events__event_id__versions__version_no__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 version_no: number;
             };
             cookie?: {
@@ -10684,12 +10684,12 @@ export interface operations {
             };
         };
     };
-    revoke_my_invite_code_api_v1_users_me_invite_codes__code_id__revoke_post: {
+    revoke_my_invite_code_api_v1_users_me_invite_codes__invite_code_id__revoke_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                code_id: string;
+                invite_code_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;

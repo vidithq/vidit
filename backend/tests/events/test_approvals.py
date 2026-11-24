@@ -257,7 +257,7 @@ def test_a_site_admin_deletes_an_approval_and_is_audited(db, author, second_user
         .one()
     )
     assert audit.target["approval_id"] == approval["id"]
-    assert audit.target["geolocation_id"] == str(geo.id)
+    assert audit.target["event_id"] == str(geo.id)
     assert audit.target["reviewer_id"] == str(second_user.id)
 
 

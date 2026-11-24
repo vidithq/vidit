@@ -109,30 +109,34 @@ def list_invite_codes(
 
 
 @router.post(
-    "/invite-codes/{invite_id}/revoke",
+    "/invite-codes/{invite_code_id}/revoke",
     response_model=AdminInviteCodeRead,
 )
 @limiter.limit("60/hour")
 def revoke_invite_code(
-    request: Request, invite_id: uuid.UUID, db: DB, current_user: AdminUser
+    request: Request, invite_code_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> AdminInviteCodeRead:
     """Retire a code while keeping its row. The list still shows it."""
-    invite = admin_service.revoke_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
+    invite = admin_service.revoke_invite_code(
+        db, actor_id=current_user.id, invite_code_id=invite_code_id
+    )
     if invite is None:
         raise HTTPException(status_code=404, detail="Invite code not found")
     return admin_service.serialize_invite_code(db, invite)
 
 
 @router.delete(
-    "/invite-codes/{invite_id}",
+    "/invite-codes/{invite_code_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 @limiter.limit("60/hour")
 def delete_invite_code(
-    request: Request, invite_id: uuid.UUID, db: DB, current_user: AdminUser
+    request: Request, invite_code_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> Response:
     """Drop the row of a code no account was created from. 409 once it was."""
-    deleted = admin_service.delete_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
+    deleted = admin_service.delete_invite_code(
+        db, actor_id=current_user.id, invite_code_id=invite_code_id
+    )
     if not deleted:
         raise HTTPException(status_code=404, detail="Invite code not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -268,18 +272,16 @@ def delete_user_admin(
 
 
 @router.delete(
-    "/events/{geolocation_id}",
+    "/events/{event_id}",
     response_model=AdminEventDeleteResponse,
 )
 @limiter.limit("60/hour")
-def delete_geolocation_admin(
-    request: Request, geolocation_id: uuid.UUID, db: DB, current_user: AdminUser, hard: bool = False
+def delete_event_admin(
+    request: Request, event_id: uuid.UUID, db: DB, current_user: AdminUser, hard: bool = False
 ) -> AdminEventDeleteResponse:
     """Remove a geolocation: soft by default, `?hard=true` for GDPR erasure."""
-    delete_event = (
-        admin_service.hard_delete_geolocation if hard else admin_service.soft_delete_geolocation
-    )
-    result = delete_event(db, actor_id=current_user.id, geolocation_id=geolocation_id)
+    delete_event = admin_service.hard_delete_event if hard else admin_service.soft_delete_event
+    result = delete_event(db, actor_id=current_user.id, event_id=event_id)
     points_cache.invalidate()
     return result
 
@@ -375,11 +377,11 @@ def resolve_report(
     return ContentReportRead.model_validate(report)
 
 
-@router.patch("/events/{geolocation_id}/moderation", response_model=AdminEventModerationRead)
+@router.patch("/events/{event_id}/moderation", response_model=AdminEventModerationRead)
 @limiter.limit("60/hour")
 def set_event_moderation(
     request: Request,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
     body: AdminEventModerationUpdate,
     db: DB,
     current_user: AdminUser,
@@ -387,7 +389,7 @@ def set_event_moderation(
     """Set an event's moderation state directly, with no report behind it."""
     event, hidden_changed = reports_service.set_event_moderation(
         db,
-        geolocation_id=geolocation_id,
+        event_id=event_id,
         is_graphic=body.is_graphic,
         hidden=body.hidden,
         actor_id=current_user.id,
@@ -398,18 +400,18 @@ def set_event_moderation(
 
 
 @router.post(
-    "/events/{geolocation_id}/versions/{version_no}/redact",
+    "/events/{event_id}/versions/{version_no}/redact",
     response_model=EventVersionRead,
 )
 @limiter.limit("60/hour")
 def redact_event_version(
-    request: Request, geolocation_id: uuid.UUID, version_no: int, db: DB, current_user: AdminUser
+    request: Request, event_id: uuid.UUID, version_no: int, db: DB, current_user: AdminUser
 ) -> EventVersionRead:
     """Blank one filed version of an event's history."""
     row = admin_service.redact_version(
         db,
         actor_id=current_user.id,
-        geolocation_id=geolocation_id,
+        event_id=event_id,
         version_no=version_no,
     )
     return build_version_read(row)

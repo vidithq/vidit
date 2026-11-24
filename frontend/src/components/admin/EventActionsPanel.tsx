@@ -248,7 +248,7 @@ export function EventActionsPanel() {
           }
         >
           <div className="text-neutral-500 font-mono text-[11px]">
-            {receipt.data.geolocation_id}
+            {receipt.data.event_id}
           </div>
           {receipt.data.mode === "hard" && (
             <div className="text-neutral-500">

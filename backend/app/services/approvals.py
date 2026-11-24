@@ -271,7 +271,7 @@ def delete_as_admin(db: Session, *, approval_id: uuid.UUID, actor: User) -> None
         actor_id=actor.id,
         action="approval_deleted",
         target={
-            "geolocation_id": str(row.event_id),
+            "event_id": str(row.event_id),
             "approval_id": str(row.id),
             "reviewer_id": str(row.reviewer_id) if row.reviewer_id is not None else None,
             "organization_id": (

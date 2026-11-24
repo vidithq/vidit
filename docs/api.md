@@ -4160,7 +4160,7 @@ Remove an event. Both modes invalidate the points cache. Audited as `geolocation
 **Response 200:**
 ```json
 {
-  "geolocation_id": "…",
+  "event_id": "…",
   "title": "Strike on depot, Donetsk",
   "mode": "soft",
   "deleted_at": "2026-05-09T16:30:00Z",
@@ -4257,7 +4257,7 @@ Turn minting invite codes from Settings ([`POST /users/me/invite-codes`](#post-u
 
 ### `DELETE /admin/approvals/{approval_id}` 🛡️
 
-Delete one approval, an analyst's own or one placed for an organization. An approval is final, so a site admin deletes one that should not stand. The `approval_received` notifications that reported it go with it, and the reviewer or the organization can approve that version again. The route works on any event, a withheld one included. Audited as `approval_deleted` (target `geolocation_id`, `approval_id`, `reviewer_id`, `organization_id`, `version_no`).
+Delete one approval, an analyst's own or one placed for an organization. An approval is final, so a site admin deletes one that should not stand. The `approval_received` notifications that reported it go with it, and the reviewer or the organization can approve that version again. The route works on any event, a withheld one included. Audited as `approval_deleted` (target `event_id`, `approval_id`, `reviewer_id`, `organization_id`, `version_no`).
 
 **Response 204:** no body.
 

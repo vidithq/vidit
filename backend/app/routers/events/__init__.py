@@ -2,7 +2,7 @@
 ``main.py`` under ``/api/v1/events``.
 
 The tuple order is load-bearing: ``item`` (``GET /{id}`` and the other
-``/{geolocation_id}`` ops) must mount **last**, or its single-segment
+``/{event_id}`` ops) must mount **last**, or its single-segment
 catch-all would shadow the literal-path GETs (``/points``,
 ``/possible-duplicates``) and 422 on the non-UUID segment.
 """

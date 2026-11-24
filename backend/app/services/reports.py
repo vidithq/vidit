@@ -259,7 +259,7 @@ def resolve_report(
 def set_event_moderation(
     db: Session,
     *,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
     is_graphic: bool | None,
     hidden: bool | None,
     actor_id: uuid.UUID,
@@ -269,7 +269,7 @@ def set_event_moderation(
     It reads a withheld event, since this verb can undo a takedown. The event lock serializes
     this door and a report verdict.
     """
-    event = lock_row(db, Event, Event.id == geolocation_id, Event.deleted_at.is_(None)).first()
+    event = lock_row(db, Event, Event.id == event_id, Event.deleted_at.is_(None)).first()
     if event is None:
         raise EventNotFoundError("Event not found")
 

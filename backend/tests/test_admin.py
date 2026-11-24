@@ -562,7 +562,7 @@ def geolocation(db, regular_user):
     return make_event(db, author=regular_user, kind="unknown")
 
 
-def test_soft_delete_geolocation_stamps_once_and_writes_one_admin_event(
+def test_soft_delete_event_stamps_once_and_writes_one_admin_event(
     admin_user, geolocation, db
 ):
     """A second call keeps the first stamp and writes no second audit row."""
@@ -573,7 +573,7 @@ def test_soft_delete_geolocation_stamps_once_and_writes_one_admin_event(
     body = first.json()
     assert body["mode"] == "soft"
     assert body["deleted_at"] is not None
-    assert body["geolocation_id"] == str(geo_id)
+    assert body["event_id"] == str(geo_id)
 
     db.expire_all()
     refreshed = db.query(Event).filter(Event.id == geo_id).first()
@@ -585,7 +585,7 @@ def test_soft_delete_geolocation_stamps_once_and_writes_one_admin_event(
     assert second.json()["deleted_at"] == body["deleted_at"]
 
     event = audit_row(db, admin_user, "geolocation_soft_deleted")
-    assert event.target == {"geolocation_id": str(geo_id), "title": title}
+    assert event.target == {"event_id": str(geo_id), "title": title}
 
 
 def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geolocation):
@@ -614,14 +614,14 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     body = response.json()
     assert body["mode"] == "hard"
     assert body["deleted_at"] is None
-    assert body["geolocation_id"] == str(geo_id)
+    assert body["event_id"] == str(geo_id)
     assert body["title"] == geo_title
 
     db.expire_all()
     assert db.query(Event).filter(Event.id == geo_id).first() is None
 
     event = audit_row(db, admin_user, "geolocation_hard_deleted")
-    assert event.target["geolocation_id"] == str(geo_id)
+    assert event.target["event_id"] == str(geo_id)
 
 
 def test_hard_delete_sweeps_image_derivatives(admin_user, geolocation, db, monkeypatch):

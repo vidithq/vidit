@@ -255,9 +255,9 @@ def revoke_invite_code(
     db: Session,
     *,
     actor_id: uuid.UUID,
-    invite_id: uuid.UUID,
+    invite_code_id: uuid.UUID,
 ) -> InviteCode | None:
-    invite = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
+    invite = db.query(InviteCode).filter(InviteCode.id == invite_code_id).first()
     if invite is None:
         return None
     # Idempotent: keep the original ``revoked_at`` and skip the audit append.
@@ -278,10 +278,10 @@ def delete_invite_code(
     db: Session,
     *,
     actor_id: uuid.UUID,
-    invite_id: uuid.UUID,
+    invite_code_id: uuid.UUID,
 ) -> bool:
     """False when the id is unknown. A redeemed code is the account's origin record."""
-    invite = db.query(InviteCode).filter(InviteCode.id == invite_id).first()
+    invite = db.query(InviteCode).filter(InviteCode.id == invite_code_id).first()
     if invite is None:
         return False
     if invite.used_by_id is not None:
@@ -375,13 +375,13 @@ def set_invite_minting(
     return user
 
 
-def soft_delete_geolocation(
+def soft_delete_event(
     db: Session,
     *,
     actor_id: uuid.UUID,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
 ) -> AdminEventDeleteResponse:
-    geo = db.query(Event).filter(Event.id == geolocation_id).first()
+    geo = db.query(Event).filter(Event.id == event_id).first()
     if geo is None:
         raise EventNotFoundError("Event not found")
     if geo.deleted_at is None:
@@ -390,11 +390,11 @@ def soft_delete_geolocation(
             db,
             actor_id=actor_id,
             action="geolocation_soft_deleted",
-            target={"geolocation_id": str(geo.id), "title": geo.title},
+            target={"event_id": str(geo.id), "title": geo.title},
         )
         db.commit()
     return AdminEventDeleteResponse(
-        geolocation_id=geo.id, title=geo.title, mode="soft", deleted_at=geo.deleted_at
+        event_id=geo.id, title=geo.title, mode="soft", deleted_at=geo.deleted_at
     )
 
 
@@ -444,14 +444,14 @@ def set_takedown[T: (Collection, Site)](
     return row
 
 
-def hard_delete_geolocation(
+def hard_delete_event(
     db: Session,
     *,
     actor_id: uuid.UUID,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
 ) -> AdminEventDeleteResponse:
     """Commit-then-sweep (:func:`services.evidence_intake.sweep_unreferenced`)."""
-    geo = db.query(Event).filter(Event.id == geolocation_id).first()
+    geo = db.query(Event).filter(Event.id == event_id).first()
     if geo is None:
         raise EventNotFoundError("Event not found")
 
@@ -460,10 +460,10 @@ def hard_delete_geolocation(
     objects = event_objects(db, geo)
 
     result = AdminEventDeleteResponse(
-        geolocation_id=geo.id, title=geo.title, mode="hard", media_count=len(objects)
+        event_id=geo.id, title=geo.title, mode="hard", media_count=len(objects)
     )
     target = {
-        "geolocation_id": str(geo.id),
+        "event_id": str(geo.id),
         "title": geo.title,
         "media_count": len(objects),
     }
@@ -471,7 +471,7 @@ def hard_delete_geolocation(
     log_admin_event(db, actor_id=actor_id, action="geolocation_hard_deleted", target=target)
     db.commit()
 
-    sweep_unreferenced(db, objects, context=f"geolocation {geolocation_id} hard-delete")
+    sweep_unreferenced(db, objects, context=f"event {event_id} hard-delete")
     return result
 
 
@@ -479,7 +479,7 @@ def redact_version(
     db: Session,
     *,
     actor_id: uuid.UUID,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
     version_no: int,
 ) -> EventVersion:
     """Blank one filed version of an event in place, keeping its row and number.
@@ -492,7 +492,7 @@ def redact_version(
     # so a concurrent edit must not interleave its own proof diff.
     event = (
         db.query(Event)
-        .filter(Event.id == geolocation_id, Event.deleted_at.is_(None))
+        .filter(Event.id == event_id, Event.deleted_at.is_(None))
         .populate_existing()
         .with_for_update()
         .first()
@@ -517,7 +517,7 @@ def redact_version(
         actor_id=actor_id,
         action="event_version_redacted",
         target={
-            "geolocation_id": str(event.id),
+            "event_id": str(event.id),
             "version_no": version_no,
             "removed_media_count": len(removed_proofs) + len(freed_sources),
         },

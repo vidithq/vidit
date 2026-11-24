@@ -661,12 +661,12 @@ def read_stored_bytes(key: str) -> bytes:
         return dest.read_bytes()
 
 
-def detected_media_key(geolocation_id: UUID, content_type: str) -> str:
+def detected_media_key(event_id: UUID, content_type: str) -> str:
     """S3 key for a machine detection's media, under ``detected/`` to separate it from ``uploads/``.
 
     A bot-opened request stores footage under ``uploads/`` like a manual one."""
     ext = safe_storage_extension(content_type)
-    return f"detected/{geolocation_id}/{uuid4()}{ext}"
+    return f"detected/{event_id}/{uuid4()}{ext}"
 
 
 async def upload_proof_image(file: UploadFile, user_id: UUID) -> list[StoredFile]:

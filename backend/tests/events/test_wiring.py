@@ -1,4 +1,4 @@
-"""``item`` (``/{geolocation_id}``) mounts last, or it shadows the literal-path GETs.
+"""``item`` (``/{event_id}``) mounts last, or it shadows the literal-path GETs.
 
 A shadowed literal path would 422 on its non-UUID segment.
 """

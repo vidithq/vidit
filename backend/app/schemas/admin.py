@@ -150,7 +150,7 @@ class AdminUserRestoreResponse(BaseModel):
 
 
 class AdminEventDeleteResponse(BaseModel):
-    geolocation_id: uuid.UUID
+    event_id: uuid.UUID
     title: str
     mode: Literal["soft", "hard"]
     deleted_at: datetime | None = None
