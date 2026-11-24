@@ -2,7 +2,7 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## v0.8.3, 2026-11-24
 
 ### Added
 
@@ -17,9 +17,7 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 - The OpenAPI spec lists the values of `view` on `GET /events` and `readiness` on `GET /events/detections`; an unknown value still answers 422, now with the standard validation body that names the parameter ([#835](https://github.com/vidithq/vidit/pull/835)).
 - An event's tags and a source's tags read in alphabetical order on every page and in the API, instead of the order they were added ([#836](https://github.com/vidithq/vidit/pull/836)).
 - The bot reads its mentions once a day at 12:00 UTC from where its last read stopped, so each mention is read once and a worker restart reads none; the bot's own posts, and replies under them that only inherit the tag, no longer enter the queue ([#830](https://github.com/vidithq/vidit/pull/830)).
-
 - An analyst's profile and an organization's page fill the full page width on a wide screen, and the profile's Insights card shows the source origin bar and the event dates grid side by side ([#856](https://github.com/vidithq/vidit/pull/856)).
-
 - The Discord links in the sidebar, the beta banner and the About page open the new invite ([#846](https://github.com/vidithq/vidit/pull/846)).
 
 ### Removed
