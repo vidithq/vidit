@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- A new API response field needs no entry in the backend dead-code allowlist: the dead-code check skips the Pydantic schemas.
+
 ## v0.8.3, 2026-11-24
 
 ### Added
