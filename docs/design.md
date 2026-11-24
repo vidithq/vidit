@@ -1,6 +1,6 @@
 # Design principles and decisions
 
-Every surface composes the same primitives, and two reader preferences repaint all of them at once. This page is that vocabulary: the principles the interface follows, the palette and layout it draws from, and the components a page is allowed to use.
+Every surface composes the same primitives, and two reader preferences repaint all of them at once. This page holds the decisions the code does not state: the principles, the palette, the layout, one primitive per job, and per surface the choices a contributor must keep. The props, sizes and demos of each primitive live in its file under [`components/ui/`](../frontend/src/components/ui) and in its `/palette` entry.
 
 ```mermaid
 flowchart LR
@@ -59,7 +59,7 @@ flowchart LR
   consts --> catalogue
 ```
 
-Each region of the diagram has a section below. What a reader picks is [Theme](#theme) and the [accent](#accent). What a page is built from is [Components](#components), whose class constants are named in the [accent recipe](#accent-recipe) and whose frame is [Page chrome](#page-chrome). `/palette` is the gate on that vocabulary: one file per category under `app/palette/`, each entry its name and its live demos, a table of contents and a filter by name, and the details here, in two tiers from the import graph: Low level, every shared component, constant or token that two or more other shared components reuse, even when a surface uses it too, with the tokens last; High level, what surfaces assemble and at most one other shared component reuses; a component, constant or variant that one other component uses and no surface does lives in that component, and the exceptions decided once are [Sanctioned one-offs](#sanctioned-one-offs).
+Each region of the diagram has a section below. What a reader picks is [Theme](#theme) and the [accent](#accent). What a page is built from is [Components](#components), whose class constants are named in the [accent recipe](#accent-recipe) and whose frame is [Page chrome](#page-chrome). [`/palette`](../frontend/src/app/palette/page.tsx) is the live catalogue, one file per category, in two tiers: Low level holds what two or more other shared components reuse, and High level holds what surfaces assemble. A component, constant or variant that one other component uses and no surface does lives in that component. The exceptions decided once are [Sanctioned one-offs](#sanctioned-one-offs).
 
 ## Philosophy
 
@@ -72,19 +72,19 @@ The interface is spare by default and reveals complexity on demand. It stays leg
 
 ## Theme
 
-The interface is dark by default, with light available on demand. It uses a uniform background, opaque panels, and one warm accent for contrast. Dark reads better for long, data-dense sessions and stays the default. Light is a second option for readers who want it.
+The interface is dark by default, with light available on demand. It uses a uniform background, opaque panels, and one warm accent for contrast. Dark reads better for long, data-dense sessions, so it stays the default.
 
-Theme and accent share one mechanism, [`attributePreference.ts`](../frontend/src/lib/attributePreference.ts): it caches the choice in `localStorage`, stamps a data attribute on `<html>`, and [`globals.css`](../frontend/src/app/globals.css) remaps a Tailwind scale under that attribute, so every utility repaints with no per-component change. The help tooltip switch uses the same mechanism without a data attribute. When storage is blocked, the choice lives in memory for the session. Two consumers read no CSS variable and carry hex instead: [`Map.tsx`](../frontend/src/components/map/Map.tsx) swaps the basemap on [`useTheme`](../frontend/src/hooks/useTheme.ts) while the reader's basemap preset is Auto (see [Map](#map)), and map markers read [`lib/palette.ts`](../frontend/src/lib/palette.ts).
+Theme and accent share one mechanism, [`attributePreference.ts`](../frontend/src/lib/attributePreference.ts): it caches the choice in `localStorage`, stamps a data attribute on `<html>`, and [`globals.css`](../frontend/src/app/globals.css) remaps a Tailwind scale under that attribute. Every utility repaints with no per-component change. Two consumers read no CSS variable and carry hex instead: the basemap and the map markers (see [Map](#map)).
 
-Both preferences, and the help tooltip switch, are saved to the account through [`PATCH /users/me/preferences`](api.md#patch-usersmepreferences), so they follow a signed-in analyst across devices. [`lib/preferences.ts`](../frontend/src/lib/preferences.ts) holds the two directions. A change in Settings applies locally at once and writes through to the server. After sign-in, and on each load with a session, each preference is reconciled on its own. A value the account has saved wins and rewrites `localStorage`. Where the account has saved none, the value this browser saved for the same account is written to the account instead, so a choice made before the account stored it is kept. The cache records which account it belongs to: signing out clears it, and a sync for another account clears it before applying that account's values, so one analyst's choices never reach another account on a shared browser. A cache that carries no account, written before the cache recorded one, is adopted by the first account that syncs. `localStorage` stays the first-paint cache: the inline script in the root layout reads it before React runs, so a device that has never seen the account paints the defaults until the preferences load.
+Both preferences, and the help tooltip switch, are saved to the account ([`PATCH /users/me/preferences`](api.md#patch-usersmepreferences)), so they follow a signed-in analyst across devices. A value the account has saved wins over the browser's. The browser cache records which account wrote it, so one analyst's choices never reach another account on a shared browser.
 
-The theme is independent of the accent hue. Its key is `vidit:theme`, and light applies as `data-theme="light"`; dark is the default and carries no attribute. Light remaps the `neutral-*` scale to a curated soft ramp, plus the semantic `red` / `amber` scales, mirrored so their pale text stops go dark on the light tint. The block also sets `color-scheme`, so native widgets (scrollbars, date and select popups) track the theme. The accent is not theme-adjusted, except that accent text (links, the success banner) reads a touch lighter in light mode. On the Auto basemap preset, the map swaps the Vidit dark style for the Vidit light style.
+Light applies as `data-theme="light"`; dark carries no attribute. Light remaps the `neutral-*` scale and the semantic `red` and `amber` scales, and sets `color-scheme`, so native widgets track the theme. The accent is not theme-adjusted.
 
 ## Colour palette
 
 ### Foundation
 
-The dark roles below are the default. The light theme re-points the same `neutral-*` scale to a curated soft ramp (`globals.css`): a soft warm grey canvas (`neutral-950`) with warm off-white cards (`neutral-900`) floating on it, and dark grey text (`neutral-100` = `#232323`, not black). This keeps a large light surface easy on the eyes instead of a flat, near-white glare. The light surfaces carry a faint warmth (`R > G > B`), while the text greys stay neutral. This mirrors how the dark scale avoids pure black and pure white.
+The dark roles below are the default. The light theme re-points the same `neutral-*` scale to a soft ramp: a warm grey canvas with warm off-white cards on it, and dark grey text (`neutral-100` = `#232323`, not black). Like the dark scale, it avoids pure black and pure white, so a large light surface does not glare.
 
 | Role | Color | Tailwind | Usage |
 |------|-------|----------|-------|
@@ -98,57 +98,46 @@ The dark roles below are the default. The light theme re-points the same `neutra
 
 ### Accent
 
-There is one accent hue. It's selectable, and orange by default. Settings → Display also offers blue, emerald, violet, and rose. Its key is `vidit:palette`, and `data-palette` remaps the `orange-*` scale to the chosen hue (see [Theme](#theme)). Components keep writing `orange-*` utilities and the [`styles.ts`](../frontend/src/components/ui/styles.ts) constants, so everything below holds for whichever hue is active.
+There is one accent hue. It is orange by default, and Settings → Display also offers blue, emerald, violet, and rose. `data-palette` remaps the `orange-*` scale to the chosen hue, so components keep writing `orange-*` utilities and the [`styles.ts`](../frontend/src/components/ui/styles.ts) constants, and everything below holds for whichever hue is active.
 
 The accent is **tinted-on-dark**, never a flat `bg-orange-500` fill for buttons or selected states:
 
 | Token | Where it shows up |
 |------|-------|
 | `orange-400` | Text of every interactive element: inline links, button labels, tappable-card hover, status pills. |
-| `orange-500` | The hue itself, only at fractional opacity on backgrounds / borders (`bg-orange-500/10`, `/15`, `/20`), and full strength on map points + state dots. |
+| `orange-500` | The hue itself, only at fractional opacity on backgrounds and borders (`bg-orange-500/10`, `/15`, `/20`), and full strength on map points and state dots. |
 
 ### Map points
 
 | Role | Color | Usage |
 |------|-------|-------|
-| Point default | accent `500` (default `#f97316`) | Submitted points; follows the selected accent |
-| Point detected | accent `300` (default `#fdba74`) | Machine-detected points; same hue a shade lighter, distinct from submitted by lightness |
-| Point selected | accent `500` + white border | Active, clicked point |
+| Point default | accent `500` | Submitted points |
+| Point detected | accent `300` | Machine-detected points: the same hue, told apart by lightness |
+| Point selected | accent `500` and a halo | The clicked point |
 
 ### Semantic
 
-| Role | Color | Tailwind | Usage |
-|------|-------|----------|-------|
-| Danger | `#ef4444` | `red-500` | Error marks and field refusals (`<ErrorNotice>`, `<FieldError>`), deletions |
-| Success / info | accent `500` | `orange-500` | Confirmations + info notices (`FORM_SUCCESS_BANNER`). Accent, not green: a confirmation next to red destructive actions shouldn't read as celebratory. |
-| Warning | `#f59e0b` | `amber-500` | Non-blocking caution (`WARNING_CALLOUT`): duplicate probe, tweet-import notice. Colour only; layout at the call site. |
+| Role | Tailwind | Usage |
+|------|----------|-------|
+| Danger | `red-500` | Errors, field refusals, deletions |
+| Success and info | `orange-500` | Confirmations and info notices (`FORM_SUCCESS_BANNER`). Accent, not green: a confirmation next to red destructive actions does not read as celebratory. |
+| Warning | `amber-500` | Non-blocking caution (`WARNING_CALLOUT`). Colour only; the call site owns the layout. |
 
 ## Accent recipe
 
-Every accent treatment is a named constant from [`styles.ts`](../frontend/src/components/ui/styles.ts) or a primitive. Use it; don't hand-roll the class string. The rule:
+Every accent treatment is a named constant from [`styles.ts`](../frontend/src/components/ui/styles.ts) or [`form-styles.ts`](../frontend/src/components/ui/form-styles.ts), or a primitive. Use it; don't hand-roll the class string. If a class string for an accent element runs past about three Tailwind tokens, look for a constant there first. The rule:
 
 > If something carries the accent and isn't clickable, it's a bug. If something is clickable and isn't accent, it's a bug.
 
-Carve-outs: navigation chrome stays neutral grey, destructive actions go red, and the `?` help is neutral (meta, not content). Charts carry one more, and it is the only inert accent on the site: a mark whose accent step encodes a magnitude takes `ACCENT_RAMP` whether or not a reader can act on it, and so does its legend, which is drawn with the same cells as the data it explains. `<SourceHostBar>`'s ranked segments and `<ActivityHeatmap>`'s lit months are both inert ranked marks, so both take the ramp. What stands outside the ranking takes the neutral chart paints instead: an empty month, the unnamed tail, a slice naming no source. External links open in a new tab (`target="_blank" rel="noopener noreferrer"`) with the same accent styling.
+Carve-outs: navigation chrome stays neutral grey, destructive actions go red, and the `?` help is neutral (meta, not content). Charts carry the only inert accent: a mark whose accent step encodes a magnitude takes `ACCENT_RAMP`, and so does its legend. What stands outside the ranking (an empty month, an unnamed tail) takes the neutral chart paint. External links open in a new tab with the same accent styling.
 
 There are five buckets:
 
-1. **Inline link** (`TEXT_LINK`): clickable accent text in copy or rows (bylines, source URLs, retry, empty-state CTAs), using `text-orange-400 hover:underline`. An action that only reads like a link (Cancel, dismiss) is a `<Button variant="ghost">`.
-2. **Tappable card or row** (`TAPPABLE_HOVER`): the whole card or row is one click target (a list or card `<Item>`, the About page's link rows). It's neutral at rest. On hover, the border turns accent and the title picks up `group-hover:text-orange-400` (put `group` on the row).
-3. **Buttons** (`<Button>`): every action, shape, and colour in one unit at one size. A `<Link>` that must look like a button takes `buttonClasses(variant)`. See the full vocabulary under [Buttons](#buttons).
-4. **Pills, chips, and badges** (`<Pill>`): the whole badge family uses one `tone`: `accent` (open, detected, selected), `neutral` (default, tag, closed, inactive), `danger` (error), or `secondary` (an accent outline with no fill, a softer marked state). It's a `<span>` by default; pass `onClick` and it becomes an interactive chip, with the caller driving the tone off its active state. Domain wrappers (`StatusBadge` for the one unified event lifecycle, the invite `StatusChip`) map an enum to tone, icon, and label. A bare tag is `<Pill tone="neutral">` inline, with no wrapper.
-5. **Active nav or row surface** (`ACCENT_SURFACE`): the bare accent paint (background and text, no border) for a selected nav row or option (sidebar rows, a `SegmentedControl`'s active option, the accent icon circles on the import panel and detections entry). `<Pill>`'s accent tone composes this paint plus a border, so a pill and an active nav item can't drift apart.
-
-Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../frontend/src/components/ui/styles.ts) exports these paints:
-
-- `ACCENT_SURFACE`, `TAPPABLE_HOVER`, `TEXT_LINK` and `WARNING_CALLOUT` are the colour-only paints above.
-- `ACCENT_RAMP` is the five-step accent intensity ramp of the charts. `<SourceHostBar>` paints a bucket of real work under no printed name in its own tail paint, and `CHART_NEUTRAL` paints absence.
-- `META_LINE` is a card's muted meta line: small grey text with its glyphs inline.
-- `FLOATING_CONTROL` is the plate behind an icon control that floats over media. `HOVER_REVEAL` hides a control until the pointer or focus reaches its frame, and keeps it visible on touch.
-- `ARMED_RING` is the armed half of a two-click confirm.
-- `TOOLTIP_SURFACE` is the bubble of an anchored popover.
-
-[`form-styles.ts`](../frontend/src/components/ui/form-styles.ts) exports the form paints: `FORM_LABEL`, `FORM_LABEL_COMPACT` (the denser auth-card label), `FORM_INVALID_FIELD` and `FORM_INVALID_LABEL` (the red state of a field and its label), `FORM_SUCCESS_BANNER` and `LIST_TILE` (one bordered item of an admin list). If a class string for an accent element runs longer than about 3 Tailwind tokens, look for a constant in these two files first.
+1. **Inline link** (`TEXT_LINK`): clickable accent text in copy or rows. An action that only reads like a link (Cancel, dismiss) is a ghost `<Button>`.
+2. **Tappable card or row** (`TAPPABLE_HOVER`): the whole card or row is one click target. It is neutral at rest; on hover the border turns accent and the title takes the accent.
+3. **Buttons** (`<Button>`): every action. A `<Link>` that must look like a button takes `buttonClasses(variant)`. See [Buttons](#buttons).
+4. **Pills, chips, and badges** (`<Pill>`): the whole badge family, by `tone`. Domain wrappers such as `StatusBadge` map an enum to tone, icon and label. A bare tag is a neutral `<Pill>` with no wrapper.
+5. **Active nav or row surface** (`ACCENT_SURFACE`): the accent paint of a selected nav row or option. The accent `<Pill>` composes the same paint plus a border, so a pill and an active nav item cannot drift apart.
 
 ## Layout
 
@@ -160,18 +149,18 @@ Constants: the pill tones live on `<Pill>` as `PILL_TONE`. [`styles.ts`](../fron
 └────┴─────────────────────────────────────────────┘
 ```
 
-- **Sidebar rail:** left nav (logo, working surfaces, identity block), a fixed column from `sm` up, which every page clears through `PageFrame`'s `sm:pl-14`. Submit, Requests and Feed show only to a signed-in reader; a signed-out reader gets Map, Search, About and Sign in. Below `sm` it is a drawer behind a floating menu chip and takes no inset at all; see [Phone chrome](#phone-chrome). The GitHub, X and Discord icons beside the logo, which show once the rail is expanded and in the drawer, take the accent (`text-orange-400`, the shade of `TEXT_LINK`) at rest. Hover and keyboard focus lift them to `text-orange-300` on a `neutral-800` plate.
+- **Sidebar rail:** the left nav (logo, working surfaces, identity block). Submit, Requests and Feed show only to a signed-in reader. Below `sm` it is a drawer; see [Phone chrome](#phone-chrome).
 - **Map:** full-screen background on `/map`.
-- **Left panel:** filters, opaque, floating over the map.
-- **Right panel:** event detail, appears on click, dismissible. When the selected event fails to load, the panel shows the error message and a Retry control, never a previously selected event.
+- **Left panel:** the filters, floating over the map.
+- **Right panel:** the event detail, on click, dismissible. When the selected event fails to load, the panel shows the error and a Retry control, never a previously selected event.
 
-**Panels:** `neutral-900` opaque (no glass / blur), `border-neutral-700`, `rounded-lg`, `p-4`, floating above the map. Width 288px (filters), ~380px (detail). Both take a different shape below `sm`; see [Phone chrome](#phone-chrome).
+Panels are opaque `neutral-900` (no glass, no blur) with a `neutral-700` border, floating above the map.
 
 ## Typography
 
-- **Font:** Montserrat, loaded through `next/font/google` in [`layout.tsx`](../frontend/src/app/layout.tsx) and set as `--font-sans` in `globals.css`, with `system-ui` as the fallback
-- **Sizes:** page titles `text-xl` (20px, the `h1` of `PageShell`); other titles `text-lg` (18px) max; body `text-sm` (14px); labels / meta `text-xs` (12px); micro (counters, badges) `text-[11px]`
-- **Weights:** `font-medium` for titles, `font-normal` for everything else
+- **Font:** Montserrat, set as `--font-sans` in `globals.css`, with `system-ui` as the fallback.
+- **Sizes:** page titles `text-xl` (the `h1` of `PageShell`); other titles `text-lg` at most; body `text-sm`; labels and meta `text-xs`; micro (counters, badges) `text-[11px]`.
+- **Weights:** `font-medium` for titles, `font-normal` for everything else.
 
 ## Map
 
