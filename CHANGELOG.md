@@ -2,6 +2,12 @@
 
 What shipped in each release, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- `docs/design.md` holds only the design decisions the code does not state, at under a quarter of its former size, and CI fails a pull request that takes it past its byte budget ([#886](https://github.com/vidithq/vidit/pull/886)).
+
 ## v0.8.3, 2026-11-24
 
 ### Added
