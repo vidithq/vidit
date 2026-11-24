@@ -18,7 +18,8 @@ from dataclasses import dataclass
 from app.config import settings
 
 # Mirrors the default accent scale in frontend ``app/globals.css`` (Tailwind
-# orange) and the brand mark route ``app/icon.tsx``; change both.
+# orange) and the ``/icon/android-192`` rewrite in frontend ``next.config.mjs``;
+# change both.
 _ACCENT_FILL = "#c2410c"
 _ACCENT_TEXT_DARK = "#fb923c"
 _LOGO_PATH = "/icon/android-192"

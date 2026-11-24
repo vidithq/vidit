@@ -1,8 +1,5 @@
 import type { MetadataRoute } from "next";
 
-// PWA / Android home-screen manifest. The 192 / 512 icons come from
-// `app/icon.tsx`'s generateImageMetadata — same source of truth as the
-// favicon, so the brand mark stays in lockstep across surfaces.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Vidit",
@@ -15,12 +12,12 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0a0a0a",
     icons: [
       {
-        src: "/icon/android-192",
+        src: "/icon/android-192.png",
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: "/icon/android-512",
+        src: "/icon/android-512.png",
         sizes: "512x512",
         type: "image/png",
       },

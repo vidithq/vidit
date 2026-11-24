@@ -70,37 +70,17 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_BUILD_VERSION: buildVersion,
   },
-  // Force-include the Montserrat .ttf in the Vercel function bundle for the
-  // generated icon / apple-icon / manifest routes. The Satori renderer in
-  // `src/app/icon.tsx` + `src/app/apple-icon.tsx` reads the .ttf at module
-  // load via `readFileSync(join(process.cwd(), …))`, which Vercel's
-  // node-file-trace can't resolve statically — without this hint the font
-  // is missing in `/var/task` and every `/icon/*` route 500s with
-  // `ENOENT: Montserrat-700.ttf`. The 500 cascades into a Server
-  // Components render error on any page that pulls the manifest (which is
-  // every page), so this hint isn't optional.
-  //
-  // Next.js bundles `app/icon.tsx` into EVERY page's bundle for the
-  // metadata-icon resolution pipeline (`d.metadata.icon`), not just
-  // into the `/icon/*` route bundles. Static pages resolve their
-  // metadata at build time (where the .ttf is on disk in the build
-  // container, so things work), but **dynamic** pages re-execute
-  // the icon module at request time on the Vercel function — which
-  // means every dynamic page that didn't have the .ttf traced into
-  // its bundle 500s with `ENOENT: ... Montserrat-700.ttf` from
-  // `readFileSync` at module load.
-  //
-  // The glob `**` matches every entry, so the font travels with every
-  // function bundle. ~30 KB per function — acceptable. The alternative
-  // (enumerating each dynamic route) is brittle: every new `[id]`-style
-  // page would have to remember to add itself here or quietly start
-  // 500'ing in prod while passing local tests (the bug stays local-
-  // invisible because `process.cwd()` resolves to the on-disk tree
-  // during `npm run dev`).
-  //
-  // Promoted out of `experimental` in Next.js 15.
+  // The share cards read the Montserrat .ttf at module load through `process.cwd()`. This entry
+  // keeps the font in their function bundles, without which every dynamic card 500s with ENOENT.
   outputFileTracingIncludes: {
-    "**": ["./src/app/Montserrat-700.ttf"],
+    "**/{opengraph,twitter}-image*": ["./src/app/Montserrat-700.ttf"],
+  },
+  // `/icon/android-192` is the email header image (backend `email_layout._LOGO_PATH`), in
+  // emails already sent too; change both.
+  async rewrites() {
+    return [
+      { source: "/icon/:size(android-192|android-512)", destination: "/icon/:size.png" },
+    ];
   },
   // Tightly-scoped allowlist for `next/image`. Only the hosts we actually
   // serve media from belong here — third-party hosts (picsum, unpkg, user
