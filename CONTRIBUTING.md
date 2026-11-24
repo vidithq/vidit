@@ -32,7 +32,7 @@ See [`README.md`](README.md#getting-started-local-dev) → *Getting started (loc
    uv run pytest -n auto --dist worksteal  # parallel: one clone database per worker, built from a migrated template; needs the docker-compose Postgres up
    ```
 
-   Plain `uv run pytest` still works (serial, against the dev database as-is; needs `uv run alembic upgrade head`).
+   Plain `uv run pytest` runs serially on its own clone of the same template. Neither run writes to the database `DATABASE_URL` names.
 
    Frontend, from `frontend/`: `npm test` (Vitest, colocated `*.test.ts(x)`), plus `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `npm run test:e2e` (Playwright; run `npx playwright install chromium` once first). `make hygiene` runs the cross-cutting gates (`make help` lists them). What the Playwright suite measures and why jsdom cannot: [`docs/engineering.md`](docs/engineering.md#narrow-viewport-smoke-tests).
 4. **Update the docs in the same PR.** See [*Doc-sync rule*](#doc-sync-rule) below.

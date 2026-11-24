@@ -6,10 +6,12 @@ would spill between tests and produce spurious 429s. The autouse fixture below
 disables the single shared limiter so tests stay deterministic; the rate-limit
 tests re-enable it explicitly.
 
-Parallel runs (pytest-xdist) get one database per worker: the controller
-migrates a template database to alembic head once, and each worker clones it.
-A serial run uses the DATABASE_URL database as-is. The rewrite below runs at
-import time because ``app.database`` binds its engine at import.
+Every test process runs on its own clone of a template database that the first
+process migrates to alembic head: each pytest-xdist worker under its worker id,
+a serial run under ``serial``. The DATABASE_URL database only names the server
+and the clone prefix; no test touches it. Each process drops its clone when it
+ends, and the template stays for the next run. The rewrite below runs at import
+time because ``app.database`` binds its engine at import.
 
 Stored files never reach the developer's ``.local-storage``: each process gets a throwaway
 root before the app import (which mounts the root it reads), removed when the run ends, and
@@ -27,7 +29,8 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 _XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
-# Set by the controller and inherited by workers, so all agree on the base URL.
+_RUN = _XDIST_WORKER or "serial"
+# Set by the first process and inherited by xdist workers, so all agree on the base URL.
 _BASE_URL_ENV = "VIDIT_TEST_BASE_DB_URL"
 
 
@@ -40,23 +43,21 @@ def _db_name(url: str) -> str:
     return urlsplit(url).path.lstrip("/")
 
 
-def _worker_db_url(base_url: str, worker: str) -> str:
-    return _swap_db(base_url, f"{_db_name(base_url)}_test_{worker}")
+def _run_db_url(base_url: str, run: str) -> str:
+    return _swap_db(base_url, f"{_db_name(base_url)}_test_{run}")
 
 
 def _template_db_url(base_url: str) -> str:
     return _swap_db(base_url, f"{_db_name(base_url)}_test_tpl")
 
 
-if _XDIST_WORKER:
-    _base = os.environ.get(
-        _BASE_URL_ENV,
-        os.environ.get("DATABASE_URL", "postgresql://vision:vision@localhost:5432/vision"),
-    )
-    os.environ["DATABASE_URL"] = _worker_db_url(_base, _XDIST_WORKER)
-
 _SESSION_STORAGE_ROOT = tempfile.mkdtemp(prefix="vidit-test-storage-")
 os.environ["LOCAL_STORAGE_DIR"] = _SESSION_STORAGE_ROOT
+
+from app.config import settings  # noqa: E402
+
+_BASE_URL = os.environ.setdefault(_BASE_URL_ENV, settings.database_url)
+settings.database_url = _run_db_url(_BASE_URL, _RUN)
 
 import functools  # noqa: E402
 import uuid  # noqa: E402
@@ -71,8 +72,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 # Patched before the app import so DUMMY_PASSWORD_HASH is built at the same cost.
 bcrypt.gensalt = functools.partial(bcrypt.gensalt, 4)
 
-from app.config import settings  # noqa: E402
-from app.database import SessionLocal  # noqa: E402
+from app.database import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.conflict import Conflict  # noqa: E402
 from app.models.tag import Tag  # noqa: E402
@@ -146,33 +146,49 @@ def _refresh_template(base_url: str) -> None:
     )
 
 
-def _create_worker_db(base_url: str, worker: str) -> None:
-    worker_db = _db_name(_worker_db_url(base_url, worker))
+def _create_run_db(base_url: str, run: str) -> None:
+    run_db = _db_name(_run_db_url(base_url, run))
     template = _db_name(_template_db_url(base_url))
     conn = _admin_conn(base_url)
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT pg_advisory_lock(%s)", (_CLONE_LOCK_KEY,))
             try:
-                cur.execute(f'DROP DATABASE IF EXISTS "{worker_db}" WITH (FORCE)')
-                cur.execute(f'CREATE DATABASE "{worker_db}" TEMPLATE "{template}"')
+                cur.execute(f'DROP DATABASE IF EXISTS "{run_db}" WITH (FORCE)')
+                cur.execute(f'CREATE DATABASE "{run_db}" TEMPLATE "{template}"')
             finally:
                 cur.execute("SELECT pg_advisory_unlock(%s)", (_CLONE_LOCK_KEY,))
     finally:
         conn.close()
 
 
+def _drop_run_db(base_url: str, run: str) -> None:
+    engine.dispose()
+    conn = _admin_conn(base_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f'DROP DATABASE IF EXISTS "{_db_name(_run_db_url(base_url, run))}" WITH (FORCE)'
+            )
+    finally:
+        conn.close()
+
+
+def _runs_tests(config: pytest.Config) -> bool:
+    """False in the xdist controller, which hands every test to its workers."""
+    return bool(_XDIST_WORKER) or not getattr(config.option, "numprocesses", None)
+
+
 def pytest_configure(config: pytest.Config) -> None:
-    if _XDIST_WORKER:
-        # Worker: clone the controller's template (DATABASE_URL was rewritten at import).
-        _create_worker_db(os.environ[_BASE_URL_ENV], _XDIST_WORKER)
-    elif getattr(config.option, "numprocesses", None):
-        # xdist controller: publish the base URL to workers, refresh the template.
-        os.environ[_BASE_URL_ENV] = settings.database_url
-        _refresh_template(settings.database_url)
+    if not _XDIST_WORKER:
+        _refresh_template(_BASE_URL)
+    if _runs_tests(config):
+        _create_run_db(_BASE_URL, _RUN)
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
+    if _runs_tests(config):
+        _drop_run_db(_BASE_URL, _RUN)
     shutil.rmtree(_SESSION_STORAGE_ROOT, ignore_errors=True)
 
 

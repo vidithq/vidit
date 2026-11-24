@@ -346,7 +346,7 @@ vidit/
 └── .github/workflows/        # see GitHub Actions
 ```
 
-`make test` runs `pytest -n auto --dist worksteal`: the conftest migrates a template database to alembic head and clones one database per xdist worker. Plain `pytest` stays serial on the development database. Stored files never reach `backend/.local-storage`: each test process writes to its own temporary storage root, emptied before every test and removed when the run ends.
+`make test` runs `pytest -n auto --dist worksteal`. The conftest migrates a template database, `<db>_test_tpl`, to alembic head, and every test process clones it: each xdist worker as `<db>_test_<worker id>`, and a plain serial `pytest` as `<db>_test_serial`. `<db>` is the database `DATABASE_URL` names, and no test reads or writes it. Each process drops its clone when it ends, and the template stays for the next run. Stored files never reach `backend/.local-storage`: each test process writes to its own temporary storage root, emptied before every test and removed when the run ends.
 
 The root [`conftest.py`](../backend/tests/conftest.py) defines the fixtures that every test module shares:
 
