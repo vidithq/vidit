@@ -51,8 +51,11 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+    # Its own connection: a read on the migration connection opens the transaction that
+    # begin_transaction() would then leave uncommitted.
     with connectable.connect() as connection:
         extension_tables.update(connection.execute(_EXTENSION_TABLES).scalars())
+    with connectable.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
