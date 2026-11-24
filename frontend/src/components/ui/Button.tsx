@@ -142,8 +142,8 @@ export function buttonClasses(
 // Every button or button-styled link with a text label leads with the icon of the action it
 // names, one icon per action, so a reader learns an icon once. A text `<Button>` names it with
 // `action`; a link styled by `buttonClasses` puts `<ActionIcon>` before its text.
-// `Button.test.ts` fails on a text button that names none. docs/design.md, Action icons, lists
-// the labels of each. A removal takes `remove` (a cross that acts at once) or `delete` (a trash
+// `Button.test.tsx` fails on a text button that names none. docs/design.md, Action icons, lists
+// the labels that differ from their action's name. A removal takes `remove` (a cross that acts at once) or `delete` (a trash
 // behind `<ConfirmButton>`); eslint.config.mjs keeps their lucide icons out of other files.
 export const ACTION_ICONS = {
   accept: Check,
