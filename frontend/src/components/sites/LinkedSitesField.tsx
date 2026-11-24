@@ -14,7 +14,7 @@ import { siteItem } from "@/lib/items";
 import {
   eventSiteLinksPath,
   saveSiteLinks,
-  siteSuggestionsNearPath,
+  siteSuggestionsPath,
   type DraftSiteLink,
   type EventSiteLink,
   type SiteSuggestion,
@@ -90,7 +90,7 @@ export function LinkedSitesField({
   const [point, setPoint] = useState<CoordinatePair | null>(null);
   const typed = coordinatePair(lat, lng);
   useDebouncedEffect(() => setPoint(typed), [typed?.lat, typed?.lng], POINT_DEBOUNCE_MS);
-  const near = useApiResource<SiteSuggestion[]>(point ? siteSuggestionsNearPath(point, "") : null);
+  const near = useApiResource<SiteSuggestion[]>(point ? siteSuggestionsPath(point, "") : null);
 
   const picked = new Set(links.map((link) => link.site.id));
   const unpicked = (rows: SiteSuggestion[]) => rows.filter((row) => !picked.has(row.id));
@@ -152,7 +152,7 @@ export function LinkedSitesField({
               label={SITE_SEARCH_COPY.label}
               placeholder={SITE_SEARCH_COPY.placeholder}
               search={(q, signal) =>
-                apiFetch<SiteSuggestion[]>(siteSuggestionsNearPath(point, q), { signal }).then(
+                apiFetch<SiteSuggestion[]>(siteSuggestionsPath(point, q), { signal }).then(
                   (rows) => {
                     for (const row of rows) searched.current.set(row.id, row);
                     return unpicked(rows).map(siteCandidate);

@@ -10,7 +10,6 @@ from app.schemas.source import (
     LinkUploadRead,
     UploadFromLink,
     UploadFromProof,
-    UploadList,
     UploadRead,
 )
 from app.services import uploads as uploads_service
@@ -31,7 +30,7 @@ def _upload_read(row: Upload) -> UploadRead:
     )
 
 
-@router.post("", response_model=UploadList, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=list[UploadRead], status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 def create_upload(
     request: Request,
@@ -39,10 +38,11 @@ def create_upload(
     db: DB,
     # One file per request: the request size limit admits one video.
     file: UploadFile = File(...),
-) -> UploadList:
-    """Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``."""
+) -> list[UploadRead]:
+    """Stage one source file, or each frame of a GIF in frame order; a source of a later event
+    write names one by ``id``."""
     rows = asyncio.run(uploads_service.stage_upload(db, uploader=current_user, file=file))
-    return UploadList(items=[_upload_read(row) for row in rows])
+    return [_upload_read(row) for row in rows]
 
 
 # ``def`` plus ``asyncio.run``, as ``import-from-tweet``: the chase and the download block.

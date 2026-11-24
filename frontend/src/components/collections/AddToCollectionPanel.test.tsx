@@ -13,28 +13,26 @@ vi.mock("@/lib/collections", async (importOriginal) => ({
     removeEventFromCollection(c, e),
 }));
 
-import type { CollectionMemberships } from "@/lib/collections";
+import type { CollectionMembership } from "@/lib/collections";
 
 import { AddToCollectionPanel } from "./AddToCollectionPanel";
 
-const MEMBERSHIPS: CollectionMemberships = {
-  items: [
-    {
-      id: "c1",
-      title: "Kupiansk rail corridor",
-      cover: [],
-      event_count: 1,
-      in_collection: false,
-    },
-    {
-      id: "c2",
-      title: "Zaporizhzhia plant perimeter",
-      cover: [{ url: "https://media.example.com/plant.jpg", kind: "image", role: "proof" }],
-      event_count: 12,
-      in_collection: true,
-    },
-  ],
-};
+const MEMBERSHIPS: CollectionMembership[] = [
+  {
+    id: "c1",
+    title: "Kupiansk rail corridor",
+    cover: [],
+    event_count: 1,
+    in_collection: false,
+  },
+  {
+    id: "c2",
+    title: "Zaporizhzhia plant perimeter",
+    cover: [{ url: "https://media.example.com/plant.jpg", kind: "image", role: "proof" }],
+    event_count: 12,
+    in_collection: true,
+  },
+];
 
 /** The row for one collection (the switch and its state). */
 function row(title: string): HTMLElement {
@@ -186,7 +184,7 @@ describe("AddToCollectionPanel", () => {
   });
 
   it("offers to open the first one when the analyst holds none", () => {
-    useApiResource.mockReturnValue({ data: { items: [] }, error: null });
+    useApiResource.mockReturnValue({ data: [], error: null });
 
     render(<AddToCollectionPanel eventId="e1" />);
 
@@ -207,15 +205,13 @@ describe("AddToCollectionPanel", () => {
   it("finds a collection by title and adds the event to it", async () => {
     const titles = ["Avdiivka", "Bakhmut", "Chasiv Yar", "Dam breach", "Kupiansk", "Pokrovsk"];
     useApiResource.mockReturnValue({
-      data: {
-        items: titles.map((title, i) => ({
-          id: `c${i}`,
-          title,
-          cover: [],
-          event_count: i,
-          in_collection: false,
-        })),
-      },
+      data: titles.map((title, i) => ({
+        id: `c${i}`,
+        title,
+        cover: [],
+        event_count: i,
+        in_collection: false,
+      })),
       error: null,
     });
     render(<AddToCollectionPanel eventId="e1" />);

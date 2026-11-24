@@ -212,8 +212,8 @@ function appendGeolocatorInvites(fd: FormData, usernames: string[] = []): void {
   );
 }
 
-function postEventForm<T>(path: string, fd: FormData): Promise<T> {
-  return apiFetch<T>(path, { method: "POST", body: fd });
+function postEventForm<T>(path: string, fd: FormData, method: "POST" | "PUT" = "POST"): Promise<T> {
+  return apiFetch<T>(path, { method, body: fd });
 }
 
 /** Mirrors `schemas/event.VERSION_NOTE_MAX_LENGTH`; change both. */
@@ -617,11 +617,11 @@ export function createEventRequest(input: EventWriteInput): Promise<EventDetail>
   return postEventForm("/events/requests", eventFormData(input));
 }
 
-/** Correct an open request: `POST /events/{id}/request`, owner-only, `requested`-only. No
+/** Correct an open request: `PUT /events/{id}/request`, owner-only, `requested`-only. No
  *  version is filed (a request is a question, not a vouched claim): the row is overwritten.
  *  Posting no guess clears it. */
 export function updateEventRequest(id: string, input: EventWriteInput): Promise<EventDetail> {
-  return postEventForm(`/events/${id}/request`, eventFormData(input));
+  return postEventForm(`/events/${id}/request`, eventFormData(input), "PUT");
 }
 
 /** `POST /events/import-from-tweet`: runs detection over one of your own X posts and
@@ -753,7 +753,7 @@ export async function awaitImportJob(
 
 /** Human labels of what stops a detection from publishing; empty means "ready" (only the
  *  conflict and source kind choices remain).
- *  Mirrors the server floor in `services/events/batch._publish_detection`, and only that:
+ *  Mirrors the publish floor a detection's stored row must clear on the server, and only that:
  *  form-level requirements (title) are excluded. The server stays the authority.
  *  `services/events.detection_ready_predicate` is the SQL behind the queue's `readiness`
  *  filter; both are held to `backend/tests/events/_readiness_cases.py` and its mirror in

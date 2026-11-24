@@ -1,6 +1,5 @@
 "use client";
 
-import { AdminProvider } from "@/contexts/AdminContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { MapStateProvider } from "@/contexts/MapStateContext";
 import { DetectionsProvider } from "@/contexts/DetectionsContext";
@@ -11,17 +10,15 @@ import PreferencesSync from "@/components/PreferencesSync";
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <AdminProvider>
-        <DetectionsProvider>
-          <NotificationsProvider>
-            <MapStateProvider>
-              <PathTracker />
-              <PreferencesSync />
-              {children}
-            </MapStateProvider>
-          </NotificationsProvider>
-        </DetectionsProvider>
-      </AdminProvider>
+      <DetectionsProvider>
+        <NotificationsProvider>
+          <MapStateProvider>
+            <PathTracker />
+            <PreferencesSync />
+            {children}
+          </MapStateProvider>
+        </NotificationsProvider>
+      </DetectionsProvider>
     </AuthProvider>
   );
 }

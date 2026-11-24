@@ -8,13 +8,11 @@ arguments.
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Query, Request, Response, status
+from fastapi import APIRouter, Query, Request, Response, status
 
 from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
-from app.models.content_report import ContentReport
 from app.models.site import SiteVersion
 from app.ratelimit import authenticated_read_quota, limiter
-from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.schemas.site import (
     SiteCreate,
     SiteCreatedRead,
@@ -29,7 +27,6 @@ from app.schemas.site import (
     SiteVersionList,
     SiteVersionRead,
 )
-from app.services import reports as reports_service
 from app.services import sites as sites_service
 from app.services import versions as versions_service
 from app.services.event_filters import parse_bbox, parse_optional_iso_date
@@ -92,32 +89,7 @@ def list_site_suggestions(
 ) -> list[SiteSuggestionRead]:
     """Sites a point may link to, nearest first: those within ``margin_m`` metres of ``lat``,
     ``lng``, or with ``q``, those whose name contains it."""
-    return sites_service.suggest_sites_near(db, lat=lat, lng=lng, margin_m=margin_m, q=q)
-
-
-@router.post(
-    "/{site_id}/report",
-    response_model=ContentReportRead,
-    status_code=status.HTTP_201_CREATED,
-)
-@limiter.limit("10/hour")
-def report_site(
-    request: Request,
-    site_id: uuid.UUID,
-    body: ContentReportCreate,
-    background_tasks: BackgroundTasks,
-    current_user: OptionalUser,
-    db: DB,
-) -> ContentReport:
-    """Report a site for moderation."""
-    return reports_service.create_report(
-        db,
-        kind="site",
-        target_id=site_id,
-        body=body,
-        reporter=current_user,
-        background_tasks=background_tasks,
-    )
+    return sites_service.suggest_sites(db, lat=lat, lng=lng, margin_m=margin_m, q=q)
 
 
 @router.get("/{site_id}", response_model=SiteRead)

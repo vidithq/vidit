@@ -7,8 +7,7 @@ import {
   deleteUser,
   purgeDetectedEvents,
   restoreUser,
-  setUserInviteMinting,
-  setUserXHandle,
+  updateUser,
   type AdminUser,
 } from "@/lib/admin";
 import { formatInstant } from "@/lib/format";
@@ -59,7 +58,7 @@ export function UserActionsCard({
   const [mintingEnabled, setMintingEnabled] = useState(user.is_invite_minting_enabled);
 
   const xHandleMutation = useMutation(
-    (value: string | null) => setUserXHandle(user.id, { x_handle: value }),
+    (value: string | null) => updateUser(user.id, { x_handle: value }),
     {
       fallback: "Failed to update the X handle",
       onSuccess: (updated) => {
@@ -71,7 +70,7 @@ export function UserActionsCard({
   );
 
   const mintingMutation = useMutation(
-    (enabled: boolean) => setUserInviteMinting(user.id, enabled),
+    (enabled: boolean) => updateUser(user.id, { invite_minting: enabled }),
     {
       fallback: "Failed to change invite minting",
       onSuccess: (updated) => {

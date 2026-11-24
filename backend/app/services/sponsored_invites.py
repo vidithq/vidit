@@ -128,7 +128,7 @@ def list_own(db: Session, *, sponsor: User) -> SponsoredInviteCodeList:
     )
 
 
-def revoke_own(db: Session, *, sponsor: User, code_id: uuid.UUID) -> SponsoredInviteCodeRead:
+def revoke_own(db: Session, *, sponsor: User, invite_code_id: uuid.UUID) -> SponsoredInviteCodeRead:
     """Revoke one of the sponsor's active codes, whatever the admin minting switch says.
 
     Another sponsor's code 404s like an unknown id, so the endpoint never confirms a code exists.
@@ -136,7 +136,7 @@ def revoke_own(db: Session, *, sponsor: User, code_id: uuid.UUID) -> SponsoredIn
     # The row lock keeps a redemption from landing between the status check and the revoke.
     invite = (
         db.query(InviteCode)
-        .filter(InviteCode.id == code_id, InviteCode.created_by_id == sponsor.id)
+        .filter(InviteCode.id == invite_code_id, InviteCode.created_by_id == sponsor.id)
         .with_for_update()
         .first()
     )
@@ -145,6 +145,6 @@ def revoke_own(db: Session, *, sponsor: User, code_id: uuid.UUID) -> SponsoredIn
     status = invite_code_status(invite)
     if status != "active":
         raise InviteCodeNotActiveError(f"This invite code is {status}, so it cannot be revoked.")
-    revoked = revoke_invite_code(db, actor_id=sponsor.id, invite_id=invite.id)
+    revoked = revoke_invite_code(db, actor_id=sponsor.id, invite_code_id=invite.id)
     assert revoked is not None
     return _read(revoked)

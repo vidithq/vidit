@@ -695,15 +695,21 @@ def test_items_reject_a_malformed_cursor(db, owner):
     assert response.status_code == 422
 
 
+def _moderate(collection_id, *, hidden: bool, as_user):
+    return client.patch(
+        f"/api/v1/admin/collections/{collection_id}/moderation",
+        json={"hidden": hidden},
+        headers=login_as(client, as_user),
+    )
+
+
 def test_admin_takedown_hides_a_collection_from_everyone_but_admins(
     db, owner, stranger, admin_user
 ):
     collection = _make_collection(db, owner=owner)
     _add(db, collection, _make_event(db, author=owner, occurred_date=date(2026, 5, 1)))
 
-    takedown = client.delete(
-        f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin_user)
-    )
+    takedown = _moderate(collection.id, hidden=True, as_user=admin_user)
     assert takedown.status_code == 200
     assert takedown.json()["hidden_at"] is not None
 
@@ -732,22 +738,6 @@ def test_admin_takedown_hides_a_collection_from_everyone_but_admins(
     )
 
 
-def test_admin_takedown_is_idempotent_and_keeps_the_first_stamp(db, owner, admin_user):
-    collection = _make_collection(db, owner=owner)
-    headers = login_as(client, admin_user)
-    first = client.delete(f"/api/v1/admin/collections/{collection.id}", headers=headers).json()
-    second = client.delete(f"/api/v1/admin/collections/{collection.id}", headers=headers).json()
-    assert first["hidden_at"] == second["hidden_at"]
-
-
-def _moderate(collection_id, *, hidden: bool, as_user):
-    return client.patch(
-        f"/api/v1/admin/collections/{collection_id}/moderation",
-        json={"hidden": hidden},
-        headers=login_as(client, as_user),
-    )
-
-
 def test_admin_moderation_hides_then_restores_a_collection(db, owner, admin_user):
     """The takedown is reversible: what the PATCH withholds, the PATCH puts back."""
     collection = _make_collection(db, owner=owner)
@@ -767,20 +757,7 @@ def test_admin_moderation_hides_then_restores_a_collection(db, owner, admin_user
     assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
     # The owner's profile shelf carries it again.
     body = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert [item["id"] for item in body["items"]] == [str(collection.id)]
-
-
-def test_admin_moderation_takedown_alias_is_undone_by_the_patch(db, owner, admin_user):
-    """``DELETE`` sets the stamp the ``PATCH`` clears: one axis, two doors."""
-    collection = _make_collection(db, owner=owner)
-    client.delete(
-        f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin_user)
-    )
-    client.cookies.clear()
-
-    assert _moderate(collection.id, hidden=False, as_user=admin_user).json()["hidden_at"] is None
-    client.cookies.clear()
-    assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
+    assert [item["id"] for item in body] == [str(collection.id)]
 
 
 def test_admin_moderation_is_idempotent_both_ways(db, owner, admin_user):
@@ -808,14 +785,10 @@ def test_admin_moderation_404s_on_an_unknown_collection(db, admin_user):
 def test_withheld_collection_is_out_of_the_profile_list(db, owner, admin_user):
     collection = _make_collection(db, owner=owner)
     _add(db, collection, _make_event(db, author=owner, occurred_date=date(2026, 5, 1)))
-    client.delete(
-        f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin_user)
-    )
+    _moderate(collection.id, hidden=True, as_user=admin_user)
     client.cookies.clear()
 
-    body = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert body["total"] == 0
-    assert body["items"] == []
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
 
 
 def test_anonymous_report_of_a_collection_is_accepted(db, owner):
@@ -824,8 +797,13 @@ def test_anonymous_report_of_a_collection_is_accepted(db, owner):
     client.cookies.clear()
 
     response = client.post(
-        f"/api/v1/collections/{collection.id}/report",
-        json={"reason": "privacy", "details": "This shelf names a private address."},
+        "/api/v1/reports",
+        json={
+            "kind": "collection",
+            "target_id": str(collection.id),
+            "reason": "privacy",
+            "details": "This shelf names a private address.",
+        },
     )
     assert response.status_code == 201, response.text
     body = response.json()
@@ -847,8 +825,8 @@ def test_anonymous_report_of_a_collection_is_accepted(db, owner):
 def test_authenticated_report_of_a_collection_records_the_reporter(db, owner, stranger):
     collection = _make_collection(db, owner=owner)
     response = client.post(
-        f"/api/v1/collections/{collection.id}/report",
-        json={"reason": "copyright"},
+        "/api/v1/reports",
+        json={"kind": "collection", "target_id": str(collection.id), "reason": "copyright"},
         headers=login_as(client, stranger),
     )
     assert response.status_code == 201, response.text
@@ -859,18 +837,22 @@ def test_authenticated_report_of_a_collection_records_the_reporter(db, owner, st
 def test_report_a_withheld_collection_is_404(db, owner, admin_user):
     """A withheld collection cannot be reported: the same 404 as an unknown id."""
     collection = _make_collection(db, owner=owner)
-    client.delete(
-        f"/api/v1/admin/collections/{collection.id}", headers=login_as(client, admin_user)
-    )
+    _moderate(collection.id, hidden=True, as_user=admin_user)
     client.cookies.clear()
 
-    response = client.post(f"/api/v1/collections/{collection.id}/report", json={"reason": "other"})
+    response = client.post(
+        "/api/v1/reports",
+        json={"kind": "collection", "target_id": str(collection.id), "reason": "other"},
+    )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "collection_not_found"
 
 
 def test_report_an_unknown_collection_is_404():
-    response = client.post(f"/api/v1/collections/{uuid.uuid4()}/report", json={"reason": "other"})
+    response = client.post(
+        "/api/v1/reports",
+        json={"kind": "collection", "target_id": str(uuid.uuid4()), "reason": "other"},
+    )
     assert response.status_code == 404
 
 
@@ -887,7 +869,10 @@ def report_ids(db):
 
 def _report(collection: Collection, report_ids: list[uuid.UUID]) -> str:
     client.cookies.clear()
-    response = client.post(f"/api/v1/collections/{collection.id}/report", json={"reason": "other"})
+    response = client.post(
+        "/api/v1/reports",
+        json={"kind": "collection", "target_id": str(collection.id), "reason": "other"},
+    )
     assert response.status_code == 201, response.text
     report_ids.append(uuid.UUID(response.json()["id"]))
     return response.json()["id"]
@@ -941,10 +926,16 @@ def test_owner_delete_under_an_open_report_withholds_the_collection(
     path = f"/api/v1/collections/{collection.id}"
     assert client.get(path).status_code == 404
     assert client.get(f"{path}/events").status_code == 404
-    assert client.post(f"{path}/report", json={"reason": "other"}).status_code == 404
+    assert (
+        client.post(
+            "/api/v1/reports",
+            json={"kind": "collection", "target_id": str(collection.id), "reason": "other"},
+        ).status_code
+        == 404
+    )
     assert client.get(path, headers=login_as(client, stranger)).status_code == 404
     client.cookies.clear()
-    assert client.get(f"/api/v1/users/{owner.username}/collections").json()["total"] == 0
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
     assert (
         client.get(f"/api/v1/search?type=collection&author={owner.username}").json()["hits"] == []
     )
@@ -952,8 +943,8 @@ def test_owner_delete_under_an_open_report_withholds_the_collection(
     # The owner sees it as deleted too, and can no longer write to it.
     headers = login_as(client, owner)
     assert client.get(path).status_code == 404
-    assert client.get(f"/api/v1/users/{owner.username}/collections").json()["total"] == 0
-    assert client.get(f"/api/v1/events/{event.id}/collections").json()["items"] == []
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
+    assert client.get(f"/api/v1/events/{event.id}/collections").json() == []
     patch = {"title": "Renamed", "description": _description("Still here.")}
     assert client.patch(path, json=patch, headers=headers).status_code == 404
     assert client.delete(path, headers=headers).status_code == 404
@@ -1091,20 +1082,18 @@ def test_empty_collections_are_the_owners_view_only(db, owner, stranger):
     _make_collection(db, owner=owner, title="Empty")
 
     anonymous = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert anonymous["total"] == 1
-    assert [item["title"] for item in anonymous["items"]] == ["Filled"]
+    assert [item["title"] for item in anonymous] == ["Filled"]
 
     reader = client.get(
         f"/api/v1/users/{owner.username}/collections", headers=login_as(client, stranger)
     ).json()
-    assert reader["total"] == 1
+    assert len(reader) == 1
     client.cookies.clear()
 
     mine = client.get(
         f"/api/v1/users/{owner.username}/collections", headers=login_as(client, owner)
     ).json()
-    assert mine["total"] == 2
-    assert {item["title"] for item in mine["items"]} == {"Filled", "Empty"}
+    assert {item["title"] for item in mine} == {"Filled", "Empty"}
 
 
 def test_a_collection_whose_items_all_left_reads_as_empty(db, owner):
@@ -1116,8 +1105,7 @@ def test_a_collection_whose_items_all_left_reads_as_empty(db, owner):
     event.deleted_at = datetime.now(UTC)
     db.commit()
 
-    anonymous = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert anonymous["total"] == 0
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
     assert client.get(f"/api/v1/collections/{collection.id}").json()["event_count"] == 0
 
 
@@ -1130,7 +1118,7 @@ def test_event_collections_report_membership_to_the_owner(db, owner):
     body = client.get(
         f"/api/v1/events/{event.id}/collections", headers=login_as(client, owner)
     ).json()
-    by_title = {item["title"]: item["in_collection"] for item in body["items"]}
+    by_title = {item["title"]: item["in_collection"] for item in body}
     assert by_title == {"Holding": True, "Other": False}
 
 
@@ -1146,7 +1134,7 @@ def test_event_collections_carry_each_collections_cover(db, owner):
     body = client.get(
         f"/api/v1/events/{event.id}/collections", headers=login_as(client, owner)
     ).json()
-    covers = {item["title"]: item["cover"] for item in body["items"]}
+    covers = {item["title"]: item["cover"] for item in body}
     assert covers == {
         "Holding": client.get(f"/api/v1/collections/{holding.id}").json()["cover"],
         "Other": [],
@@ -1170,7 +1158,7 @@ def test_event_collections_count_each_collection_on_the_showable_predicate(db, o
     body = client.get(
         f"/api/v1/events/{event.id}/collections", headers=login_as(client, owner)
     ).json()
-    assert {item["title"]: item["event_count"] for item in body["items"]} == {
+    assert {item["title"]: item["event_count"] for item in body} == {
         "Holding": 2,
         "Other": 0,
     }
@@ -1501,7 +1489,7 @@ def test_every_read_surface_carries_the_same_tags(db, owner, make_tag):
     assert [_tag_names(hit) for hit in hits["hits"]] == [expected]
 
     listed = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert [_tag_names(item) for item in listed["items"]] == [expected]
+    assert [_tag_names(item) for item in listed] == [expected]
 
 
 def test_hard_deleting_the_owner_drops_the_collections_and_their_memberships(db, owner, admin_user):
@@ -1793,3 +1781,19 @@ def test_collectable_events_requires_auth():
     client.cookies.clear()
     response = client.post("/api/v1/collections/collectable-events", json={"q": "x"})
     assert response.status_code == 401
+
+
+def test_profile_collections_page_by_cursor(db, owner):
+    titles = [f"Shelf {n}" for n in range(3)]
+    for title in titles:
+        _add(db, _make_collection(db, owner=owner, title=title), _make_event(db, author=owner))
+    client.cookies.clear()
+    path = f"/api/v1/users/{owner.username}/collections"
+
+    first = client.get(path, params={"limit": 2})
+    assert len(first.json()) == 2
+    next_url = first.headers["link"].split(">")[0].lstrip("<")
+    second = client.get(next_url)
+    assert len(second.json()) == 1
+    assert "link" not in second.headers
+    assert {item["title"] for item in first.json() + second.json()} == set(titles)

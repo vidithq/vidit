@@ -34,7 +34,7 @@ from app.schemas.tag import TagRead
 from app.services.event_filters import collectable_events, credited_to
 from app.services.events.errors import EventNotFoundError
 from app.services.geolocator_credit import CARD_LOADS
-from app.services.pagination import keyset_after
+from app.services.pagination import keyset_after, keyset_before
 from app.services.permissions import ensure_owner
 from app.services.row_locks import lock_row
 from app.services.sanitize import html_text, sanitize_html
@@ -541,23 +541,19 @@ def list_owned_collections(
     *,
     owner_id: uuid.UUID,
     include_empty: bool,
-    page: int,
-    per_page: int,
-) -> tuple[list[Collection], int]:
-    """``include_empty`` is the owner's view. A withheld collection is hidden from its owner as
+    limit: int,
+    cursor: tuple[datetime, uuid.UUID] | None,
+) -> list[Collection]:
+    """One window, newest first, over-fetched by one row for ``pagination.paged``.
+    ``include_empty`` is the owner's view. A withheld collection is hidden from its owner as
     well."""
     query = db.query(Collection).options(joinedload(Collection.owner))
     query = query.filter(Collection.owner_id == owner_id, *visible_collections())
     if not include_empty:
         query = query.filter(has_showable_item())
-    total = query.count()
-    rows = (
-        query.order_by(Collection.created_at.desc(), Collection.id.desc())
-        .offset((page - 1) * per_page)
-        .limit(per_page)
-        .all()
-    )
-    return list(rows), total
+    if cursor is not None:
+        query = query.filter(keyset_before(Collection.created_at, Collection.id, cursor))
+    return query.order_by(Collection.created_at.desc(), Collection.id.desc()).limit(limit + 1).all()
 
 
 def list_memberships(

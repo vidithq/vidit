@@ -13,7 +13,6 @@ import {
   newCollectionHref,
   removeEventFromCollection,
   type CollectionMembership,
-  type CollectionMemberships,
 } from "@/lib/collections";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { collectionItem } from "@/lib/items";
@@ -33,15 +32,15 @@ import { PageLoading } from "@/components/ui/PageShell";
  * bit and shows the error banner. The count moves with the bit.
  */
 export function AddToCollectionPanel({ eventId }: { eventId: string }) {
-  const { data, error } = useApiResource<CollectionMemberships>(
+  const { data, error } = useApiResource<CollectionMembership[]>(
     eventCollectionsPath(eventId),
   );
   // Local copy so a toggle paints before its write lands, reseeded during render when a read lands.
   const [rows, setRows] = useState<CollectionMembership[] | null>(null);
-  const [seeded, setSeeded] = useState<CollectionMemberships | null>(null);
+  const [seeded, setSeeded] = useState<CollectionMembership[] | null>(null);
   if (data && data !== seeded) {
     setSeeded(data);
-    setRows(data.items);
+    setRows(data);
   }
 
   // The bit and the count move together. Setting the bit it already holds is a

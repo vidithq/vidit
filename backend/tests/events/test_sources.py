@@ -120,7 +120,7 @@ def test_an_edit_that_moves_the_sources_saves_their_new_order(author):
             source["links"][0]["url"], id=source["id"], level=source["level"], media_id=media
         )
 
-    edited = client.post(
+    edited = client.put(
         f"/api/v1/events/{created.json()['id']}/request",
         headers=login_as(client, author),
         data={"title": "Where?", "sources": sources_field(kept(c), kept(a), kept(b))},
@@ -287,7 +287,7 @@ def test_an_upload_is_staged_then_taken_by_the_write(db, author, conflict):
         files={"file": ("strike.jpg", TINY_JPEG, "image/jpeg")},
     )
     assert staged.status_code == 201, staged.text
-    [body] = staged.json()["items"]
+    [body] = staged.json()
     assert body["kind"] == "image" and body["original_filename"] == "strike.jpg"
     assert datetime.fromisoformat(body["expires_at"]) > datetime.now(UTC) + timedelta(hours=23)
     assert stored_path(storage_key(body["storage_url"])).exists()
@@ -387,7 +387,7 @@ def _post_gif(user, frames: int, filename: str = "comparison.gif"):
 def test_a_gif_is_staged_as_one_png_per_frame(db, author, conflict):
     response = _post_gif(author, 2)
     assert response.status_code == 201, response.text
-    items = response.json()["items"]
+    items = response.json()
     assert [i["original_filename"] for i in items] == ["comparison-1.png", "comparison-2.png"]
     assert {i["kind"] for i in items} == {"image"}
     for index, item in enumerate(items):
@@ -409,7 +409,7 @@ def test_a_gif_is_staged_as_one_png_per_frame(db, author, conflict):
 def test_a_single_frame_gif_is_staged_as_one_png(author):
     response = _post_gif(author, 1, filename="scan.gif")
     assert response.status_code == 201, response.text
-    [item] = response.json()["items"]
+    [item] = response.json()
     assert item["original_filename"] == "scan.png"
     assert storage_key(item["storage_url"]).endswith(".png")
 
@@ -496,7 +496,7 @@ def test_a_request_edit_sweeps_the_file_nothing_names_any_more(db, author):
     source = created.json()["sources"][0]
     key = storage_key(source["media"]["storage_url"])
     replacement = stage_file(author)
-    edited = client.post(
+    edited = client.put(
         f"/api/v1/events/{created.json()['id']}/request",
         headers=login_as(client, author),
         data={
@@ -522,7 +522,7 @@ def test_a_source_kept_by_id_keeps_its_file_and_a_dropped_one_goes(db, author):
         },
     )
     kept, dropped = created.json()["sources"]
-    edited = client.post(
+    edited = client.put(
         f"/api/v1/events/{created.json()['id']}/request",
         headers=login_as(client, author),
         data={

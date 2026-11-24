@@ -6,6 +6,7 @@ import {
   EVENT_APPROVALS,
   EVENT_ID,
   EVENT_WITH_SOURCES,
+  SIGNED_IN_ADMIN,
 } from "./support/fixtures";
 import { answerWith, grantSession, mockApi } from "./support/mockApi";
 import {
@@ -279,7 +280,7 @@ test.describe("approval stamps on a touch screen", () => {
   }) => {
     await grantSession(context);
     await mockApi(page);
-    await answerWith(page, "/admin/me", { is_admin: true });
+    await answerWith(page, "/auth/me", SIGNED_IN_ADMIN);
     const username = EVENT_APPROVALS[0].reviewer!.username;
     // The profile the second tap opens.
     await answerWith(page, `/users/${username}`, { ...ANALYST_PROFILE, username });

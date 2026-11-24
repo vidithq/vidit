@@ -24,26 +24,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/collections/{collection_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Hide Collection Admin
-         * @description Withhold a collection from every read but an admin's.
-         */
-        delete: operations["hide_collection_admin_api_v1_admin_collections__collection_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/collections/{collection_id}/moderation": {
         parameters: {
             query?: never;
@@ -84,7 +64,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/events/{geolocation_id}": {
+    "/api/v1/admin/events/{event_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -95,16 +75,16 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete Geolocation Admin
+         * Delete Event Admin
          * @description Remove a geolocation: soft by default, `?hard=true` for GDPR erasure.
          */
-        delete: operations["delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete"];
+        delete: operations["delete_event_admin_api_v1_admin_events__event_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/events/{geolocation_id}/moderation": {
+    "/api/v1/admin/events/{event_id}/moderation": {
         parameters: {
             query?: never;
             header?: never;
@@ -121,10 +101,10 @@ export interface paths {
          * Set Event Moderation
          * @description Set an event's moderation state directly, with no report behind it.
          */
-        patch: operations["set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch"];
+        patch: operations["set_event_moderation_api_v1_admin_events__event_id__moderation_patch"];
         trace?: never;
     };
-    "/api/v1/admin/events/{geolocation_id}/versions/{version_no}/redact": {
+    "/api/v1/admin/events/{event_id}/versions/{version_no}/redact": {
         parameters: {
             query?: never;
             header?: never;
@@ -137,7 +117,7 @@ export interface paths {
          * Redact Event Version
          * @description Blank one filed version of an event's history.
          */
-        post: operations["redact_event_version_api_v1_admin_events__geolocation_id__versions__version_no__redact_post"];
+        post: operations["redact_event_version_api_v1_admin_events__event_id__versions__version_no__redact_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -165,7 +145,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/invite-codes/{invite_id}": {
+    "/api/v1/admin/invite-codes/{invite_code_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -179,13 +159,13 @@ export interface paths {
          * Delete Invite Code
          * @description Drop the row of a code no account was created from. 409 once it was.
          */
-        delete: operations["delete_invite_code_api_v1_admin_invite_codes__invite_id__delete"];
+        delete: operations["delete_invite_code_api_v1_admin_invite_codes__invite_code_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/invite-codes/{invite_id}/revoke": {
+    "/api/v1/admin/invite-codes/{invite_code_id}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -198,7 +178,7 @@ export interface paths {
          * Revoke Invite Code
          * @description Retire a code while keeping its row. The list still shows it.
          */
-        post: operations["revoke_invite_code_api_v1_admin_invite_codes__invite_id__revoke_post"];
+        post: operations["revoke_invite_code_api_v1_admin_invite_codes__invite_code_id__revoke_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -259,26 +239,6 @@ export interface paths {
          * @description Email every analyst holding unpublished detections.
          */
         post: operations["maintenance_send_completion_digests_api_v1_admin_maintenance_send_completion_digests_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Admin Me
-         * @description Whether the signed-in analyst is a site admin.
-         */
-        get: operations["admin_me_api_v1_admin_me_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -446,7 +406,11 @@ export interface paths {
         delete: operations["delete_user_admin_api_v1_admin_users__user_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update User Admin
+         * @description Link or clear the bot-attribution X handle, or turn invite minting on or off.
+         */
+        patch: operations["update_user_admin_api_v1_admin_users__user_id__patch"];
         trace?: never;
     };
     "/api/v1/admin/users/{user_id}/detected-events": {
@@ -469,26 +433,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/users/{user_id}/invite-minting": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Set User Invite Minting
-         * @description Turn minting invite codes from Settings on or off for one analyst.
-         */
-        patch: operations["set_user_invite_minting_api_v1_admin_users__user_id__invite_minting_patch"];
-        trace?: never;
-    };
     "/api/v1/admin/users/{user_id}/restore": {
         parameters: {
             query?: never;
@@ -507,26 +451,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}/x-handle": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Set User X Handle
-         * @description Link or clear the X handle the bot attributes mentions to.
-         */
-        patch: operations["set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch"];
         trace?: never;
     };
     "/api/v1/auth/change-password": {
@@ -842,26 +766,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/collections/{collection_id}/report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Report Collection
-         * @description Report a collection for moderation.
-         */
-        post: operations["report_collection_api_v1_collections__collection_id__report_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/conflicts": {
         parameters: {
             query?: never;
@@ -895,7 +799,7 @@ export interface paths {
         };
         /**
          * List Events
-         * @description Cards for one lifecycle view, newest or oldest first.
+         * @description Cards for one lifecycle view, newest or oldest added first, or newest event date first.
          *
          *     Two steps (ids, then full rows) so eager-loads can't inflate the LIMIT count.
          */
@@ -906,26 +810,6 @@ export interface paths {
          * @description Direct geolocate: create an event born ``geolocated``.
          */
         post: operations["create_event_api_v1_events_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/batch-complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch Complete Events
-         * @description Publish the selected detections: ``detected`` → ``geolocated``.
-         */
-        post: operations["batch_complete_events_api_v1_events_batch_complete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1121,7 +1005,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}": {
+    "/api/v1/events/{event_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1135,7 +1019,7 @@ export interface paths {
          *     A withheld event (``hidden_at``) answers 404 for everyone but an admin,
          *     who must read what was taken down to judge the report.
          */
-        get: operations["get_event_api_v1_events__geolocation_id__get"];
+        get: operations["get_event_api_v1_events__event_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1144,7 +1028,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approval-request-targets": {
+    "/api/v1/events/{event_id}/approval-request-targets": {
         parameters: {
             query?: never;
             header?: never;
@@ -1155,7 +1039,7 @@ export interface paths {
          * List Approval Request Targets
          * @description Analysts and organizations you can ask to approve this event now (geolocators only).
          */
-        get: operations["list_approval_request_targets_api_v1_events__geolocation_id__approval_request_targets_get"];
+        get: operations["list_approval_request_targets_api_v1_events__event_id__approval_request_targets_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1164,7 +1048,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approval-requests": {
+    "/api/v1/events/{event_id}/approval-requests": {
         parameters: {
             query?: never;
             header?: never;
@@ -1176,21 +1060,21 @@ export interface paths {
          * @description Open approval requests on this event: all of them for its geolocators, those addressed to
          *     you or to an organization you manage otherwise.
          */
-        get: operations["list_approval_requests_api_v1_events__geolocation_id__approval_requests_get"];
+        get: operations["list_approval_requests_api_v1_events__event_id__approval_requests_get"];
         put?: never;
         /**
          * Create Approval Request
          * @description Ask an analyst or an organization to approve the live version of a published event you
          *     geolocated.
          */
-        post: operations["create_approval_request_api_v1_events__geolocation_id__approval_requests_post"];
+        post: operations["create_approval_request_api_v1_events__event_id__approval_requests_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approval-requests/{request_id}/decline": {
+    "/api/v1/events/{event_id}/approval-requests/{request_id}/decline": {
         parameters: {
             query?: never;
             header?: never;
@@ -1203,14 +1087,14 @@ export interface paths {
          * Decline Approval Request
          * @description Decline an approval request addressed to you, or to an organization you belong to.
          */
-        post: operations["decline_approval_request_api_v1_events__geolocation_id__approval_requests__request_id__decline_post"];
+        post: operations["decline_approval_request_api_v1_events__event_id__approval_requests__request_id__decline_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/approvals": {
+    "/api/v1/events/{event_id}/approvals": {
         parameters: {
             query?: never;
             header?: never;
@@ -1222,21 +1106,21 @@ export interface paths {
          * @description The approvals of the event: one version's, every version's, or one analyst's across
          *     versions, and whether you may approve it.
          */
-        get: operations["list_approvals_api_v1_events__geolocation_id__approvals_get"];
+        get: operations["list_approvals_api_v1_events__event_id__approvals_get"];
         put?: never;
         /**
          * Approve Event
          * @description Approve the live version of a published geolocation you are not credited on, as
          *     yourself or, as one of its members, for an organization.
          */
-        post: operations["approve_event_api_v1_events__geolocation_id__approvals_post"];
+        post: operations["approve_event_api_v1_events__event_id__approvals_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/close": {
+    "/api/v1/events/{event_id}/close": {
         parameters: {
             query?: never;
             header?: never;
@@ -1249,14 +1133,14 @@ export interface paths {
          * Close Event
          * @description Close an event: withdraw, reject or retract it (owner-only).
          */
-        post: operations["close_event_api_v1_events__geolocation_id__close_post"];
+        post: operations["close_event_api_v1_events__event_id__close_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/collections": {
+    "/api/v1/events/{event_id}/collections": {
         parameters: {
             query?: never;
             header?: never;
@@ -1267,7 +1151,7 @@ export interface paths {
          * List Event Collections
          * @description Your collections, each saying whether this event is already on it.
          */
-        get: operations["list_event_collections_api_v1_events__geolocation_id__collections_get"];
+        get: operations["list_event_collections_api_v1_events__event_id__collections_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1276,7 +1160,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocator-invites": {
+    "/api/v1/events/{event_id}/geolocator-invites": {
         parameters: {
             query?: never;
             header?: never;
@@ -1288,20 +1172,20 @@ export interface paths {
          * @description Pending invitations to share this event's credit: all of them for the owner, your own
          *     otherwise.
          */
-        get: operations["list_geolocator_invites_api_v1_events__geolocation_id__geolocator_invites_get"];
+        get: operations["list_geolocator_invites_api_v1_events__event_id__geolocator_invites_get"];
         put?: never;
         /**
          * Invite Geolocator
          * @description Invite an analyst to share this published event's credit (owner only).
          */
-        post: operations["invite_geolocator_api_v1_events__geolocation_id__geolocator_invites_post"];
+        post: operations["invite_geolocator_api_v1_events__event_id__geolocator_invites_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocator-invites/accept": {
+    "/api/v1/events/{event_id}/geolocator-invites/accept": {
         parameters: {
             query?: never;
             header?: never;
@@ -1314,14 +1198,14 @@ export interface paths {
          * Accept Geolocator Invite
          * @description Accept your invitation: you join this event's geolocators.
          */
-        post: operations["accept_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_accept_post"];
+        post: operations["accept_geolocator_invite_api_v1_events__event_id__geolocator_invites_accept_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocator-invites/decline": {
+    "/api/v1/events/{event_id}/geolocator-invites/decline": {
         parameters: {
             query?: never;
             header?: never;
@@ -1334,14 +1218,14 @@ export interface paths {
          * Decline Geolocator Invite
          * @description Decline your invitation.
          */
-        post: operations["decline_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_decline_post"];
+        post: operations["decline_geolocator_invite_api_v1_events__event_id__geolocator_invites_decline_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocator-invites/{username}": {
+    "/api/v1/events/{event_id}/geolocator-invites/{username}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1355,13 +1239,13 @@ export interface paths {
          * Withdraw Geolocator Invite
          * @description Withdraw a pending invitation (owner only).
          */
-        delete: operations["withdraw_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites__username__delete"];
+        delete: operations["withdraw_geolocator_invite_api_v1_events__event_id__geolocator_invites__username__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/geolocators/{username}": {
+    "/api/v1/events/{event_id}/geolocators/{username}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1375,13 +1259,13 @@ export interface paths {
          * Remove Geolocator
          * @description Take a co-geolocator's credit off this event: the owner removes one, or you leave.
          */
-        delete: operations["remove_geolocator_api_v1_events__geolocation_id__geolocators__username__delete"];
+        delete: operations["remove_geolocator_api_v1_events__event_id__geolocators__username__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/report": {
+    "/api/v1/events/{event_id}/request": {
         parameters: {
             query?: never;
             header?: never;
@@ -1389,39 +1273,19 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
-        /**
-         * Report Event
-         * @description Report an event for moderation.
-         */
-        post: operations["report_event_api_v1_events__geolocation_id__report_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/{geolocation_id}/request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
         /**
          * Update Event Request
          * @description Correct an open request, overwriting it in place (owner-only).
          */
-        post: operations["update_event_request_api_v1_events__geolocation_id__request_post"];
+        put: operations["update_event_request_api_v1_events__event_id__request_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/site-links": {
+    "/api/v1/events/{event_id}/site-links": {
         parameters: {
             query?: never;
             header?: never;
@@ -1432,20 +1296,20 @@ export interface paths {
          * List Site Links
          * @description The visible sites this event is linked to, oldest link first.
          */
-        get: operations["list_site_links_api_v1_events__geolocation_id__site_links_get"];
+        get: operations["list_site_links_api_v1_events__event_id__site_links_get"];
         put?: never;
         /**
          * Link Site
          * @description Link your published event to a site, or change the effect of its link (idempotent).
          */
-        post: operations["link_site_api_v1_events__geolocation_id__site_links_post"];
+        post: operations["link_site_api_v1_events__event_id__site_links_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/site-links/{site_id}": {
+    "/api/v1/events/{event_id}/site-links/{site_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1459,34 +1323,13 @@ export interface paths {
          * Unlink Site
          * @description Remove your event's link to a site (owner only). Idempotent (204).
          */
-        delete: operations["unlink_site_api_v1_events__geolocation_id__site_links__site_id__delete"];
+        delete: operations["unlink_site_api_v1_events__event_id__site_links__site_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/site-suggestions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Site Suggestions
-         * @description Sites this event may link to, nearest first: those within ``margin_m`` metres of the
-         *     event, or with ``q``, those whose name contains it. Capped at 20.
-         */
-        get: operations["list_site_suggestions_api_v1_events__geolocation_id__site_suggestions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events/{geolocation_id}/versions": {
+    "/api/v1/events/{event_id}/versions": {
         parameters: {
             query?: never;
             header?: never;
@@ -1497,20 +1340,20 @@ export interface paths {
          * List Event Versions
          * @description The event's superseded versions, newest first.
          */
-        get: operations["list_event_versions_api_v1_events__geolocation_id__versions_get"];
+        get: operations["list_event_versions_api_v1_events__event_id__versions_get"];
         put?: never;
         /**
          * Save Event Version
          * @description Publish a request or a detection, or correct a published event, filing a version.
          */
-        post: operations["save_event_version_api_v1_events__geolocation_id__versions_post"];
+        post: operations["save_event_version_api_v1_events__event_id__versions_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{geolocation_id}/versions/{version_no}": {
+    "/api/v1/events/{event_id}/versions/{version_no}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1521,7 +1364,7 @@ export interface paths {
          * Get Event Version
          * @description One superseded version of an event, by its number.
          */
-        get: operations["get_event_version_api_v1_events__geolocation_id__versions__version_no__get"];
+        get: operations["get_event_version_api_v1_events__event_id__versions__version_no__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1790,46 +1633,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/organizations/{slug}/invite/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Accept Organization Invite
-         * @description Accept your pending invite and join as a member.
-         */
-        post: operations["accept_organization_invite_api_v1_organizations__slug__invite_accept_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/organizations/{slug}/invite/decline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decline Organization Invite
-         * @description Decline your pending invite.
-         */
-        post: operations["decline_organization_invite_api_v1_organizations__slug__invite_decline_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/organizations/{slug}/invites": {
         parameters: {
             query?: never;
@@ -1848,6 +1651,46 @@ export interface paths {
          * @description Invite an analyst in mutual follow with you. Org managers only.
          */
         post: operations["create_organization_invite_api_v1_organizations__slug__invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Organization Invite
+         * @description Accept your pending invite and join as a member.
+         */
+        post: operations["accept_organization_invite_api_v1_organizations__slug__invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{slug}/invites/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Organization Invite
+         * @description Decline your pending invite.
+         */
+        post: operations["decline_organization_invite_api_v1_organizations__slug__invites_decline_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1916,6 +1759,26 @@ export interface paths {
          * @description Change a member's role. Org managers and site admins only; the last org manager keeps the role.
          */
         patch: operations["update_organization_member_api_v1_organizations__slug__members__username__patch"];
+        trace?: never;
+    };
+    "/api/v1/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Content
+         * @description Report an event, a collection or a site for moderation.
+         */
+        post: operations["report_content_api_v1_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/search": {
@@ -2077,26 +1940,6 @@ export interface paths {
         get: operations["get_site_api_v1_sites__site_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sites/{site_id}/report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Report Site
-         * @description Report a site for moderation.
-         */
-        post: operations["report_site_api_v1_sites__site_id__report_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2267,7 +2110,8 @@ export interface paths {
         put?: never;
         /**
          * Create Upload
-         * @description Stage one source file, or each frame of a GIF; a source of a later event write names one by ``id``.
+         * @description Stage one source file, or each frame of a GIF in frame order; a source of a later event
+         *     write names one by ``id``.
          */
         post: operations["create_upload_api_v1_uploads_post"];
         delete?: never;
@@ -2384,7 +2228,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/users/me/invite-codes/{code_id}/revoke": {
+    "/api/v1/users/me/invite-codes/{invite_code_id}/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -2397,7 +2241,7 @@ export interface paths {
          * Revoke My Invite Code
          * @description Revoke an active invite code you minted. The row stays in your list.
          */
-        post: operations["revoke_my_invite_code_api_v1_users_me_invite_codes__code_id__revoke_post"];
+        post: operations["revoke_my_invite_code_api_v1_users_me_invite_codes__invite_code_id__revoke_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2428,26 +2272,6 @@ export interface paths {
         patch: operations["update_my_preferences_api_v1_users_me_preferences_patch"];
         trace?: never;
     };
-    "/api/v1/users/me/x-handle": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get My X Handle
-         * @description The X handle bound to your account. Only an admin links or changes it.
-         */
-        get: operations["get_my_x_handle_api_v1_users_me_x_handle_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/users/{username}": {
         parameters: {
             query?: never;
@@ -2474,32 +2298,9 @@ export interface paths {
         };
         /**
          * Get User Collections
-         * @description One analyst's collections, newest first.
+         * @description One analyst's collections, newest first (``Link: rel="next"`` cursor).
          */
         get: operations["get_user_collections_api_v1_users__username__collections_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/{username}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get User Geolocations
-         * @description One analyst's published geolocations, newest event date first.
-         *
-         *     Offset-paged: the profile orders by ``occurred_date``, which is nullable and
-         *     editable, so it cannot key a cursor.
-         */
-        get: operations["get_user_geolocations_api_v1_users__username__events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2707,10 +2508,10 @@ export interface components {
             /** Deleted At */
             deleted_at?: string | null;
             /**
-             * Geolocation Id
+             * Event Id
              * Format: uuid
              */
-            geolocation_id: string;
+            event_id: string;
             /**
              * Media Count
              * @default 0
@@ -2763,7 +2564,7 @@ export interface components {
          *     Every code is single-use, so the audit trail (`used_by_id`, `used_at`) is
          *     unambiguous. ``x_handle`` optionally binds the code to an X handle that
          *     redemption copies onto the new account (same normalization as
-         *     `PATCH /admin/users/{id}/x-handle`).
+         *     `PATCH /admin/users/{id}`).
          */
         AdminInviteCodeCreate: {
             /** Expires In Days */
@@ -2859,17 +2660,6 @@ export interface components {
             old_consumed?: number | null;
             /** Pending Registrations Deleted */
             pending_registrations_deleted?: number | null;
-        };
-        /**
-         * AdminMeResponse
-         * @description Tiny response for the frontend route guard.
-         *
-         *     Separate from `UserRead` so ``is_admin`` doesn't leak to the public schema
-         *     or the OpenAPI spec.
-         */
-        AdminMeResponse: {
-            /** Is Admin */
-            is_admin: boolean;
         };
         /**
          * AdminOrganizationRead
@@ -3015,6 +2805,19 @@ export interface components {
             user_id: string;
             /** Username */
             username: string;
+        };
+        /**
+         * AdminUserUpdate
+         * @description Body for `PATCH /admin/users/{id}`: an omitted field keeps its value.
+         *
+         *     ``x_handle`` set to ``None`` clears the link; a value is normalized and must
+         *     match ``^[a-z0-9_]{1,15}$`` (else 422).
+         */
+        AdminUserUpdate: {
+            /** Invite Minting */
+            invite_minting?: boolean | null;
+            /** X Handle */
+            x_handle?: string | null;
         };
         /**
          * ApprovalCreate
@@ -3238,64 +3041,6 @@ export interface components {
             /** Authors */
             authors: string[];
         };
-        /**
-         * BatchCompletionCreate
-         * @description Body of ``POST /events/batch-complete``.
-         *
-         *     One conflict set for the whole selection; the source kind varies per row.
-         */
-        BatchCompletionCreate: {
-            /** Conflict Ids */
-            conflict_ids: string[];
-            /** Rows */
-            rows: components["schemas"]["BatchCompletionRowCreate"][];
-        };
-        /**
-         * BatchCompletionRead
-         * @description Response of ``POST /events/batch-complete``: verdicts in submission order.
-         */
-        BatchCompletionRead: {
-            /** Failed */
-            failed: number;
-            /** Published */
-            published: number;
-            /** Rows */
-            rows: components["schemas"]["BatchCompletionRowRead"][];
-        };
-        /**
-         * BatchCompletionRowCreate
-         * @description One detection in a batch completion and the kind of its sources that carry a file.
-         */
-        BatchCompletionRowCreate: {
-            /**
-             * Event Id
-             * Format: uuid
-             */
-            event_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "smartphone" | "camera" | "static_camera" | "drone" | "aircraft" | "satellite" | "dashcam" | "body_cam" | "article" | "official_statement" | "other" | "unknown";
-        };
-        /**
-         * BatchCompletionRowRead
-         * @description One row's outcome. ``code`` / ``message`` are NULL when published,
-         *     otherwise the stable error code the single-row publish would return.
-         */
-        BatchCompletionRowRead: {
-            /** Code */
-            code: string | null;
-            /**
-             * Event Id
-             * Format: uuid
-             */
-            event_id: string;
-            /** Message */
-            message: string | null;
-            /** Published */
-            published: boolean;
-        };
         /** Body_create_event_api_v1_events_post */
         Body_create_event_api_v1_events_post: {
             /** Conflict Ids */
@@ -3358,8 +3103,8 @@ export interface components {
             /** File */
             file: string;
         };
-        /** Body_save_event_version_api_v1_events__geolocation_id__versions_post */
-        Body_save_event_version_api_v1_events__geolocation_id__versions_post: {
+        /** Body_save_event_version_api_v1_events__event_id__versions_post */
+        Body_save_event_version_api_v1_events__event_id__versions_post: {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /**
@@ -3406,8 +3151,8 @@ export interface components {
             /** File */
             file: string;
         };
-        /** Body_update_event_request_api_v1_events__geolocation_id__request_post */
-        Body_update_event_request_api_v1_events__geolocation_id__request_post: {
+        /** Body_update_event_request_api_v1_events__event_id__request_put */
+        Body_update_event_request_api_v1_events__event_id__request_put: {
             /** Conflict Ids */
             conflict_ids?: string | null;
             /** Lat */
@@ -3527,28 +3272,6 @@ export interface components {
             title: string;
         };
         /**
-         * CollectionList
-         * @description One page of an analyst's collections, newest first.
-         */
-        CollectionList: {
-            /** Items */
-            items: components["schemas"]["CollectionRead"][];
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Total */
-            total: number;
-        };
-        /**
-         * CollectionMembershipList
-         * @description Every collection the caller owns, as the popover reads them.
-         */
-        CollectionMembershipList: {
-            /** Items */
-            items: components["schemas"]["CollectionMembershipRead"][];
-        };
-        /**
          * CollectionMembershipRead
          * @description One of the caller's collections, and whether one event is already in it.
          */
@@ -3649,17 +3372,26 @@ export interface components {
         };
         /**
          * ContentReportCreate
-         * @description Body for ``POST /events/{id}/report``, ``POST /collections/{id}/report``
-         *     and ``POST /sites/{id}/report``: the path names the target.
+         * @description Body for ``POST /reports``: ``kind`` and ``target_id`` name what is reported.
          */
         ContentReportCreate: {
             /** Details */
             details?: string | null;
             /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "event" | "collection" | "site";
+            /**
              * Reason
              * @enum {string}
              */
             reason: "illegal_content" | "graphic_not_flagged" | "copyright" | "privacy" | "other";
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
         };
         /**
          * ContentReportList
@@ -3796,7 +3528,7 @@ export interface components {
          * ErrorCode
          * @enum {string}
          */
-        ErrorCode: "admin_error" | "already_approved" | "already_geolocator" | "already_invited" | "already_member" | "already_requested" | "already_resolved" | "approval_not_found" | "approval_request_not_found" | "archive_invalid" | "archive_malformed" | "archive_no_tweets" | "archive_too_large" | "archive_upload_invalid" | "archive_upload_missing" | "collection_not_found" | "conflict_required" | "coordinates_required" | "daily_cap_reached" | "email_already_registered" | "email_pending_confirmation" | "event_error" | "event_not_collectable" | "event_not_found" | "event_not_linkable" | "evidence_intake_error" | "evidence_processing_failed" | "geolocator_cannot_approve" | "geolocator_not_found" | "imagery_not_reopenable" | "invalid_avatar" | "invalid_coordinates" | "invalid_description" | "invalid_file" | "invalid_invite" | "invalid_or_expired_token" | "invalid_proof" | "invalid_source_url" | "invalid_state" | "invalid_tweet_url" | "invalid_unsubscribe_token" | "invalid_zone" | "invite_code_not_active" | "invite_code_not_found" | "invite_code_used" | "invite_minting_disabled" | "invite_not_found" | "invite_quota_exceeded" | "last_manager" | "link_has_no_file" | "link_not_accessible" | "lock_timeout" | "member_not_found" | "not_a_geolocator" | "not_credited" | "not_event_owner" | "not_mutual_follow" | "not_organization_manager" | "not_organization_member" | "not_site_owner" | "not_source_author" | "not_your_post" | "nothing_changed" | "organization_error" | "organization_not_found" | "owner_cannot_leave" | "post_unreadable" | "proof_files_mismatch" | "proof_image_not_found" | "proof_image_required" | "rate_limited" | "read_quota_exceeded" | "recently_declined" | "registration_error" | "report_already_resolved" | "report_error" | "report_not_found" | "report_target_gone" | "report_verdict_not_applicable" | "requests_not_accepted" | "site_contour_required" | "site_not_found" | "site_source_not_found" | "site_version_not_found" | "slug_taken" | "snapshot_not_a_replay_url" | "snapshot_not_a_snapshot_code" | "snapshot_provider_not_allowed" | "snapshot_url_invalid" | "snapshot_url_not_https" | "snapshot_url_too_long" | "source_carries_contour" | "source_file_required" | "source_link_required" | "source_media_not_found" | "source_not_found" | "source_required" | "sponsored_invite_error" | "target_is_geolocator" | "too_many_events" | "too_many_files" | "too_many_geolocators" | "too_many_source_links" | "too_many_sources" | "too_many_uploads" | "unsupported_link" | "upload_expired" | "upload_not_found" | "upload_too_large" | "upstream_busy" | "upstream_unreadable" | "user_not_found" | "username_already_taken" | "username_pending_confirmation" | "version_limit" | "version_mismatch" | "version_not_found" | "x_handle_conflict" | "zone_too_large" | "zone_too_wide";
+        ErrorCode: "admin_error" | "already_approved" | "already_geolocator" | "already_invited" | "already_member" | "already_requested" | "already_resolved" | "approval_not_found" | "approval_request_not_found" | "archive_invalid" | "archive_malformed" | "archive_no_tweets" | "archive_too_large" | "archive_upload_invalid" | "archive_upload_missing" | "collection_not_found" | "conflict_required" | "daily_cap_reached" | "email_already_registered" | "email_pending_confirmation" | "event_error" | "event_not_collectable" | "event_not_found" | "event_not_linkable" | "evidence_intake_error" | "evidence_processing_failed" | "geolocator_cannot_approve" | "geolocator_not_found" | "imagery_not_reopenable" | "invalid_avatar" | "invalid_coordinates" | "invalid_description" | "invalid_file" | "invalid_invite" | "invalid_or_expired_token" | "invalid_proof" | "invalid_source_url" | "invalid_state" | "invalid_tweet_url" | "invalid_unsubscribe_token" | "invalid_zone" | "invite_code_not_active" | "invite_code_not_found" | "invite_code_used" | "invite_minting_disabled" | "invite_not_found" | "invite_quota_exceeded" | "last_manager" | "link_has_no_file" | "link_not_accessible" | "lock_timeout" | "member_not_found" | "not_a_geolocator" | "not_credited" | "not_event_owner" | "not_mutual_follow" | "not_organization_manager" | "not_organization_member" | "not_site_owner" | "not_source_author" | "not_your_post" | "nothing_changed" | "organization_error" | "organization_not_found" | "owner_cannot_leave" | "post_unreadable" | "proof_files_mismatch" | "proof_image_not_found" | "proof_image_required" | "rate_limited" | "read_quota_exceeded" | "recently_declined" | "registration_error" | "report_already_resolved" | "report_error" | "report_not_found" | "report_target_gone" | "report_verdict_not_applicable" | "requests_not_accepted" | "site_contour_required" | "site_not_found" | "site_source_not_found" | "site_version_not_found" | "slug_taken" | "snapshot_not_a_replay_url" | "snapshot_not_a_snapshot_code" | "snapshot_provider_not_allowed" | "snapshot_url_invalid" | "snapshot_url_not_https" | "snapshot_url_too_long" | "source_carries_contour" | "source_file_required" | "source_link_required" | "source_media_not_found" | "source_not_found" | "source_required" | "sponsored_invite_error" | "target_is_geolocator" | "too_many_events" | "too_many_files" | "too_many_geolocators" | "too_many_source_links" | "too_many_sources" | "too_many_uploads" | "unsupported_link" | "upload_expired" | "upload_not_found" | "upload_too_large" | "upstream_busy" | "upstream_unreadable" | "user_not_found" | "username_already_taken" | "username_pending_confirmation" | "version_limit" | "version_mismatch" | "version_not_found" | "x_handle_conflict" | "zone_too_large" | "zone_too_wide";
         /**
          * EventCloseRequest
          * @description Body for ``POST /events/{id}/close``. The reason is required because a
@@ -4525,17 +4257,6 @@ export interface components {
             per_page: number;
             /** Ready Total */
             ready_total: number;
-            /** Total */
-            total: number;
-        };
-        /** PaginatedEvents */
-        PaginatedEvents: {
-            /** Items */
-            items: components["schemas"]["EventList"][];
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
             /** Total */
             total: number;
         };
@@ -5751,14 +5472,6 @@ export interface components {
             url: string;
         };
         /**
-         * UploadList
-         * @description What ``POST /uploads`` staged: one file, or one per frame of a GIF, in frame order.
-         */
-        UploadList: {
-            /** Items */
-            items: components["schemas"]["UploadRead"][];
-        };
-        /**
          * UploadRead
          * @description A staged source file, referenced by a source's ``upload_id`` until ``expires_at``.
          */
@@ -5784,11 +5497,6 @@ export interface components {
             sha256: string;
             /** Storage Url */
             storage_url: string;
-        };
-        /** UserInviteMintingUpdate */
-        UserInviteMintingUpdate: {
-            /** Enabled */
-            enabled: boolean;
         };
         /**
          * UserPreferencesRead
@@ -5830,9 +5538,8 @@ export interface components {
          * UserProfile
          * @description Public profile payload for ``GET /users/{username}``.
          *
-         *     Excludes ``email`` and ``is_admin``. ``geolocations_count`` counts
-         *     published geolocations, the set ``GET /users/{username}/events`` serves;
-         *     ``total_events`` on :class:`UserStatsRead` includes detections.
+         *     Excludes ``email`` and ``is_admin``. ``organizations`` lists the analyst's memberships, as
+         *     ``GET /users/{username}/organizations`` does.
          */
         UserProfile: {
             /** Avatar Url */
@@ -5852,8 +5559,6 @@ export interface components {
             followers_count: number;
             /** Following Count */
             following_count: number;
-            /** Geolocations Count */
-            geolocations_count: number;
             /**
              * Id
              * Format: uuid
@@ -5864,15 +5569,15 @@ export interface components {
              * @default false
              */
             is_following: boolean;
+            /** Organizations */
+            organizations: components["schemas"]["OrganizationMembershipRead"][];
             /** Username */
             username: string;
         };
         /**
          * UserRead
-         * @description Authenticated-self payload for ``/auth/me`` and register/login.
-         *
-         *     ``is_admin`` is absent so the role stays off the public OpenAPI schema
-         *     (``/admin/me`` is the probe).
+         * @description Authenticated-self payload for ``/auth/me`` and register/login. It only ever
+         *     describes the caller, so it carries the caller's role and admin-bound X handle.
          */
         UserRead: {
             /** Avatar Url */
@@ -5895,8 +5600,12 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Admin */
+            is_admin: boolean;
             /** Username */
             username: string;
+            /** X Handle */
+            x_handle: string | null;
         };
         /**
          * UserStatsRead
@@ -5955,17 +5664,6 @@ export interface components {
             bio?: string | null;
             external_links?: components["schemas"]["ExternalLinks"] | null;
         };
-        /**
-         * UserXHandleUpdate
-         * @description Body for `PATCH /admin/users/{id}/x-handle`.
-         *
-         *     ``None`` clears the link; a value is normalized and must match
-         *     ``^[a-z0-9_]{1,15}$`` (else 422).
-         */
-        UserXHandleUpdate: {
-            /** X Handle */
-            x_handle: string | null;
-        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -5978,11 +5676,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-        };
-        /** XHandleRead */
-        XHandleRead: {
-            /** X Handle */
-            x_handle: string | null;
         };
         /**
          * ZonePolygon
@@ -6030,39 +5723,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    hide_collection_admin_api_v1_admin_collections__collection_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminCollectionHideResponse"];
-                };
             };
             /** @description Validation Error */
             422: {
@@ -6143,14 +5803,14 @@ export interface operations {
             };
         };
     };
-    delete_geolocation_admin_api_v1_admin_events__geolocation_id__delete: {
+    delete_event_admin_api_v1_admin_events__event_id__delete: {
         parameters: {
             query?: {
                 hard?: boolean;
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -6178,12 +5838,12 @@ export interface operations {
             };
         };
     };
-    set_event_moderation_api_v1_admin_events__geolocation_id__moderation_patch: {
+    set_event_moderation_api_v1_admin_events__event_id__moderation_patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -6215,12 +5875,12 @@ export interface operations {
             };
         };
     };
-    redact_event_version_api_v1_admin_events__geolocation_id__versions__version_no__redact_post: {
+    redact_event_version_api_v1_admin_events__event_id__versions__version_no__redact_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 version_no: number;
             };
             cookie?: {
@@ -6319,12 +5979,12 @@ export interface operations {
             };
         };
     };
-    delete_invite_code_api_v1_admin_invite_codes__invite_id__delete: {
+    delete_invite_code_api_v1_admin_invite_codes__invite_code_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                invite_id: string;
+                invite_code_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -6350,12 +6010,12 @@ export interface operations {
             };
         };
     };
-    revoke_invite_code_api_v1_admin_invite_codes__invite_id__revoke_post: {
+    revoke_invite_code_api_v1_admin_invite_codes__invite_code_id__revoke_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                invite_id: string;
+                invite_code_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -6463,37 +6123,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMaintenanceResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    admin_me_api_v1_admin_me_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminMeResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6817,6 +6446,43 @@ export interface operations {
             };
         };
     };
+    update_user_admin_api_v1_admin_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     purge_detected_events_admin_api_v1_admin_users__user_id__detected_events_delete: {
         parameters: {
             query?: never;
@@ -6850,43 +6516,6 @@ export interface operations {
             };
         };
     };
-    set_user_invite_minting_api_v1_admin_users__user_id__invite_minting_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserInviteMintingUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     restore_user_admin_api_v1_admin_users__user_id__restore_post: {
         parameters: {
             query?: never;
@@ -6907,43 +6536,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminUserRestoreResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_user_x_handle_api_v1_admin_users__user_id__x_handle_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserXHandleUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserRead"];
                 };
             };
             /** @description Validation Error */
@@ -7579,43 +7171,6 @@ export interface operations {
             };
         };
     };
-    report_collection_api_v1_collections__collection_id__report_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                collection_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ContentReportCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ContentReportRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_conflicts_api_v1_conflicts_get: {
         parameters: {
             query?: {
@@ -7653,7 +7208,7 @@ export interface operations {
                 view?: "located" | "requested";
                 status?: string[] | null;
                 bbox?: string | null;
-                sort?: "newest" | "oldest";
+                sort?: "newest" | "oldest" | "occurred";
                 limit?: number;
                 /** @description Opaque cursor from a Link: rel=next header */
                 cursor?: string | null;
@@ -7725,41 +7280,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_complete_events_api_v1_events_batch_complete_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BatchCompletionCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BatchCompletionRead"];
                 };
             };
             /** @description Validation Error */
@@ -8064,12 +7584,12 @@ export interface operations {
             };
         };
     };
-    get_event_api_v1_events__geolocation_id__get: {
+    get_event_api_v1_events__event_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8097,7 +7617,7 @@ export interface operations {
             };
         };
     };
-    list_approval_request_targets_api_v1_events__geolocation_id__approval_request_targets_get: {
+    list_approval_request_targets_api_v1_events__event_id__approval_request_targets_get: {
         parameters: {
             query?: {
                 /** @description Narrows by a substring of the username or organization */
@@ -8105,7 +7625,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8133,12 +7653,12 @@ export interface operations {
             };
         };
     };
-    list_approval_requests_api_v1_events__geolocation_id__approval_requests_get: {
+    list_approval_requests_api_v1_events__event_id__approval_requests_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8166,12 +7686,12 @@ export interface operations {
             };
         };
     };
-    create_approval_request_api_v1_events__geolocation_id__approval_requests_post: {
+    create_approval_request_api_v1_events__event_id__approval_requests_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8203,12 +7723,12 @@ export interface operations {
             };
         };
     };
-    decline_approval_request_api_v1_events__geolocation_id__approval_requests__request_id__decline_post: {
+    decline_approval_request_api_v1_events__event_id__approval_requests__request_id__decline_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 request_id: string;
             };
             cookie?: {
@@ -8237,7 +7757,7 @@ export interface operations {
             };
         };
     };
-    list_approvals_api_v1_events__geolocation_id__approvals_get: {
+    list_approvals_api_v1_events__event_id__approvals_get: {
         parameters: {
             query?: {
                 /** @description Defaults to the live version unless reviewer or all_versions is set */
@@ -8248,7 +7768,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8276,12 +7796,12 @@ export interface operations {
             };
         };
     };
-    approve_event_api_v1_events__geolocation_id__approvals_post: {
+    approve_event_api_v1_events__event_id__approvals_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8313,12 +7833,12 @@ export interface operations {
             };
         };
     };
-    close_event_api_v1_events__geolocation_id__close_post: {
+    close_event_api_v1_events__event_id__close_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8350,12 +7870,12 @@ export interface operations {
             };
         };
     };
-    list_event_collections_api_v1_events__geolocation_id__collections_get: {
+    list_event_collections_api_v1_events__event_id__collections_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8369,7 +7889,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionMembershipList"];
+                    "application/json": components["schemas"]["CollectionMembershipRead"][];
                 };
             };
             /** @description Validation Error */
@@ -8383,12 +7903,12 @@ export interface operations {
             };
         };
     };
-    list_geolocator_invites_api_v1_events__geolocation_id__geolocator_invites_get: {
+    list_geolocator_invites_api_v1_events__event_id__geolocator_invites_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8416,12 +7936,12 @@ export interface operations {
             };
         };
     };
-    invite_geolocator_api_v1_events__geolocation_id__geolocator_invites_post: {
+    invite_geolocator_api_v1_events__event_id__geolocator_invites_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8453,12 +7973,12 @@ export interface operations {
             };
         };
     };
-    accept_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_accept_post: {
+    accept_geolocator_invite_api_v1_events__event_id__geolocator_invites_accept_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8484,12 +8004,12 @@ export interface operations {
             };
         };
     };
-    decline_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites_decline_post: {
+    decline_geolocator_invite_api_v1_events__event_id__geolocator_invites_decline_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8515,12 +8035,12 @@ export interface operations {
             };
         };
     };
-    withdraw_geolocator_invite_api_v1_events__geolocation_id__geolocator_invites__username__delete: {
+    withdraw_geolocator_invite_api_v1_events__event_id__geolocator_invites__username__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 username: string;
             };
             cookie?: {
@@ -8547,12 +8067,12 @@ export interface operations {
             };
         };
     };
-    remove_geolocator_api_v1_events__geolocation_id__geolocators__username__delete: {
+    remove_geolocator_api_v1_events__event_id__geolocators__username__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 username: string;
             };
             cookie?: {
@@ -8579,12 +8099,12 @@ export interface operations {
             };
         };
     };
-    report_event_api_v1_events__geolocation_id__report_post: {
+    update_event_request_api_v1_events__event_id__request_put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8592,44 +8112,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ContentReportCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ContentReportRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_event_request_api_v1_events__geolocation_id__request_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_update_event_request_api_v1_events__geolocation_id__request_post"];
+                "multipart/form-data": components["schemas"]["Body_update_event_request_api_v1_events__event_id__request_put"];
             };
         };
         responses: {
@@ -8653,12 +8136,12 @@ export interface operations {
             };
         };
     };
-    list_site_links_api_v1_events__geolocation_id__site_links_get: {
+    list_site_links_api_v1_events__event_id__site_links_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8686,12 +8169,12 @@ export interface operations {
             };
         };
     };
-    link_site_api_v1_events__geolocation_id__site_links_post: {
+    link_site_api_v1_events__event_id__site_links_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8723,12 +8206,12 @@ export interface operations {
             };
         };
     };
-    unlink_site_api_v1_events__geolocation_id__site_links__site_id__delete: {
+    unlink_site_api_v1_events__event_id__site_links__site_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 site_id: string;
             };
             cookie?: {
@@ -8755,43 +8238,7 @@ export interface operations {
             };
         };
     };
-    list_site_suggestions_api_v1_events__geolocation_id__site_suggestions_get: {
-        parameters: {
-            query?: {
-                margin_m?: number;
-                q?: string | null;
-            };
-            header?: never;
-            path: {
-                geolocation_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SiteSuggestionRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_event_versions_api_v1_events__geolocation_id__versions_get: {
+    list_event_versions_api_v1_events__event_id__versions_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -8800,7 +8247,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8828,12 +8275,12 @@ export interface operations {
             };
         };
     };
-    save_event_version_api_v1_events__geolocation_id__versions_post: {
+    save_event_version_api_v1_events__event_id__versions_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -8841,7 +8288,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_save_event_version_api_v1_events__geolocation_id__versions_post"];
+                "multipart/form-data": components["schemas"]["Body_save_event_version_api_v1_events__event_id__versions_post"];
             };
         };
         responses: {
@@ -8865,12 +8312,12 @@ export interface operations {
             };
         };
     };
-    get_event_version_api_v1_events__geolocation_id__versions__version_no__get: {
+    get_event_version_api_v1_events__event_id__versions__version_no__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                geolocation_id: string;
+                event_id: string;
                 version_no: number;
             };
             cookie?: {
@@ -9439,68 +8886,6 @@ export interface operations {
             };
         };
     };
-    accept_organization_invite_api_v1_organizations__slug__invite_accept_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decline_organization_invite_api_v1_organizations__slug__invite_decline_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_organization_invites_api_v1_organizations__slug__invites_get: {
         parameters: {
             query?: never;
@@ -9559,6 +8944,68 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationInviteRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_organization_invite_api_v1_organizations__slug__invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_organization_invite_api_v1_organizations__slug__invites_decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -9691,6 +9138,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrganizationMemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_content_api_v1_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                vidit_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentReportCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentReportRead"];
                 };
             };
             /** @description Validation Error */
@@ -10077,43 +9559,6 @@ export interface operations {
             };
         };
     };
-    report_site_api_v1_sites__site_id__report_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                site_id: string;
-            };
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ContentReportCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ContentReportRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     file_site_source_api_v1_sites__site_id__sources_post: {
         parameters: {
             query?: never;
@@ -10433,7 +9878,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UploadList"];
+                    "application/json": components["schemas"]["UploadRead"][];
                 };
             };
             /** @description Validation Error */
@@ -10684,12 +10129,12 @@ export interface operations {
             };
         };
     };
-    revoke_my_invite_code_api_v1_users_me_invite_codes__code_id__revoke_post: {
+    revoke_my_invite_code_api_v1_users_me_invite_codes__invite_code_id__revoke_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                code_id: string;
+                invite_code_id: string;
             };
             cookie?: {
                 vidit_session?: string | null;
@@ -10783,37 +10228,6 @@ export interface operations {
             };
         };
     };
-    get_my_x_handle_api_v1_users_me_x_handle_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                vidit_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["XHandleRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_user_profile_api_v1_users__username__get: {
         parameters: {
             query?: never;
@@ -10850,8 +10264,9 @@ export interface operations {
     get_user_collections_api_v1_users__username__collections_get: {
         parameters: {
             query?: {
-                page?: number;
-                per_page?: number;
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
             };
             header?: never;
             path: {
@@ -10869,41 +10284,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_user_geolocations_api_v1_users__username__events_get: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-            };
-            header?: never;
-            path: {
-                username: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedEvents"];
+                    "application/json": components["schemas"]["CollectionRead"][];
                 };
             };
             /** @description Validation Error */

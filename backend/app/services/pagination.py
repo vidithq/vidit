@@ -121,6 +121,16 @@ def decode_chronological_cursor(
     )
 
 
+def encode_dated_cursor(occurred_date: date, created_at: datetime, row_id: uuid.UUID) -> str:
+    """The caller passes the stand-in for a missing date, so the next page compares the value
+    that cut this one."""
+    return _encode([occurred_date.isoformat(), created_at.isoformat(), str(row_id)])
+
+
+def decode_dated_cursor(cursor: str | None) -> tuple[date, datetime, uuid.UUID] | None:
+    return _decode_parts(cursor, (date.fromisoformat, datetime.fromisoformat, uuid.UUID))
+
+
 def encode_ranked_cursor(rank: float, created_at: datetime, row_id: uuid.UUID) -> str:
     """``rank`` travels as the shortest ``repr`` of the double, which parses back to the same
     value, so the next page's row comparison ties on it exactly."""

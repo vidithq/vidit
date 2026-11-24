@@ -37,13 +37,8 @@ export type CollectionDescription = Collection["description"];
 export type CollectionCoverTile =
   components["schemas"]["CollectionCoverTile"];
 
-export type CollectionPage = components["schemas"]["CollectionList"];
-
 export type CollectionMembership =
   components["schemas"]["CollectionMembershipRead"];
-
-export type CollectionMemberships =
-  components["schemas"]["CollectionMembershipList"];
 
 /** The mark that names a collection wherever a surface says what kind of thing it is.
  *  The profile card wears none: its mosaic tells collections apart. */
@@ -67,9 +62,9 @@ export function newCollectionHref(eventId?: string): string {
     : "/collections/new";
 }
 
-/** An analyst's collections, newest first. `perPage` is the profile grid's own size. */
-export function userCollectionsPath(username: string, perPage: number): string {
-  return `${userPath(username)}/collections?per_page=${perPage}`;
+/** The first page of an analyst's collections, newest first, `limit` rows long. */
+export function userCollectionsPath(username: string, limit: number): string {
+  return `${userPath(username)}/collections?limit=${limit}`;
 }
 
 export function eventCollectionsPath(eventId: string): string {

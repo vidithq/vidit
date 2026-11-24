@@ -1400,7 +1400,7 @@ flowchart LR
   the Version note in its popover, the geolocators byline`"]:::shared
   versions["`**POST /events/{id}/versions**
   files the version it supersedes`"]:::core
-  request_write["`**POST /events/{id}/request**
+  request_write["`**PUT /events/{id}/request**
   overwrites in place`"]:::core
 
   request --> publish
@@ -1597,12 +1597,12 @@ A geolocation or a detection opens `/events/{id}` and a request opens `/requests
 | Block | Component | Data source | Shown |
 |---|---|---|---|
 | Identity | `ProfileTitle`, `ProfileIdentity` ([`ProfileHeader.tsx`](../frontend/src/components/profile/ProfileHeader.tsx)), `LinkedAccountsLine` ([`LinkedAccounts.tsx`](../frontend/src/components/profile/LinkedAccounts.tsx)) | `GET /users/{username}` | Always |
-| Organization logos | `ProfileOrganizations`, inside `ProfileIdentity` | [`GET /users/{username}/organizations`](api.md#get-usersusernameorganizations) | When the analyst belongs to one |
+| Organization logos | `ProfileOrganizations`, inside `ProfileIdentity` | `organizations` on [`GET /users/{username}`](api.md#get-usersusername) | When the analyst belongs to one |
 | Detections queue | `DetectionsEntry` | `useDetectionsCount` | Owner only, while the queue holds something |
 | Coverage | `ProfileMap` | `GET /events/points?author=…` | When the analyst has located events |
 | Insights | `ProfileInsights` | `GET /users/{username}/stats` | When the profile has events |
 | Collections | `CollectionsSection` | [`GET /users/{username}/collections`](api.md#get-usersusernamecollections) | Owner always; visitor when the list is not empty |
-| Recent submissions | `RecentSubmissions` | `GET /users/{username}/events` | Always |
+| Recent submissions | `RecentSubmissions` | `GET /events?author={username}&status=geolocated&sort=occurred` | Always |
 
 #### Identity
 
@@ -1763,7 +1763,7 @@ flowchart LR
   gc["`**GET /collections/{id}**`"]:::core
   gce["`**GET /collections/{id}/events**
   walked to the end once`"]:::core
-  act["`**POST /collections/{id}/report**
+  act["`**POST /reports**
   **DELETE /collections/{id}**`"]:::core
   ge["`**GET /events/{id}/collections**`"]:::core
   pick["`**GET /events**, **GET /search**
@@ -1916,7 +1916,7 @@ Each surface supplies the item's action, because the two writes differ: one even
 - **Add to collection** opens a `PopoverPanel` under the button holding [`<BulkAddToCollectionPanel>`](../frontend/src/components/collections/BulkAddToCollectionPanel.tsx). It carries no heading of its own: the head row already counts the selection (*N selected*), and the panel's `label` names the dialog. Each collection from `GET /users/{username}/collections` takes **Add** as its action in the shared picker. After the write the row reads *Added N* in an accent `<Pill>` with a check in place of **Add**, since the panel offers no undo; its count grows by what was added, and a line under the list says what the write did (*44 added, 3 already in this collection*) with a link to the collection. A refusal shows in the `ErrorNotice` and leaves the row actionable. The selection stays, so the same set can go on a second collection.
 - The footer, **New collection**, opens `/collections/new` carrying the selection (see [Writing a collection](#writing-a-collection)).
 
-**Moderation.** [`POST /collections/{id}/report`](api.md#post-collectionsidreport) writes to the event reports' table, and [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) lists collection reports beside event reports. A collection row prints the title as the link and the owner's `<AuthorByline>` beside it, since an admin recognises a collection by name rather than id. Its verdicts are `Hide the collection`, which confirms in a `<ConfirmDialog>` like the event takedown, and `Dismiss`. It offers no `Mark graphic`, since a collection carries no media of its own.
+**Moderation.** [`POST /reports`](api.md#post-reports) with `kind: collection` writes to the event reports' table, and [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) lists collection reports beside event reports. A collection row prints the title as the link and the owner's `<AuthorByline>` beside it, since an admin recognises a collection by name rather than id. Its verdicts are `Hide the collection`, which confirms in a `<ConfirmDialog>` like the event takedown, and `Dismiss`. It offers no `Mark graphic`, since a collection carries no media of its own.
 
 ### Sites
 
@@ -2031,9 +2031,11 @@ flowchart LR
 **Admin console.** The moderation panels name every item so a moderator acts on the right one:
 
 - [`<ReportsPanel>`](../frontend/src/components/admin/ReportsPanel.tsx) prints an event report's title as its link and the author's `<AuthorByline>` beside it, as it does for a collection or a site.
-- [`<EventActionsPanel>`](../frontend/src/components/admin/EventActionsPanel.tsx) lists each search hit as a static compact [`<Item>`](#items) whose date reads *Undated*, or *Requested* and the request date, where the event date is missing. The picked event's chip keeps the date and the author.
+- [`<EventActionsPanel>`](../frontend/src/components/admin/EventActionsPanel.tsx) lists each search hit as a static compact [`<Item>`](#items) whose date reads *Undated*, or *Requested* and the request date, where the event date is missing. The picked event's chip keeps the date and the author. **Redact** takes a version number and blanks that filed version.
+- [`<CollectionModerationPanel>`](../frontend/src/components/admin/CollectionModerationPanel.tsx) takes a pasted collection ID or link, since a withheld collection is out of search, and offers **Restore** and **Hide**.
+- [`<MaintenancePanel>`](../frontend/src/components/admin/MaintenancePanel.tsx) holds one button per maintenance job. Its receipt lists the counts the job returned.
 - [`<UserActionsCard>`](../frontend/src/components/admin/UserActionsCard.tsx) marks a soft-deleted account with a red *Soft-deleted* pill and the time, and its menu offers **Restore** and **Hard delete** only. The onboarding table marks the account's row the same way.
-- An action leaves an [`ActionReceipt`](../frontend/src/components/admin/ActionReceipt.tsx) whose badge names the action taken (*Hidden*, *Restored*, *Marked graphic*, *Hard delete*). An account action's receipt (`UserOutcomeReceipt`) sums up what changed, such as the events and storage objects a hard delete erased.
+- An action leaves an [`ActionReceipt`](../frontend/src/components/admin/ActionReceipt.tsx) whose badge names the action taken (*Hidden*, *Restored*, *Marked graphic*, *Redacted*, *Hard delete*, *Done*). An account action's receipt (`UserOutcomeReceipt`) sums up what changed, such as the events and storage objects a hard delete erased.
 
 ### Requests board
 
@@ -2118,7 +2120,7 @@ A pasted link is how most readers meet the platform, so the four pages an analys
 | Card | Content |
 |---|---|
 | Site default, [`app/opengraph-image.tsx`](../frontend/src/app/opengraph-image.tsx) | Headline ("An open archive of conflict geolocations") and subhead, the same sentence as the landing hero paragraph. Inherited by every route that generates none of its own. |
-| Profile, [`profile/[username]/opengraph-image.tsx`](../frontend/src/app/profile/[username]/opengraph-image.tsx) | Avatar (or the handle monogram), handle, bio, and four counts under the page's own labels: geolocated, detected, followers, media. `ogProfileCounts` in [`lib/og.ts`](../frontend/src/lib/og.ts) reads geolocated and detected off the Insights payload, co-geolocated events included, and followers off the header's; the link description lists the same three. A failed stats read keeps geolocated on `geolocations_count`, the same figure, and drops detected and media. Top conflicts sit in the footer. |
+| Profile, [`profile/[username]/opengraph-image.tsx`](../frontend/src/app/profile/[username]/opengraph-image.tsx) | Avatar (or the handle monogram), handle, bio, and four counts under the page's own labels: geolocated, detected, followers, media. `ogProfileCounts` in [`lib/og.ts`](../frontend/src/lib/og.ts) reads geolocated and detected off the Insights payload, co-geolocated events included, and followers off the header's; the link description lists the same three. A failed stats read drops geolocated, detected and media. Top conflicts sit in the footer. |
 | Organization, [`organizations/[slug]/opengraph-image.tsx`](../frontend/src/app/organizations/[slug]/opengraph-image.tsx) | The profile card's layout ([`_og/portfolio.tsx`](../frontend/src/app/_og/portfolio.tsx), shared by both) with an `Organization` badge: picture or name monogram, name, bio, the member count, and the X handle in the footer. |
 | Event, [`events/[id]/opengraph-image.tsx`](../frontend/src/app/events/[id]/opengraph-image.tsx) | Title, coordinates, the analyst's handle and the event date, the lifecycle badge, and the locator panel. |
 | Collection, [`collections/[id]/opengraph-image.tsx`](../frontend/src/app/collections/[id]/opengraph-image.tsx) | Title, the meta line's count and span, the owner's handle, a `Collection` badge, and the mosaic panel. |
@@ -2226,7 +2228,9 @@ Every destructive action in the app:
 | Organization page | Decline an approval request | Minor | **Decline** button with the cross |
 | Profile | Unfollow | Minor | **Following** toggle |
 | Settings | Revoke an invite code | Important | `ConfirmButton` trash |
-| Admin, Manage an event | Hide, soft delete, hard delete | Important | `ConfirmButton` **Hide**, **Soft delete**, **Hard delete** |
+| Admin, Manage an event | Hide, redact a version, soft delete, hard delete | Important | `ConfirmButton` **Hide**, **Redact**, **Soft delete**, **Hard delete** |
+| Admin, Moderate a collection | Hide the collection | Important | `ConfirmButton` **Hide** |
+| Admin, Maintenance | Drop expired reset tokens or pending registrations | Minor | **Reap …** button with the cross |
 | Admin, Reports | Hide the reported item | Important | `ConfirmButton` **Hide the …** |
 | Admin, Reports | Dismiss a report | Minor | **Dismiss** button |
 | Admin, Analysts | Clear the linked X handle | Minor | **Clear link** button with the cross |

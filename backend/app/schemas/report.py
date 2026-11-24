@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,10 +12,14 @@ from app.schemas.user import AuthorRef
 DETAILS_MAX_LENGTH = 2000
 
 
-class ContentReportCreate(BaseModel):
-    """Body for ``POST /events/{id}/report``, ``POST /collections/{id}/report``
-    and ``POST /sites/{id}/report``: the path names the target."""
+ReportKind = Literal["event", "collection", "site"]
 
+
+class ContentReportCreate(BaseModel):
+    """Body for ``POST /reports``: ``kind`` and ``target_id`` name what is reported."""
+
+    kind: ReportKind
+    target_id: uuid.UUID
     reason: ContentReportReason
     details: str | None = Field(default=None, max_length=DETAILS_MAX_LENGTH)
 

@@ -13,7 +13,7 @@ function profileFixture(overrides: Partial<PublicProfile> = {}): PublicProfile {
     avatar_url: null,
     external_links: {},
     created_at: "2026-01-01T00:00:00Z",
-    geolocations_count: 0,
+    organizations: [],
     followers_count: 0,
     following_count: 0,
     is_following: false,

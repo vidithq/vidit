@@ -13,7 +13,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   apiFetch: (path: string, options?: RequestInit) => {
     calls.push({ path, method: options?.method ?? "GET" });
     if (path.endsWith("/site-links")) return Promise.resolve(links);
-    if (path.includes("/site-suggestions"))
+    if (path.startsWith("/sites/suggestions"))
       return Promise.resolve([{ id: "s2", name: "Site Bravo", kind: "depot", distance_m: 640 }]);
     return Promise.resolve(undefined);
   },
@@ -106,7 +106,7 @@ describe("useEventSites", () => {
     });
     expect(calls).toContainEqual({ path: "/events/e1/site-links", method: "POST" });
     // The event has no satellite source, so nothing is filed on the site.
-    expect(calls.some((c) => c.path.startsWith("/sites/"))).toBe(false);
+    expect(calls.some((c) => c.method !== "GET" && c.path.startsWith("/sites/"))).toBe(false);
   });
 
   it("files the event's satellite source on the site when the owner asks", async () => {

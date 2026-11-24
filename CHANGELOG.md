@@ -6,10 +6,20 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Added
 
+- The admin console runs the maintenance jobs (reap reset tokens, reap pending registrations, send completion digests) and lists their counts, redacts one filed version of an event, and hides or restores a collection by ID or link ([#883](https://github.com/vidithq/vidit/pull/883)).
+- `GET /events` takes `sort=occurred`: newest event date first, undated events last ([#883](https://github.com/vidithq/vidit/pull/883)).
+- `GET /auth/me` carries `is_admin` and `x_handle`, and `GET /users/{username}` carries the analyst's `organizations` ([#883](https://github.com/vidithq/vidit/pull/883)).
 - The OpenAPI spec lists every error code in the `ErrorCode` schema and the typed error body as `CodedErrorResponse` ([#835](https://github.com/vidithq/vidit/pull/835)).
 
 ### Changed
 
+- Breaking: `POST /events/{id}/report`, `POST /collections/{id}/report` and `POST /sites/{id}/report` become `POST /reports`, whose body names `kind` and `target_id` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `PATCH /admin/users/{id}/x-handle` and `PATCH /admin/users/{id}/invite-minting` become `PATCH /admin/users/{id}` with a partial body of `x_handle` and `invite_minting` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `POST /organizations/{slug}/invite/accept` and `/invite/decline` become `/invites/accept` and `/invites/decline` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `POST /events/{id}/request` becomes `PUT /events/{id}/request` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `GET /users/{username}/collections` pages by `limit` and `cursor` with a `Link` header and answers a bare array, instead of `page`, `per_page` and an envelope ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `GET /events/{id}/collections` and `POST /uploads` answer a bare array instead of `{items}` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `AdminEventDeleteResponse` returns `event_id`, the admin log names the event `event_id` in every target, the event path parameter is `{event_id}` on every route, and the invite code path parameter is `{invite_code_id}` ([#883](https://github.com/vidithq/vidit/pull/883)).
 - The landing headline and the default link preview read "An open archive of conflict geolocations", and the preview subhead matches the landing paragraph ([#862](https://github.com/vidithq/vidit/pull/862)).
 - A new username holds only ASCII letters, digits, underscores and hyphens, so the author filter reaches every new account; the registration form states the rule and refuses another character before it submits ([#858](https://github.com/vidithq/vidit/pull/858)).
 - The admin event routes answer an unknown event with the error code `event_not_found`, the code every other route uses, instead of `geolocation_not_found` ([#835](https://github.com/vidithq/vidit/pull/835)).
@@ -22,6 +32,11 @@ What shipped in each release, newest first. The format follows [Keep a Changelog
 
 ### Removed
 
+- Breaking: `POST /events/batch-complete` and `DELETE /admin/collections/{id}` are gone; hide a collection with `PATCH /admin/collections/{id}/moderation` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `GET /events/{id}/site-suggestions` is gone; call `GET /sites/suggestions` with the event's `lat` and `lng` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `GET /admin/me` and `GET /users/me/x-handle` are gone; read `is_admin` and `x_handle` on `GET /auth/me` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `GET /users/{username}/events` is gone; call `GET /events?author={username}&status=geolocated&sort=occurred` ([#883](https://github.com/vidithq/vidit/pull/883)).
+- Breaking: `UserProfile.geolocations_count` is gone; read `geolocated_count` on `GET /users/{username}/stats` ([#883](https://github.com/vidithq/vidit/pull/883)).
 - `/profile` and `/geolocations/new` no longer resolve: open your profile from the sidebar, and submit from `/submit` ([#835](https://github.com/vidithq/vidit/pull/835)).
 
 ### Fixed

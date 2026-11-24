@@ -131,7 +131,6 @@ _READ_LIMITS = [
     ("/api/v1/tags", 60),
     ("/api/v1/conflicts", 60),
     ("/api/v1/users/no-such-user", 120),
-    ("/api/v1/users/no-such-user/events", 120),
     ("/api/v1/users/no-such-user/stats", 120),
     ("/api/v1/users/no-such-user/collections", 120),
     (f"/api/v1/collections/{uuid.UUID(int=0)}", 120),
@@ -521,24 +520,6 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"data": _SUBMIT_FORM, **_SUBMIT_FILE},
     ),
-    # The conflict id resolves to nothing, so the call 400s before any lock.
-    _Case(
-        "post",
-        "/api/v1/events/batch-complete",
-        10,
-        "user",
-        {
-            "json": {
-                "conflict_ids": [str(_MISSING_ID)],
-                "rows": [
-                    {
-                        "event_id": str(_MISSING_ID),
-                        "kind": "smartphone",
-                    }
-                ],
-            }
-        },
-    ),
     _Case(
         "post",
         f"/api/v1/events/{_MISSING_ID}/close",
@@ -549,10 +530,10 @@ _DOCUMENTED_LIMITS = [
     # Open to anonymous viewers; 10/hour is the tightest write limit.
     _Case(
         "post",
-        f"/api/v1/events/{_MISSING_ID}/report",
+        "/api/v1/reports",
         10,
         "anon",
-        {"json": {"reason": "other"}},
+        {"json": {"kind": "event", "target_id": str(_MISSING_ID), "reason": "other"}},
     ),
     _Case(
         "post",
@@ -600,7 +581,6 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", "/api/v1/users/no-such-user/follow", 60),
     _Case("get", f"{ME}/preferences", 120),
     _Case("patch", f"{ME}/preferences", 60, "user", {"json": {"display": {"theme": "dark"}}}),
-    _Case("get", f"{ME}/x-handle", 120),
     _Case("get", f"{ME}/invite-codes", 120),
     # Minting is off for the probe account, so no request mints or meets the daily quota.
     _Case("post", f"{ME}/invite-codes", 30, "user_minting_off", {"json": {"x_handle": "rl_probe"}}),
@@ -646,7 +626,6 @@ _DOCUMENTED_LIMITS = [
         "user",
         {"json": {"version_no": 1, "name": "probe", "kind": "depot"}},
     ),
-    _Case("post", f"/api/v1/sites/{_MISSING_ID}/report", 10, "anon", {"json": {"reason": "other"}}),
     _Case(
         "post",
         f"/api/v1/events/{_MISSING_ID}/site-links",
@@ -655,7 +634,6 @@ _DOCUMENTED_LIMITS = [
         {"json": {"site_id": str(_MISSING_ID), "effect": "damage"}},
     ),
     _Case("delete", f"/api/v1/events/{_MISSING_ID}/site-links/{_MISSING_ID}", 60),
-    _Case("get", f"/api/v1/events/{_MISSING_ID}/site-suggestions", 120),
     _Case("get", "/api/v1/sites/suggestions", 120),
     _Case("get", f"/api/v1/events/{_MISSING_ID}/geolocator-invites", 120),
     _Case(
@@ -683,8 +661,8 @@ _DOCUMENTED_LIMITS = [
     _Case("get", f"{_ORG}/approval-requests", 60),
     _Case("post", f"{_ORG}/invites", 30, "user", {"json": {"username": "nobody"}}),
     _Case("delete", f"{_ORG}/invites/{_MISSING_ID}", 60),
-    _Case("post", f"{_ORG}/invite/accept", 30),
-    _Case("post", f"{_ORG}/invite/decline", 30),
+    _Case("post", f"{_ORG}/invites/accept", 30),
+    _Case("post", f"{_ORG}/invites/decline", 30),
     _Case("patch", f"{_ORG}/members/nobody", 60, "user", {"json": {"role": "member"}}),
     _Case("delete", f"{_ORG}/members/nobody", 60),
     # The named first admin does not exist, so the create 404s after the limiter.
@@ -723,23 +701,22 @@ _DOCUMENTED_LIMITS = [
     _Case("delete", f"/api/v1/admin/invite-codes/{_MISSING_ID}", 60, "admin"),
     _Case(
         "patch",
-        f"/api/v1/admin/users/{_MISSING_ID}/x-handle",
+        f"/api/v1/admin/users/{_MISSING_ID}",
         60,
         "admin",
         {"json": {"x_handle": "someone"}},
-    ),
-    _Case(
-        "patch",
-        f"/api/v1/admin/users/{_MISSING_ID}/invite-minting",
-        60,
-        "admin",
-        {"json": {"enabled": False}},
     ),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}", 30, "admin"),
     _Case("delete", f"/api/v1/admin/users/{_MISSING_ID}/detected-events", 30, "admin"),
     _Case("post", f"/api/v1/admin/users/{_MISSING_ID}/restore", 30, "admin"),
     _Case("delete", f"/api/v1/admin/events/{_MISSING_ID}", 60, "admin"),
-    _Case("delete", f"/api/v1/admin/collections/{_MISSING_ID}", 60, "admin"),
+    _Case(
+        "patch",
+        f"/api/v1/admin/collections/{_MISSING_ID}/moderation",
+        60,
+        "admin",
+        {"json": {"hidden": True}},
+    ),
     _Case(
         "patch",
         f"/api/v1/admin/sites/{_MISSING_ID}/moderation",

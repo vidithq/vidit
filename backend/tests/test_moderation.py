@@ -409,7 +409,7 @@ def test_queue_lists_reports_of_both_kinds(db, admin_user, event, collection, re
 
 
 def test_resolve_hidden_withholds_the_collection(db, admin_user, collection):
-    """The verdict writes the same stamp as ``DELETE /admin/collections/{id}``."""
+    """The verdict writes the same stamp as ``PATCH /admin/collections/{id}/moderation``."""
     report = _collection_report(db, collection, reason="illegal_content")
 
     response = client.post(

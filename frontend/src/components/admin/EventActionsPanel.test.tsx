@@ -80,9 +80,31 @@ describe("<EventActionsPanel>", () => {
     expect(screen.queryByText("soft")).toBeNull();
   });
 
+  it("redacts the version it names only on the second click of its in-place confirm", async () => {
+    apiFetch.mockResolvedValue({ version_no: 2, redacted: true, snapshot: {}, note: null });
+    render(<EventActionsPanel />);
+    fireEvent.change(screen.getByLabelText(FIELD), { target: { value: ID } });
+    const redact = screen.getByRole("button", { name: "Redact" });
+    expect(redact).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Redact a version"), { target: { value: "2" } });
+    fireEvent.click(redact);
+    expect(apiFetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm redact" }));
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(`/admin/events/${ID}/versions/2/redact`, {
+        method: "POST",
+      }),
+    );
+    expect(
+      await screen.findByText("Version 2 is blank; its number stays in the history."),
+    ).toBeInTheDocument();
+  });
+
   it("hard deletes only on the second click of its in-place confirm", async () => {
     apiFetch.mockResolvedValue({
-      geolocation_id: ID,
+      event_id: ID,
       title: "Strike",
       mode: "hard",
       media_count: 2,

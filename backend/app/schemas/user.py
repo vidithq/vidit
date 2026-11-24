@@ -146,11 +146,8 @@ class AuthorRef(BaseModel):
 
 
 class UserRead(BaseModel):
-    """Authenticated-self payload for ``/auth/me`` and register/login.
-
-    ``is_admin`` is absent so the role stays off the public OpenAPI schema
-    (``/admin/me`` is the probe).
-    """
+    """Authenticated-self payload for ``/auth/me`` and register/login. It only ever
+    describes the caller, so it carries the caller's role and admin-bound X handle."""
 
     id: uuid.UUID
     username: str
@@ -159,32 +156,8 @@ class UserRead(BaseModel):
     avatar_url: str | None
     external_links: dict[str, str | None]
     created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class XHandleRead(BaseModel):
+    is_admin: bool
     x_handle: str | None
-
-
-class UserProfile(BaseModel):
-    """Public profile payload for ``GET /users/{username}``.
-
-    Excludes ``email`` and ``is_admin``. ``geolocations_count`` counts
-    published geolocations, the set ``GET /users/{username}/events`` serves;
-    ``total_events`` on :class:`UserStatsRead` includes detections.
-    """
-
-    id: uuid.UUID
-    username: str
-    bio: str | None
-    avatar_url: str | None
-    external_links: dict[str, str | None]
-    created_at: datetime
-    geolocations_count: int
-    followers_count: int
-    following_count: int
-    is_following: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

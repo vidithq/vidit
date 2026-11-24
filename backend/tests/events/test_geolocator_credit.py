@@ -410,11 +410,13 @@ def test_profile_counts_and_lists_co_credited_work(db, author, second_user):
     _credit(db, geo, second_user)
     client.cookies.clear()
 
-    profile = client.get(f"/api/v1/users/{second_user.username}").json()
-    assert profile["geolocations_count"] == 1
-    feed = client.get(f"/api/v1/users/{second_user.username}/events").json()
-    assert [item["id"] for item in feed["items"]] == [str(geo.id)]
-    assert [g["username"] for g in feed["items"][0]["geolocators"]] == [
+    stats = client.get(f"/api/v1/users/{second_user.username}/stats").json()
+    assert stats["geolocated_count"] == 1
+    feed = client.get(
+        f"/api/v1/events?author={second_user.username}&status=geolocated&sort=occurred"
+    ).json()
+    assert [item["id"] for item in feed] == [str(geo.id)]
+    assert [g["username"] for g in feed[0]["geolocators"]] == [
         author.username,
         second_user.username,
     ]

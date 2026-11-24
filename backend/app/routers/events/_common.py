@@ -160,12 +160,10 @@ def resolve_live_event(db: Session, event_id: uuid.UUID) -> Event:
     return _or_404(db.query(Event).filter(Event.id == event_id, *visible_events()).first())
 
 
-def resolve_readable_event(
-    db: Session, geolocation_id: uuid.UUID, current_user: User | None
-) -> Event:
+def resolve_readable_event(db: Session, event_id: uuid.UUID, current_user: User | None) -> Event:
     """The event a history or approvals read may serve, with the visibility of ``GET /{id}``."""
     return _or_404(
-        db.query(Event).filter(Event.id == geolocation_id, *readable_events(current_user)).first()
+        db.query(Event).filter(Event.id == event_id, *readable_events(current_user)).first()
     )
 
 

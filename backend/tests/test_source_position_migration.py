@@ -1,46 +1,20 @@
 """Migration ``b6d2f8a4c0e7`` stores each event's source order as it read before."""
 
-import os
-import subprocess
-import sys
 import uuid
 
 import psycopg2
 import pytest
 
-from app.config import settings
-from tests.conftest import _admin_conn, _db_name, _swap_db
+from tests._migrations import alembic, database_at
 
 REVISION = "b6d2f8a4c0e7"
 DOWN_REVISION = "b7e2d9c4a1f6"
 
 
-def _alembic(url: str, *args: str) -> None:
-    subprocess.run(
-        [sys.executable, "-m", "alembic", *args],
-        env={**os.environ, "DATABASE_URL": url},
-        check=True,
-        capture_output=True,
-    )
-
-
 @pytest.fixture
 def pre_position_db():
-    name = f"{_db_name(settings.database_url)}_source_position"
-    url = _swap_db(settings.database_url, name)
-    admin = _admin_conn(settings.database_url)
-    try:
-        with admin.cursor() as cur:
-            cur.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
-            cur.execute(f'CREATE DATABASE "{name}"')
-        with psycopg2.connect(url) as conn, conn.cursor() as cur:
-            cur.execute("CREATE EXTENSION IF NOT EXISTS postgis")
-        _alembic(url, "upgrade", DOWN_REVISION)
+    with database_at("source_position", DOWN_REVISION) as url:
         yield url
-    finally:
-        with admin.cursor() as cur:
-            cur.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
-        admin.close()
 
 
 def test_upgrade_keeps_the_order_each_event_read_in(pre_position_db):
@@ -83,7 +57,7 @@ def test_upgrade_keeps_the_order_each_event_read_in(pre_position_db):
             (str(uuid.uuid4()), other),
         )
 
-    _alembic(pre_position_db, "upgrade", REVISION)
+    alembic(pre_position_db, "upgrade", REVISION)
 
     with psycopg2.connect(pre_position_db) as conn, conn.cursor() as cur:
         cur.execute("SELECT title FROM sources WHERE event_id = %s ORDER BY position", (event,))
@@ -96,7 +70,7 @@ def test_upgrade_keeps_the_order_each_event_read_in(pre_position_db):
         cur.execute("SELECT position FROM sources WHERE event_id = %s", (other,))
         assert cur.fetchall() == [(0,)]
 
-    _alembic(pre_position_db, "downgrade", DOWN_REVISION)
+    alembic(pre_position_db, "downgrade", DOWN_REVISION)
     with psycopg2.connect(pre_position_db) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT 1 FROM information_schema.columns "

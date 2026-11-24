@@ -1,62 +1,43 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiFetch } from "@/test/apiStub";
-
-const session = vi.hoisted(() => ({ user: null as { id: string; username: string } | null }));
-
-vi.mock("@/lib/api", () => import("@/test/apiStub"));
-vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: session.user, loading: false }),
+const session = vi.hoisted(() => ({
+  user: null as { id: string; is_admin: boolean } | null,
+  loading: false,
 }));
 
-import { AdminProvider, useAdmin } from "./AdminContext";
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: session.user, loading: session.loading }),
+}));
 
-function Probe({ name }: { name: string }) {
+import { useAdmin } from "./AdminContext";
+
+function Probe() {
   const { isAdmin, loading } = useAdmin();
-  return <p>{`${name}: ${loading ? "loading" : isAdmin ? "admin" : "not admin"}`}</p>;
+  return <p>{loading ? "loading" : isAdmin ? "admin" : "not admin"}</p>;
 }
-
-function Readers() {
-  return (
-    <AdminProvider>
-      <Probe name="sidebar" />
-      <Probe name="approvals" />
-      <Probe name="page" />
-    </AdminProvider>
-  );
-}
-
-const adminProbes = () => apiFetch.mock.calls.filter(([path]) => path === "/admin/me").length;
 
 beforeEach(() => {
   session.user = null;
+  session.loading = false;
 });
 
-describe("<AdminProvider>", () => {
-  it("shares one /admin/me probe between every reader", async () => {
-    session.user = { id: "u1", username: "mod" };
-    apiFetch.mockResolvedValue({ is_admin: true });
-    render(<Readers />);
-
-    expect(await screen.findByText("sidebar: admin")).toBeInTheDocument();
-    expect(screen.getByText("approvals: admin")).toBeInTheDocument();
-    expect(screen.getByText("page: admin")).toBeInTheDocument();
-    expect(adminProbes()).toBe(1);
+describe("useAdmin", () => {
+  it("reads the role from the session", () => {
+    session.user = { id: "u1", is_admin: true };
+    render(<Probe />);
+    expect(screen.getByText("admin")).toBeInTheDocument();
   });
 
-  it("reads a refused probe as not an admin", async () => {
-    session.user = { id: "u2", username: "bo" };
-    apiFetch.mockRejectedValue(new Error("Forbidden"));
-    render(<Readers />);
-
-    await waitFor(() => expect(screen.getByText("sidebar: not admin")).toBeInTheDocument());
-    expect(adminProbes()).toBe(1);
+  it("reads an analyst without the role as not an admin", () => {
+    session.user = { id: "u2", is_admin: false };
+    render(<Probe />);
+    expect(screen.getByText("not admin")).toBeInTheDocument();
   });
 
-  it("sends no probe while signed out", () => {
-    render(<Readers />);
-    expect(screen.getByText("sidebar: not admin")).toBeInTheDocument();
-    expect(adminProbes()).toBe(0);
+  it("stays loading until the session resolves", () => {
+    session.loading = true;
+    render(<Probe />);
+    expect(screen.getByText("loading")).toBeInTheDocument();
   });
 });

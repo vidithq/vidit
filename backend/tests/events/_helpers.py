@@ -45,7 +45,7 @@ def stage_file(
         files={"file": (filename, content, content_type)},
     )
     assert response.status_code == 201, response.text
-    [staged] = response.json()["items"]
+    [staged] = response.json()
     return staged["id"]
 
 

@@ -83,12 +83,12 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/auth/resend-confirmation` | 🌐 | Resend the confirmation email and invalidate the previous token |
 | POST | `/auth/login` | 🌐 | Email + password → session + CSRF cookies |
 | POST | `/auth/logout` | 🌐 | Clear session cookies (idempotent) |
-| GET | `/auth/me` | 🔒 | Current user |
+| GET | `/auth/me` | 🔒 | Current user, with your admin role and bound X handle |
 | POST | `/auth/forgot-password` | 🌐 | Email a single-use reset token (always 204) |
 | POST | `/auth/reset-password` | 🌐 | Consume reset token, set new password |
 | POST | `/auth/change-password` | 🔒 | Rotate your password (requires your current password) |
 | **Events** | | | |
-| GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested` |
+| GET | `/events` | 🌐 | List one lifecycle view, `located` (default) or `requested`, by date added or by event date |
 | GET | `/events/points` | 🌐 | Compact map-points tuples for one viewport (`bbox` required, cached) |
 | GET | `/events/possible-duplicates` | 🔒 | Soft-warning probe for the submit form |
 | POST | `/events/import-from-tweet` | 🔒 | Import your own X post as detections |
@@ -96,14 +96,12 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/import-archive` | 🔒 | Enqueue your staged archive (by `upload_key`) for the backfill worker |
 | GET | `/events/import-archive/{job_id}` | 🔒 | Poll your import job (status + import counts) |
 | GET | `/events/{id}` | 🌐 | Full event detail, any lifecycle state |
-| POST | `/events/{id}/report` | 🌐 | Report an event for moderation (anonymous allowed) |
 | POST | `/uploads` | 🔒 | Stage one source file, or each frame of a GIF, for a later event write (multipart, one file) |
 | POST | `/uploads/from-link` | 🔒 | Stage the file of an X, public Telegram or TikTok post, by its link |
 | POST | `/uploads/from-proof` | 🔒 | Stage a copy of a proof image of an event you edit |
 | POST | `/events` | 🔒 | Create an event born `geolocated` (multipart) |
 | POST | `/events/requests` | 🔒 | Open a request (multipart); creates a `requested` event |
-| POST | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
-| POST | `/events/batch-complete` | 🔒 | Publish a selection of your detections in one call (per-row verdicts) |
+| PUT | `/events/{id}/request` | 🔒 | Correct an open request, owner only; overwrites it in place at version 0 |
 | POST | `/events/{id}/versions` | 🔒 | Publish a request or a detection, or correct a published event; files the version it supersedes |
 | GET | `/events/{id}/versions` | 🌐 | The event's superseded versions, newest first |
 | GET | `/events/{id}/versions/{version_no}` | 🌐 | One superseded version, by its number |
@@ -124,7 +122,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/events/{id}/approval-requests/{request_id}/decline` | 🔒 | Decline an approval request addressed to you or to an organization you manage |
 | **Collections** | | | |
 | POST | `/collections` | 🔒 | Open a collection (title, description, and the events it holds) |
-| POST | `/collections/{id}/report` | 🌐 | Report a collection for moderation (anonymous allowed) |
 | GET | `/collections/{id}` | 🌐 | One collection: owner, title, description, tags, item count, date range |
 | PATCH | `/collections/{id}` | 🔒 | Write your collection's title and description |
 | DELETE | `/collections/{id}` | 🔒 | Drop your collection; the events it held stay |
@@ -139,7 +136,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | POST | `/sites` | 🔒 | Create a site with its first source, its contour and your linked events; answers with the sites its zone overlaps |
 | POST | `/sites/overlaps` | 🔒 | List the sites whose current zone shares area with a drawn zone |
 | GET | `/sites/suggestions` | 🔒 | Sites a point may link to, nearest first or by name |
-| POST | `/sites/{id}/report` | 🌐 | Report a site for moderation (anonymous allowed) |
 | GET | `/sites/{id}` | 🌐 | One site: current zone, last source, sources, contours, linked events |
 | POST | `/sites/{id}/versions` | 🔒 | Edit your site in one transaction, filing one version |
 | GET | `/sites/{id}/versions` | 🌐 | The site's superseded versions, newest first (cursor-paged) |
@@ -149,7 +145,6 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/events/{id}/site-links` | 🌐 | The sites an event is linked to |
 | POST | `/events/{id}/site-links` | 🔒 | Link your published event to a site, or change the effect of its link (idempotent) |
 | DELETE | `/events/{id}/site-links/{site_id}` | 🔒 | Unlink your event from a site (idempotent) |
-| GET | `/events/{id}/site-suggestions` | 🔒 | Sites your event may link to, nearest first or by name |
 | **Search** | | | |
 | GET | `/search` | 🌐 | One ranked list of events, sites, collections, analysts and organizations |
 | GET | `/search/sections` | 🌐 | The top hits of each type, one section per type |
@@ -169,11 +164,9 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/users/me/avatar` | 🔒 | Remove your profile picture |
 | GET | `/users/me/preferences` | 🔒 | Your display and notification preferences, each beside its default |
 | PATCH | `/users/me/preferences` | 🔒 | Change some of your preferences |
-| GET | `/users/me/x-handle` | 🔒 | The X handle an admin bound to your account |
 | GET | `/users/me/invite-codes` | 🔒 | The invite codes you minted, newest first, and your daily quota |
 | POST | `/users/me/invite-codes` | 🔒 | Mint a single-use invite code bound to the invitee's X handle |
 | POST | `/users/me/invite-codes/{id}/revoke` | 🔒 | Revoke an active invite code you minted, keeping its row |
-| GET | `/users/{username}/events` | 🌐 | List an analyst's published geolocations |
 | GET | `/users/{username}/collections` | 🌐 | List an analyst's collections |
 | GET | `/users/{username}/organizations` | 🌐 | List the organizations an analyst belongs to |
 | POST | `/users/{username}/follow` | 🔒 | Follow (idempotent; self-follow → 400) |
@@ -195,18 +188,19 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | GET | `/organizations/{slug}/invite-candidates` | 🔒 | The mutual follows you can invite (managers) |
 | POST | `/organizations/{slug}/invites` | 🔒 | Invite an analyst in mutual follow (org managers) |
 | DELETE | `/organizations/{slug}/invites/{username}` | 🔒 | Withdraw a pending invite (managers) |
-| POST | `/organizations/{slug}/invite/accept` | 🔒 | Accept your invite |
-| POST | `/organizations/{slug}/invite/decline` | 🔒 | Decline your invite |
+| POST | `/organizations/{slug}/invites/accept` | 🔒 | Accept your invite |
+| POST | `/organizations/{slug}/invites/decline` | 🔒 | Decline your invite |
 | PATCH | `/organizations/{slug}/members/{username}` | 🔒 | Change a member's role (managers) |
 | DELETE | `/organizations/{slug}/members/{username}` | 🔒 | Remove a member, or leave |
 | **Feed** | | | |
 | GET | `/feed` | 🔒 | Published geolocations, open requests and machine detections, from followed analysts or everyone |
 | GET | `/feed/dates` | 🔒 | The rows of the feed, counted per day |
+| **Reports** | | | |
+| POST | `/reports` | 🌐 | Report an event, a collection or a site for moderation (anonymous allowed) |
 | **Webhooks** | | | |
 | GET | `/webhooks/x` | 🌐 | X webhook CRC challenge (HMAC answer, no DB) |
 | POST | `/webhooks/x` | 🌐 | Receive an X Account Activity delivery (signature-verified) and queue bot mentions |
 | **Admin** (collapsed below) | | | |
-| GET | `/admin/me` | 🔒 | `is_admin` probe, answered for every analyst |
 | GET | `/admin/detection-stats` | 🛡️ | Machine-extraction quality: reject-rate + pending missing-piece counts |
 | POST/GET | `/admin/invite-codes` | 🛡️ | Mint / list invite codes |
 | POST | `/admin/invite-codes/{id}/revoke` | 🛡️ | Revoke an invite code, keeping its row |
@@ -220,19 +214,17 @@ Auth column: 🌐 anonymous, 🔒 logged-in, 🛡️ admin-only.
 | DELETE | `/admin/users/{id}/detected-events` | 🛡️ | Purge every detection the user owns, account untouched |
 | DELETE | `/admin/events/{id}` | 🛡️ | Soft delete or `?hard=true` GDPR erasure |
 | PATCH | `/admin/collections/{id}/moderation` | 🛡️ | Withhold a collection from public view, or restore it (moves `hidden_at`) |
-| DELETE | `/admin/collections/{id}` | 🛡️ | Withhold a collection from public view (the takedown alias of the PATCH above) |
 | PATCH | `/admin/sites/{id}/moderation` | 🛡️ | Withhold a site from public view, or restore it (moves `hidden_at`) |
-| PATCH | `/admin/users/{id}/x-handle` | 🛡️ | Link / clear the bot-attribution X handle |
-| PATCH | `/admin/users/{id}/invite-minting` | 🛡️ | Turn minting invite codes from Settings on or off for one analyst |
+| PATCH | `/admin/users/{id}` | 🛡️ | Link or clear the bot-attribution X handle, and turn invite minting from Settings on or off |
 | DELETE | `/admin/approvals/{approval_id}` | 🛡️ | Delete one approval; its reviewer or organization can approve that version again |
 | GET | `/admin/reports` | 🛡️ | The moderation queue: event, collection and site reports, open ones first |
 | POST | `/admin/reports/{id}/resolve` | 🛡️ | Close one report with a verdict, applying it to what the report names |
 | PATCH | `/admin/events/{id}/moderation` | 🛡️ | Set an event's graphic flag / takedown directly, no report behind it |
 | POST | `/admin/events/{id}/versions/{version_no}/redact` | 🛡️ | Blank one filed version, keeping its number |
-| POST | `/admin/maintenance/reap-*` | 🛡️ | Cron-style reapers (password reset tokens, pending registrations) |
+| POST | `/admin/maintenance/reap-*` | 🛡️ | Drop expired password reset tokens or pending registrations |
 | POST | `/admin/maintenance/send-completion-digests` | 🛡️ | Email each analyst the count of detections awaiting completion |
 
-The admin console has no panel for the `/admin/maintenance/*` routes. Call them with an admin session cookie.
+Nothing schedules the `/admin/maintenance/*` routes. An admin runs each one from the Maintenance panel of the admin console, which lists the counts the job returns.
 
 ---
 
@@ -268,11 +260,10 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /uploads/from-link` | 30/min |
 | `POST /uploads/from-proof` | 30/min |
 | `POST /sources/check` | 120/min |
-| `POST /events`, `POST /events/requests`, `POST /events/{id}/request` | 30/min |
+| `POST /events`, `POST /events/requests`, `PUT /events/{id}/request` | 30/min |
 | `POST /events/{id}/versions` | 30/min |
-| `POST /events/batch-complete` | 10/min |
 | `POST /events/{id}/close` | 60/min |
-| `POST /events/{id}/report` | 10/hour (per IP only, anonymous allowed) |
+| `POST /reports` | 10/hour (per IP only, anonymous allowed), one bucket for the three kinds |
 | `GET /events/{id}/collections`, `GET /events/{id}/geolocator-invites` | 120/min |
 | `POST /events/{id}/geolocator-invites`, `DELETE /events/{id}/geolocator-invites/{username}` | 30/hour |
 | `POST /events/{id}/geolocator-invites/accept`, `POST /events/{id}/geolocator-invites/decline`, `DELETE /events/{id}/geolocators/{username}` | 60/min |
@@ -284,7 +275,6 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | **Collections** | |
 | `GET /collections/{id}`, `GET /collections/{id}/events` | 120/min |
 | `POST /collections`, `PATCH /collections/{id}`, `DELETE /collections/{id}` | 30/min |
-| `POST /collections/{id}/report` | 10/hour (per IP only, anonymous allowed) |
 | `PUT`/`DELETE /collections/{id}/events/{event_id}` | 60/min |
 | `POST /collections/{id}/events` | 10/min |
 | `POST /collections/collectable-count`, `POST /collections/collectable-events` | 60/min |
@@ -292,8 +282,7 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /sites`, `POST /sites/overlaps` | 60/min |
 | `GET /sites/{id}`, `GET /sites/{id}/versions`, `GET /sites/{id}/versions/{version_no}` | 120/min |
 | `POST /sites`, `POST /sites/{id}/versions`, `POST /sites/{id}/sources`, `DELETE /sites/{id}/sources/{source_id}` | 30/min |
-| `POST /sites/{id}/report` | 10/hour (per IP only, anonymous allowed) |
-| `GET /sites/suggestions`, `GET /events/{id}/site-links`, `GET /events/{id}/site-suggestions` | 120/min |
+| `GET /sites/suggestions`, `GET /events/{id}/site-links` | 120/min |
 | `POST /events/{id}/site-links`, `DELETE /events/{id}/site-links/{site_id}` | 60/min |
 | **Search / Tags** | |
 | `GET /search`, `GET /search/sections`, `GET /search/dates`, `GET /search/authors` | 60/min |
@@ -301,13 +290,12 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `POST /tags` | 30/min |
 | `GET /conflicts` | 60/min |
 | **Users / Feed** | |
-| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/events`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /feed`, `GET /feed/dates` | 120/min |
+| `GET /users/{username}`, `GET /users/{username}/stats`, `GET /users/{username}/collections`, `GET /users/{username}/organizations`, `GET /feed`, `GET /feed/dates` | 120/min |
 | `PATCH /users/me` | 30/min |
 | `PUT`/`DELETE /users/me/avatar` | 20/min |
 | `POST`/`DELETE /users/{username}/follow` | 60/min |
 | `GET /users/me/preferences` | 120/min |
 | `PATCH /users/me/preferences` | 60/min |
-| `GET /users/me/x-handle` | 120/min |
 | `GET /users/me/invite-codes` | 120/min |
 | `POST /users/me/invite-codes` | 30/hour, plus the daily quota in [`POST /users/me/invite-codes`](#post-usersmeinvite-codes) |
 | `POST /users/me/invite-codes/{id}/revoke` | 30/hour |
@@ -323,21 +311,21 @@ This table is the one statement of each limit. The endpoint sections do not repe
 | `GET /organizations/{slug}/invites`, `GET /organizations/{slug}/invite-candidates`, `GET /organizations/{slug}/approval-requests` | 60/min |
 | `POST /organizations/{slug}/invites` | 30/hour |
 | `DELETE /organizations/{slug}/invites/{username}` | 60/min |
-| `POST /organizations/{slug}/invite/accept`, `POST /organizations/{slug}/invite/decline` | 30/min |
+| `POST /organizations/{slug}/invites/accept`, `POST /organizations/{slug}/invites/decline` | 30/min |
 | `PATCH`/`DELETE /organizations/{slug}/members/{username}` | 60/min |
 | **Admin** 🛡️ | |
 | `POST /admin/invite-codes` · `POST /admin/organizations` · `POST /admin/organizations/{slug}/managers` · `DELETE /admin/organizations/{slug}` · `DELETE /admin/users/{id}` · `DELETE /admin/users/{id}/detected-events` · `POST /admin/users/{id}/restore` | 30/hour |
-| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}/x-handle` · `PATCH /admin/users/{id}/invite-minting` · `DELETE /admin/events/{id}` · `DELETE /admin/approvals/{approval_id}` | 60/hour |
-| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `DELETE /admin/collections/{id}` · `PATCH /admin/sites/{id}/moderation` | 60/hour |
+| `POST /admin/invite-codes/{id}/revoke` · `DELETE /admin/invite-codes/{id}` · `PATCH /admin/users/{id}` · `DELETE /admin/events/{id}` · `DELETE /admin/approvals/{approval_id}` | 60/hour |
+| `POST /admin/reports/{id}/resolve` · `PATCH /admin/events/{id}/moderation` · `POST /admin/events/{id}/versions/{version_no}/redact` · `PATCH /admin/collections/{id}/moderation` · `PATCH /admin/sites/{id}/moderation` | 60/hour |
 | `POST /admin/maintenance/reap-*` · `POST /admin/maintenance/send-completion-digests` | 30/hour |
 
-The read-only admin probes (`GET /admin/me`, `/admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
+The read-only admin probes (`GET /admin/detection-stats`, `/admin/users`, `/admin/invite-codes` list, `/admin/organizations` list, `/admin/reports` list) carry no limit. The [`/webhooks/x`](#webhooks) pair carries none either: both are HMAC-gated.
 
 ### Per-user read quota
 
-**1000/hour per account.** One bucket is shared across these 34 read paths, not one bucket per endpoint:
+**1000/hour per account.** One bucket is shared across these 32 read paths, not one bucket per endpoint:
 
-`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/{id}/site-suggestions` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/dates` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/events` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed` · `/feed/dates` · `POST /collections/collectable-events`
+`GET /events` · `/events/{id}` · `/events/{id}/versions` · `/events/{id}/versions/{version_no}` · `/events/{id}/approvals` · `/events/{id}/site-links` · `/events/points` · `/events/detections` · `/events/possible-duplicates` · `/search` · `/search/sections` · `/search/dates` · `/search/authors` · `/tags` · `/conflicts` · `/users/{username}` · `/users/{username}/stats` · `/users/{username}/collections` · `/users/{username}/organizations` · `/organizations/{slug}` · `/organizations/{slug}/members` · `/organizations/{slug}/approvals` · `/collections/{id}` · `/collections/{id}/events` · `/sites` · `/sites/suggestions` · `/sites/{id}` · `/sites/{id}/versions` · `/sites/{id}/versions/{version_no}` · `/feed` · `/feed/dates` · `POST /collections/collectable-events`
 
 - The key is `User.id`, read from the signature-verified session cookie.
 - The backend evaluates the per-IP table limit first, so a request the table rejects costs the account nothing.
@@ -465,11 +453,16 @@ Returns your user account.
   "bio": null,
   "avatar_url": null,
   "external_links": {},
-  "created_at": "2026-03-28T10:00:00Z"
+  "created_at": "2026-03-28T10:00:00Z",
+  "is_admin": false,
+  "x_handle": "osint_hawk"
 }
 ```
 
-**This shape carries no `is_admin` field.** The admin role surfaces only through [`GET /admin/me`](#get-adminme).
+This shape only ever describes you, so it carries your role and your bound X handle:
+
+- `is_admin` is `true` when your account holds the site admin role.
+- `x_handle` is the X handle the Vidit bot and the archive import use to credit posts to you, or `null` when none is bound. Only an admin writes it, through [`PATCH /admin/users/{id}`](#patch-adminusersid).
 
 ---
 
@@ -559,22 +552,22 @@ flowchart LR
   open --> req
   imp --> det
   create --> geo
-  req -->|"`**POST /events/{id}/request**, owner edit, stays version 0`"| req
+  req -->|"`**PUT /events/{id}/request**, owner edit, stays version 0`"| req
   req -->|"`**POST /events/{id}/versions**, anyone, files version 0`"| geo
-  det -->|"`**POST /events/{id}/versions**, **POST /events/batch-complete**, owner, files version 0`"| geo
+  det -->|"`**POST /events/{id}/versions**, owner, files version 0`"| geo
   geo -->|"`**POST /events/{id}/versions**, owner, files a version`"| geo
   req -->|"`**POST /events/{id}/close**, withdraw`"| closed
   det -->|"`**POST /events/{id}/close**, reject`"| closed
   geo -->|"`**POST /events/{id}/close**, retract`"| closed
 ```
 
-[`GET /events`](#get-events) lists one view (`requested` is the request queue, `located` the catalog) and [`GET /events/{id}`](#get-eventsid) reads any status. `DELETE /admin/events/{id}` is the only write that removes a row. The links from a published event to the [sites](#sites) it hit live under `/events/{id}/site-links` and `/events/{id}/site-suggestions`, documented in [Sites](#sites).
+[`GET /events`](#get-events) lists one view (`requested` is the request queue, `located` the catalog) and [`GET /events/{id}`](#get-eventsid) reads any status. `DELETE /admin/events/{id}` is the only write that removes a row. The links from a published event to the [sites](#sites) it hit live under `/events/{id}/site-links`, documented in [Sites](#sites).
 
 ### Event form fields
 
-Four multipart endpoints take the event form. Each posts the whole row state at once, its sources included. This table states every field once; each endpoint section lists only its own rules.
+Four multipart endpoints take the event form. Each sends the whole row state at once, its sources included. This table states every field once; each endpoint section lists only its own rules.
 
-Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`POST /events/{id}/request`](#post-eventsidrequest), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
+Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/requests`](#post-eventsrequests), **request** [`PUT /events/{id}/request`](#put-eventsidrequest), **versions** [`POST /events/{id}/versions`](#post-eventsidversions). Values: **req** required; **opt** optional; **floor** optional on the wire, required by the [evidence floor](#evidence-floor); **no** not accepted, ignored if sent.
 
 | Field | Rule | create | requests | request | versions |
 |---|---|---|---|---|---|
@@ -595,7 +588,7 @@ Columns: **create** [`POST /events`](#post-events), **requests** [`POST /events/
 
 #### Evidence floor
 
-`POST /events`, `versions` and [`POST /events/batch-complete`](#post-eventsbatch-complete) check the post-write state against one floor, before anything is written:
+`POST /events` and `versions` check the post-write state against one floor, before anything is written:
 
 1. A `direct` or `indirect` source: none is `source_required`, and none with a file is `source_file_required`. A `context` source may be a URL only.
 2. At least one [conflict](#conflicts): `conflict_required`. The `"Other"` conflict keeps the rule satisfiable. No tag is required.
@@ -770,20 +763,18 @@ Stage one source file before the event write that uses it: the first layer of th
 
 **Request body (`multipart/form-data`):** one `file` part, an image, a GIF or a video within the [file limits](#file-limits).
 
-**Response 201:** an `UploadList`, whose `items` holds one `UploadRead` per staged file. A GIF stages one PNG per frame, in frame order, each named after the GIF with its frame number (`scan.gif` gives `scan-1.png`, `scan-2.png`); every other file stages as one item. Each item is a file of its own: a source names one `id`.
+**Response 201:** an array of `UploadRead`, one per staged file. A GIF stages one PNG per frame, in frame order, each named after the GIF with its frame number (`scan.gif` gives `scan-1.png`, `scan-2.png`); every other file stages as one item. Each item is a file of its own: a source names one `id`.
 ```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "kind": "video",
-      "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
-      "original_filename": "IMG_2034.MOV",
-      "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
-      "expires_at": "2026-03-17T09:42:00Z"
-    }
-  ]
-}
+[
+  {
+    "id": "uuid",
+    "kind": "video",
+    "sha256": "f7c3bcd13f00e8a4b2d4e9b3f1a2c5d6e7f8901234567890abcdef1234567890",
+    "original_filename": "IMG_2034.MOV",
+    "storage_url": "https://<cloudfront-domain>/uploads/….mp4",
+    "expires_at": "2026-03-17T09:42:00Z"
+  }
+]
 ```
 
 `storage_url` lets the form preview the file. Only you can reference the upload. It expires 24 hours after it was staged: an event write naming it after `expires_at` is `upload_expired`, and the import worker deletes it within the hour after that. A write that takes it consumes it, so a second write naming it is `upload_not_found`.
@@ -875,7 +866,7 @@ The imagery provider check of a source as the form holds it: the provider each l
 
 ### `GET /events`
 
-List one lifecycle view, newest or oldest first, as `EventList` cards (no full proof).
+List one lifecycle view, newest or oldest added first, or newest event date first, as `EventList` cards (no full proof). A profile lists an analyst's published work with `?author={username}&status=geolocated&sort=occurred`.
 
 **Query params:**
 | Param | Type | Description |
@@ -895,7 +886,7 @@ List one lifecycle view, newest or oldest first, as `EventList` cards (no full p
 | `approved_by` | string | Keeps a `geolocated` event that the analyst with this username (exact, case-insensitive) approved as themselves on its live version. An approval they placed for an organization does not count. Same `[A-Za-z0-9_-]{1,50}` rule as `author`. |
 | `approved_by_org` | string | Keeps a `geolocated` event that the organization with this slug approved on its live version. Same character rule. |
 | `has_coords` | bool | `true` keeps rows with a `coords` point (on the `requested` view, a request carrying a location guess); `false` keeps rows without one. Omit it for both. |
-| `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`. Both orders are total, so a cursor walk serves every row once. Anything else → 422. |
+| `sort` | string | `newest` (default) orders by `created_at DESC, id DESC`; `oldest` orders by `created_at ASC, id ASC`; `occurred` orders by `occurred_date DESC`, then `created_at DESC, id DESC`, with an undated event last. Every order is total, so a cursor walk serves every row once. Anything else → 422. |
 | `limit` | int | Rows per page. See [Pagination](#pagination). |
 | `cursor` | string | Opaque cursor from the previous page's `Link: rel="next"` header. See [Pagination](#pagination). |
 
@@ -1112,7 +1103,7 @@ One archive-import job. Owner only: another user's job id reads as 404. Poll it 
 
 Full detail for a single event, in any lifecycle state.
 
-A withheld event (`hidden_at` set by an admin, directly or by resolving a [content report](#post-eventsidreport) as `hidden`) answers 404 for everyone but an admin. A soft-deleted event answers 404 for every caller, admins included.
+A withheld event (`hidden_at` set by an admin, directly or by resolving a [content report](#post-reports) as `hidden`) answers 404 for everyone but an admin. A soft-deleted event answers 404 for every caller, admins included.
 
 **Response 200:** an `EventRead`.
 ```json
@@ -1215,45 +1206,6 @@ A withheld event (`hidden_at` set by an admin, directly or by resolving a [conte
 
 ---
 
-### `POST /events/{id}/report` 🌐
-
-Report an event for moderation. Anonymous allowed; a signed-in reporter is recorded as `reporter_id`.
-
-**Request body:**
-```json
-{
-  "reason": "graphic_not_flagged",
-  "details": "Shows a body at 0:14, no graphic-content warning on the card."
-}
-```
-
-`reason` is one of `illegal_content`, `graphic_not_flagged`, `copyright`, `privacy`, `other`. `details` is optional free text, capped at 2000 characters.
-
-**Response 201:** a `ContentReportRead`.
-```json
-{
-  "id": "uuid",
-  "event_id": "uuid",
-  "collection": null,
-  "site": null,
-  "reason": "graphic_not_flagged",
-  "details": "Shows a body at 0:14, no graphic-content warning on the card.",
-  "reporter_id": null,
-  "created_at": "2026-08-12T09:14:00Z",
-  "resolved_at": null,
-  "resolution": null
-}
-```
-
-One report names one target: `event_id` here, `collection` from [`POST /collections/{id}/report`](#post-collectionsidreport), or `site` from [`POST /sites/{id}/report`](#post-sitesidreport). All land in the same [queue](#get-adminreports).
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | `event_not_found`: unknown id, soft-deleted, or already withheld, one answer for all three |
-
----
-
 ### `POST /events` 🔒
 
 Create an event directly, born `geolocated`. To open a request without coordinates, use [`POST /events/requests`](#post-eventsrequests). To publish an existing `requested` or `detected` event, use [`POST /events/{id}/versions`](#post-eventsidversions).
@@ -1311,7 +1263,7 @@ Open a request: create a `requested` event. A `direct` or `indirect` source with
 
 ---
 
-### `POST /events/{id}/request` 🔒
+### `PUT /events/{id}/request` 🔒
 
 Correct an open request in place. Owner only, and only while `requested`. **No version is filed:** the row keeps its id, `requested_at`, `requested_by` and provenance columns, moves `updated_at`, and stays at `version_no` 0. Publishing the request is [`POST /events/{id}/versions`](#post-eventsidversions), which anyone may call.
 
@@ -1326,68 +1278,11 @@ Correct an open request in place. Owner only, and only while `requested`. **No v
 
 ---
 
-### `POST /events/batch-complete` 🔒
-
-Publish a selection of your own detections in one call: the bulk form of the `detected` → `geolocated` transition. **JSON, not multipart**: nothing uploads and no other field is written. The call supplies only what the machine can't judge: the conflicts, once for the selection, and one source kind per row.
-
-Each row runs in its own transaction against the [evidence floor](#evidence-floor). A row that fails rolls back alone and stays a detection; the rest still publish. A published row files the detection as version 0, becomes version 1, and credits you in `event_geolocators`. Owner only: every targeted detection must be yours.
-
-**Request body:**
-```json
-{
-  "conflict_ids": ["3f1c…"],
-  "rows": [
-    { "event_id": "9a2b…", "kind": "smartphone" },
-    { "event_id": "5c04…", "kind": "drone" }
-  ]
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `conflict_ids` | UUID[] | 1 to 10 [conflicts](#conflicts), applied to every row, replacing the conflicts the detections held |
-| `rows` | object[] | 1 to 100 rows, one per `event_id` (a repeated id is a 422). `event_id` is a `detected` row you own. `kind` is one of the [source kinds](#sources) and goes onto every source of the detection that carries a file; a value outside the list is a 422 |
-
-**Response 200:** verdicts in submission order.
-```json
-{
-  "published": 1,
-  "failed": 1,
-  "rows": [
-    { "event_id": "9a2b…", "published": true, "code": null, "message": null },
-    { "event_id": "5c04…", "published": false, "code": "proof_image_required",
-      "message": "At least one proof image is required" }
-  ]
-}
-```
-
-A `200` does not mean every row published; read `published` and `failed`. A failed row's `code`, checked in this order:
-
-| `code` | Case |
-|--------|------|
-| `event_not_found` | Hard-deleted, soft-deleted or withheld by an admin |
-| `invalid_state` | The row is no longer `detected` |
-| `coordinates_required` | The detection carries no point |
-| `proof_image_required` | The stored proof body holds no image |
-| `source_link_required` | A source of the detection carries no URL |
-| `source_required` | The detection carries no `direct` or `indirect` source |
-| `source_file_required` | No `direct` or `indirect` source of the detection carries a file |
-| `internal_error` | A database failure on that row alone. The detection is untouched and retriable as-is |
-
-**Errors** (whole call, evaluated before any row publishes):
-| Code | Case |
-|------|------|
-| 400 | `conflict_required`: no `conflict_ids` entry resolves to a live conflict |
-| 403 | A targeted detection belongs to another analyst; nothing is published |
-| 422 | Empty `conflict_ids` or `rows`, over 10 conflicts, over 100 rows, a repeated `event_id`, a malformed UUID, or a `kind` outside the list |
-
----
-
 ### `POST /events/{id}/versions` 🔒
 
 Publish a request or a detection, or correct a published event. The write files the pre-edit state as a version, applies your form, and moves the event to the next `version_no`, in one transaction under a row lock, so two concurrent writes take their numbers in order.
 
-**Publish.** A `requested` or `detected` event is version 0. Writing to it files it as version 0, the request or the detection as it stood, and the event becomes `geolocated` at version 1, stamped `geolocated_at`, with you added to `geolocators`. A detection is owner-only. A request is anyone's to publish: you become its `owner`, `requested_by` keeps the original poster, and when you publish someone else's request the same transaction writes a `request_fulfilled` [notification](#notifications) for them. A publish always changes the status, so `nothing_changed` does not apply to it. A publish also invites the analysts in `geolocator_invites` (see [Invitations on the publish](#invitations-on-the-publish)). A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL. The requester's own edit of an open request stays in place at version 0 through [`POST /events/{id}/request`](#post-eventsidrequest).
+**Publish.** A `requested` or `detected` event is version 0. Writing to it files it as version 0, the request or the detection as it stood, and the event becomes `geolocated` at version 1, stamped `geolocated_at`, with you added to `geolocators`. A detection is owner-only. A request is anyone's to publish: you become its `owner`, `requested_by` keeps the original poster, and when you publish someone else's request the same transaction writes a `request_fulfilled` [notification](#notifications) for them. A publish always changes the status, so `nothing_changed` does not apply to it. A publish also invites the analysts in `geolocator_invites` (see [Invitations on the publish](#invitations-on-the-publish)). A detection's sources come from the import with kind `unknown`; name each source's kind, and give every source a URL. The requester's own edit of an open request stays in place at version 0 through [`PUT /events/{id}/request`](#put-eventsidrequest).
 
 **Correction.** A `geolocated` event is owner-only.
 
@@ -1502,14 +1397,12 @@ One superseded version by its number, the read behind a `/events/{id}/vN` addres
 
 Your collections, each saying whether this event is already on it. Only an analyst the event credits, its owner or a [co-geolocator](#shared-credit), may put it on a collection, so anyone else gets a 403. Empty collections are listed; withheld collections and collections [pending erasure](#delete-collectionsid) are not.
 
-**Response 200:**
+**Response 200:** an array of `CollectionMembershipRead`.
 ```json
-{
-  "items": [
-    { "id": "uuid", "title": "Zaporizhzhia plant", "cover": [{ "url": "…", "kind": "image", "role": "source" }], "event_count": 12, "in_collection": true },
-    { "id": "uuid", "title": "March strikes", "cover": [], "event_count": 0, "in_collection": false }
-  ]
-}
+[
+  { "id": "uuid", "title": "Zaporizhzhia plant", "cover": [{ "url": "…", "kind": "image", "role": "source" }], "event_count": 12, "in_collection": true },
+  { "id": "uuid", "title": "March strikes", "cover": [], "event_count": 0, "in_collection": false }
+]
 ```
 
 `cover` is the collection's mosaic, as on [`GET /collections/{id}`](#get-collectionsid).
@@ -2319,31 +2212,6 @@ A body without `title` or without `description` is a 422. Repeated ids collapse 
 
 ---
 
-### `POST /collections/{id}/report` 🌐
-
-Report a collection for moderation. Same body, `reason` values and anonymous rule as [`POST /events/{id}/report`](#post-eventsidreport).
-
-**Response 201:** a [`ContentReportRead`](#post-eventsidreport) with `event_id` `null` and `collection` set:
-```json
-{
-  "collection": {
-    "id": "uuid",
-    "title": "Zaporizhzhia plant",
-    "owner": { "id": "uuid", "username": "analyst", "avatar_url": "https://…/avatars/…jpg" },
-    "deleted_at": null
-  }
-}
-```
-
-The report lands in the [`GET /admin/reports`](#get-adminreports) queue. A collection takes the verdicts `hidden` and `dismissed`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | `collection_not_found`: unknown id, already withheld, pending erasure, or owned by a soft-deleted account, one answer for all four. An admin gets it too |
-
----
-
 ### `GET /collections/{id}` 🌐
 
 One collection's header: owner, title, description, tags, item count, and the date range its items span.
@@ -2414,7 +2282,7 @@ Write your collection's title and description. Owner only. Both fields are requi
 
 Drop your collection and its memberships. Owner only. The events it held are untouched.
 
-While an open [content report](#post-collectionsidreport) names the collection, the delete only marks it pending erasure (`collections.deleted_at`). The response is the same 204. The collection answers 404 at once for everyone but an admin, its owner included, and leaves every list and search. A moderator still reads it in full from the [report queue](#get-adminreports). Resolving the last open report on it, whatever the verdict, erases it. A collection that no open report names is erased at once.
+While an open [content report](#post-reports) names the collection, the delete only marks it pending erasure (`collections.deleted_at`). The response is the same 204. The collection answers 404 at once for everyone but an admin, its owner included, and leaves every list and search. A moderator still reads it in full from the [report queue](#get-adminreports). Resolving the last open report on it, whatever the verdict, erases it. A collection that no open report names is erased at once.
 
 **Response 204:** no body.
 
@@ -2718,7 +2586,7 @@ Each share is the area of the intersection over the area of one zone, computed o
 
 ### `GET /sites/suggestions` 🔒
 
-The sites a point may link to, nearest first, for an event form whose event is not written yet. It ranks like [`GET /events/{id}/site-suggestions`](#get-eventsidsite-suggestions), measured from `lat`, `lng` instead of the event's point. Any signed-in analyst may call it. Capped at 20.
+The sites a point may link to, nearest first. An event form sends the point it holds, and the event page sends the event's point. Any signed-in analyst may call it. Capped at 20.
 
 **Query params:**
 
@@ -2731,37 +2599,22 @@ The sites a point may link to, nearest first, for an event form whose event is n
 - **Without `q`:** the visible sites whose current zone lies within `margin_m` of the point. No point gets an empty array.
 - **With `q`:** the visible sites whose name matches, at any distance. `margin_m` is ignored.
 
-**Response 200:** an array of `SiteSuggestionRead`, as `GET /events/{id}/site-suggestions` returns it. `distance_m` is `null` without a point.
+Results sort by `distance_m`, then by name. A suggestion with a `null` `distance_m` sorts last.
+
+**Response 200:** an array of `SiteSuggestionRead`:
+```json
+[
+  { "id": "uuid", "name": "Saky airbase", "kind": "airbase", "media": null, "distance_m": 420.7 }
+]
+```
+
+`distance_m` is the distance in metres from the point to the site's current zone, 0 inside it, and `null` without a point.
 
 **Errors:**
 | Code | Case |
 |------|------|
 | 400 | `invalid_coordinates`: one of `lat` and `lng` alone, or a value out of range |
 | 422 | `margin_m` outside 0 to 10000, or `q` empty or over 100 characters |
-
----
-
-### `POST /sites/{id}/report` 🌐
-
-Report a site for moderation. Same body, `reason` values and anonymous rule as [`POST /events/{id}/report`](#post-eventsidreport).
-
-**Response 201:** a [`ContentReportRead`](#post-eventsidreport) with `event_id` and `collection` `null` and `site` set:
-```json
-{
-  "site": {
-    "id": "uuid",
-    "name": "Saky airbase",
-    "owner": { "id": "uuid", "username": "analyst", "avatar_url": null }
-  }
-}
-```
-
-The report lands in the [`GET /admin/reports`](#get-adminreports) queue. A site takes the verdicts `hidden` and `dismissed`.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | `site_not_found`: unknown id, already withheld, or owned by a soft-deleted account. An admin gets it too |
 
 ---
 
@@ -3073,39 +2926,6 @@ Remove your event's link to a site. Owner only. The link row is deleted and no r
 
 ---
 
-### `GET /events/{id}/site-suggestions` 🔒
-
-The sites an event may link to, nearest first. Any signed-in analyst may call it. Capped at 20.
-
-**Query params:**
-
-| Param | Rule |
-|---|---|
-| `margin_m` | Metres from the event's point to a site's current zone, 0 to 10000, default 10000. A value outside the range is a 422 |
-| `q` | 1 to 100 characters. A site matches when its name contains `q`, whatever the case |
-
-- **Without `q`:** the visible sites whose current zone lies within `margin_m` of the event's point. An event without a point gets an empty array.
-- **With `q`:** the visible sites whose name matches, at any distance. `margin_m` is ignored.
-
-Results sort by `distance_m`, then by name. A suggestion with a `null` `distance_m` sorts last.
-
-**Response 200:** an array of `SiteSuggestionRead`:
-```json
-[
-  { "id": "uuid", "name": "Saky airbase", "kind": "airbase", "media": null, "distance_m": 420.7 }
-]
-```
-
-`distance_m` is the distance in metres from the event's point to the site's current zone, 0 inside it, and `null` when the event has no point.
-
-**Errors:**
-| Code | Case |
-|------|------|
-| 404 | Unknown, soft-deleted or withheld event (a plain-string `detail`) |
-| 422 | `margin_m` outside 0 to 10000, or `q` empty or over 100 characters |
-
----
-
 ## Users
 
 ### `GET /users/{username}`
@@ -3126,16 +2946,22 @@ Public profile of an analyst.
     "github": null
   },
   "created_at": "2026-03-28T10:00:00Z",
-  "geolocations_count": 42,
   "followers_count": 17,
   "following_count": 5,
-  "is_following": false
+  "is_following": false,
+  "organizations": [
+    {
+      "organization": { "slug": "open-source-watch", "name": "Open Source Watch", "avatar_url": null },
+      "role": "member",
+      "joined_at": "2026-04-02T08:00:00Z"
+    }
+  ]
 }
 ```
 
 `bio` and `external_links` are set through [`PATCH /users/me`](#patch-usersme); `avatar_url` through `PUT` / `DELETE /users/me/avatar`. Defaults are `null` / `null` / `{}`. `is_following` is `true` only when you are signed in and follow this user. Email is never on this shape.
 
-`geolocations_count` counts live rows with `status = "geolocated"` that credit the analyst, as owner or as a [co-geolocator](#shared-credit), the same set as `total` on [`GET /users/{username}/events`](#get-usersusernameevents). For all live work, detections included, read `total_events` on [`GET /users/{username}/stats`](#get-usersusernamestats).
+`organizations` lists the organizations the analyst belongs to, as [`GET /users/{username}/organizations`](#get-usersusernameorganizations) does. Read the analyst's counts on [`GET /users/{username}/stats`](#get-usersusernamestats): `geolocated_count` counts their published work.
 
 **Errors:**
 | Code | Case |
@@ -3300,19 +3126,6 @@ The body rejects unknown fields, unknown kinds, non-boolean switches, and displa
 
 ---
 
-### `GET /users/me/x-handle` 🔒
-
-The X handle bound to your account, which the Vidit bot and the archive import use to credit posts to you. Only an admin writes the bound handle, through [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle).
-
-**Response 200:**
-```json
-{ "x_handle": "osint_hawk" }
-```
-
-`x_handle` is `null` when no handle is bound.
-
----
-
 ### `GET /users/me/invite-codes` 🔒
 
 The invite codes you minted, newest first, used or not, and where your daily quota stands.
@@ -3342,7 +3155,7 @@ The invite codes you minted, newest first, used or not, and where your daily quo
 |-------|---------|
 | `items[].link` | The register page on the app's public origin (`FRONTEND_URL`), with the code in the `code` query parameter. The register form reads it and locks the code field. |
 | `items[].status` | `active`, `exhausted`, `revoked` or `expired`, computed at read time like [`GET /admin/invite-codes`](#get-admininvite-codes). |
-| `minting_enabled` | `false` when an admin turned minting off for your account through [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting). Settings then hides the mint form. |
+| `minting_enabled` | `false` when an admin turned minting off for your account through [`PATCH /admin/users/{id}`](#patch-adminusersid). Settings then hides the mint form. |
 | `minted_today` | The codes you minted since 00:00 UTC, revoked ones included. |
 | `resets_at` | The next 00:00 UTC, when `minted_today` returns to 0. |
 
@@ -3370,7 +3183,7 @@ flowchart LR
 
   mint["`**POST /users/me/invite-codes**
   switch and daily quota checked`"]:::spec
-  switch["`**PATCH /admin/users/{id}/invite-minting**`"]:::shared
+  switch["`**PATCH /admin/users/{id}**`"]:::shared
   revoke["`**POST /admin/invite-codes/{id}/revoke**`"]:::shared
   selfrevoke["`**POST /users/me/invite-codes/{id}/revoke**
   your own active code`"]:::spec
@@ -3435,23 +3248,13 @@ The revoke works while an admin keeps minting off for your account. A revoked co
 
 ---
 
-### `GET /users/{username}/events`
-
-An analyst's published geolocations: live rows with `status = "geolocated"` that credit them, as owner or as a [co-geolocator](#shared-credit), newest event date first. `total` counts the same set, and so does `geolocations_count` on [`GET /users/{username}`](#get-usersusername). Offset-paged; [Pagination](#pagination) gives the ordering and cap.
-
-**Query params:** `page` and `per_page`, see [Pagination](#pagination).
-
-**Response 200:** a `PaginatedEvents` whose `items` are the [`EventList`](#get-events) cards `GET /events` serves.
-
----
-
 ### `GET /users/{username}/collections`
 
-One analyst's collections, newest first. A reader gets the collections that show at least one event; the owner gets all of theirs, empty ones included. `total` counts the same set. Withheld collections and collections pending erasure are in neither. Offset-paged (see [Pagination](#pagination)).
+One analyst's collections, newest first. A reader gets the collections that show at least one event; the owner gets all of theirs, empty ones included. Withheld collections and collections pending erasure are in neither. Cursor-paged (see [Pagination](#pagination)).
 
-**Query params:** `page` and `per_page`, see [Pagination](#pagination).
+**Query params:** `limit` and `cursor`, see [Pagination](#pagination).
 
-**Response 200:** a `CollectionList` whose `items` are [`CollectionRead`](#get-collectionsid).
+**Response 200:** an array of [`CollectionRead`](#get-collectionsid).
 
 **Errors:**
 | Code | Case |
@@ -3696,8 +3499,8 @@ flowchart LR
   inviter and invitee follow each other`"]:::core
   pending[("`**organization_members**
   state invited: one row per analyst and organization`")]:::store
-  accept["`**POST .../invite/accept**`"]:::shared
-  decline["`**POST .../invite/decline**`"]:::shared
+  accept["`**POST .../invites/accept**`"]:::shared
+  decline["`**POST .../invites/decline**`"]:::shared
   members[("`**organization_members**
   state active, role: manager or member`")]:::store
   manage["`**PATCH** or **DELETE .../members/{username}**
@@ -3851,7 +3654,7 @@ Withdraw the pending invite of the analyst with that username. Managers only. No
 
 ---
 
-### `POST /organizations/{slug}/invite/accept` 🔒
+### `POST /organizations/{slug}/invites/accept` 🔒
 
 Accept your pending invite and join as a `member`. Writes an `organization_invite_accepted` [notification](#notifications) for the org manager who invited you.
 
@@ -3859,7 +3662,7 @@ Accept your pending invite and join as a `member`. Writes an `organization_invit
 
 ---
 
-### `POST /organizations/{slug}/invite/decline` 🔒
+### `POST /organizations/{slug}/invites/decline` 🔒
 
 Decline your pending invite. Nobody is notified.
 
@@ -3897,7 +3700,7 @@ Three kinds of row, newest first: a geolocation an analyst published, a request 
 
 | Kind | Rows | Feed timestamp |
 |---|---|---|
-| Geolocation | `status = geolocated`, the set [`GET /users/{username}/events`](#get-usersusernameevents) serves | `geolocated_at` |
+| Geolocation | `status = geolocated`, the set a profile lists through [`GET /events`](#get-events) with `sort=occurred` | `geolocated_at` |
 | Request | `status = requested` | `requested_at` |
 | Detection | `status = detected` | `detected_at` |
 
@@ -3964,19 +3767,10 @@ The rows a [`GET /feed`](#get-feed) walk lists, counted per day on each date axi
 
 ## Admin
 
-All routes below are mounted under `/admin` and, except `GET /admin/me`, gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `audit_log` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
+All routes below are mounted under `/admin` and gated by the `require_admin` dependency, which layers on `get_current_user`, so a deactivated admin (`is_active=false`) loses access immediately. A path naming an unknown id returns 404. Each state-changing route appends an `audit_log` row, named under its endpoint. Outside `/admin`, the `viewer_*` fields a route returns follow the caller's own role, so being a site admin does not set them.
 
 <details>
 <summary>Admin endpoints. Expand for contracts.</summary>
-
-### `GET /admin/me` 🔒
-
-Answers every signed-in analyst with their own role, so the frontend reads it on every page without a refused request. An anonymous call returns 401.
-
-**Response 200:**
-```json
-{ "is_admin": true }
-```
 
 ### `GET /admin/detection-stats` 🛡️
 
@@ -4011,7 +3805,7 @@ Mint a new invite code. Audited as `invite_created`.
 }
 ```
 
-Every code is single-use. `expires_in_days` is optional (omit or `null` for no expiry), at most `365`. `x_handle` is optional and binds the code to an X handle, normalized like [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle). Redemption copies it onto the new account; if the handle is linked elsewhere by then, the account is created without it.
+Every code is single-use. `expires_in_days` is optional (omit or `null` for no expiry), at most `365`. `x_handle` is optional and binds the code to an X handle, normalized like [`PATCH /admin/users/{id}`](#patch-adminusersid). Redemption copies it onto the new account; if the handle is linked elsewhere by then, the account is created without it.
 
 **Response 201:** an `AdminInviteCodeRead`, as in the list below.
 
@@ -4092,7 +3886,7 @@ Case-insensitive substring match on username or email. `%` and `_` match themsel
 ]
 ```
 
-`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `is_invite_minting_enabled` is the switch [`PATCH /admin/users/{id}/invite-minting`](#patch-adminusersidinvite-minting) moves.
+`sponsor` is the analyst who minted the code the account was created from, read through that `invite_codes` row. It is `null` for an account created from an admin-minted code, and once the sponsor's account is erased. `is_invite_minting_enabled` is the switch [`PATCH /admin/users/{id}`](#patch-adminusersid) moves.
 
 ### `DELETE /admin/users/{id}` 🛡️
 
@@ -4160,7 +3954,7 @@ Remove an event. Both modes invalidate the points cache. Audited as `geolocation
 **Response 200:**
 ```json
 {
-  "geolocation_id": "…",
+  "event_id": "…",
   "title": "Strike on depot, Donetsk",
   "mode": "soft",
   "deleted_at": "2026-05-09T16:30:00Z",
@@ -4190,17 +3984,6 @@ Idempotent: a collection already in the requested state keeps its timestamp and 
 
 **Errors:** 404 `collection_not_found`.
 
-### `DELETE /admin/collections/{id}` 🛡️
-
-Withhold a collection: the alias of [`PATCH /admin/collections/{id}/moderation`](#patch-admincollectionsidmoderation) with `{"hidden": true}`, with the same audit row, response and idempotence. Restore through the PATCH.
-
-**Response 200:**
-```json
-{ "collection_id": "uuid", "title": "Zaporizhzhia plant", "hidden_at": "2026-09-12T10:00:00Z" }
-```
-
-**Errors:** 404 `collection_not_found`.
-
 ### `PATCH /admin/sites/{id}/moderation` 🛡️
 
 Withhold a site, or restore it, by moving `sites.hidden_at`. `hidden: true` stamps the takedown; `hidden: false` clears it. A withheld site answers 404 on every [site endpoint](#sites) for everyone but an admin, its owner included, and leaves the map, the event's site links and the suggestions. The events linked to it are untouched in both directions.
@@ -4223,41 +4006,34 @@ Idempotent: a site already in the requested state keeps its timestamp and files 
 
 ---
 
-### `PATCH /admin/users/{id}/x-handle` 🛡️
+### `PATCH /admin/users/{id}` 🛡️
 
-Link or clear the X handle the bot attributes mentions to. Registration copies an invite-bound handle; this endpoint links any other handle and repairs one that failed to link at redemption. An analyst cannot change their own handle. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited as `x_handle_linked` or `x_handle_cleared`.
+Change an analyst's admin-held settings. Send one field or both; an omitted field keeps its value.
+
+| Field | Rule |
+|---|---|
+| `x_handle` | The X handle the bot attributes mentions to. Registration copies an invite-bound handle; this field links any other handle and repairs one that failed to link at redemption. An analyst cannot change their own handle. A non-null value is normalized (single leading `@` stripped, lowercased) and must match `^[a-z0-9_]{1,15}$`; `null` clears the link. Audited as `x_handle_linked` or `x_handle_cleared` |
+| `invite_minting` | `true` or `false`: whether the analyst can mint invite codes from Settings ([`POST /users/me/invite-codes`](#post-usersmeinvite-codes)). Codes the analyst already minted stay valid; revoke them one by one. Audited as `invite_minting_enabled` or `invite_minting_disabled`, with target `{"user_id": …}`. Setting the value the account already holds writes no audit row |
+
+Both fields apply in one transaction, with one audit row per field.
 
 **Request body:**
 ```json
-{ "x_handle": "@osint_hawk" }
+{ "x_handle": "@osint_hawk", "invite_minting": false }
 ```
 
 **Response 200:** the updated `AdminUserRead`.
 
-**Response 409:** `x_handle_conflict`, the handle is linked to another account or an organization.
-
-**Response 422:** value outside the handle alphabet.
-
-**Response 404:** unknown or soft-deleted user id.
-
-### `PATCH /admin/users/{id}/invite-minting` 🛡️
-
-Turn minting invite codes from Settings ([`POST /users/me/invite-codes`](#post-usersmeinvite-codes)) on or off for one analyst. Codes the analyst already minted stay valid; revoke them one by one. Audited as `invite_minting_enabled` or `invite_minting_disabled`, with target `{"user_id": …}`. Setting the value the account already holds writes no audit row.
-
-**Request body:**
-```json
-{ "enabled": false }
-```
-
-**Response 200:** the updated `AdminUserRead`.
-
-**Response 404:** `user_not_found`, an unknown or soft-deleted user id.
-
-**Response 422:** a missing or non-boolean `enabled`, or an unknown field.
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `user_not_found`: an unknown or soft-deleted user id |
+| 409 | `x_handle_conflict`: the handle is linked to another account or an organization |
+| 422 | An empty body, an unknown field, a handle outside the alphabet, or an `invite_minting` that is not a boolean |
 
 ### `DELETE /admin/approvals/{approval_id}` 🛡️
 
-Delete one approval, an analyst's own or one placed for an organization. An approval is final, so a site admin deletes one that should not stand. The `approval_received` notifications that reported it go with it, and the reviewer or the organization can approve that version again. The route works on any event, a withheld one included. Audited as `approval_deleted` (target `geolocation_id`, `approval_id`, `reviewer_id`, `organization_id`, `version_no`).
+Delete one approval, an analyst's own or one placed for an organization. An approval is final, so a site admin deletes one that should not stand. The `approval_received` notifications that reported it go with it, and the reviewer or the organization can approve that version again. The route works on any event, a withheld one included. Audited as `approval_deleted` (target `event_id`, `approval_id`, `reviewer_id`, `organization_id`, `version_no`).
 
 **Response 204:** no body.
 
@@ -4283,7 +4059,7 @@ Create an organization and name its first org manager, who joins at once without
 }
 ```
 
-`slug` is 2 to 50 lowercase letters, digits or inner hyphens, and never changes. `x_handle` is normalized like [`PATCH /admin/users/{id}/x-handle`](#patch-adminusersidx-handle). `bio` and `external_links` follow [`PATCH /users/me`](#patch-usersme). `approval_request_audience` is `following` (the default), `everyone` or `nobody`, as on [`PATCH /organizations/{slug}`](#patch-organizationsslug). Only `name`, `slug` and `manager_username` are required.
+`slug` is 2 to 50 lowercase letters, digits or inner hyphens, and never changes. `x_handle` is normalized like [`PATCH /admin/users/{id}`](#patch-adminusersid). `bio` and `external_links` follow [`PATCH /users/me`](#patch-usersme). `approval_request_audience` is `following` (the default), `everyone` or `nobody`, as on [`PATCH /organizations/{slug}`](#patch-organizationsslug). Only `name`, `slug` and `manager_username` are required.
 
 **Response 201:** the organization, as on [`GET /organizations/{slug}`](#get-organizationsslug).
 
@@ -4325,7 +4101,7 @@ The moderation queue: open reports first, then newest first within each group, e
 
 **Query params:** `page` and `per_page`, see [Pagination](#pagination).
 
-**Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-eventsidreport).
+**Response 200:** `{items, total, page, per_page}`, whose `items` are [`ContentReportRead`](#post-reports).
 
 - `resolved_at` and `resolution` are both `null` while a report is open and both set once it is resolved. The resolving admin is recorded in `audit_log`, not on the wire.
 - A row names one target. `event_id` carries the event's id, and `event` its `id`, current `title` and `owner`. `collection` carries the collection's current title and owner, read at queue time, and `deleted_at`, the time its owner deleted it while a report was open, or `null`. Such a collection takes every verdict a live one takes. `site` carries the site's current `id`, `name` and `owner`.
@@ -4419,7 +4195,7 @@ Drop expired `pending_registrations` rows that the inline cleanup on `/auth/regi
 
 ### `POST /admin/maintenance/send-completion-digests` 🛡️
 
-Email every analyst holding unpublished detections one message with the count and a link to their detections queue, where [`POST /events/batch-complete`](#post-eventsbatch-complete) publishes them.
+Email every analyst holding unpublished detections one message with the count and a link to their detections queue.
 
 - Selection: live detections only, owned by a live, active account with an address.
 - Ordered by backlog size and cut at 200 analysts per call; call again to cover the rest.
@@ -4432,6 +4208,57 @@ Email every analyst holding unpublished detections one message with the count an
 ```
 
 </details>
+
+---
+
+## Reports
+
+### `POST /reports` 🌐
+
+Report an event, a collection or a site for moderation. Anonymous allowed; a signed-in reporter is recorded as `reporter_id`.
+
+**Request body:**
+```json
+{
+  "kind": "event",
+  "target_id": "uuid",
+  "reason": "graphic_not_flagged",
+  "details": "Shows a body at 0:14, no graphic-content warning on the card."
+}
+```
+
+| Field | Rule |
+|---|---|
+| `kind` | `event`, `collection` or `site` |
+| `target_id` | The id of the reported event, collection or site |
+| `reason` | `illegal_content`, `graphic_not_flagged`, `copyright`, `privacy` or `other` |
+| `details` | Optional free text, at most 2000 characters |
+
+**Response 201:** a `ContentReportRead`. It names its one target: `event_id` for an event, `collection` for a collection, `site` for a site, and `null` in the other two.
+```json
+{
+  "id": "uuid",
+  "event_id": "uuid",
+  "collection": null,
+  "site": null,
+  "reason": "graphic_not_flagged",
+  "details": "Shows a body at 0:14, no graphic-content warning on the card.",
+  "reporter_id": null,
+  "created_at": "2026-08-12T09:14:00Z",
+  "resolved_at": null,
+  "resolution": null
+}
+```
+
+A reported collection reads as `{"id", "title", "owner", "deleted_at"}`, and a reported site as `{"id", "name", "owner"}`. Every report lands in the [`GET /admin/reports`](#get-adminreports) queue. A collection or a site takes the verdicts `hidden` and `dismissed`.
+
+**Errors:**
+| Code | Case |
+|------|------|
+| 404 | `event_not_found`: unknown id, soft-deleted, or already withheld, one answer for all three |
+| 404 | `collection_not_found`: unknown id, already withheld, pending erasure, or owned by a soft-deleted account. An admin gets it too |
+| 404 | `site_not_found`: unknown id, already withheld, or owned by a soft-deleted account. An admin gets it too |
+| 422 | A `kind` outside the list, a missing or malformed `target_id`, an unknown `reason`, or `details` over 2000 characters |
 
 ---
 
@@ -4483,15 +4310,14 @@ One Account Activity delivery.
 
 | Endpoint | Scheme | Order | Default | Max |
 |---|---|---|---|---|
-| [`GET /events`](#get-events) | cursor | `created_at DESC, id DESC`; `created_at ASC, id ASC` with `sort=oldest` | 100 | 100 |
+| [`GET /events`](#get-events) | cursor | `created_at DESC, id DESC`; `created_at ASC, id ASC` with `sort=oldest`; `occurred_date DESC` (undated last), then `created_at DESC, id DESC` with `sort=occurred` | 100 | 100 |
 | `GET /admin/invite-codes` | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /events/{id}/versions`](#get-eventsidversions) | cursor | `version_no DESC` | 50 | 100 |
 | [`GET /notifications`](#get-notifications) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /feed`](#get-feed) | cursor | `feed_at DESC, id DESC` | 10 | 100 |
 | [`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals) | cursor | `created_at DESC, id DESC` | 100 | 100 |
+| [`GET /users/{username}/collections`](#get-usersusernamecollections) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `occurred_date, occurred_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
-| [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `occurred_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
-| [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |
 | [`GET /search`](#get-search) | cursor in the body | `ts_rank DESC, created_at DESC, id DESC` | 20 | 50 |

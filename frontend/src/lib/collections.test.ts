@@ -70,10 +70,10 @@ describe("collection paths", () => {
 
   it("asks the profile endpoint for the grid's own number of rows", () => {
     expect(userCollectionsPath("ana", 4)).toBe(
-      "/users/ana/collections?per_page=4",
+      "/users/ana/collections?limit=4",
     );
     expect(userCollectionsPath("a n/a", 4)).toBe(
-      "/users/a%20n%2Fa/collections?per_page=4",
+      "/users/a%20n%2Fa/collections?limit=4",
     );
   });
 });

@@ -230,16 +230,3 @@ def test_list_accepts_a_well_formed_cursor_it_did_not_mint(db, author):
 
     assert response.status_code == 200
     assert len(response.json()) == 3
-
-
-def test_user_events_rejects_a_page_below_one(author):
-    """The negative ``OFFSET`` that Postgres answered with a 500."""
-    for query in ("page=0", "page=-3", "per_page=0", "per_page=abc"):
-        response = client.get(f"/api/v1/users/{author.username}/events?{query}")
-        assert response.status_code == 422, f"expected 422 for {query!r}"
-
-
-def test_user_events_caps_per_page_at_100(author):
-    response = client.get(f"/api/v1/users/{author.username}/events?per_page=500")
-    assert response.status_code == 200
-    assert response.json()["per_page"] == MAX_PAGE_SIZE

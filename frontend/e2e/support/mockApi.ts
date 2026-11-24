@@ -42,7 +42,6 @@ import {
   SIGNED_IN_USER,
   SITE,
   SITE_ID,
-  X_HANDLE,
   SEARCH_SECTIONS,
 } from "./fixtures";
 
@@ -63,10 +62,8 @@ const CSRF_TOKEN = "e2e-csrf-token";
 const ROUTES: [RegExp, unknown][] = [
   [/^\/auth\/me$/, SIGNED_IN_USER],
   [/^\/auth\/login$/, SIGNED_IN_USER],
-  [/^\/admin\/me$/, { is_admin: false }],
   [/^\/events\/detections$/, EMPTY_DETECTIONS],
   [/^\/users\/me\/preferences$/, DEFAULT_PREFERENCES],
-  [/^\/users\/me\/x-handle$/, X_HANDLE],
   [/^\/notifications\/unread-count$/, NO_UNREAD],
   [/^\/notifications$/, NOTIFICATION_FEED],
   // The request board's first page. Every pattern here anchors on the whole
@@ -82,7 +79,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^\/events\/possible-duplicates$/, []],
   [/^\/tags$/, TAGS],
   [/^\/tags\/suggested$/, SUGGESTED_TAGS],
-  [/^\/uploads$/, { items: [UPLOAD] }],
+  [/^\/uploads$/, [UPLOAD]],
   [/^\/conflicts$/, CONFLICTS],
   [new RegExp(`^/events/${EVENT_ID}$`), EVENT],
   [
@@ -121,14 +118,10 @@ const ROUTES: [RegExp, unknown][] = [
   [new RegExp(`^/users/${SIGNED_IN_USER.username}$`), ANALYST_PROFILE],
   [new RegExp(`^/users/${SIGNED_IN_USER.username}/organizations$`), ANALYST_ORGANIZATIONS],
   [new RegExp(`^/users/${SIGNED_IN_USER.username}/stats$`), ANALYST_STATS],
-  [
-    new RegExp(`^/users/${SIGNED_IN_USER.username}/events$`),
-    { items: [], total: 0, page: 1, per_page: 5 },
-  ],
   // The profile's Collections grid, which the signed-in analyst owns.
   [
     new RegExp(`^/users/${SIGNED_IN_USER.username}/collections$`),
-    { items: [COLLECTION], total: 1, page: 1, per_page: 4 },
+    [COLLECTION],
   ],
 ];
 

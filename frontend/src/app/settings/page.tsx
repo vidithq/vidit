@@ -215,7 +215,7 @@ export default function SettingsPage() {
               </p>
             </div>
           </div>
-          <AccountXHandle />
+          <AccountXHandle xHandle={user.x_handle} />
         </Card>
 
         <InviteAnalystsCard />

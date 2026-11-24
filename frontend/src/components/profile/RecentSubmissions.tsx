@@ -9,16 +9,12 @@ import { TEXT_LINK } from "@/components/ui/styles";
 import { submitHref } from "@/lib/routes";
 import { profileSearchHref } from "@/lib/search";
 import type { PublicProfile } from "@/lib/users";
-import type { components } from "@/lib/api-types";
 import type { EventListItem } from "@/types";
 import { eventItem } from "@/lib/items";
 
-/** One row of the recent-submissions list. The endpoint serves published work only
- * (`geolocated`). */
+/** One row of the recent-submissions list: the analyst's published work (`geolocated`), newest
+ *  event date first. */
 export type RecentSubmission = EventListItem;
-
-/** Shape returned by `GET /users/{username}/events`. */
-export type PaginatedSubmissions = components["schemas"]["PaginatedEvents"];
 
 export function RecentSubmissions({
   profile,
@@ -36,9 +32,9 @@ export function RecentSubmissions({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="basis-56 grow min-w-0 space-y-1">
           <SectionEyebrow title="Recent submissions" margin="none" />
-          {/* Gated on the rows this block renders, not `geolocations_count`: a count from a different
-              request could promise "latest geolocations" above an empty list (a failed feed read).
-              The owner's empty block says it once, in the empty state below. */}
+          {/* Gated on the rows this block renders, not a count from a different request, which could
+              promise "latest geolocations" above an empty list (a failed feed read). The owner's
+              empty block says it once, in the empty state below. */}
           {(submissions.length > 0 || !isOwn) && (
             <p className="text-xs text-neutral-500">
               {submissions.length > 0

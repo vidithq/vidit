@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.archive_import_job import ArchiveImportJobStatus
 from app.models.event import (
@@ -11,7 +11,6 @@ from app.models.event import (
     EventStatus,
     VersionZero,
 )
-from app.models.source import SourceKind
 from app.schemas import UsernameRef
 from app.schemas.conflict import ConflictRead
 from app.schemas.media import MediaRead
@@ -20,7 +19,7 @@ from app.schemas.tag import TagRead
 from app.schemas.user import AuthorRef
 
 # ``GET /events?sort=``: ``created_at`` then ``id``, descending or ascending.
-EventListSort = Literal["newest", "oldest"]
+EventListSort = Literal["newest", "oldest", "occurred"]
 
 
 class PresignedUploadRead(BaseModel):
@@ -125,71 +124,6 @@ class EventCloseRequest(BaseModel):
     closed event stays public."""
 
     close_reason: str = Field(min_length=1, max_length=CLOSE_REASON_MAX_LENGTH)
-
-
-# Largest page ``GET /events/detections`` serves. Equals
-# ``services/pagination.MAX_PAGE_SIZE``, as a literal so schemas stay
-# import-free of services.
-DETECTIONS_MAX_PER_PAGE = 100
-
-# Detections per batch completion: one queue page, so no client can request an
-# unbounded loop of row-level transactions.
-MAX_COMPLETION_ROWS = DETECTIONS_MAX_PER_PAGE
-
-# Conflicts per batch.
-MAX_COMPLETION_CONFLICTS = 10
-
-
-class BatchCompletionRowCreate(BaseModel):
-    """One detection in a batch completion and the kind of its sources that carry a file."""
-
-    event_id: uuid.UUID
-    kind: SourceKind
-
-
-class BatchCompletionCreate(BaseModel):
-    """Body of ``POST /events/batch-complete``.
-
-    One conflict set for the whole selection; the source kind varies per row.
-    """
-
-    conflict_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_COMPLETION_CONFLICTS)
-    rows: list[BatchCompletionRowCreate] = Field(min_length=1, max_length=MAX_COMPLETION_ROWS)
-
-    @field_validator("rows")
-    @classmethod
-    def _reject_duplicate_events(
-        cls, rows: list[BatchCompletionRowCreate]
-    ) -> list[BatchCompletionRowCreate]:
-        """One row per detection: a repeated ``event_id`` is a 422.
-
-        The second occurrence could only fail (the first published the row),
-        inflating ``failed`` for a detection that did publish.
-        """
-        seen: set[uuid.UUID] = set()
-        for row in rows:
-            if row.event_id in seen:
-                raise ValueError(f"Duplicate event_id in rows: {row.event_id}")
-            seen.add(row.event_id)
-        return rows
-
-
-class BatchCompletionRowRead(BaseModel):
-    """One row's outcome. ``code`` / ``message`` are NULL when published,
-    otherwise the stable error code the single-row publish would return."""
-
-    event_id: uuid.UUID
-    published: bool
-    code: str | None
-    message: str | None
-
-
-class BatchCompletionRead(BaseModel):
-    """Response of ``POST /events/batch-complete``: verdicts in submission order."""
-
-    published: int
-    failed: int
-    rows: list[BatchCompletionRowRead]
 
 
 class EventRead(BaseModel):
@@ -319,13 +253,6 @@ class DateHistogram(BaseModel):
     submitted: list[DayCount]
     # The events under every filter, both date windows included.
     total: int
-
-
-class PaginatedEvents(BaseModel):
-    items: list[EventList]
-    total: int
-    page: int
-    per_page: int
 
 
 class PaginatedEventDetails(BaseModel):

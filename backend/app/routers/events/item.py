@@ -5,19 +5,16 @@ import uuid
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     Form,
     HTTPException,
     Query,
     Request,
     Response,
-    status,
 )
 from sqlalchemy.orm import Session
 
 from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
-from app.models.content_report import ContentReport
 from app.models.event import TITLE_MAX_LENGTH, Event, EventVersion
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import (
@@ -31,7 +28,7 @@ from app.routers.events._common import (
     resolve_live_event,
     resolve_readable_event,
 )
-from app.schemas.collection import CollectionMembershipList
+from app.schemas.collection import CollectionMembershipRead
 from app.schemas.event import (
     VERSION_NOTE_MAX_LENGTH,
     EventCloseRequest,
@@ -39,10 +36,8 @@ from app.schemas.event import (
     EventVersionList,
     EventVersionRead,
 )
-from app.schemas.report import ContentReportCreate, ContentReportRead
 from app.services import collections as collections_service
 from app.services import events as events_service
-from app.services import reports as reports_service
 from app.services import versions as versions_service
 from app.services.geolocator_credit import has_pending_invite
 from app.services.pagination import (
@@ -61,37 +56,10 @@ def _serialize_event(db: Session, geo: Event) -> EventRead:
     return read
 
 
-# Ahead of the ``/{geolocation_id}`` reads: the extra path segment means the
-# catch-all cannot shadow it.
-@router.post(
-    "/{geolocation_id}/report",
-    response_model=ContentReportRead,
-    status_code=status.HTTP_201_CREATED,
-)
-@limiter.limit("10/hour")
-def report_event(
-    request: Request,
-    geolocation_id: uuid.UUID,
-    body: ContentReportCreate,
-    background_tasks: BackgroundTasks,
-    current_user: OptionalUser,
-    db: DB,
-) -> ContentReport:
-    """Report an event for moderation."""
-    return reports_service.create_report(
-        db,
-        kind="event",
-        target_id=geolocation_id,
-        body=body,
-        reporter=current_user,
-        background_tasks=background_tasks,
-    )
-
-
-@router.get("/{geolocation_id}", response_model=EventRead)
+@router.get("/{event_id}", response_model=EventRead)
 @authenticated_read_quota
 @limiter.limit("120/minute")
-def get_event(request: Request, geolocation_id: uuid.UUID, db: DB, current_user: OptionalUser):
+def get_event(request: Request, event_id: uuid.UUID, db: DB, current_user: OptionalUser):
     """The detail read.
 
     A withheld event (``hidden_at``) answers 404 for everyone but an admin,
@@ -100,7 +68,7 @@ def get_event(request: Request, geolocation_id: uuid.UUID, db: DB, current_user:
     geo = (
         db.query(Event)
         .options(*DETAIL_LOADS)
-        .filter(Event.id == geolocation_id, *readable_events(current_user))
+        .filter(Event.id == event_id, *readable_events(current_user))
         .first()
     )
     if geo is None:
@@ -118,11 +86,11 @@ def get_event(request: Request, geolocation_id: uuid.UUID, db: DB, current_user:
 # upload stay off the event loop (``engineering.md``, Request concurrency).
 
 
-@router.post("/{geolocation_id}/request", response_model=EventRead)
+@router.put("/{event_id}/request", response_model=EventRead)
 @limiter.limit("30/minute")
 def update_event_request(
     request: Request,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
@@ -134,7 +102,7 @@ def update_event_request(
     """Correct an open request, overwriting it in place (owner-only)."""
     form = fields.parse(title, reject_blank_title=True)
     # The service re-checks ownership and status under the row lock (race-free).
-    geo = resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, event_id)
     edited = asyncio.run(
         events_service.update_request(
             db, geo=geo, current_user=current_user, form=form, lat=lat, lng=lng
@@ -143,11 +111,11 @@ def update_event_request(
     return _serialize_event(db, edited)
 
 
-@router.post("/{geolocation_id}/versions", response_model=EventRead)
+@router.post("/{event_id}/versions", response_model=EventRead)
 @limiter.limit("30/minute")
 def save_event_version(
     request: Request,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
     current_user: CurrentUser,
     db: DB,
     title: str = Form(..., min_length=1, max_length=TITLE_MAX_LENGTH),
@@ -167,7 +135,7 @@ def save_event_version(
     form = fields.parse(title)
     invites = parse_geolocator_invites(geolocator_invites)
     # The service re-checks ownership and status under the row lock (race-free).
-    geo = resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, event_id)
     edited = asyncio.run(
         events_service.save_version(
             db,
@@ -184,20 +152,20 @@ def save_event_version(
     return _serialize_event(db, edited)
 
 
-@router.get("/{geolocation_id}/versions", response_model=EventVersionList)
+@router.get("/{event_id}/versions", response_model=EventVersionList)
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def list_event_versions(
     request: Request,
     response: Response,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
     db: DB,
     current_user: OptionalUser,
     limit: int = Query(versions_service.HISTORY_PAGE_SIZE, ge=1),
     cursor: Cursor = None,
 ):
     """The event's superseded versions, newest first."""
-    geo = resolve_readable_event(db, geolocation_id, current_user)
+    geo = resolve_readable_event(db, event_id, current_user)
 
     size = page_size(limit)
     window = versions_service.list_versions(
@@ -214,44 +182,42 @@ def list_event_versions(
     )
 
 
-@router.get("/{geolocation_id}/versions/{version_no}", response_model=EventVersionRead)
+@router.get("/{event_id}/versions/{version_no}", response_model=EventVersionRead)
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def get_event_version(
-    request: Request, geolocation_id: uuid.UUID, version_no: int, db: DB, current_user: OptionalUser
+    request: Request, event_id: uuid.UUID, version_no: int, db: DB, current_user: OptionalUser
 ):
     """One superseded version of an event, by its number."""
-    geo = resolve_readable_event(db, geolocation_id, current_user)
+    geo = resolve_readable_event(db, event_id, current_user)
     row = versions_service.get_version(db, EventVersion, geo.id, version_no)
     if row is None:
         raise HTTPException(status_code=404, detail="Version not found")
     return build_version_read(row)
 
 
-@router.get("/{geolocation_id}/collections", response_model=CollectionMembershipList)
+@router.get("/{event_id}/collections", response_model=list[CollectionMembershipRead])
 @limiter.limit("120/minute")
 def list_event_collections(
-    request: Request, geolocation_id: uuid.UUID, current_user: CurrentUser, db: DB
+    request: Request, event_id: uuid.UUID, current_user: CurrentUser, db: DB
 ):
     """Your collections, each saying whether this event is already on it."""
-    geo = resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, event_id)
     collections_service.ensure_credited(db, event_id=geo.id, user=current_user)
-    return CollectionMembershipList(
-        items=collections_service.list_memberships(db, owner=current_user, event_id=geo.id)
-    )
+    return collections_service.list_memberships(db, owner=current_user, event_id=geo.id)
 
 
-@router.post("/{geolocation_id}/close", response_model=EventRead)
+@router.post("/{event_id}/close", response_model=EventRead)
 @limiter.limit("60/minute")
 def close_event(
     request: Request,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
     body: EventCloseRequest,
     current_user: CurrentUser,
     db: DB,
 ):
     """Close an event: withdraw, reject or retract it (owner-only)."""
-    geo = resolve_live_event(db, geolocation_id)
+    geo = resolve_live_event(db, event_id)
     closed = events_service.close(
         db, geo=geo, current_user=current_user, close_reason=body.close_reason
     )

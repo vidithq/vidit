@@ -71,8 +71,7 @@ describe("ogCount", () => {
 });
 
 describe("ogProfileCounts", () => {
-  const profile = { geolocations_count: 12, followers_count: 7 } as PublicProfile;
-  // The stats read credits co-geolocated events, so its figure leads the profile's own.
+  const profile = { followers_count: 7 } as PublicProfile;
   const stats = { geolocated_count: 15, detected_count: 2400 } as UserStats;
 
   it("counts geolocated and detected off the profile stats, then followers", () => {
@@ -83,11 +82,8 @@ describe("ogProfileCounts", () => {
     ]);
   });
 
-  it("keeps geolocated off the profile and drops detected when the stats read failed", () => {
-    expect(ogProfileCounts(profile, null)).toEqual([
-      { label: "Geolocated", value: 12 },
-      { label: "Followers", value: 7 },
-    ]);
+  it("drops geolocated and detected when the stats read failed", () => {
+    expect(ogProfileCounts(profile, null)).toEqual([{ label: "Followers", value: 7 }]);
   });
 
   it("names one follower in the singular", () => {

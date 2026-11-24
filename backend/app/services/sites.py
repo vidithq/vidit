@@ -945,38 +945,20 @@ def save_version(db: Session, *, site: Site, user: User, body: SiteVersionCreate
 
 
 def suggest_sites(
-    db: Session, *, event: Event, margin_m: float, q: str | None
-) -> list[SiteSuggestionRead]:
-    point = (
-        None
-        if event.coords is None
-        else select(cast(Event.coords, Geography)).where(Event.id == event.id).scalar_subquery()
-    )
-    return _suggest(db, point=point, margin_m=margin_m, q=q)
-
-
-def suggest_sites_near(
     db: Session, *, lat: float | None, lng: float | None, margin_m: float, q: str | None
 ) -> list[SiteSuggestionRead]:
-    """Sites a point may link to, for an event form whose event is not written yet."""
+    """Sites a point may link to, nearest first.
+
+    Without ``q``: the visible sites whose current zone lies within ``margin_m`` of the point.
+    With ``q``: the visible sites whose name contains it, at any distance. ``distance_m`` is
+    null without a point.
+    """
     if (lat is None) != (lng is None):
         raise InvalidCoordinatesError("Send both lat and lng, or neither")
     point: ColumnElement[Any] | None = None
     if lat is not None and lng is not None:
         validate_coordinates(lat, lng)
         point = cast(func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326), Geography)
-    return _suggest(db, point=point, margin_m=margin_m, q=q)
-
-
-def _suggest(
-    db: Session, *, point: Any, margin_m: float, q: str | None
-) -> list[SiteSuggestionRead]:
-    """Sites a point may link to, nearest first.
-
-    Without ``q``: the visible sites whose current zone lies within ``margin_m`` of ``point``.
-    With ``q``: the visible sites whose name contains it, at any distance. ``distance_m`` is
-    null without a point.
-    """
     if point is None and not q:
         return []
     current = zones_at(None)

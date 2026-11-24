@@ -1,10 +1,9 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from sqlalchemy.orm import Session
 
 from app.cache import points_cache
-from app.dependencies import DB, AdminUser, CurrentUser, Cursor
+from app.dependencies import DB, AdminUser, Cursor
 from app.models.collection import Collection
 from app.models.site import Site
 from app.models.user import User
@@ -20,15 +19,13 @@ from app.schemas.admin import (
     AdminInviteCodeCreate,
     AdminInviteCodeRead,
     AdminMaintenanceResponse,
-    AdminMeResponse,
     AdminPurgeDetectedResponse,
     AdminSiteModerationRead,
     AdminSiteModerationUpdate,
     AdminUserDeleteResponse,
     AdminUserRead,
     AdminUserRestoreResponse,
-    UserInviteMintingUpdate,
-    UserXHandleUpdate,
+    AdminUserUpdate,
 )
 from app.schemas.event import EventVersionRead
 from app.schemas.organization import (
@@ -54,14 +51,6 @@ from app.services.pagination import (
 )
 
 router = APIRouter()
-
-
-@router.get("/me", response_model=AdminMeResponse)
-def admin_me(current_user: CurrentUser) -> AdminMeResponse:
-    """Whether the signed-in analyst is a site admin."""
-    # The one route here open to every analyst: the frontend probes it on each signed-in page,
-    # so a 403 would log a console error for every analyst who is not an admin.
-    return AdminMeResponse(is_admin=current_user.is_admin)
 
 
 @router.get("/detection-stats", response_model=AdminDetectionStatsRead)
@@ -109,30 +98,34 @@ def list_invite_codes(
 
 
 @router.post(
-    "/invite-codes/{invite_id}/revoke",
+    "/invite-codes/{invite_code_id}/revoke",
     response_model=AdminInviteCodeRead,
 )
 @limiter.limit("60/hour")
 def revoke_invite_code(
-    request: Request, invite_id: uuid.UUID, db: DB, current_user: AdminUser
+    request: Request, invite_code_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> AdminInviteCodeRead:
     """Retire a code while keeping its row. The list still shows it."""
-    invite = admin_service.revoke_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
+    invite = admin_service.revoke_invite_code(
+        db, actor_id=current_user.id, invite_code_id=invite_code_id
+    )
     if invite is None:
         raise HTTPException(status_code=404, detail="Invite code not found")
     return admin_service.serialize_invite_code(db, invite)
 
 
 @router.delete(
-    "/invite-codes/{invite_id}",
+    "/invite-codes/{invite_code_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 @limiter.limit("60/hour")
 def delete_invite_code(
-    request: Request, invite_id: uuid.UUID, db: DB, current_user: AdminUser
+    request: Request, invite_code_id: uuid.UUID, db: DB, current_user: AdminUser
 ) -> Response:
     """Drop the row of a code no account was created from. 409 once it was."""
-    deleted = admin_service.delete_invite_code(db, actor_id=current_user.id, invite_id=invite_id)
+    deleted = admin_service.delete_invite_code(
+        db, actor_id=current_user.id, invite_code_id=invite_code_id
+    )
     if not deleted:
         raise HTTPException(status_code=404, detail="Invite code not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -198,33 +191,13 @@ def search_users(db: DB, current_user: AdminUser, q: str = "") -> list[User]:
     return admin_service.search_users(db, query=q)
 
 
-@router.patch("/users/{user_id}/x-handle", response_model=AdminUserRead)
+@router.patch("/users/{user_id}", response_model=AdminUserRead)
 @limiter.limit("60/hour")
-def set_user_x_handle(
-    request: Request, user_id: uuid.UUID, body: UserXHandleUpdate, db: DB, current_user: AdminUser
+def update_user_admin(
+    request: Request, user_id: uuid.UUID, body: AdminUserUpdate, db: DB, current_user: AdminUser
 ) -> User:
-    """Link or clear the X handle the bot attributes mentions to."""
-    return admin_service.set_user_x_handle(
-        db,
-        actor_id=current_user.id,
-        user_id=user_id,
-        x_handle=body.x_handle,
-    )
-
-
-@router.patch("/users/{user_id}/invite-minting", response_model=AdminUserRead)
-@limiter.limit("60/hour")
-def set_user_invite_minting(
-    request: Request,
-    user_id: uuid.UUID,
-    body: UserInviteMintingUpdate,
-    db: DB,
-    current_user: AdminUser,
-) -> User:
-    """Turn minting invite codes from Settings on or off for one analyst."""
-    return admin_service.set_invite_minting(
-        db, actor_id=current_user.id, user_id=user_id, enabled=body.enabled
-    )
+    """Link or clear the bot-attribution X handle, or turn invite minting on or off."""
+    return admin_service.update_user(db, actor_id=current_user.id, user_id=user_id, body=body)
 
 
 @router.post("/users/{user_id}/restore", response_model=AdminUserRestoreResponse)
@@ -268,43 +241,18 @@ def delete_user_admin(
 
 
 @router.delete(
-    "/events/{geolocation_id}",
+    "/events/{event_id}",
     response_model=AdminEventDeleteResponse,
 )
 @limiter.limit("60/hour")
-def delete_geolocation_admin(
-    request: Request, geolocation_id: uuid.UUID, db: DB, current_user: AdminUser, hard: bool = False
+def delete_event_admin(
+    request: Request, event_id: uuid.UUID, db: DB, current_user: AdminUser, hard: bool = False
 ) -> AdminEventDeleteResponse:
     """Remove a geolocation: soft by default, `?hard=true` for GDPR erasure."""
-    delete_event = (
-        admin_service.hard_delete_geolocation if hard else admin_service.soft_delete_geolocation
-    )
-    result = delete_event(db, actor_id=current_user.id, geolocation_id=geolocation_id)
+    delete_event = admin_service.hard_delete_event if hard else admin_service.soft_delete_event
+    result = delete_event(db, actor_id=current_user.id, event_id=event_id)
     points_cache.invalidate()
     return result
-
-
-def _collection_takedown(
-    db: Session, collection_id: uuid.UUID, *, hidden: bool, actor: User
-) -> AdminCollectionHideResponse:
-    collection = admin_service.set_takedown(
-        db, Collection, collection_id, hidden=hidden, actor_id=actor.id
-    )
-    return AdminCollectionHideResponse(
-        collection_id=collection.id, title=collection.title, hidden_at=collection.hidden_at
-    )
-
-
-@router.delete(
-    "/collections/{collection_id}",
-    response_model=AdminCollectionHideResponse,
-)
-@limiter.limit("60/hour")
-def hide_collection_admin(
-    request: Request, collection_id: uuid.UUID, db: DB, current_user: AdminUser
-) -> AdminCollectionHideResponse:
-    """Withhold a collection from every read but an admin's."""
-    return _collection_takedown(db, collection_id, hidden=True, actor=current_user)
 
 
 @router.patch(
@@ -320,7 +268,12 @@ def set_collection_moderation(
     current_user: AdminUser,
 ) -> AdminCollectionHideResponse:
     """Set a collection's moderation state: withhold it, or restore it."""
-    return _collection_takedown(db, collection_id, hidden=body.hidden, actor=current_user)
+    collection = admin_service.set_takedown(
+        db, Collection, collection_id, hidden=body.hidden, actor_id=current_user.id
+    )
+    return AdminCollectionHideResponse(
+        collection_id=collection.id, title=collection.title, hidden_at=collection.hidden_at
+    )
 
 
 @router.patch("/sites/{site_id}/moderation", response_model=AdminSiteModerationRead)
@@ -375,11 +328,11 @@ def resolve_report(
     return ContentReportRead.model_validate(report)
 
 
-@router.patch("/events/{geolocation_id}/moderation", response_model=AdminEventModerationRead)
+@router.patch("/events/{event_id}/moderation", response_model=AdminEventModerationRead)
 @limiter.limit("60/hour")
 def set_event_moderation(
     request: Request,
-    geolocation_id: uuid.UUID,
+    event_id: uuid.UUID,
     body: AdminEventModerationUpdate,
     db: DB,
     current_user: AdminUser,
@@ -387,7 +340,7 @@ def set_event_moderation(
     """Set an event's moderation state directly, with no report behind it."""
     event, hidden_changed = reports_service.set_event_moderation(
         db,
-        geolocation_id=geolocation_id,
+        event_id=event_id,
         is_graphic=body.is_graphic,
         hidden=body.hidden,
         actor_id=current_user.id,
@@ -398,18 +351,18 @@ def set_event_moderation(
 
 
 @router.post(
-    "/events/{geolocation_id}/versions/{version_no}/redact",
+    "/events/{event_id}/versions/{version_no}/redact",
     response_model=EventVersionRead,
 )
 @limiter.limit("60/hour")
 def redact_event_version(
-    request: Request, geolocation_id: uuid.UUID, version_no: int, db: DB, current_user: AdminUser
+    request: Request, event_id: uuid.UUID, version_no: int, db: DB, current_user: AdminUser
 ) -> EventVersionRead:
     """Blank one filed version of an event's history."""
     row = admin_service.redact_version(
         db,
         actor_id=current_user.id,
-        geolocation_id=geolocation_id,
+        event_id=event_id,
         version_no=version_no,
     )
     return build_version_read(row)

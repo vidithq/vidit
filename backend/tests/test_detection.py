@@ -932,7 +932,7 @@ async def test_every_erasure_path_leaves_no_stored_object(db, owner, admin_user,
     assert stored_keys() == _with_derivatives(source_key) | _with_derivatives(proof_key)
 
     if erasure == "event":
-        admin.hard_delete_geolocation(db, actor_id=admin_user.id, geolocation_id=row.id)
+        admin.hard_delete_event(db, actor_id=admin_user.id, event_id=row.id)
     elif erasure == "user":
         admin.hard_delete_user(db, actor_id=admin_user.id, user_id=owner.id)
     else:

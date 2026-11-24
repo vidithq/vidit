@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { SIGNED_IN_ADMIN } from "./support/fixtures";
 import { answerWith, grantSession, mockApi } from "./support/mockApi";
 import { expectControlInsideViewport, expectNoHorizontalOverflow } from "./support/narrowLayout";
 
@@ -34,7 +35,7 @@ test.describe("admin", () => {
   test("opens an invite row's menu and confirm on a narrow column", async ({ context, page }) => {
     await grantSession(context);
     await mockApi(page);
-    await answerWith(page, "/admin/me", { is_admin: true });
+    await answerWith(page, "/auth/me", SIGNED_IN_ADMIN);
     await answerWith(page, "/admin/invite-codes", [INVITE_CODE]);
     await answerWith(page, "/admin/detection-stats", DETECTION_STATS);
     await answerWith(page, "/admin/reports", { items: [], total: 0, page: 1, per_page: 20 });

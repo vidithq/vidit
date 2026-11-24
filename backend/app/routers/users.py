@@ -1,15 +1,13 @@
 import asyncio
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.dependencies import DB, CurrentUser, OptionalUser
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
-from app.routers.events._common import build_event_list
-from app.schemas.collection import CollectionList
-from app.schemas.event import PaginatedEvents
+from app.schemas.collection import CollectionRead
 from app.schemas.invite_code import (
     SponsoredInviteCodeCreate,
     SponsoredInviteCodeList,
@@ -17,13 +15,20 @@ from app.schemas.invite_code import (
 )
 from app.schemas.organization import OrganizationMembershipRead
 from app.schemas.preferences import UserPreferencesRead, UserPreferencesUpdate
-from app.schemas.user import UserProfile, UserRead, UserStatsRead, UserUpdate, XHandleRead
+from app.schemas.profile import UserProfile
+from app.schemas.user import UserRead, UserStatsRead, UserUpdate
 from app.services import collections as collections_service
 from app.services import organizations as organizations_service
 from app.services import preferences as preferences_service
 from app.services import social, sponsored_invites, user_stats
 from app.services import users as users_service
-from app.services.pagination import page_size
+from app.services.pagination import (
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    encode_cursor,
+    page_size,
+    paged,
+)
 
 router = APIRouter()
 
@@ -85,13 +90,6 @@ def update_my_preferences(
     return result
 
 
-@router.get("/me/x-handle", response_model=XHandleRead)
-@limiter.limit("120/minute")
-def get_my_x_handle(request: Request, current_user: CurrentUser) -> XHandleRead:
-    """The X handle bound to your account. Only an admin links or changes it."""
-    return XHandleRead(x_handle=current_user.x_handle)
-
-
 @router.get("/me/invite-codes", response_model=SponsoredInviteCodeList)
 @limiter.limit("120/minute")
 def list_my_invite_codes(
@@ -114,13 +112,13 @@ def mint_my_invite_code(
     return sponsored_invites.mint(db, sponsor=current_user, x_handle=body.x_handle)
 
 
-@router.post("/me/invite-codes/{code_id}/revoke", response_model=SponsoredInviteCodeRead)
+@router.post("/me/invite-codes/{invite_code_id}/revoke", response_model=SponsoredInviteCodeRead)
 @limiter.limit("30/hour")
 def revoke_my_invite_code(
-    request: Request, code_id: uuid.UUID, db: DB, current_user: CurrentUser
+    request: Request, invite_code_id: uuid.UUID, db: DB, current_user: CurrentUser
 ) -> SponsoredInviteCodeRead:
     """Revoke an active invite code you minted. The row stays in your list."""
-    return sponsored_invites.revoke_own(db, sponsor=current_user, code_id=code_id)
+    return sponsored_invites.revoke_own(db, sponsor=current_user, invite_code_id=invite_code_id)
 
 
 @router.get("/{username}", response_model=UserProfile)
@@ -130,7 +128,12 @@ def get_user_profile(
     request: Request, username: str, db: DB, current_user: OptionalUser
 ) -> UserProfile:
     user = _get_live_user_or_404(db, username)
-    return social.build_profile(db, user, viewer=current_user)
+    return social.build_profile(
+        db,
+        user,
+        viewer=current_user,
+        organizations=organizations_service.list_memberships(db, user),
+    )
 
 
 @router.get("/{username}/stats", response_model=UserStatsRead)
@@ -142,33 +145,30 @@ def get_user_stats(request: Request, username: str, db: DB) -> UserStatsRead:
     return user_stats.get_user_stats(db, user_id=user.id)
 
 
-@router.get("/{username}/collections", response_model=CollectionList)
+@router.get("/{username}/collections", response_model=list[CollectionRead])
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def get_user_collections(
     request: Request,
+    response: Response,
     username: str,
     db: DB,
     current_user: OptionalUser,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1),
-) -> CollectionList:
-    """One analyst's collections, newest first."""
+    limit: int = Query(MAX_PAGE_SIZE, ge=1),
+    cursor: Cursor = None,
+) -> list[CollectionRead]:
+    """One analyst's collections, newest first (``Link: rel="next"`` cursor)."""
     user = _get_live_user_or_404(db, username)
-    per_page = page_size(per_page)
-    rows, total = collections_service.list_owned_collections(
+    size = page_size(limit)
+    window = collections_service.list_owned_collections(
         db,
         owner_id=user.id,
         include_empty=current_user is not None and current_user.id == user.id,
-        page=page,
-        per_page=per_page,
+        limit=size,
+        cursor=decode_cursor(cursor),
     )
-    return CollectionList(
-        items=collections_service.build_collection_reads(db, rows),
-        total=total,
-        page=page,
-        per_page=per_page,
-    )
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
+    return collections_service.build_collection_reads(db, rows)
 
 
 @router.get("/{username}/organizations", response_model=list[OrganizationMembershipRead])
@@ -200,27 +200,3 @@ def unfollow_user(request: Request, username: str, db: DB, current_user: Current
     target = _get_live_user_or_404(db, username)
     social.unfollow_user(db, follower_id=current_user.id, followed_user=target)
     db.commit()
-
-
-@router.get("/{username}/events", response_model=PaginatedEvents)
-@authenticated_read_quota
-@limiter.limit("120/minute")
-def get_user_geolocations(
-    request: Request,
-    username: str,
-    db: DB,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1),
-):
-    """One analyst's published geolocations, newest event date first.
-
-    Offset-paged: the profile orders by ``occurred_date``, which is nullable and
-    editable, so it cannot key a cursor.
-    """
-    user = _get_live_user_or_404(db, username)
-    per_page = page_size(per_page)
-    rows, total = social.list_published_geolocations(
-        db, user_id=user.id, page=page, per_page=per_page
-    )
-    items = [build_event_list(geo) for geo in rows]
-    return PaginatedEvents(items=items, total=total, page=page, per_page=per_page)

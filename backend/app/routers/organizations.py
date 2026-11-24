@@ -170,7 +170,7 @@ def cancel_organization_invite(
     db.commit()
 
 
-@router.post("/{slug}/invite/accept", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{slug}/invites/accept", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
 def accept_organization_invite(
     request: Request, slug: str, db: DB, current_user: CurrentUser
@@ -181,7 +181,7 @@ def accept_organization_invite(
     db.commit()
 
 
-@router.post("/{slug}/invite/decline", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{slug}/invites/decline", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
 def decline_organization_invite(
     request: Request, slug: str, db: DB, current_user: CurrentUser

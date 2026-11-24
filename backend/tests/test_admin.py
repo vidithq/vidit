@@ -38,29 +38,17 @@ from tests._fixtures import (
 from tests.conftest import DEFAULT_PASSWORD, login_as
 
 
-def test_admin_me_returns_200_for_admin(admin_user):
-    response = client.get("/api/v1/admin/me", headers=login_as(client, admin_user))
-    assert response.status_code == 200
-    assert response.json() == {"is_admin": True}
-
-
-def test_admin_me_answers_false_for_regular_user(regular_user):
-    response = client.get("/api/v1/admin/me", headers=login_as(client, regular_user))
-    assert response.status_code == 200
-    assert response.json() == {"is_admin": False}
-
-
-def test_admin_me_returns_401_for_anonymous():
-    response = client.get("/api/v1/admin/me")
-    assert response.status_code == 401
+def test_auth_me_carries_the_admin_role(admin_user, regular_user):
+    assert client.get("/api/v1/auth/me", headers=login_as(client, admin_user)).json()["is_admin"]
+    client.cookies.clear()
+    body = client.get("/api/v1/auth/me", headers=login_as(client, regular_user)).json()
+    assert body["is_admin"] is False
 
 
 _ADMIN_ROUTES = sorted(
     (method, route.path)
     for route in app.routes
-    if isinstance(route, APIRoute)
-    and route.path.startswith("/api/v1/admin/")
-    and route.path != "/api/v1/admin/me"
+    if isinstance(route, APIRoute) and route.path.startswith("/api/v1/admin/")
     for method in route.methods
 )
 
@@ -452,7 +440,7 @@ def test_search_users_returns_empty_for_blank_query(admin_user):
 )
 def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db, raw, handle):
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": raw},
         headers=login_as(client, admin_user),
     )
@@ -469,12 +457,12 @@ def test_set_x_handle_normalizes_and_writes_audit(admin_user, regular_user, db, 
 
 def test_clear_x_handle_with_null(admin_user, regular_user, db):
     client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": "to_clear"},
         headers=login_as(client, admin_user),
     )
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": None},
         headers=login_as(client, admin_user),
     )
@@ -492,7 +480,7 @@ def test_clear_x_handle_with_null(admin_user, regular_user, db):
 def test_set_x_handle_409_when_linked_to_another_user(admin_user, regular_user, make_user, db):
     held_handle = make_user("holder", x_handle=f"held{uuid.uuid4().hex[:8]}").x_handle
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": held_handle},
         headers=login_as(client, admin_user),
     )
@@ -512,11 +500,45 @@ def test_set_x_handle_409_when_linked_to_another_user(admin_user, regular_user, 
 )
 def test_set_x_handle_422_on_invalid_handle(admin_user, regular_user, bad_handle):
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": bad_handle},
         headers=login_as(client, admin_user),
     )
     assert response.status_code == 422
+
+
+def test_update_user_sets_both_fields_with_one_audit_row_each(admin_user, regular_user, db):
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}",
+        json={"x_handle": "both_fields", "invite_minting": False},
+        headers=login_as(client, admin_user),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["x_handle"] == "both_fields"
+    assert response.json()["is_invite_minting_enabled"] is False
+    actions = sorted(
+        row.action for row in db.query(AuditLog).filter(AuditLog.actor_id == admin_user.id)
+    )
+    assert actions == ["invite_minting_disabled", "x_handle_linked"]
+
+
+@pytest.mark.parametrize("body", [{}, {"invite_minting": None}, {"enabled": False}])
+def test_update_user_422_on_an_empty_or_unknown_body(admin_user, regular_user, body):
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}", json=body, headers=login_as(client, admin_user)
+    )
+    assert response.status_code == 422
+
+
+def test_update_user_leaves_an_omitted_field_alone(admin_user, regular_user, db):
+    regular_user.x_handle = "kept_handle"
+    db.commit()
+    response = client.patch(
+        f"/api/v1/admin/users/{regular_user.id}",
+        json={"invite_minting": False},
+        headers=login_as(client, admin_user),
+    )
+    assert response.json()["x_handle"] == "kept_handle"
 
 
 def test_set_x_handle_404_for_soft_deleted_user(admin_user, regular_user, db):
@@ -524,7 +546,7 @@ def test_set_x_handle_404_for_soft_deleted_user(admin_user, regular_user, db):
     db.commit()
 
     response = client.patch(
-        f"/api/v1/admin/users/{regular_user.id}/x-handle",
+        f"/api/v1/admin/users/{regular_user.id}",
         json={"x_handle": "some_handle"},
         headers=login_as(client, admin_user),
     )
@@ -562,9 +584,7 @@ def geolocation(db, regular_user):
     return make_event(db, author=regular_user, kind="unknown")
 
 
-def test_soft_delete_geolocation_stamps_once_and_writes_one_admin_event(
-    admin_user, geolocation, db
-):
+def test_soft_delete_event_stamps_once_and_writes_one_admin_event(admin_user, geolocation, db):
     """A second call keeps the first stamp and writes no second audit row."""
     geo_id, title = geolocation.id, geolocation.title
     headers = login_as(client, admin_user)
@@ -573,7 +593,7 @@ def test_soft_delete_geolocation_stamps_once_and_writes_one_admin_event(
     body = first.json()
     assert body["mode"] == "soft"
     assert body["deleted_at"] is not None
-    assert body["geolocation_id"] == str(geo_id)
+    assert body["event_id"] == str(geo_id)
 
     db.expire_all()
     refreshed = db.query(Event).filter(Event.id == geo_id).first()
@@ -585,20 +605,20 @@ def test_soft_delete_geolocation_stamps_once_and_writes_one_admin_event(
     assert second.json()["deleted_at"] == body["deleted_at"]
 
     event = audit_row(db, admin_user, "geolocation_soft_deleted")
-    assert event.target == {"geolocation_id": str(geo_id), "title": title}
+    assert event.target == {"event_id": str(geo_id), "title": title}
 
 
 def test_soft_deleted_row_hidden_from_author_count(admin_user, regular_user, geolocation):
-    before = client.get(f"/api/v1/users/{regular_user.username}").json()
-    assert before["geolocations_count"] >= 1
+    before = client.get(f"/api/v1/users/{regular_user.username}/stats").json()
+    assert before["geolocated_count"] >= 1
 
     client.delete(
         f"/api/v1/admin/events/{geolocation.id}",
         headers=login_as(client, admin_user),
     )
 
-    after = client.get(f"/api/v1/users/{regular_user.username}").json()
-    assert after["geolocations_count"] == before["geolocations_count"] - 1
+    after = client.get(f"/api/v1/users/{regular_user.username}/stats").json()
+    assert after["geolocated_count"] == before["geolocated_count"] - 1
 
 
 def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
@@ -614,14 +634,14 @@ def test_hard_delete_drops_row_and_writes_event(admin_user, geolocation, db):
     body = response.json()
     assert body["mode"] == "hard"
     assert body["deleted_at"] is None
-    assert body["geolocation_id"] == str(geo_id)
+    assert body["event_id"] == str(geo_id)
     assert body["title"] == geo_title
 
     db.expire_all()
     assert db.query(Event).filter(Event.id == geo_id).first() is None
 
     event = audit_row(db, admin_user, "geolocation_hard_deleted")
-    assert event.target["geolocation_id"] == str(geo_id)
+    assert event.target["event_id"] == str(geo_id)
 
 
 def test_hard_delete_sweeps_image_derivatives(admin_user, geolocation, db, monkeypatch):

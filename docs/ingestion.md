@@ -150,7 +150,7 @@ Each derived field fills on a signal in that text, or stays empty:
 
 **Retweet.** `extract.is_retweet` anchors the `RT @<handle>:` prefix at the start of the text, so text mentioning RT further in is kept. [`archive.py`](../backend/app/services/tweet_ingest/archive.py)'s `read_tweets` drops the entry before stitching, which costs no thread: a retweet is never anyone's reply parent.
 
-**Attribution.** A detection is owned by the existing Vidit account whose `x_handle` an admin linked ([`detection.linked_owner`](../backend/app/services/detection.py), the one map from a handle to an account), and no entry creates a user. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}/x-handle` (see [`api.md`](api.md)) repairs and backfills it; an analyst cannot link a handle themselves. A post quoting someone else's footage credits the importer, and contested attribution goes through the claim/dispute pipeline.
+**Attribution.** A detection is owned by the existing Vidit account whose `x_handle` an admin linked ([`detection.linked_owner`](../backend/app/services/detection.py), the one map from a handle to an account), and no entry creates a user. The link binds to the invite code at mint time and copies onto the account at registration; `PATCH /admin/users/{id}` (see [`api.md`](api.md#patch-adminusersid)) repairs and backfills it; an analyst cannot link a handle themselves. A post quoting someone else's footage credits the importer, and contested attribution goes through the claim/dispute pipeline.
 
 **Coverage is text-only.** On a 48.5k-tweet external OSINT corpus (853 analysts), reading coordinates from post text recovers about 86% of the geolocations at about 0% false positives. The remaining 14% carry the coordinate only inside the image, which would take vision over every backfilled media item and is out of scope. The import panel states the limit when a pasted post produces no detection.
 
@@ -339,7 +339,7 @@ A `detected` row is **public on every read surface from the moment it lands**, b
 
 ### What a detection writes
 
-[`detection.persist_detections`](../backend/app/services/detection.py) turns the `Detection`'s source fields into [sources](data-model.md#sources) on the row, in the order below. No machine source carries a capture time or a capture position. A footage source is `direct` and of kind `unknown`, with no title: the review names the kind, at the form or per row in [`POST /events/batch-complete`](api.md#post-eventsbatch-complete).
+[`detection.persist_detections`](../backend/app/services/detection.py) turns the `Detection`'s source fields into [sources](data-model.md#sources) on the row, in the order below. No machine source carries a capture time or a capture position. A footage source is `direct` and of kind `unknown`, with no title: the review names the kind at the form.
 
 | `Detection` field | Becomes |
 |---|---|
@@ -422,7 +422,7 @@ A row that lands `done` carries its `outcome` whatever the result, and the worke
 
 The footage is the draft's ordered candidates, the source's media first and the analyst's own video behind it, and the first that fetches fills the slot. A source whose chase could not be read at all is refused rather than drafted, so the next tag retries it; a source whose chase answered with nothing to take is drafted anyway, the analyst's own copy filling the footage slot, so the row lands with footage and the reply carries no `source_fetch_failed`. A clip the evidence intake refuses earns the ❌ reply naming `footage_unusable`, never the one naming a missing coordinate.
 
-A bot-opened request is the analyst's own from the moment it lands: it sits with their other open requests on their profile, where they edit it in place ([`POST /events/{id}/request`](api.md#post-eventsidrequest)) or withdraw it, on the same terms as one they opened by hand.
+A bot-opened request is the analyst's own from the moment it lands: it sits with their other open requests on their profile, where they edit it in place ([`PUT /events/{id}/request`](api.md#put-eventsidrequest)) or withdraw it, on the same terms as one they opened by hand.
 
 Only the bot opens requests. The paste and the archive never ask the engine for the second exit, so a coordinate-less post is a plain refusal on both and an export never holds a draft it would throw away.
 

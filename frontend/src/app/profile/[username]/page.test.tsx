@@ -30,7 +30,7 @@ vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { ApiError } from "@/lib/api";
 import { readResponse } from "@/lib/errors";
-import type { CollectionPage } from "@/lib/collections";
+import type { Collection } from "@/lib/collections";
 import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile, UserStats } from "@/lib/users";
 import { signedInAs, signedOut } from "@/test/auth";
@@ -47,10 +47,9 @@ const PROFILE: PublicProfile = {
   external_links: { x: "ana_osint", website: "https://ana.example" },
   followers_count: 4,
   following_count: 2,
-  // Distinct from `geolocated_count`, so a component reading the wrong one fails.
-  geolocations_count: 6,
   created_at: "2026-01-05T09:00:00Z",
   is_following: false,
+  organizations: [],
 };
 
 const SUBMISSION = eventRow("e1", "Strike near Bakhmut", {
@@ -77,19 +76,14 @@ const STATS: UserStats = {
 // [id, lat, lng, occurred_date, added_date, detected]
 const POINT: MapPoint = ["e1", 48.5, 37.8, "2026-06-01", "2026-06-02", 0];
 
-const COLLECTIONS: CollectionPage = {
-  items: [
-    collection({
-      event_count: 2,
-      first_date: "2026-06-01",
-      last_date: "2026-06-02",
-      created_at: "2026-06-03T09:00:00Z",
-    }),
-  ],
-  total: 1,
-  page: 1,
-  per_page: 6,
-};
+const COLLECTIONS: Collection[] = [
+  collection({
+    event_count: 2,
+    first_date: "2026-06-01",
+    last_date: "2026-06-02",
+    created_at: "2026-06-03T09:00:00Z",
+  }),
+];
 
 const MEMBERSHIPS: OrganizationMembership[] = [
   {
@@ -145,21 +139,19 @@ function mockReads({
   submissions?: EventListItem[];
   points?: MapPoint[];
   memberships?: OrganizationMembership[];
-  collections?: CollectionPage;
+  collections?: Collection[];
   stats?: UserStats | null;
 } = {}) {
   useApiResource.mockImplementation((path: string | null) => ({
     data: path === "/users/ana/stats"
       ? stats
-      : path?.startsWith("/users/ana/events")
-      ? { items: submissions }
+      : path?.startsWith("/events?") && path.includes("sort=occurred")
+      ? submissions
       : path?.startsWith("/events/points")
         ? points
-        : path?.startsWith("/users/ana/organizations")
-          ? memberships
-          : path?.startsWith("/users/ana/collections")
-            ? collections
-            : profile,
+        : path?.startsWith("/users/ana/collections")
+          ? collections
+          : { ...profile, organizations: memberships },
     error: null,
     loading: false,
     refetch: vi.fn(),
@@ -348,7 +340,7 @@ describe("public profile identity", () => {
       submissions: [],
       points: [],
       memberships,
-      collections: { ...COLLECTIONS, items: [], total: 0 },
+      collections: [],
       stats: null,
     });
   }

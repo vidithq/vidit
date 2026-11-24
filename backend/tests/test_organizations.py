@@ -72,7 +72,7 @@ def _join(db, inviter: User, slug: str, invitee: User) -> None:
     _follow_both(db, inviter, invitee)
     assert _invite(inviter, slug, invitee).status_code == 201
     headers = login_as(client, invitee)
-    assert client.post(f"{_org(slug)}/invite/accept", headers=headers).status_code == 204
+    assert client.post(f"{_org(slug)}/invites/accept", headers=headers).status_code == 204
 
 
 def test_site_admin_creates_an_organization_with_its_first_manager(
@@ -95,7 +95,7 @@ def test_analysts_and_organizations_share_one_x_handle_namespace(
     headers = login_as(client, site_admin)
     analyst = make_user()
     taken = client.patch(
-        f"/api/v1/admin/users/{analyst.id}/x-handle",
+        f"/api/v1/admin/users/{analyst.id}",
         json={"x_handle": org["x_handle"]},
         headers=headers,
     )
@@ -186,6 +186,8 @@ def test_members_list_and_profile_memberships(db, org, org_manager, make_user):
     assert [(m["organization"]["slug"], m["role"]) for m in memberships] == [
         (org["slug"], "member")
     ]
+    profile = client.get(f"/api/v1/users/{member.username}").json()
+    assert profile["organizations"] == memberships
 
 
 def test_soft_deleted_members_drop_out_of_the_reads(db, org, org_manager, make_user):
@@ -260,7 +262,7 @@ def test_accept_joins_and_notifies_both_sides(db, org, org_manager, make_user):
     assert feed[0]["actor"]["username"] == org_manager.username
 
     headers = login_as(client, invitee)
-    assert client.post(f"{_org(org['slug'])}/invite/accept", headers=headers).status_code == 204
+    assert client.post(f"{_org(org['slug'])}/invites/accept", headers=headers).status_code == 204
     page = client.get(_org(org["slug"])).json()
     assert (page["viewer_role"], page["viewer_invited"]) == ("member", False)
     assert db.get(OrganizationMember, (uuid.UUID(org["id"]), invitee.id)).state == "active"
@@ -272,7 +274,7 @@ def test_accept_joins_and_notifies_both_sides(db, org, org_manager, make_user):
     )
     assert accepted.actor_id == invitee.id
 
-    again = client.post(f"{_org(org['slug'])}/invite/accept", headers=headers)
+    again = client.post(f"{_org(org['slug'])}/invites/accept", headers=headers)
     assert again.status_code == 404
 
 
@@ -281,7 +283,7 @@ def test_decline_drops_the_invite_silently(db, org, org_manager, make_user):
     _follow_both(db, org_manager, invitee)
     assert _invite(org_manager, org["slug"], invitee).status_code == 201
     headers = login_as(client, invitee)
-    assert client.post(f"{_org(org['slug'])}/invite/decline", headers=headers).status_code == 204
+    assert client.post(f"{_org(org['slug'])}/invites/decline", headers=headers).status_code == 204
     assert db.query(OrganizationMember).filter_by(user_id=invitee.id).count() == 0
     assert db.query(Notification).filter_by(user_id=org_manager.id).count() == 0
 

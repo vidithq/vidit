@@ -1,33 +1,21 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
-import type { XHandleState } from "@/lib/xHandle";
-
-import { apiFetch } from "@/test/apiStub";
-
-vi.mock("@/lib/api", () => import("@/test/apiStub"));
+import { describe, expect, it } from "vitest";
 
 import { AccountXHandle } from "./AccountXHandle";
 
-function serve(state: XHandleState) {
-  apiFetch.mockResolvedValue(state);
-}
-
 describe("AccountXHandle", () => {
-  it("shows the bound handle read-only", async () => {
-    serve({ x_handle: "osint_hawk" });
-    render(<AccountXHandle />);
+  it("shows the bound handle read-only", () => {
+    render(<AccountXHandle xHandle="osint_hawk" />);
 
-    expect(await screen.findByText("@osint_hawk")).toBeInTheDocument();
+    expect(screen.getByText("@osint_hawk")).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
     // The only button is the label's help.
     expect(screen.getByRole("button")).toHaveAccessibleName("What is the X handle for?");
   });
 
-  it("says so when no handle is linked", async () => {
-    serve({ x_handle: null });
-    render(<AccountXHandle />);
+  it("says so when no handle is linked", () => {
+    render(<AccountXHandle xHandle={null} />);
 
-    expect(await screen.findByText("No X handle linked")).toBeInTheDocument();
+    expect(screen.getByText("No X handle linked")).toBeInTheDocument();
   });
 });

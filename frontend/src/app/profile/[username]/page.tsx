@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useApiResource } from "@/hooks/useApiResource";
 import { eventListPath } from "@/lib/events";
-import { userOrganizationsPath, type OrganizationMembership } from "@/lib/organizations";
 import { userPath, type PublicProfile } from "@/lib/users";
 import type { EventListItem } from "@/types";
 import { CollectionsSection } from "@/components/collections/CollectionsSection";
@@ -21,10 +20,7 @@ import {
 } from "@/components/profile/ProfileHeader";
 import { ProfileInsights } from "@/components/profile/ProfileInsights";
 import { ProfileMap } from "@/components/profile/ProfileMap";
-import {
-  RecentSubmissions,
-  type PaginatedSubmissions,
-} from "@/components/profile/RecentSubmissions";
+import { RecentSubmissions } from "@/components/profile/RecentSubmissions";
 import { DetectionsEntry } from "@/components/profile/DetectionsEntry";
 import FollowButton from "@/components/profile/FollowButton";
 import { OpenRequests } from "@/components/profile/OpenRequests";
@@ -44,14 +40,12 @@ export default function ProfilePage() {
     refetch: refetchProfile,
   } = useApiResource<PublicProfile>(username ? userPath(username) : null);
   // Error deliberately unread: a failed list renders empty rather than blocking the profile card.
-  const { data: submissionsData } = useApiResource<PaginatedSubmissions>(
-    username ? `${userPath(username)}/events?per_page=5` : null
+  const { data: submissionsData } = useApiResource<EventListItem[]>(
+    username
+      ? eventListPath({ author: username, show: ["geolocated"], sort: "occurred", limit: 5 })
+      : null
   );
-  const submissions = submissionsData?.items ?? [];
-  // A failed read renders no logos, like the other optional blocks.
-  const { data: organizations } = useApiResource<OrganizationMembership[]>(
-    username ? userOrganizationsPath(username) : null
-  );
+  const submissions = submissionsData ?? [];
   // The analyst's open calls, from the requests board's public list; error deliberately unread.
   const { data: openRequests } = useApiResource<EventListItem[]>(
     username
@@ -109,7 +103,7 @@ export default function ProfilePage() {
       back
       column="wide"
       title={<ProfileTitle name={profile.username} edit={edit} />}
-      subtitle={edit.editing ? undefined : <ProfileIdentity profile={shownProfile} organizations={organizations} />}
+      subtitle={edit.editing ? undefined : <ProfileIdentity profile={shownProfile} organizations={profile.organizations} />}
       actions={
         !edit.editing && (
           <ProfileActions
