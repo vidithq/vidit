@@ -4,6 +4,7 @@ import { formatDate } from "./format";
 import { organizationPath } from "./organizations";
 import { withCursor } from "./pagination";
 import { eventHref, profileHref } from "./routes";
+import { MAX_PAGE_SIZE } from "./api-constants";
 
 export type Notification = components["schemas"]["NotificationRead"];
 export type NotificationKind = Notification["kind"];
@@ -16,16 +17,13 @@ export function notificationsPath(cursor: string | null): string {
   return withCursor(NOTIFICATIONS_PATH, cursor);
 }
 
-/** The most ids one `POST /notifications/read` takes.
- *  Mirrors backend `schemas/notification` `MAX_PAGE_SIZE`; change both. */
-const MAX_READ_IDS = 100;
-
-/** Mark the rows the feed displayed read, in requests of at most `MAX_READ_IDS` ids. */
+/** Mark the rows the feed displayed read, in requests of at most `MAX_PAGE_SIZE` ids, the
+ *  most one `POST /notifications/read` takes. */
 export async function markNotificationsRead(ids: string[]): Promise<void> {
-  for (let i = 0; i < ids.length; i += MAX_READ_IDS) {
+  for (let i = 0; i < ids.length; i += MAX_PAGE_SIZE) {
     await apiFetch<void>(`${NOTIFICATIONS_PATH}/read`, {
       method: "POST",
-      body: JSON.stringify({ ids: ids.slice(i, i + MAX_READ_IDS) }),
+      body: JSON.stringify({ ids: ids.slice(i, i + MAX_PAGE_SIZE) }),
     });
   }
 }

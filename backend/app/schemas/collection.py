@@ -11,12 +11,12 @@ from app.schemas.user import AuthorRef
 from app.services.event_filters import EventFilters
 
 # Measured on the plain-text projection (``services/sanitize.html_text``), not the markup.
-# Mirrored by ``frontend/src/lib/collections.ts::COLLECTION_DESCRIPTION_MAX_LEN``.
+# Generated into the frontend's ``lib/api-constants.ts``.
 DESCRIPTION_MAX_LENGTH = 500
 
 # Events one create or one bulk add may shelve: a ceiling on the body so a
 # runaway request can't open one transaction over the whole catalogue.
-# Mirrored by ``frontend/src/lib/collections.ts::BULK_ADD_MAX_EVENTS``; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 MAX_CREATE_EVENTS = 500
 
 

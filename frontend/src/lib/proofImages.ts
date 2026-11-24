@@ -7,13 +7,11 @@
 //  - `gifFrameFilename` mirrors `storage._gif_frame_filename`.
 
 import { GIF_MIME, MAX_GIF_FRAMES } from "./mediaTypes";
+import { ORIGINAL_FILENAME_MAX_LEN, PROOF_PLACEHOLDER_PREFIX } from "./api-constants";
 
-/** Src scheme for a not-yet-uploaded proof image; intake rewrites each to the stored URL,
- *  so a persisted body never carries one. */
-export const PROOF_PLACEHOLDER_PREFIX = "placeholder://";
-
-// Backend `storage.ORIGINAL_FILENAME_MAX_LEN`.
-const ORIGINAL_FILENAME_MAX_LEN = 255;
+/** `PROOF_PLACEHOLDER_PREFIX` is the src scheme for a not-yet-uploaded proof image; intake
+ *  rewrites each to the stored URL, so a persisted body never carries one. */
+export { PROOF_PLACEHOLDER_PREFIX };
 
 /** Strip path components and reject control (Cc) / format (Cf) codepoints, like the backend
  *  before the length cap. `null` for empty or all-stripped (the backend stores NULL; a

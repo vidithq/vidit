@@ -10,7 +10,7 @@ The frontend authenticates via two cookies:
   guard.
 
 These cookies are the only authenticated channel; ``Authorization: Bearer`` headers are ignored.
-Mirrored by ``frontend/src/lib/auth.ts`` (and an inlined cookie name in ``proxy.ts``).
+The cookie and header names are generated into the frontend's ``lib/api-constants.ts``.
 """
 
 from __future__ import annotations

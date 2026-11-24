@@ -49,5 +49,4 @@ class NotificationReadUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # Mirrored by the frontend's lib/notifications MAX_READ_IDS; change both.
     ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_PAGE_SIZE)

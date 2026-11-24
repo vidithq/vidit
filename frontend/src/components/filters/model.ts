@@ -1,7 +1,7 @@
 import type { DayCount, EventStatus, SearchHitType } from "@/types";
 import type { Account } from "@/lib/accounts";
 import type { Concept } from "@/lib/fieldHelp";
-import { EVENT_STATUS_META } from "@/components/event/StatusBadge";
+import { EVENT_STATUSES } from "@/lib/api-constants";
 
 // The filter vocabulary, its rules and its parameters. `labels.ts` names the values and builds the
 // pills; this module imports nothing from it, so `lib/search` can read it without an import cycle.
@@ -51,7 +51,7 @@ export const EMPTY_FILTERS: FilterState = {
 export type FilterPatch = (patch: Partial<FilterState>) => void;
 
 /** The statuses the Show field offers: every status but `closed`, in lifecycle order. */
-export const FILTER_STATUSES = (Object.keys(EVENT_STATUS_META) as EventStatus[]).filter(
+export const FILTER_STATUSES: EventStatus[] = EVENT_STATUSES.filter(
   (status) => status !== "closed",
 );
 

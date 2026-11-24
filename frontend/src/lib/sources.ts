@@ -6,6 +6,7 @@ import type { ErrorCode } from "./errors";
 import { safeHostname, toDatetimeLocalUTC } from "./format";
 import type { FieldName } from "./fieldHelp";
 import type { ArchivedLink, Media } from "@/types";
+import { DOCUMENT_SOURCE_KINDS, EVIDENCE_LEVELS, MAX_LINKS_PER_SOURCE, MAX_SOURCES_PER_EVENT, SOURCE_TITLE_MAX_LEN, SOURCE_URL_MAX_LEN } from "./api-constants";
 
 /** One source of an event, in the event's source order. */
 export type Source = components["schemas"]["SourceRead"];
@@ -49,28 +50,11 @@ export const LEVEL_LABELS: Record<SourceLevel, string> = {
 /** In the order the API serves sources. */
 export const SOURCE_LEVELS = Object.keys(LEVEL_LABELS) as SourceLevel[];
 
-/** Keyed by the generated union. Mirrors `models/source.EVIDENCE_LEVELS`; change both. */
-const EVIDENCE_LEVELS: Record<SourceLevel, boolean> = {
-  direct: true,
-  indirect: true,
-  context: false,
-};
-
 /** Whether a source of this level supports a publication: the evidence floor counts it. */
-export const isEvidenceLevel = (level: SourceLevel): boolean => EVIDENCE_LEVELS[level];
+export const isEvidenceLevel = (level: SourceLevel): boolean =>
+  (EVIDENCE_LEVELS as readonly string[]).includes(level);
 
-/** Mirrors `models/source.MAX_SOURCES_PER_EVENT`; change both. */
-export const MAX_SOURCES_PER_EVENT = 10;
-
-/** Mirrors `models/source.MAX_LINKS_PER_SOURCE`; change both. */
-export const MAX_LINKS_PER_SOURCE = 10;
-
-/** Mirrors `models/source.SOURCE_TITLE_MAX_LENGTH`; change both. */
-export const SOURCE_TITLE_MAX_LEN = 255;
-
-/** Caps a link's URL and its snapshot URL. Mirrors `models/source.SOURCE_URL_MAX_LENGTH`;
- *  change both. */
-export const SOURCE_URL_MAX_LEN = 2000;
+export { MAX_LINKS_PER_SOURCE, MAX_SOURCES_PER_EVENT, SOURCE_TITLE_MAX_LEN, SOURCE_URL_MAX_LEN };
 
 /** Keyed by the generated union, so a kind the backend adds fails the type-check. */
 export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
@@ -90,13 +74,8 @@ export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
 
 export const SOURCE_KINDS = Object.keys(SOURCE_KIND_LABELS) as SourceKind[];
 
-/** The kinds that are documents, not captures: they carry no capture position. Mirrors
- *  `models/source.DOCUMENT_SOURCE_KINDS`; change both. */
-const DOCUMENT_SOURCE_KINDS: ReadonlySet<SourceKind | ""> = new Set<SourceKind>([
-  "article",
-  "official_statement",
-  "other",
-]);
+/** The kinds that are documents, not captures: they carry no capture position. */
+const DOCUMENT_KINDS: ReadonlySet<SourceKind | ""> = new Set<SourceKind>(DOCUMENT_SOURCE_KINDS);
 
 /** Keyed by the generated union of the kinds the provider check covers. */
 const IMAGERY_KINDS: Record<ImageryKind, true> = { satellite: true, aircraft: true };
@@ -106,7 +85,7 @@ export const isImageryKind = (kind: SourceKind | ""): kind is ImageryKind => kin
 
 /** Whether a source of this kind can carry a capture position. */
 export const hasCapturePosition = (kind: SourceKind | ""): boolean =>
-  !DOCUMENT_SOURCE_KINDS.has(kind);
+  !DOCUMENT_KINDS.has(kind);
 
 /** The first URL of an event's sources, for the one-host labels of a row or card. */
 export function firstSourceUrl(event: { sources: Pick<Source, "links">[] }): string | null {

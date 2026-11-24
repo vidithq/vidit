@@ -77,10 +77,9 @@ class ArchiveImportJobRead(BaseModel):
 
 
 # Boundary cap on the note attached to a version (the column is unbounded
-# ``Text``), so an over-long note is a 422. Mirrored by
-# ``frontend/src/lib/events.ts::VERSION_NOTE_MAX_LEN``; change both.
+# ``Text``), so an over-long note is a 422. Both caps are generated into the frontend's
+# ``lib/api-constants.ts``.
 VERSION_NOTE_MAX_LENGTH = 280
-# Mirrored by ``frontend/src/lib/events.ts::CLOSE_REASON_MAX_LEN``; change both.
 CLOSE_REASON_MAX_LENGTH = 2000
 
 

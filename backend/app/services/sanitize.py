@@ -20,7 +20,7 @@ from app.services.storage import LOCAL_STORAGE_URL_PREFIX
 
 # Src scheme for a not-yet-uploaded proof image (``placeholder://<filename>``,
 # the file rides in the same multipart request). Intake resolves it before
-# storing, so no persisted body carries one. Mirrored by `lib/proofImages.ts`.
+# storing, so no persisted body carries one. Generated into the frontend's ``lib/api-constants.ts``.
 PROOF_PLACEHOLDER_PREFIX = "placeholder://"
 
 # Every tag but ``img``, which only a proof carries.

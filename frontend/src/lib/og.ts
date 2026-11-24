@@ -3,6 +3,7 @@
 
 import { pluralNoun } from "@/lib/format";
 import type { PublicProfile, UserStats } from "@/lib/users";
+import { MOSAIC_MAX_TILES } from "@/lib/api-constants";
 
 /** Equirectangular world projection, normalised to the unit square. */
 interface ProjectedPoint {
@@ -71,10 +72,6 @@ interface OgMosaicFrame {
   height: number;
   gap: number;
 }
-
-/** Mirrors `services/collections.COVER_TILES`; a longer list is cut so a wider backend
- *  cover cannot spill out of the panel. */
-const MOSAIC_MAX_TILES = 4;
 
 /** Tile boxes for a collection's mosaic, restating `<ItemMedia>`'s arrangement (Satori
  *  lays out flex, not grid): 1 fills, 2 split, 3 put the earliest tall on the left, 4 fill

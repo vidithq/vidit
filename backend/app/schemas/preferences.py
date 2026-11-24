@@ -18,8 +18,7 @@ class DisplayPreferences(BaseModel):
     help_tooltips: bool
 
 
-# Mirrored by the frontend defaults in lib/palette.ts, lib/theme.ts and
-# lib/helpPreference.ts; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 DISPLAY_DEFAULTS = DisplayPreferences(palette="orange", theme="dark", help_tooltips=True)
 
 

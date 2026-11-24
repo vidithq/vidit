@@ -27,7 +27,7 @@ NormalizedEmail = Annotated[EmailStr, AfterValidator(_lowercase)]
 UsernameRef = Annotated[str, Field(min_length=1, max_length=50)]
 
 # Also the ``?author=`` query guard: it keeps the ``%`` and ``\`` LIKE vectors out of the SQL
-# builders. Hand-kept FE mirror: ``lib/search.ts::USERNAME_RE``.
+# builders. Generated into the frontend's ``lib/api-constants.ts``.
 USERNAME_PATTERN = r"^[A-Za-z0-9_-]{1,50}$"
 
 

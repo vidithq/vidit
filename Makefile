@@ -18,7 +18,7 @@ help:
 	@echo "  make dev-worker    - Run the background worker (email queues, archive imports, bot webhooks)"
 	@echo "  make dev           - Run both backend and frontend in parallel"
 	@echo "  make test          - Run backend test suite (pytest)"
-	@echo "  make gen-api-types - Regenerate frontend API types from the backend OpenAPI spec"
+	@echo "  make gen-api-types - Regenerate frontend API types and constants from the backend"
 	@echo "  make hygiene       - Duplication (jscpd) + dead-code (knip frontend, vulture backend) + changelog line-length checks"
 	@echo "  make clean         - Stop containers and purge local storage/cache/builds"
 
@@ -69,12 +69,14 @@ dev:
 test:
 	cd backend && uv run pytest -n auto --dist worksteal
 
-# Generate the frontend's API types from the backend OpenAPI spec. The dumped
-# spec (frontend/openapi.json) is a gitignored intermediate; the generated
-# src/lib/api-types.ts IS committed. CI re-runs this and `git diff --exit-code`s
-# the result, so a backend schema change that wasn't regenerated fails the build.
+# Generate the frontend's API types from the backend OpenAPI spec, and the
+# frontend constants from the backend values. The dumped spec
+# (frontend/openapi.json) is a gitignored intermediate; the generated
+# src/lib/api-types.ts and src/lib/api-constants.ts ARE committed. CI re-runs
+# this and `git diff --exit-code`s the result, so a backend change that wasn't
+# regenerated fails the build.
 gen-api-types:
-	cd backend && uv run --no-sync python scripts/dump_openapi.py ../frontend/openapi.json
+	cd backend && uv run --no-sync python scripts/dump_openapi.py ../frontend/openapi.json ../frontend/src/lib/api-constants.ts
 	cd frontend && npx openapi-typescript openapi.json -o src/lib/api-types.ts
 
 check-dup:

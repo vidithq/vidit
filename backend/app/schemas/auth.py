@@ -5,10 +5,9 @@ from pydantic_core import PydanticCustomError
 
 from app.schemas import NormalizedEmail, Username
 
-# Mirrored by ``frontend/src/lib/auth.ts`` (``PASSWORD_MIN_LENGTH``).
 PASSWORD_MIN_LENGTH = 8
 # bcrypt reads at most 72 bytes, so the ceiling is in UTF-8 bytes, not characters.
-# Mirrored by ``frontend/src/lib/auth.ts`` (``PASSWORD_MAX_BYTES``).
+# Both caps are generated into the frontend's ``lib/api-constants.ts``.
 PASSWORD_MAX_BYTES = 72
 
 

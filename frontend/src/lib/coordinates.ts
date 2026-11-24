@@ -1,11 +1,9 @@
 // Coordinate vocabulary shared by forms and read surfaces: bounds, strict parse, paste parser,
 // 6-decimal rendering, external map link.
-//
-// Bounds mirror the backend range check `services/events/coordinates.validate_coordinates`.
-export const LAT_MIN = -90;
-export const LAT_MAX = 90;
-export const LNG_MIN = -180;
-export const LNG_MAX = 180;
+
+import { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN } from "./api-constants";
+
+export { LAT_MAX, LAT_MIN, LNG_MAX, LNG_MIN };
 
 export interface CoordinatePair {
   lat: number;

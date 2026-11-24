@@ -35,6 +35,7 @@ import {
   type VersionEntryRows,
   type VersionReader,
 } from "./versions";
+import { CLOSE_REASON_MAX_LEN, EVENT_TITLE_MAX_LEN, VERSION_NOTE_MAX_LEN } from "./api-constants";
 
 /** A required field a create/edit form is still missing; `key` drives the in-form highlight. */
 export type MissingFieldKey =
@@ -83,8 +84,7 @@ const FIELD_LABELS: Record<MissingFieldKey, string> = {
   site_effect: "Effect at a linked site",
 };
 
-/** Mirrors `models/event.TITLE_MAX_LENGTH`; change both. */
-export const EVENT_TITLE_MAX_LEN = 255;
+export { CLOSE_REASON_MAX_LEN, EVENT_TITLE_MAX_LEN, VERSION_NOTE_MAX_LEN };
 
 /** Below the backend default (`per_page=20`, max 100) so row previews load faster. */
 const DETECTIONS_PER_PAGE = 10;
@@ -215,9 +215,6 @@ function appendGeolocatorInvites(fd: FormData, usernames: string[] = []): void {
 function postEventForm<T>(path: string, fd: FormData): Promise<T> {
   return apiFetch<T>(path, { method: "POST", body: fd });
 }
-
-/** Mirrors `schemas/event.VERSION_NOTE_MAX_LENGTH`; change both. */
-export const VERSION_NOTE_MAX_LEN = 280;
 
 /** `POST /events/{id}/versions`: publishes a request or a detection (version 0 becomes version
  *  1) or corrects a published event, filing the superseded state as a version. `note` is the
@@ -790,9 +787,6 @@ export function closeEvent(id: string, closeReason: string): Promise<EventDetail
     body: JSON.stringify({ close_reason: closeReason }),
   });
 }
-
-/** Mirrors `schemas/event.CLOSE_REASON_MAX_LENGTH`; change both. */
-export const CLOSE_REASON_MAX_LEN = 2000;
 
 /** What a form's source editors hold against the floor (`sourceFloor`). */
 export interface SourceFloorState {

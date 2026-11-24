@@ -2,6 +2,7 @@ import { apiFetch } from "./api";
 import type { components } from "./api-types";
 import { creditedAuthors } from "./geolocatorCredit";
 import type { AuthorRef as Author } from "@/types";
+import { APPROVAL_REQUEST_AUDIENCE_DEFAULT } from "./api-constants";
 
 export type ApprovalRequest = components["schemas"]["ApprovalRequestRead"];
 export type ApprovalRequestTargets = components["schemas"]["ApprovalRequestTargetList"];
@@ -12,9 +13,8 @@ export type ApprovalRequestAudience =
 /** Whom an approval request asks: an analyst by username, or an organization by slug. */
 export type ApprovalRequestTarget = { username: string } | { organization: string };
 
-/** The audience of an analyst or organization that never chose one.
- *  Mirrors backend `user_preferences.APPROVAL_REQUEST_AUDIENCE_DEFAULT`; change both. */
-export const APPROVAL_REQUEST_AUDIENCE_DEFAULT: ApprovalRequestAudience = "following";
+/** The audience of an analyst or organization that never chose one. */
+export { APPROVAL_REQUEST_AUDIENCE_DEFAULT };
 
 // Keyed by the generated audience values, so a value the backend adds fails the type-check.
 const AUDIENCE_LABELS: Record<ApprovalRequestAudience, string> = {

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base, UpdatedAt, literal_check
 
 ApprovalRequestAudience = Literal["following", "everyone", "nobody"]
-# Mirrored by the frontend's lib/approvalRequests APPROVAL_REQUEST_AUDIENCE_DEFAULT; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 APPROVAL_REQUEST_AUDIENCE_DEFAULT: ApprovalRequestAudience = "following"
 
 

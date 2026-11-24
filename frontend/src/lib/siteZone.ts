@@ -1,5 +1,6 @@
 import type { MapBounds } from "./viewport";
 import type { Zone } from "./sites";
+import { MAX_ZONE_AREA_KM2 } from "./api-constants";
 
 /** A `[lng, lat]` position, the GeoJSON order a zone carries. */
 export type Position = [number, number];
@@ -22,8 +23,7 @@ export function zoneFromVertices(vertices: Position[]): Zone {
 /** A polygon needs three corners before it can close. */
 export const MIN_ZONE_VERTICES = 3;
 
-/** Mirrors backend `schemas/site.MAX_ZONE_AREA_KM2`; change both. */
-export const MAX_ZONE_AREA_KM2 = 1000;
+export { MAX_ZONE_AREA_KM2 };
 
 /** An area in square kilometres, thousands grouped: `230,643.89 km²`. */
 export function formatAreaKm2(km2: number, decimals = 2): string {

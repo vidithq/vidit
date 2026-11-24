@@ -100,7 +100,7 @@ MAP_SITES_LIMIT = 1000
 SITE_SOURCE_ORDER = (Source.captured_at, Source.created_at, Source.id)
 OVERLAPS_LIMIT = 20
 SUGGESTIONS_LIMIT = 20
-# Mirrored by `frontend/src/lib/sites.ts::SITE_MARGIN_KM`; change both.
+# Generated into the frontend's ``lib/api-constants.ts``.
 DEFAULT_MARGIN_M = 10_000
 MAX_MARGIN_M = 10_000
 

@@ -14,17 +14,18 @@ import type {
 } from "@/types";
 import { withCursor } from "./pagination";
 import { userPath } from "./users";
+import { BULK_ADD_MAX_EVENTS, COLLECTION_DESCRIPTION_MAX_LEN } from "./api-constants";
 
-/** The collections surface: routes, the hand-kept caps, and the meta line and item pins
+/** The collections surface: routes, the caps, and the meta line and item pins
  *  every collection surface prints. */
 
 /** The event title cap, which `schemas/collection` applies to create and update alike. */
 export const COLLECTION_TITLE_MAX_LEN = EVENT_TITLE_MAX_LEN;
 
-/** Counted on the plain-text projection of the description HTML (`lib/proof.tsx::htmlText`),
- *  so bolding a word costs no characters. Mirrors `schemas/collection.DESCRIPTION_MAX_LENGTH`,
- *  which `services/collections` applies to the same projection; change both. */
-export const COLLECTION_DESCRIPTION_MAX_LEN = 500;
+/** `COLLECTION_DESCRIPTION_MAX_LEN` counts the plain-text projection of the description HTML
+ *  (`lib/proof.tsx::htmlText`), as `services/collections` does, so bolding a word costs no
+ *  characters. */
+export { BULK_ADD_MAX_EVENTS, COLLECTION_DESCRIPTION_MAX_LEN };
 
 export type Collection = components["schemas"]["CollectionRead"];
 
@@ -251,10 +252,6 @@ export function addEventToCollection(
 }
 
 export type BulkAddResult = components["schemas"]["CollectionBulkAddResult"];
-
-/** Events one bulk add (or one create) may shelve; past it the server answers 422
- *  `too_many_events`. Mirrors `schemas/collection.MAX_CREATE_EVENTS`; change both. */
-export const BULK_ADD_MAX_EVENTS = 500;
 
 /** One search as the server resolves it: the query and the search page's filters. */
 export type SearchMatchParams = { q: string } & EventFilterParams;

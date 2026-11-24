@@ -12,9 +12,7 @@ import { ProofImage } from "@/components/event/ProofImage";
 import { parseHttp } from "@/lib/format";
 import { OutboundLink } from "@/components/ui/OutboundLink";
 import { TEXT_LINK } from "@/components/ui/styles";
-
-/** Mirrors `storage.LOCAL_STORAGE_URL_PREFIX`; change both. */
-const LOCAL_STORAGE_URL_PREFIX = "http://localhost:8000/local-storage/";
+import { LOCAL_STORAGE_URL_PREFIX, PROOF_TEXT_TAGS } from "@/lib/api-constants";
 
 /** Mirrors backend `sanitize.safe_link_href`; change both. */
 export function isSafeLinkHref(href: string): boolean {
@@ -39,9 +37,9 @@ function isSafeImageSrc(src: string): boolean {
   return mediaHost ? parsed.hostname === mediaHost.toLowerCase() : true;
 }
 
-/** The read view's class per allowlisted tag (`a` and `img` render as components). Mirrors the
- *  backend `sanitize.py` tag allowlist; change both. Any other tag renders its children only. */
-const TAG_CLASSES: Record<string, string | undefined> = {
+/** The read view's class per tag the sanitizer keeps (`a` and `img` render as components), so
+ *  a tag the backend adds fails the type-check. Any other tag renders its children only. */
+const TAG_CLASSES: Record<Exclude<(typeof PROOF_TEXT_TAGS)[number], "a">, string | undefined> = {
   p: undefined,
   h2: "text-xl font-bold mt-4 mb-2",
   h3: "text-lg font-semibold mt-3 mb-2",
@@ -110,7 +108,7 @@ function parserOptions({ gateImages }: ProofRenderOptions): HTMLReactParserOptio
       const tag = name === "p" && containsImage(node) ? "div" : name;
       return createElement(
         tag,
-        { className: inPre ? undefined : TAG_CLASSES[name] },
+        { className: inPre ? undefined : TAG_CLASSES[name as keyof typeof TAG_CLASSES] },
         VOID_TAGS.has(name) ? undefined : children(),
       );
     },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, unzipSync, zipSync } from "fflate";
 
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, isZipFile, stripArchive } from "./archive";
+import { MAX_UPLOAD_LABEL, isZipFile, stripArchive } from "./archive";
 
 function zipFile(entries: Record<string, Uint8Array>): File {
   return new File([zipSync(entries)], "archive.zip", { type: "application/zip" });
@@ -108,11 +108,7 @@ describe("stripArchive", () => {
     );
   });
 
-  it("mirrors the backend staged-zip guard", () => {
-    // Must equal MAX_UPLOAD_BYTES in services/tweet_ingest/archive_zip.py: smaller refuses uploads
-    // S3 accepts, larger hands the analyst an unretryable reject.
-    expect(MAX_UPLOAD_BYTES).toBe(4 * 1024 ** 3);
-    // And the copy the analyst reads quotes that same constant.
+  it("quotes the staged-zip cap in the copy the analyst reads", () => {
     expect(MAX_UPLOAD_LABEL).toBe("4 GB");
   });
 });
