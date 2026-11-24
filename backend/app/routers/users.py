@@ -1,14 +1,14 @@
 import asyncio
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.dependencies import DB, CurrentUser, OptionalUser
+from app.dependencies import DB, CurrentUser, Cursor, OptionalUser
 from app.models.user import User
 from app.ratelimit import authenticated_read_quota, limiter
 from app.routers.events._common import build_event_list
-from app.schemas.collection import CollectionList
+from app.schemas.collection import CollectionRead
 from app.schemas.event import PaginatedEvents
 from app.schemas.invite_code import (
     SponsoredInviteCodeCreate,
@@ -23,7 +23,13 @@ from app.services import organizations as organizations_service
 from app.services import preferences as preferences_service
 from app.services import social, sponsored_invites, user_stats
 from app.services import users as users_service
-from app.services.pagination import page_size
+from app.services.pagination import (
+    MAX_PAGE_SIZE,
+    decode_cursor,
+    encode_cursor,
+    page_size,
+    paged,
+)
 
 router = APIRouter()
 
@@ -135,33 +141,30 @@ def get_user_stats(request: Request, username: str, db: DB) -> UserStatsRead:
     return user_stats.get_user_stats(db, user_id=user.id)
 
 
-@router.get("/{username}/collections", response_model=CollectionList)
+@router.get("/{username}/collections", response_model=list[CollectionRead])
 @authenticated_read_quota
 @limiter.limit("120/minute")
 def get_user_collections(
     request: Request,
+    response: Response,
     username: str,
     db: DB,
     current_user: OptionalUser,
-    page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1),
-) -> CollectionList:
-    """One analyst's collections, newest first."""
+    limit: int = Query(MAX_PAGE_SIZE, ge=1),
+    cursor: Cursor = None,
+) -> list[CollectionRead]:
+    """One analyst's collections, newest first (``Link: rel="next"`` cursor)."""
     user = _get_live_user_or_404(db, username)
-    per_page = page_size(per_page)
-    rows, total = collections_service.list_owned_collections(
+    size = page_size(limit)
+    window = collections_service.list_owned_collections(
         db,
         owner_id=user.id,
         include_empty=current_user is not None and current_user.id == user.id,
-        page=page,
-        per_page=per_page,
+        limit=size,
+        cursor=decode_cursor(cursor),
     )
-    return CollectionList(
-        items=collections_service.build_collection_reads(db, rows),
-        total=total,
-        page=page,
-        per_page=per_page,
-    )
+    rows = paged(request, response, window, size, lambda r: encode_cursor(r.created_at, r.id))
+    return collections_service.build_collection_reads(db, rows)
 
 
 @router.get("/{username}/organizations", response_model=list[OrganizationMembershipRead])

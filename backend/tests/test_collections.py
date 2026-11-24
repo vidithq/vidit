@@ -757,7 +757,7 @@ def test_admin_moderation_hides_then_restores_a_collection(db, owner, admin_user
     assert client.get(f"/api/v1/collections/{collection.id}").status_code == 200
     # The owner's profile shelf carries it again.
     body = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert [item["id"] for item in body["items"]] == [str(collection.id)]
+    assert [item["id"] for item in body] == [str(collection.id)]
 
 
 def test_admin_moderation_is_idempotent_both_ways(db, owner, admin_user):
@@ -788,9 +788,7 @@ def test_withheld_collection_is_out_of_the_profile_list(db, owner, admin_user):
     _moderate(collection.id, hidden=True, as_user=admin_user)
     client.cookies.clear()
 
-    body = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert body["total"] == 0
-    assert body["items"] == []
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
 
 
 def test_anonymous_report_of_a_collection_is_accepted(db, owner):
@@ -917,7 +915,7 @@ def test_owner_delete_under_an_open_report_withholds_the_collection(
     assert client.post(f"{path}/report", json={"reason": "other"}).status_code == 404
     assert client.get(path, headers=login_as(client, stranger)).status_code == 404
     client.cookies.clear()
-    assert client.get(f"/api/v1/users/{owner.username}/collections").json()["total"] == 0
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
     assert (
         client.get(f"/api/v1/search?type=collection&author={owner.username}").json()["hits"] == []
     )
@@ -925,7 +923,7 @@ def test_owner_delete_under_an_open_report_withholds_the_collection(
     # The owner sees it as deleted too, and can no longer write to it.
     headers = login_as(client, owner)
     assert client.get(path).status_code == 404
-    assert client.get(f"/api/v1/users/{owner.username}/collections").json()["total"] == 0
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
     assert client.get(f"/api/v1/events/{event.id}/collections").json()["items"] == []
     patch = {"title": "Renamed", "description": _description("Still here.")}
     assert client.patch(path, json=patch, headers=headers).status_code == 404
@@ -1064,20 +1062,18 @@ def test_empty_collections_are_the_owners_view_only(db, owner, stranger):
     _make_collection(db, owner=owner, title="Empty")
 
     anonymous = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert anonymous["total"] == 1
-    assert [item["title"] for item in anonymous["items"]] == ["Filled"]
+    assert [item["title"] for item in anonymous] == ["Filled"]
 
     reader = client.get(
         f"/api/v1/users/{owner.username}/collections", headers=login_as(client, stranger)
     ).json()
-    assert reader["total"] == 1
+    assert len(reader) == 1
     client.cookies.clear()
 
     mine = client.get(
         f"/api/v1/users/{owner.username}/collections", headers=login_as(client, owner)
     ).json()
-    assert mine["total"] == 2
-    assert {item["title"] for item in mine["items"]} == {"Filled", "Empty"}
+    assert {item["title"] for item in mine} == {"Filled", "Empty"}
 
 
 def test_a_collection_whose_items_all_left_reads_as_empty(db, owner):
@@ -1089,8 +1085,7 @@ def test_a_collection_whose_items_all_left_reads_as_empty(db, owner):
     event.deleted_at = datetime.now(UTC)
     db.commit()
 
-    anonymous = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert anonymous["total"] == 0
+    assert client.get(f"/api/v1/users/{owner.username}/collections").json() == []
     assert client.get(f"/api/v1/collections/{collection.id}").json()["event_count"] == 0
 
 
@@ -1474,7 +1469,7 @@ def test_every_read_surface_carries_the_same_tags(db, owner, make_tag):
     assert [_tag_names(hit) for hit in hits["hits"]] == [expected]
 
     listed = client.get(f"/api/v1/users/{owner.username}/collections").json()
-    assert [_tag_names(item) for item in listed["items"]] == [expected]
+    assert [_tag_names(item) for item in listed] == [expected]
 
 
 def test_hard_deleting_the_owner_drops_the_collections_and_their_memberships(db, owner, admin_user):
@@ -1766,3 +1761,19 @@ def test_collectable_events_requires_auth():
     client.cookies.clear()
     response = client.post("/api/v1/collections/collectable-events", json={"q": "x"})
     assert response.status_code == 401
+
+
+def test_profile_collections_page_by_cursor(db, owner):
+    titles = [f"Shelf {n}" for n in range(3)]
+    for title in titles:
+        _add(db, _make_collection(db, owner=owner, title=title), _make_event(db, author=owner))
+    client.cookies.clear()
+    path = f"/api/v1/users/{owner.username}/collections"
+
+    first = client.get(path, params={"limit": 2})
+    assert len(first.json()) == 2
+    next_url = first.headers["link"].split(">")[0].lstrip("<")
+    second = client.get(next_url)
+    assert len(second.json()) == 1
+    assert "link" not in second.headers
+    assert {item["title"] for item in first.json() + second.json()} == set(titles)

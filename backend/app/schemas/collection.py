@@ -80,15 +80,6 @@ class CollectionRead(BaseModel):
     hidden_at: datetime | None
 
 
-class CollectionList(BaseModel):
-    """One page of an analyst's collections, newest first."""
-
-    items: list[CollectionRead]
-    total: int
-    page: int
-    per_page: int
-
-
 class CollectionMembershipRead(BaseModel):
     """One of the caller's collections, and whether one event is already in it."""
 

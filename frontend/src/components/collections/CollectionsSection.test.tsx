@@ -4,21 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import { useApiResource } from "@/test/apiResourceStub";
 vi.mock("@/hooks/useApiResource", () => import("@/test/apiResourceStub"));
 
-import { type Collection, type CollectionPage } from "@/lib/collections";
+import { type Collection } from "@/lib/collections";
 import { collection } from "@/test/collection";
 
 import { CollectionsSection } from "./CollectionsSection";
 
-const page = (
-  items: Collection[],
-  total = items.length,
-  number = 1,
-): CollectionPage => ({
-  items,
-  total,
-  page: number,
-  per_page: 4,
-});
+const page = (items: Collection[]): Collection[] => items;
 
 /** A shelf of `count` collections, each with its own id and title. */
 const shelf = (count: number): Collection[] =>
@@ -90,7 +81,7 @@ describe("CollectionsSection", () => {
     render(<CollectionsSection username="ana" isOwn={false} />);
 
     expect(useApiResource).toHaveBeenCalledWith(
-      "/users/ana/collections?per_page=4",
+      "/users/ana/collections?limit=5",
     );
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
     expect(
@@ -99,7 +90,7 @@ describe("CollectionsSection", () => {
   });
 
   it("sends the reader to the analyst's collections in search past four", () => {
-    useApiResource.mockReturnValue({ data: page(shelf(4), 6) });
+    useApiResource.mockReturnValue({ data: page(shelf(5)) });
 
     render(<CollectionsSection username="ana" isOwn={false} />);
 

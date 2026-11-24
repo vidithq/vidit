@@ -2337,7 +2337,7 @@ export interface paths {
         };
         /**
          * Get User Collections
-         * @description One analyst's collections, newest first.
+         * @description One analyst's collections, newest first (``Link: rel="next"`` cursor).
          */
         get: operations["get_user_collections_api_v1_users__username__collections_get"];
         put?: never;
@@ -3332,20 +3332,6 @@ export interface components {
             event_ids?: string[];
             /** Title */
             title: string;
-        };
-        /**
-         * CollectionList
-         * @description One page of an analyst's collections, newest first.
-         */
-        CollectionList: {
-            /** Items */
-            items: components["schemas"]["CollectionRead"][];
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Total */
-            total: number;
         };
         /**
          * CollectionMembershipList
@@ -10435,8 +10421,9 @@ export interface operations {
     get_user_collections_api_v1_users__username__collections_get: {
         parameters: {
             query?: {
-                page?: number;
-                per_page?: number;
+                limit?: number;
+                /** @description Opaque cursor from a Link: rel=next header */
+                cursor?: string | null;
             };
             header?: never;
             path: {
@@ -10454,7 +10441,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionList"];
+                    "application/json": components["schemas"]["CollectionRead"][];
                 };
             };
             /** @description Validation Error */

@@ -30,7 +30,7 @@ vi.mock("@/lib/api", () => import("@/test/apiStub"));
 
 import { ApiError } from "@/lib/api";
 import { readResponse } from "@/lib/errors";
-import type { CollectionPage } from "@/lib/collections";
+import type { Collection } from "@/lib/collections";
 import type { OrganizationMembership } from "@/lib/organizations";
 import type { PublicProfile, UserStats } from "@/lib/users";
 import { signedInAs, signedOut } from "@/test/auth";
@@ -77,19 +77,14 @@ const STATS: UserStats = {
 // [id, lat, lng, occurred_date, added_date, detected]
 const POINT: MapPoint = ["e1", 48.5, 37.8, "2026-06-01", "2026-06-02", 0];
 
-const COLLECTIONS: CollectionPage = {
-  items: [
-    collection({
-      event_count: 2,
-      first_date: "2026-06-01",
-      last_date: "2026-06-02",
-      created_at: "2026-06-03T09:00:00Z",
-    }),
-  ],
-  total: 1,
-  page: 1,
-  per_page: 6,
-};
+const COLLECTIONS: Collection[] = [
+  collection({
+    event_count: 2,
+    first_date: "2026-06-01",
+    last_date: "2026-06-02",
+    created_at: "2026-06-03T09:00:00Z",
+  }),
+];
 
 const MEMBERSHIPS: OrganizationMembership[] = [
   {
@@ -145,7 +140,7 @@ function mockReads({
   submissions?: EventListItem[];
   points?: MapPoint[];
   memberships?: OrganizationMembership[];
-  collections?: CollectionPage;
+  collections?: Collection[];
   stats?: UserStats | null;
 } = {}) {
   useApiResource.mockImplementation((path: string | null) => ({
@@ -348,7 +343,7 @@ describe("public profile identity", () => {
       submissions: [],
       points: [],
       memberships,
-      collections: { ...COLLECTIONS, items: [], total: 0 },
+      collections: [],
       stats: null,
     });
   }

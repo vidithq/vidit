@@ -3350,11 +3350,11 @@ An analyst's published geolocations: live rows with `status = "geolocated"` that
 
 ### `GET /users/{username}/collections`
 
-One analyst's collections, newest first. A reader gets the collections that show at least one event; the owner gets all of theirs, empty ones included. `total` counts the same set. Withheld collections and collections pending erasure are in neither. Offset-paged (see [Pagination](#pagination)).
+One analyst's collections, newest first. A reader gets the collections that show at least one event; the owner gets all of theirs, empty ones included. Withheld collections and collections pending erasure are in neither. Cursor-paged (see [Pagination](#pagination)).
 
-**Query params:** `page` and `per_page`, see [Pagination](#pagination).
+**Query params:** `limit` and `cursor`, see [Pagination](#pagination).
 
-**Response 200:** a `CollectionList` whose `items` are [`CollectionRead`](#get-collectionsid).
+**Response 200:** an array of [`CollectionRead`](#get-collectionsid).
 
 **Errors:**
 | Code | Case |
@@ -4365,9 +4365,9 @@ One Account Activity delivery.
 | [`GET /notifications`](#get-notifications) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /feed`](#get-feed) | cursor | `feed_at DESC, id DESC` | 10 | 100 |
 | [`GET /organizations/{slug}/approvals`](#get-organizationsslugapprovals) | cursor | `created_at DESC, id DESC` | 100 | 100 |
+| [`GET /users/{username}/collections`](#get-usersusernamecollections) | cursor | `created_at DESC, id DESC` | 100 | 100 |
 | [`GET /collections/{id}/events`](#get-collectionsidevents) | cursor | `occurred_date, occurred_time, created_at, id` ascending; a missing date or time sorts last | 100 | 100 |
 | [`GET /users/{username}/events`](#get-usersusernameevents) | offset | `occurred_date DESC`, then `created_at DESC, id DESC` | 20 | 100 |
-| [`GET /users/{username}/collections`](#get-usersusernamecollections) | offset | newest first | 20 | 100 |
 | [`GET /events/detections`](#get-eventsdetections) | offset | `created_at DESC` | 20 | 100 |
 | `GET /admin/reports` | offset | open first, then newest | 20 | 100 |
 | [`GET /search`](#get-search) | cursor in the body | `ts_rank DESC, created_at DESC, id DESC` | 20 | 50 |

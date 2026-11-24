@@ -19,7 +19,7 @@ import {
   userCollectionsPath,
   type BulkAddResult,
   type BulkTarget,
-  type CollectionPage,
+  type Collection,
   type PickableEvent,
 } from "@/lib/collections";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -66,7 +66,7 @@ export function BulkAddToCollectionPanel({
   count: number;
 }) {
   const router = useRouter();
-  const { data, error } = useApiResource<CollectionPage>(
+  const { data, error } = useApiResource<Collection[]>(
     userCollectionsPath(username, PANEL_COLLECTIONS),
   );
   const [done, setDone] = useState<Record<string, BulkAddResult>>({});
@@ -88,7 +88,7 @@ export function BulkAddToCollectionPanel({
 
   return (
     <CollectionPicker
-      items={data.items}
+      items={data}
       renderRow={(row) => {
         const result = done[row.id];
         return (

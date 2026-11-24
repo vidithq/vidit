@@ -15,7 +15,7 @@ import {
   CollectionIcon,
   newCollectionHref,
   userCollectionsPath,
-  type CollectionPage,
+  type Collection,
 } from "@/lib/collections";
 
 /** How many collections the section previews. */
@@ -44,14 +44,15 @@ export function CollectionsSection({
   username: string;
   isOwn: boolean;
 }) {
-  const { data } = useApiResource<CollectionPage>(
-    userCollectionsPath(username, PREVIEW_SIZE),
+  // One row past the preview says whether the shelf holds more.
+  const { data } = useApiResource<Collection[]>(
+    userCollectionsPath(username, PREVIEW_SIZE + 1),
   );
 
   // The profile hides this section rather than blocking on it.
-  if (!data?.items) return null;
+  if (!data) return null;
 
-  const collections = data.items;
+  const collections = data.slice(0, PREVIEW_SIZE);
   if (collections.length === 0 && !isOwn) return null;
 
   return (
@@ -72,7 +73,7 @@ export function CollectionsSection({
               <Item key={collection.id} variant="list" {...collectionItem(collection)} />
             ))}
           </div>
-          {data.total > PREVIEW_SIZE && (
+          {data.length > PREVIEW_SIZE && (
             // `type=collection` is the one scope `author` narrows rather than
             // empties, so the expansion serves the set the section previewed.
             <div className="flex justify-center">
